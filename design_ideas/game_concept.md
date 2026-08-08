@@ -192,11 +192,20 @@ Full grid model, units, and the segment authoring format are in
 
 ## The main obstacle: plinko
 
-A shooter drops spheres onto the bridge above the players. They bounce down
-through the pillar fields toward the group. A glancing hit shoves; a solid hit
-tumbles. They are a continuous, semi-random pressure that makes standing still
-expensive, which is what forces the group to keep moving up into terrain they
-have not solved yet.
+A shooter — a cylinder pillar with a barrel on its business end — lobs balls up
+the bridge at a fixed speed and a varying angle. They land, ricochet down through
+the pillar fields under the bridge's own pitch, and arrive back at the group.
+They are a continuous, semi-random pressure that makes standing still expensive,
+which is what forces the party up into terrain they have not solved yet.
+
+Balls are **slow, and dodgeable on sight**. The threat is not reaction time; it
+is that one is still coming while you are busy, on a bridge full of holes to be
+knocked into.
+
+**A dashing player bats a ball away and takes nothing.** Any other contact is
+knockback, `TUMBLE`, and a hit point — every ball that connects tumbles you.
+There is no glancing/solid distinction; the interesting choice is *do I commit to
+a dash*, not *was that hit hard enough*. Full design in `plinko.md`.
 
 ## Bus mode
 

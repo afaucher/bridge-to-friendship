@@ -8,12 +8,15 @@
 #
 # TWO REAL STEPS, height 0 -> 2 -> 4, so the climb repeats rather than happening
 # once. Each step offers all three ascenders side by side, which is the point of
-# the map: a group can compare them in one walk.
+# the first half of the map: a group can compare them in one walk.
 #
 #   x 1-2    GENTLE ramp  -- 1 height unit per cell (~27 deg). Walkable alone.
 #   x 7-8    STEEP ramp   -- 2 units per cell (45 deg). Above max_walk_slope, so
 #                            no single-player solution: shove or rope.
-#   x 12-13  LADDER       -- free, the ordinary case.
+#   x 12-13  LADDER       -- free, the ordinary case. NOT CLIMBABLE YET: the
+#                            glyph validates and the loader collects it, but
+#                            there is no climb mechanic, so today it is a 2 m
+#                            wall. The gentle ramp is the working route.
 #
 # Rows 7 and 13 are the cliffs: everything that is not an ascender is a hole, so
 # the deck above can ONLY be entered through one of the three.
@@ -21,25 +24,31 @@
 # The walk:
 #   z 0-1    flat entry, two pillars to shove around
 #   z 2-3    a gap to walk past
-#   z 4-5    NO PARAPET on both sides -- the exposed run, with a pillar on it
+#   z 4-5    NO PARAPET on both sides -- the exposed run
 #   z 6-7    first ascent, to height 2
 #   z 8-11   middle deck, two gaps and pillars
 #   z 12-13  second ascent, to height 4
 #   z 14-15  upper deck, a pillar cluster
 #   z 16-17  WATER channel across the middle (geometry only until M7)
-#   z 18-21  the run out
+#   z 18-27  THE PLINKO ARENA -- see below
+#   z 28-29  the run out
 #
-# READY FOR WHAT IS NOT BUILT YET: water cells are already authored and build as
-# a lowered channel, so M7 only adds the flow force. A plinko shooter is the `O`
-# glyph and the loader already collects those cells, so M6 only adds the thing
-# that stands there. The pillar clusters at z 11 and 15 are deliberately placed
-# to be a ricochet field when balls arrive.
+# THE PLINKO ARENA (z 19-27). A staggered field, offset every other row so a
+# ball never has a straight lane to fall down -- that stagger is what makes the
+# scatter, and it is why the pillars are cylinders (a box would jam a ball in a
+# corner and a stuck ball is a dead ball). Three shooters sit at the TOP of the
+# field, up-bridge of it, so their output travels back down at the party under
+# the bridge's own 4-degree pitch.
+#
+# The parapet is suppressed down both sides of the middle of the arena. That is
+# the danger: a ball does not have to kill you, it only has to knock you
+# sideways while you are standing somewhere with nothing to stop you.
 
 name = playtest_bridge
 base_height = 0
 width = 15
-length = 22
-tags = foot, playtest, ramp, ladder, water, two_step
+length = 30
+tags = foot, playtest, ramp, ladder, water, plinko, two_step
 
 [deck]
 ...............
@@ -64,6 +73,14 @@ _//____//___.._
 ...............
 ...............
 ...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
 
 [height]
 000000000000000
@@ -80,6 +97,14 @@ _//____//___.._
 222222222222222
 233222222222222
 244222244222442
+444444444444444
+444444444444444
+444444444444444
+444444444444444
+444444444444444
+444444444444444
+444444444444444
+444444444444444
 444444444444444
 444444444444444
 444444444444444
@@ -109,8 +134,16 @@ _//____//___.._
 ...............
 ...............
 ..+.........+..
+.#..#..#..#..#.
 ...............
-..#.........#..
+..#..#..#..#...
+...............
+.#..#..#..#..#.
+.......+.......
+..#..#..#..#...
+...............
+...O...O...O...
+...............
 ...............
 
 [no_wall]
@@ -131,6 +164,14 @@ XX...........XX
 ...............
 ...............
 ...............
+...............
+...............
+...............
+...............
+XX...........XX
+XX...........XX
+XX...........XX
+XX...........XX
 ...............
 ...............
 ...............

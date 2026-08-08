@@ -206,13 +206,36 @@ going to fail, they fail here. Playtest before starting M6.
 
 Exit: B4, B4b, and the co-op half of A4.
 
-## M6 — Plinko
+## M6 — Plinko — **NEXT**
 
 **Proves:** there is a reason to keep moving.
 
-Shooter, ball simulation, ricochet off pillar fields, and hit resolution
-(glancing shoves, solid tumbles). Answers the open question of whether balls
-need full authoritative replication or can be client-simulated from a seed.
+Full design in `design_ideas/plinko.md`. In short:
+
+- **The shooter** is a cylinder pillar with a barrel on its business end, no
+  wider than the pillar, authored with the `O` glyph (already parsed and
+  collected). It sits up-bridge of the field it feeds.
+- **Ejection varies the ANGLE and nothing else** — same speed every time, up to
+  70 degrees off vertical. Fixed speed means every arc is the same size, so the
+  field has a learnable rhythm; randomising speed too would make each shot
+  individually unreadable, and an unreadable hazard is a tax rather than an
+  obstacle.
+- **Balls are slow and dodgeable on sight.** The bridge's 4-degree pitch is what
+  brings them back down at the party; nothing has to aim them.
+- **A dashing player bats a ball away** and takes nothing, and the dash keeps
+  going — unlike a dash into a stone or a player, which ends on contact. It gives
+  the shove a third job and turns the most committed action into a defensive one.
+- **Any other contact is knockback, TUMBLE and one hit point.** This drops the
+  old glancing-shoves / solid-tumbles split: one outcome, no invisible threshold.
+
+Also the milestone where health stops being decorative — plinko is the first
+real damage source in the game, so M5's bar, grace window, downed state and
+hearts all start doing something.
+
+Answers the open question of whether balls need full authoritative replication or
+can be client-simulated from a seed. Lean authoritative: a ball is exactly the
+thing whose trajectory must agree, because two machines disagreeing about where
+it is means two machines disagreeing about who got hit.
 
 Exit: C5.
 
