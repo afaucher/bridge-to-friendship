@@ -16,7 +16,7 @@ const PlayerScene = preload("res://scenes/player.tscn")
 
 const SCRIPT := [
 	[40, Vector2(0.0, -1.0), 0],
-	[1, Vector2(0.0, -1.0), SimConfig.ACTION_JUMP],
+	[1, Vector2(0.0, -1.0), SimConfig.ACTION_SHOVE],
 	[40, Vector2(1.0, 0.0), 0],
 	[30, Vector2(0.0, 0.0), 0],
 ]
@@ -33,8 +33,13 @@ var frame: int = 0
 # position. Sharing a spawn point made them collide with each other -- players
 # collide with players, so two bodies at one spot shove each other apart and the
 # "divergence" being measured was the test rig, not the integrator.
-const START_A := Vector3(0.0, 1.5, 0.0)
-const START_B := Vector3(20.0, 1.5, 0.0)
+# Both lanes must be geometrically IDENTICAL, not merely separate. The first
+# version put one body at the origin and the other 20 m east; the scripted dash
+# then drove body A into one of the gym's stones and body B into open floor, and
+# the "divergence" being measured was the scenery. Clear of every stone (which
+# sit at x 0 and +/-8, z -6 and -12) and clear of the ground's edges.
+const START_A := Vector3(-20.0, 1.5, 10.0)
+const START_B := Vector3(20.0, 1.5, 10.0)
 
 func setup(main) -> void:
 	timeout_seconds = 20.0

@@ -35,8 +35,8 @@ static func sample(tick: int) -> Array:
 	# Edge-triggered: set for exactly the tick the key went down. That is what
 	# survives a reconciliation replay -- a level-triggered "is held" bit would
 	# re-fire the jump on every replayed tick.
-	if Input.is_action_just_pressed("jump"):
-		actions |= SimConfig.ACTION_JUMP
+	if Input.is_action_just_pressed("shove"):
+		actions |= SimConfig.ACTION_SHOVE
 	return [tick, move, actions]
 
 # True when this input carries anything the host must not miss. Used to decide

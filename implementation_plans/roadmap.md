@@ -41,9 +41,23 @@ Everything through M5 is developed and playtested there.
 
 Exit: B1, B2.
 
-## M2 — Bridge grid and segment loader
+## M2 — Bridge grid and segment loader — **DONE (2026-08-08)**
 
 **Proves:** a text file becomes a bridge you can walk on.
+
+Shipped: `scripts/grid/` (config, parser, validator, builder, runtime grid), the
+`.seg` format, `segments/test_flat.seg` and `segments/test_ascent.seg`, and two
+tests. Deck cells merge along X into runs (a 30x14 segment is 420 cells and far
+fewer boxes). The validator runs the reachability flood twice — once with a solo
+budget, once with an assisted one — so "no way up" and "a solo player is
+stranded" are the same check with different numbers.
+
+Two design corrections came out of building it, both now in `bridge_grid.md`:
+**interior holes carry no parapet** (railing them made it impossible to ever
+shove a stone through one, which the design calls out as the reward for
+rearranging the bridge), and **the whole bridge is pitched 4 degrees** so loose
+plinko balls roll back down at the players under their own weight rather than
+needing a rule.
 
 The cell model, heights, derived walls, holes, water and ramp geometry, pillar
 stones as grid-resident data. The `.seg` ASCII format and its loader. The grid
@@ -54,9 +68,26 @@ authoring is M10.
 
 Exit: C1, C2, and the grid half of A4 (`max_walk_slope` is enforced).
 
-## M3 — Bodies interacting: shove and riding
+## M3 — Bodies interacting: shove and riding — **DONE (2026-08-08)**
 
 **Proves:** the signature verb feels good and resolves legibly, and bodies stack.
+
+Shipped: the compass-locked dash with its momentum-transfer table, one-cell stone
+pushing (including into a hole), dashing off the deck, and riding. Two tests.
+
+Riding uses **Godot's built-in moving-platform transport**, not the explicit
+`ride()` this milestone was scoped around — less code, at the cost of being one
+tick stale and of living in engine state a reconciliation replay cannot restore.
+`ride()` remains on the bodies, unused, so swapping back is a small edit. The
+half Godot does *not* solve is a carrier being blocked by its own rider, which
+the step loop handles by masking.
+
+**Jump was removed here.** Space is the dash. A jump would quietly solve
+obstacles that are meant to need a second player, which would undercut the
+ascender grades the whole level design rests on.
+
+Still open, deliberately: a rider cannot presently be shoved off its carrier, and
+the fixed-yaw camera is not built (nothing renders yet).
 
 Direction lock, dash, the momentum transfer table, stone pushing (exactly one
 cell), leaving the deck. Fixed-yaw camera lands here, since the compass is

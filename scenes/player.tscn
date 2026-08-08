@@ -24,7 +24,10 @@ height = 1.8
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
-collision_mask = 3
+; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
+; passes straight through a pillar and the push never resolves -- the shove is
+; detected from the dasher's own slide collisions.
+collision_mask = 7
 script = ExtResource("1_player")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

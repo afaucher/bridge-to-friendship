@@ -22,15 +22,19 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 # Both players walk a scripted L-shape, jump, then stop. Different routes on
 # purpose: identical inputs could agree by symmetry rather than by the
 # simulation actually working.
+# The host's script includes a one-tick SHOVE so the run exercises an
+# edge-triggered action crossing the wire, not just held movement. The client's
+# does not: a client deliberately does not predict committed states (see
+# GameWorld._client_tick), so a client-side dash would be driven purely by
+# authority and prove nothing about agreement that the host's does not.
 const HOST_SCRIPT := [
 	[60, Vector2(0.0, -1.0), 0],           # forward 1s
 	[30, Vector2(1.0, 0.0), 0],            # right 0.5s
-	[1, Vector2(1.0, 0.0), SimConfig.ACTION_JUMP],
-	[90, Vector2(1.0, 0.0), 0],
+	[1, Vector2(1.0, 0.0), SimConfig.ACTION_SHOVE],
+	[120, Vector2(1.0, 0.0), 0],
 ]
 const CLIENT_SCRIPT := [
 	[45, Vector2(-1.0, 0.0), 0],           # left 0.75s
-	[1, Vector2(-1.0, 0.0), SimConfig.ACTION_JUMP],
 	[75, Vector2(0.0, 1.0), 0],            # back 1.25s
 	[60, Vector2(0.0, 0.0), 0],
 ]

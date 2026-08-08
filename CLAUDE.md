@@ -118,6 +118,33 @@ the moment it is written.
   arrive — so it saw an incomplete roster once and never re-checked. The session
   was fine; the harness reported not-ready forever and every net test timed out.
   Poll readiness.
+- **A body cannot walk while another body rests on it.** Two kinematic bodies
+  block each other, and a rider is in permanent contact with its carrier, so the
+  carrier's sweep collides with the thing standing on it. Measured 2026-08-08: a
+  carrier held velocity 6 m/s and moved 0.2 mm, forever — which reads as "walking
+  is broken", not "someone is standing on me". Fixed by dropping the players bit
+  from the CARRIER's mask for the duration of its own step.
+  **`add_collision_exception_with` is the wrong tool: it is MUTUAL in effect**, so
+  the rider then falls through its carrier and the pair alternates
+  grounded/not-grounded at half speed.
+- **Godot transports a rider on a moving body, one tick LATE.** Doing it
+  ourselves as well made riders move by `current delta + previous delta` and run
+  off the front of their carrier. Pick one; we currently use the built-in
+  (`platform_floor_layers`), with the caveat that it is engine-internal state
+  `capture_state()` cannot restore — so watch `GameWorld.corrections` if riding
+  ever happens during networked play.
+- **A resting body flickers `is_on_floor()`.** `velocity.y == 0` does not
+  reliably produce a floor collision in `move_and_slide`, and everything
+  downstream flickers with it — the grounded flag, and therefore the carrier
+  probe. `SimConfig.FLOOR_STICK` keeps a small downward push on while grounded.
+- **Check the collision MASK before debugging the behaviour.** A dash passed
+  straight through a pillar for two rounds of diagnosis: stones are on layer 4
+  and the player's mask was 3. Nothing errors; the shove simply never contacts
+  anything.
+- **Enum values are script constants: `instance.Enum.VALUE` raises at runtime**
+  and, per the GDScript trap below, ABORTS THE REST OF THE FUNCTION silently. A
+  stone push read as "the shove missed". Read enums off a preloaded script
+  (`StoneBody.Mode.SETTLED`), never off an instance.
 - **Two worlds in one process share ONE physics space.** The test harness offsets
   each world by 1 km for exactly this reason. It is also why the snapshot wire
   format carries **world-local** coordinates: a protocol with absolute positions

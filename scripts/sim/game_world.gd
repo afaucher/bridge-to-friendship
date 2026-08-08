@@ -4,24 +4,19 @@ extends Node3D
 #
 # ONE INSTANCE PER MACHINE. On the host it runs the authoritative simulation for
 # every player and broadcasts the result. On a client it predicts the local
-# player only, and takes everyone else's state from the host.
+# player only, and takes everything else from the host.
 #
 # It deliberately does NOT use the NetworkManager autoload. Everything here goes
 # through `multiplayer`, which for a Node resolves to whichever MultiplayerAPI
 # owns its subtree -- so two GameWorlds can live in one process under two
 # different multiplayer roots and genuinely play against each other over a
-# socket. That is what makes the authority model testable in the gate rather
-# than testable by two humans launching two builds; see
-# scripts/test_support/net_harness.gd.
-#
-# WHY THE HOST OWNS EVERYTHING: see design_ideas/physics_and_authority.md. Short
-# version -- every verb in this game is an interaction between two players'
-# bodies, and two machines each owning one end of a momentum transfer or a rope
-# constraint cannot agree on the result.
+# socket. That is what makes the authority model testable in the gate.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 
 signal player_spawned(peer_id: int)
 signal player_despawned(peer_id: int)
@@ -29,14 +24,14 @@ signal player_despawned(peer_id: int)
 # Snapshot entry layout. Named because a bare e[3] in the reconciler is how a
 # field silently ends up read as the wrong thing.
 const S_PEER := 0
-const S_POSITION := 1
-const S_VELOCITY := 2
-const S_STATE := 3
-const S_STATE_TIMER := 4
-const S_GROUNDED := 5
-const S_ACKED_INPUT := 6
+const S_STATE_BLOB := 1
+const S_ACKED_INPUT := 2
 
 @export var level_scene_path: String = "res://scenes/gym.tscn"
+
+# When non-empty, the level is a bridge built from these .seg files instead of
+# the gym scene.
+var segment_paths: Array = []
 
 var is_host: bool = false
 var local_peer: int = 1
@@ -44,22 +39,25 @@ var networked: bool = false
 var running: bool = false
 var tick: int = 0
 
-var players: Dictionary = {}       # peer_id -> PlayerBody
+var players: Dictionary = {}
+var grid: Node3D = null
 
 # Tests and tools drive the sim by supplying inputs instead of a keyboard. When
 # set, called as input_provider.call(tick) -> [tick, move, actions]. It feeds the
-# SAME path a human's input takes, so a test cannot accidentally exercise
-# movement code the game does not use.
+# SAME path a human's input takes, so a test cannot exercise movement code the
+# game does not use.
 var input_provider: Callable = Callable()
 
-# Test-only inbound latency, in ticks. Delays applying authoritative snapshots so
-# prediction and reconciliation can be exercised against a round trip that
-# localhost does not provide.
+# Per-peer input, keyed by peer id, for peers this machine drives directly:
+# tests today, and local second players or bots later. Takes precedence over
+# both the keyboard and the network inbox for that peer.
+var scripted_inputs: Dictionary = {}
+
+# Test-only inbound latency, in ticks.
 var debug_inbound_delay_ticks: int = 0
 
-# Observability. A client that corrects constantly is mispredicting, and the
-# count is the cheapest possible signal that a state field is missing from
-# capture_state() or from the snapshot.
+# A client that corrects constantly is mispredicting, and the count is the
+# cheapest possible signal that a state field is missing from capture_state().
 var corrections: int = 0
 
 var _level: Node = null
@@ -67,15 +65,18 @@ var _players_root: Node3D = null
 var _spawn_index: Dictionary = {}
 
 # --- host-side ---
-var _inbox: Dictionary = {}            # peer -> queued inputs not yet applied
-var _current_input: Dictionary = {}    # peer -> the input being applied this tick
-var _last_input_tick: Dictionary = {}  # peer -> tick of the input we last applied
-var _highest_queued: Dictionary = {}   # peer -> highest tick accepted into _inbox
+var _inbox: Dictionary = {}
+var _current_input: Dictionary = {}
+var _last_input_tick: Dictionary = {}
+var _highest_queued: Dictionary = {}
 var _next_spawn_index: int = 0
 
+# project.godot names 3d_physics layer 2 "players"; this is its mask bit.
+const PLAYERS_LAYER_BIT := 2
+
 # --- client-side ---
-var _pending_inputs: Array = []        # inputs the host has not acknowledged
-var _predicted: Array = []             # [tick, captured_state] for each pending input
+var _pending_inputs: Array = []
+var _predicted: Array = []
 var _delayed_snapshots: Array = []
 
 func _ready() -> void:
@@ -94,7 +95,18 @@ func stop() -> void:
 	running = false
 
 func _build_level() -> void:
-	if _level != null or level_scene_path == "":
+	if _level != null or grid != null:
+		return
+	if segment_paths.size() > 0:
+		grid = Node3D.new()
+		grid.name = "Bridge"
+		grid.set_script(BridgeGridScript)
+		add_child(grid)
+		move_child(grid, 0)
+		for path in segment_paths:
+			grid.load_segment_file(path)
+		return
+	if level_scene_path == "":
 		return
 	var packed := load(level_scene_path) as PackedScene
 	if packed == null:
@@ -120,23 +132,96 @@ func _physics_process(_delta: float) -> void:
 func _host_tick() -> void:
 	tick += 1
 
-	var local_input: Array = _gather_local_input(tick)
-	_current_input[local_peer] = local_input
-	_last_input_tick[local_peer] = tick
-
-	# NOTE: step order becomes significant once bodies can stand on each other
-	# (riding -- see design_ideas/physics_and_authority.md). Carriers will have
-	# to step before their riders. Today nothing is carried, so insertion order
-	# is fine.
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
-		if peer != local_peer:
+		if scripted_inputs.has(peer):
+			# A test (later: a bot, or a second local player) driving this peer
+			# directly. Same path a keyboard takes -- the point is that nothing
+			# gets a private movement code path.
+			var provider: Callable = scripted_inputs[peer]
+			_current_input[peer] = provider.call(tick)
+			_last_input_tick[peer] = tick
+		elif peer == local_peer:
+			_current_input[peer] = _gather_local_input(tick)
+			_last_input_tick[peer] = tick
+		else:
 			_consume_remote_input(peer)
+
+	# Stones move BEFORE players, so a player standing on a sliding stone
+	# inherits this tick's motion rather than last tick's.
+	if grid != null:
+		grid.step_stones()
+
+	var order: Array = _carry_order()
+
+	# Who is currently being stood on. A CARRIER MUST NOT BE BLOCKED BY ITS OWN
+	# RIDER: two kinematic bodies block each other, and a rider is in permanent
+	# contact with its carrier, so the carrier's sweep collides with the thing
+	# standing on it and it cannot walk at all. Measured 2026-08-08: a carrier
+	# with a rider held velocity 6 m/s and moved 0.2 mm, forever, which reads as
+	# "walking is broken" rather than "something is standing on me".
+	#
+	# Godot's add_collision_exception_with is MUTUAL in effect, so using one here
+	# makes the rider fall through its carrier -- it alternated grounded/not and
+	# both bodies moved at half speed. Dropping the players bit from the
+	# CARRIER's mask for the duration of its own step is asymmetric, which is
+	# what this needs: the rider keeps its own mask and can still stand on
+	# anything, so stacks deeper than two still work.
+	var carriers: Dictionary = {}
+	for peer in order:
+		var c: Node = players[peer].carrier
+		if c != null:
+			carriers[c] = true
+
+	for peer in order:
+		var body: Node = players[peer]
+		# Transporting the rider is Godot's job (see player_body._ready). The
+		# carrier probe is still needed here for the mask exclusion below, and
+		# the carrier-before-rider order is kept because it is what the explicit
+		# ride() path would need if we swap back.
 		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
-		players[peer].step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
+
+		var restore_mask: int = body.collision_mask
+		if carriers.has(body):
+			body.collision_mask = restore_mask & ~PLAYERS_LAYER_BIT
+		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
+		body.collision_mask = restore_mask
 
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
+
+# Peers ordered so that anything being stood on is stepped before whoever is
+# standing on it. Otherwise a rider inherits its carrier's PREVIOUS motion and
+# visibly slides around on its friend's head.
+#
+# Stacks are shallow and the party is at most four, so the naive repeated sweep
+# beats maintaining a graph.
+func _carry_order() -> Array:
+	var remaining: Array = players.keys().duplicate()
+	var ordered: Array = []
+	while remaining.size() > 0:
+		var progressed := false
+		for i in range(remaining.size() - 1, -1, -1):
+			var peer: int = int(remaining[i])
+			var carrier: Node = players[peer].carrier
+			var carrier_pending := false
+			if carrier != null:
+				for other_key in remaining:
+					if players.get(int(other_key)) == carrier:
+						carrier_pending = true
+						break
+			if not carrier_pending:
+				ordered.append(peer)
+				remaining.remove_at(i)
+				progressed = true
+		if not progressed:
+			# A carry cycle: physically impossible (two bodies each standing on
+			# the other), but looping forever on one is far worse to diagnose
+			# than a wrong step order for a single tick.
+			for leftover in remaining:
+				ordered.append(int(leftover))
+			break
+	return ordered
 
 func _client_tick() -> void:
 	tick += 1
@@ -148,8 +233,18 @@ func _client_tick() -> void:
 
 	var body: Node = players.get(local_peer)
 	if body != null:
-		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
-		_predicted.append([tick, body.capture_state()])
+		if body.state == PlayerBody.State.WALK:
+			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
+			_predicted.append([tick, body.capture_state()])
+		else:
+			# COMMITTED ACTIONS ARE NOT PREDICTED. In a shove, a tumble or a
+			# rope yank the player has no control, so there is no input to
+			# mispredict and nothing to gain -- while the outcome depends on
+			# collisions with bodies and stones this machine does not own.
+			# Authority drives it. The design's comedy constraint (a shove
+			# cannot be steered) and its networking constraint are the same
+			# constraint.
+			_predicted.clear()
 
 	_trim_history()
 
@@ -164,6 +259,22 @@ func _trim_history() -> void:
 	while _predicted.size() > SimConfig.HISTORY_TICKS:
 		_predicted.pop_front()
 
+# --- Momentum transfer --------------------------------------------------------
+
+# A dashing player hit something. The WORLD owns this rule, not the body: what a
+# shove does to what it hits is a statement about the game, and keeping it in one
+# place is what stops it from being re-derived slightly differently per collider.
+func resolve_shove_contact(shover: Node, other: Node, dir: int) -> void:
+	# Host only. A client does not simulate its own shove (see _client_tick), so
+	# this is defence in depth rather than a live branch.
+	if not is_host or other == null or other == shover:
+		return
+	if other.has_method("receive_shove"):
+		other.receive_shove(dir)
+		return
+	if grid != null and other.has_method("slide_to"):
+		grid.try_push(other.cell, dir)
+
 # --- Host: consuming client input ---------------------------------------------
 
 func _consume_remote_input(peer: int) -> void:
@@ -176,7 +287,7 @@ func _consume_remote_input(peer: int) -> void:
 	# Nothing arrived in time. Repeat the last input and DO NOT advance the ack.
 	# Both halves matter: repeating keeps a player walking through a dropped
 	# packet instead of stuttering, and holding the ack keeps the client's replay
-	# aligned -- if we acknowledged an input we never applied, the client would
+	# aligned -- acknowledging an input we never applied would make the client
 	# discard it and replay from a state the host never reached.
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -213,33 +324,27 @@ func _broadcast_snapshot() -> void:
 	var entries: Array = []
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		entries.append([
-			peer,
-			body.position,
-			body.velocity,
-			body.state,
-			body.state_timer,
-			body.grounded,
-			int(_last_input_tick.get(peer, 0)),
-		])
-	_apply_snapshot.rpc(tick, entries)
+		entries.append([peer, players[peer].capture_state(), int(_last_input_tick.get(peer, 0))])
+	var stones: Array = grid.stone_snapshot() if grid != null else []
+	_apply_snapshot.rpc(tick, entries, stones)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _apply_snapshot(server_tick: int, entries: Array) -> void:
+func _apply_snapshot(server_tick: int, entries: Array, stones: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, server_tick, entries])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones])
 		return
-	_consume_snapshot(entries)
+	_consume_snapshot(entries, stones)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[2])
+		_consume_snapshot(held[1], held[2])
 
-func _consume_snapshot(entries: Array) -> void:
+func _consume_snapshot(entries: Array, stones: Array) -> void:
+	if grid != null:
+		grid.apply_stone_snapshot(stones)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
@@ -252,46 +357,49 @@ func _consume_snapshot(entries: Array) -> void:
 		else:
 			# Remote players are pure authority -- no prediction, no
 			# extrapolation. Visual interpolation is a later, cosmetic concern;
-			# what matters now is that the client never invents a position for
-			# someone else.
-			body.apply_state([e[S_POSITION], e[S_VELOCITY], e[S_STATE], e[S_STATE_TIMER], e[S_GROUNDED]])
+			# what matters is that a client never invents a position for someone
+			# else.
+			body.apply_state(e[S_STATE_BLOB])
 
 # --- Client: reconciliation ---------------------------------------------------
 
 func _reconcile(body: Node, e: Array) -> void:
 	var acked: int = int(e[S_ACKED_INPUT])
+	var authoritative: Array = e[S_STATE_BLOB]
 
-	# Everything the host has consumed is settled; drop it.
 	while _pending_inputs.size() > 0 and int(_pending_inputs[0][PlayerInput.TICK]) <= acked:
 		_pending_inputs.pop_front()
 	while _predicted.size() > 0 and int(_predicted[0][0]) < acked:
 		_predicted.pop_front()
 
+	# In a committed state there was no prediction to compare against -- just
+	# take what the host says and start clean.
+	if int(authoritative[2]) != PlayerBody.State.WALK:
+		body.apply_state(authoritative)
+		_predicted.clear()
+		return
+
 	# Compare what we predicted for the acked tick against what actually
-	# happened. If we were close enough, the prediction stands and the player
-	# sees nothing -- which is the common case and the whole point.
+	# happened. Close enough and the prediction stands and the player sees
+	# nothing, which is the common case and the whole point.
 	if _predicted.size() > 0 and int(_predicted[0][0]) == acked:
 		var predicted_position: Vector3 = _predicted[0][1][0]
-		if predicted_position.distance_to(e[S_POSITION]) <= SimConfig.CORRECTION_EPSILON:
+		if predicted_position.distance_to(authoritative[0]) <= SimConfig.CORRECTION_EPSILON:
 			return
 
 	corrections += 1
 
 	# Rewind to the authoritative frame and replay every input the host has not
-	# seen yet. Because step() is the same function the host ran, and because a
-	# sim tick is exactly one physics tick, replaying N inputs inside this single
-	# frame lands where N frames of host simulation will land.
-	body.apply_state([e[S_POSITION], e[S_VELOCITY], e[S_STATE], e[S_STATE_TIMER], e[S_GROUNDED]])
+	# seen. Because step() is the same function the host ran, and a sim tick is
+	# exactly one physics tick, replaying N inputs inside this frame lands where
+	# N frames of host simulation will land.
+	body.apply_state(authoritative)
 	_predicted.clear()
 	for pending in _pending_inputs:
 		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS])
 		_predicted.append([int(pending[PlayerInput.TICK]), body.capture_state()])
 
 # --- Spawning -----------------------------------------------------------------
-#
-# The host decides who exists. call_local means the host runs the same function
-# it asks clients to run, rather than a host branch and a client branch that can
-# disagree about spawn position.
 
 func host_spawn(peer: int) -> void:
 	if not is_host:
@@ -306,9 +414,9 @@ func host_spawn(peer: int) -> void:
 func host_add_peer(peer: int) -> void:
 	if not is_host:
 		return
-	# Catch the newcomer up on everyone already here, THEN announce it to
-	# everyone. That order matters the moment a spawn carries state: the new peer
-	# should know the world before the world knows it.
+	# Catch the newcomer up on everyone already here, THEN announce it. That
+	# order matters the moment a spawn carries state: the new peer should know
+	# the world before the world knows it.
 	for existing_key in players.keys():
 		var existing: int = int(existing_key)
 		_spawn_player.rpc_id(peer, existing, int(_spawn_index.get(existing, 0)))
@@ -329,6 +437,7 @@ func _spawn_player(peer: int, index: int) -> void:
 	var body: Node = PlayerScene.instantiate()
 	body.name = "Player_%d" % peer
 	body.peer_id = peer
+	body.world = self
 	body.position = spawn_point(index)
 	_players_root.add_child(body)
 	players[peer] = body
@@ -352,13 +461,13 @@ func _despawn_player(peer: int) -> void:
 	player_despawned.emit(peer)
 
 func spawn_point(index: int) -> Vector3:
-	# A ring, so two players never spawn inside each other -- overlapping
-	# CharacterBody3Ds resolve by shoving each other apart, which reads as a
-	# physics bug at the exact moment a new player is looking at the game.
+	# A ring, so two players never spawn inside each other. Coincident bodies do
+	# not merely overlap: they depenetrate into a degenerate normal and get
+	# driven DOWN THROUGH THE FLOOR (see CLAUDE.md).
 	var angle: float = TAU * float(index) / 4.0
 	return Vector3(cos(angle) * 4.0, 1.5, sin(angle) * 4.0)
 
-# --- Queries (used by tests and the HUD) --------------------------------------
+# --- Queries (tests and the HUD) ----------------------------------------------
 
 func player_position(peer: int) -> Vector3:
 	var body: Node = players.get(peer)
@@ -367,3 +476,6 @@ func player_position(peer: int) -> Vector3:
 func player_state(peer: int) -> int:
 	var body: Node = players.get(peer)
 	return body.state if body != null else -1
+
+func player_body(peer: int) -> Node:
+	return players.get(peer)

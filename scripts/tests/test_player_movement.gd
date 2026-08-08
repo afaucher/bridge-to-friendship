@@ -43,7 +43,9 @@ func _physics_process(_delta: float) -> void:
 	elif frame <= SETTLE_TICKS + 90:
 		pass                                   # phase 3: release
 	elif frame == SETTLE_TICKS + 91:
-		actions = SimConfig.ACTION_JUMP        # phase 4: one-tick jump edge
+		# Phase 4: a one-tick SHOVE edge. There is no jump -- Space is the dash.
+		move = Vector2(0.0, -1.0)
+		actions = SimConfig.ACTION_SHOVE
 
 	player.step(move, actions)
 
@@ -67,11 +69,11 @@ func _physics_process(_delta: float) -> void:
 		near(player.velocity.z, 0.0, 0.01, "forward velocity decays to zero on release")
 
 	elif frame == SETTLE_TICKS + 100:
-		check(player.global_position.y > REST_Y + 0.2,
-			"jumping leaves the ground (y = %.2f)" % player.global_position.y)
-		# The jump bit was set for exactly one tick. If it were level-triggered
-		# the player would still be climbing, which is the bug that a
-		# reconciliation replay would otherwise reproduce every tick.
-		check(player.velocity.y < SimConfig.JUMP_VELOCITY,
-			"the jump was a single edge, not a sustained thrust")
+		# The shove bit was set for exactly ONE tick, yet the dash is still
+		# running: an edge starts a committed action that outlives its input.
+		# Were the bit level-triggered instead, a reconciliation replay would
+		# re-fire the dash on every replayed tick.
+		eq(player.state, PlayerBody.State.SHOVE, "a one-tick shove edge starts a dash")
+		check(absf(player.velocity.z) > SimConfig.WALK_SPEED,
+			"and the dash is faster than walking (%.2f m/s)" % absf(player.velocity.z))
 		finish()
