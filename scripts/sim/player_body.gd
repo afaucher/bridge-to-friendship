@@ -109,6 +109,22 @@ func step(move: Vector2, actions: int) -> void:
 
 	motion_delta = position - before
 	carrier = _find_carrier()
+	_point_nose()
+
+# Turn the facing marker to match the compass axis a dash would take. Driven from
+# `facing`, which is captured state, so it survives a reconciliation replay
+# rather than being animated independently on each machine.
+func _point_nose() -> void:
+	var nose := get_node_or_null("Facing") as Node3D
+	if nose == null:
+		return
+	# The marker points along -Z at rest, which is DIR_NORTH; the rest follow
+	# clockwise from there.
+	match facing:
+		GridConfig.DIR_NORTH: nose.rotation.y = 0.0
+		GridConfig.DIR_EAST: nose.rotation.y = -PI * 0.5
+		GridConfig.DIR_SOUTH: nose.rotation.y = PI
+		GridConfig.DIR_WEST: nose.rotation.y = PI * 0.5
 
 func _step_walk(move: Vector2, actions: int) -> void:
 	var dt := SimConfig.TICK_DELTA

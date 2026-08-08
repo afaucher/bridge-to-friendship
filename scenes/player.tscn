@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://btfplayer1"]
+[gd_scene load_steps=7 format=3 uid="uid://btfplayer1"]
 
 [ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
 
@@ -28,6 +28,14 @@ height = 1.8
 albedo_color = Color(0.25, 0.6, 0.85, 1)
 roughness = 0.7
 
+[sub_resource type="BoxMesh" id="Nose_1"]
+size = Vector3(0.3, 0.3, 0.5)
+
+; Brighter than the body so the facing marker reads at camera distance.
+[sub_resource type="StandardMaterial3D" id="NoseMat_1"]
+albedo_color = Color(0.95, 0.85, 0.25, 1)
+roughness = 0.6
+
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 ; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
@@ -42,3 +50,17 @@ material_override = SubResource("Mat_1")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 shape = SubResource("Cyl_1")
+
+; Which way this player is facing, and therefore which way a dash will go.
+;
+; Not cosmetic: the shove commits to one of four compass axes chosen from the
+; movement input at the instant of the press, so a player about to dash needs to
+; know which axis they are on BEFORE they commit. A featureless cylinder cannot
+; tell them. Rotated by player_body.step() to match `facing`; it hangs off a
+; pivot so the collider itself never turns.
+[node name="Facing" type="Node3D" parent="."]
+
+[node name="Nose" type="MeshInstance3D" parent="Facing"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.5)
+mesh = SubResource("Nose_1")
+material_override = SubResource("NoseMat_1")

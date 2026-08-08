@@ -83,9 +83,9 @@ func setup(main) -> void:
 		"the camera sees past both parapets (%.1f m visible vs %.1f m of bridge)"
 			% [camera.visible_half_width(), half_bridge])
 
-	# It should not be absurdly wide either -- a camera framed for twice the
-	# bridge has pulled so far back that players are specks.
-	check(camera.visible_half_width() < half_bridge * 1.6,
+	# It should not be absurdly wide either -- a camera framed for several times
+	# the bridge has pulled so far back that players are specks.
+	check(camera.visible_half_width() < half_bridge * 2.5,
 		"and does not frame far more bridge than exists (%.1f m)" % camera.visible_half_width())
 
 	start_camera = camera.desired_position()

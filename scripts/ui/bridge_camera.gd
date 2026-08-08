@@ -32,9 +32,12 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 # and flatter; wider means closer with more perspective distortion at the edges.
 @export var horizontal_fov_deg: float = 70.0
 
-# A little more than the bridge, so the parapets are not flush with the screen
-# edge.
-@export var width_margin: float = 1.08
+# How much wider than the bridge to frame. Above 1.0 this pulls the camera BACK,
+# which is the point: at a tight fit the deck fills the screen edge to edge and
+# reads as a floor rather than as a structure in the air. With headroom either
+# side you can see the parapets, the drop past them, and the sky -- the bridge
+# looks like a bridge.
+@export var width_margin: float = 1.55
 
 # Exponential follow. High enough to keep up with a dash, low enough that the
 # frame does not twitch on every step.
