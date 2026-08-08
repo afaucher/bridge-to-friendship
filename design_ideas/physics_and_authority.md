@@ -130,6 +130,30 @@ transport is explicit, and it brings two requirements with it:
    resting motionless can report zero slide collisions, which drops the carrier
    on exactly the frames where standing still on a friend matters most.
 
+## The rope is simulated, and deliberately not authoritative
+
+Decided 2026-08-08. The rope is a real particle chain — it drapes and swings —
+which is exactly the kind of thing this document's rules say should be
+impossible: a chain of N particles is N x 6 floats of state, and chaotic systems
+amplify divergence, which is what rewind-and-replay is worst at.
+
+It is affordable because **the rope's SHAPE and the rope's FORCE are separate
+concerns and only one needs authority.**
+
+- **The shape is cosmetic**, and every machine simulates it from the two
+  endpoints, which already arrive in the snapshot because they are players. Two
+  machines whose ropes sag differently disagree about nothing anyone can lose a
+  run over. So the chain is **not in `capture_state()`, not in the snapshot, and
+  not replayed.**
+- **The force is one designed rule at the endpoints** — slack does nothing, taut
+  pulls along the line between them, never pushes, capped — evaluated by the host
+  like every other momentum transfer.
+
+The general principle is worth keeping: *simulate for feel, replicate the rule.*
+Anything whose exact value cannot change the outcome of a run does not need to be
+agreed on, and paying to agree on it is how a netcode budget disappears. Full
+design in `rope.md`.
+
 ## The authoritative world is data; the scene is a view
 
 Grid-resident things — cells, pillar stones, hearts, pickups, shooters — live in

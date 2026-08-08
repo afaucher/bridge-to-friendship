@@ -53,13 +53,30 @@ earned rather than a routine.
 a timer; rope-assisted recovery; a drone return with a placement rule. **Makes
 the rope MVP-critical** — without it the ledge grab is just a slower way to die.
 
-**[open]** Zero health is currently unresolved. The simplest unification is that
-running out of hit points does exactly what falling does — you are removed and
-drone-returned — so the game has one failure resolution instead of two. Confirm
-before M5.
+**Zero health puts you DOWN, on a bleed-out.** *(Decided 2026-08-08.)* You
+collapse where you fell, immobile and with no verbs, and a timer starts. A
+teammate who reaches you in time revives you at minimum health. Nobody reaches
+you, the timer runs out, and the drone returns you — the same resolution as
+falling.
 
-**[open]** Is the ledge grab automatic, or a button press? Automatic is kinder
-for the audience; a press adds a skill moment. Defaulting to automatic.
+That gives health its own distinct failure with real tension, and a guaranteed
+floor underneath it: a player with nobody nearby is never stuck, they are just
+slower to get back. It is also why this beat can ship before the rope — **revive
+must work by proximity**, because M5 is built first and there is no rope yet.
+The rope later adds the better version: dragging a downed friend somewhere it is
+safe to stand still.
+
+**The ledge catch is automatic.** *(Decided 2026-08-08.)* Go over an edge near
+the deck and you grab it, every time, no input. A press was considered and
+rejected on one observation: the catch fires most often while the player is
+mid-tumble and has no control at all, so a prompt they cannot answer would read
+as the game cheating.
+
+**LEDGE_HANG AND DOWNED ARE THE SAME MACHINERY.** Both are "waiting to be
+rescued": immobile, no verbs, a countdown, a teammate who can end it early, and
+the drone if nobody does. Build the timer, the rescue hook and the drone hand-off
+once and let both states use it — two near-identical implementations would drift
+apart, and every rule that applies to one applies to the other.
 
 ## D3. The party is held loosely together by a soft leash
 
@@ -137,9 +154,13 @@ run.
   That is the whole co-op payoff and it spans two milestones, so it is asserted
   as one behaviour rather than as two halves that each pass alone.
 - **B5 [test]** Ledge grab: a player shoved over an edge along the deck enters
-  `LEDGE_HANG`; a player launched clear of the deck does **not**; a hanging
-  player roped by a teammate returns to the deck; an unrescued one falls when the
-  timer expires.
+  `LEDGE_HANG` automatically, with no input; a player launched clear of the deck
+  does **not**; an unrescued one falls when the timer expires. A hanging player
+  **cannot mantle unaided** — that is the whole point of the state.
+- **B5b [test]** Zero health puts a player in `DOWNED` where they fell, not
+  wherever they were standing. A teammate reaching them in time revives them at
+  minimum health; nobody reaching them means the drone, on the same hand-off
+  `LEDGE_HANG` uses. A downed player takes no further damage.
 - **B6 [test]** Drone return: a fallen player is back in play, next to another
   player, within **5 s** *(tunable)*.
 - **B7 [test]** Damage: every obstacle collision costs at least one hit point;

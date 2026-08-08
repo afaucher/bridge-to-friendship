@@ -59,15 +59,23 @@ therefore **fixed-yaw**, looking along the bridge. This is not a small
 consequence and it is not negotiable while the dash is compass-locked.
 
 ### Rope
-Fire at a grab target; a taut line forms that pulls but never pushes.
+A real, soft, simulated rope — a chain that drapes when slack, straightens as it
+goes tight, and swings when something on the end of it is thrown. It pulls and
+never pushes. Full design, including how a simulated rope stays affordable in a
+game with rewind-and-replay, is in `rope.md`.
 
 - **At the world:** an anchor to swing from or pull yourself toward.
 - **At a player:** the two are tied together until either releases. Either one
-  can dash to yank the other — this is the primary way to get a partner up
-  something they cannot climb.
-- **While taut, you swing instead of tumbling.** Being roped is the answer to
-  the game's main punishment, which is what makes tying up a defensive act and
-  not just a traversal trick.
+  can dash to yank the other.
+- **The rope does not lift anyone.** A yank is a horizontal tug; a player dragged
+  into the side of a step just slams into it. What gets a partner up is that they
+  are *hanging from a ledge* and you dash **away** from it — the pull runs from
+  them at the lip to you standing back from it, which points up and over, and
+  then they mantle. The vertical component comes from the geometry, not from the
+  rope pulling upward. This is why the ledge mechanic is built first.
+- **Being roped is defensive.** A tumble that would have carried you off the
+  bridge becomes a swing that leaves you dangling off the side instead. Tying up
+  is something you do *before* the plinko starts, and the reason to bother.
 - **Catching:** a player who has gone over an edge can be caught mid-fall. A
   dash is strong enough to pull the catcher over too, which is the joke.
 
@@ -122,9 +130,15 @@ sort of thing A3 is made of.
 
 ## The punishment
 
-**Tumble.** The main "you got hit" state. The player becomes a ball for a moment
-— no control, rolling with whatever momentum arrived. It is not damage so much
-as displacement, and on a bridge with holes in it, displacement is the threat.
+**Tumble.** The main "you got hit" state, and a **pinwheel rather than a slide**.
+A hard hit throws a chaotic, bouncing body that KEEPS its momentum instead of
+decelerating politely to a stop. It is not damage so much as displacement, and on
+a bridge with holes in it displacement is the threat — a tumble that slid to a
+halt would not be one.
+
+There is no separate "swing" state. A tumbling player on the end of a taut rope
+swings because that is what a body on a line does; it falls out of the
+constraint rather than being a behaviour anyone wrote.
 
 **Health.** A small pool of hit points. Every obstacle collision costs at least
 one. Hearts are scattered along the bridge and are **first come, first served** —
@@ -152,9 +166,15 @@ through a pillar field drains the whole health bar before you regain control —
 the player never made a decision and lost everything. Short invulnerability
 after each hit is close to mandatory once tumble and plinko exist together.
 
-**[open] What does zero health do?** The simplest unification is that it does
-exactly what falling does: removed, then drone-returned. One failure resolution
-instead of two. Confirm before M5.
+**Zero health puts you DOWN, on a bleed-out.** *(Decided.)* You collapse where
+you fell — immobile, no verbs — and a timer runs. A teammate who reaches you in
+time revives you at minimum health; if nobody does, the drone returns you, the
+same way falling ends. Health therefore has its own distinct failure with real
+tension, and a floor underneath it: a lone player is never stuck, only slower to
+get back.
+
+`LEDGE_HANG` and `DOWNED` are the same machinery — immobile, a countdown, a
+teammate who can end it early, the drone if nobody does. Built once, used twice.
 
 ## The bridge
 
@@ -217,19 +237,28 @@ not a feature to add later. See `physics_and_authority.md`.
 - **Falling is the failure; the ledge grab is the rescue.** See above.
 - **A soft leash holds the party loosely together**, which also settles bridge
   streaming: one window around the group, never per-player.
+- **Zero health is DOWNED on a bleed-out**, revivable by a teammate who reaches
+  you, and the drone if nobody does. `LEDGE_HANG` and `DOWNED` share one piece of
+  machinery.
+- **The ledge catch is automatic**, because it fires most often while the player
+  is mid-tumble with no control to answer a prompt with.
+- **The rope is really simulated** — soft, drapes, swings — with its shape
+  cosmetic and its force authoritative. See `rope.md`.
 - **Shove is a continuous dash on a grid-aligned axis** — only pushed stones snap
   to cells — which settles the camera as fixed-yaw.
 
 **Still open:**
 
-1. **What does zero health do?** Suggested: the same thing falling does.
-2. **Where does difficulty come from over time?** Denser plinko, nastier
+1. **Where does difficulty come from over time?** Denser plinko, nastier
    geometry, faster rise, fewer hearts — or a mix on a curve. This is the core
    question of the level-design milestone (M10).
-3. **Is there a second ramp grade** too steep even to be shoved up, so the only
+2. **Is there a second ramp grade** too steep even to be shoved up, so the only
    answer is the rope? That would give two distinct grades of cooperation
    instead of one.
-4. **Is the ledge grab automatic or a button press?** Defaulting to automatic.
+3. **Does the rope wrap?** A simulated rope will lie across a pillar; making it
+   *catch* on one and shorten its effective length is a separate mechanic, and
+   the one that would make wrapping tactical. Deferred until the basic rope has
+   been played with — see `rope.md`.
 5. **Is a run scored, and how?** *(Recorded 2026-08-08 as an intent, deliberately
    left open.)* A run is currently measured only in distance and checkpoints
    reached. The intent is that it eventually also carries a **score**, banked at

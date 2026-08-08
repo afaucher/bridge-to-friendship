@@ -126,13 +126,28 @@ the drone return can all be felt solo before the rope arrives.
 
 **Proves:** failure is a setback with a rescue window, not a wall.
 
-Hit points, the grace window, hearts as exclusive pickups, the ledge-grab rule
-and its bleed-out timer, and the drone return. Resolves the open question of what
-zero health does.
+Hit points, the grace window, hearts as exclusive pickups, the ledge grab and its
+bleed-out, the downed state, and the drone return.
 
 **TUMBLE is a pinwheel, not a slide.** A hard hit throws a chaotic, bouncing body
 that KEEPS its momentum — on a bridge full of holes the threat is displacement,
 not damage, and a tumble that decelerates politely is not a threat at all.
+
+**One rescue mechanism, two states.** `LEDGE_HANG` (caught a lip) and `DOWNED`
+(out of health, decided 2026-08-08) are the same thing wearing different hats:
+immobile, no verbs, a countdown, a teammate who can end it early, and the drone
+if nobody does. Build the timer, the rescue hook and the drone hand-off once.
+Two near-identical implementations would drift apart, and every rule that applies
+to one applies to the other.
+
+Revive is by **proximity**, not by rope — M5 ships first and there is no rope
+yet, and a downed player whose only rescue needed a mechanic that does not exist
+would be unrescuable. M4 later adds the better version: dragging a downed friend
+somewhere it is actually safe to stand still.
+
+The **ledge catch is automatic** (decided 2026-08-08): it fires most often while
+the player is mid-tumble with no control, so a prompt they cannot answer would
+read as the game cheating.
 
 Ships the **ledge primitive** the rope depends on: a player near a lip catches
 it and hangs; a hanging player cannot mantle unaided; a hanging player being
