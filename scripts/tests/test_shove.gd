@@ -111,8 +111,11 @@ func _phase_push_stone() -> void:
 		p1_actions = SimConfig.ACTION_SHOVE
 		return
 	if phase_frame == 31:
-		eq(shover.state, PlayerBody.State.SHOVE, "pressing shove enters the SHOVE state")
-		eq(shover.shove_dir, GridConfig.DIR_NORTH, "and locks to the compass axis that was held")
+		# The dash is 6 ticks and covers 0.93 m per tick, but the stone's face is
+		# only 0.6 m away -- so it has ALREADY connected and ended by now. The
+		# state is checked in test_player_movement, which dashes into open space;
+		# what matters here is the axis it committed to, which outlives the dash.
+		eq(shover.shove_dir, GridConfig.DIR_NORTH, "the dash locked to the compass axis that was held")
 		# Steering input during a dash must do nothing at all.
 		p1_move = Vector2(1.0, 0.0)
 		return

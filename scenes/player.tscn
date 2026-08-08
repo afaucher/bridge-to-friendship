@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://btfplayer1"]
+[gd_scene load_steps=5 format=3 uid="uid://btfplayer1"]
 
 [ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
 
@@ -22,6 +22,12 @@ top_radius = 0.4
 bottom_radius = 0.4
 height = 1.8
 
+; Deliberately NOT a brown: the deck, the parapets and the stones are all browns,
+; so a player has to be the one thing on screen that is obviously not scenery.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.25, 0.6, 0.85, 1)
+roughness = 0.7
+
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 ; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
@@ -32,13 +38,7 @@ script = ExtResource("1_player")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("Cyl_2")
+material_override = SubResource("Mat_1")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 shape = SubResource("Cyl_1")
-
-[node name="CameraPivot" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
-
-[node name="Camera" type="Camera3D" parent="CameraPivot"]
-transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 1.5, 5)
-current = false

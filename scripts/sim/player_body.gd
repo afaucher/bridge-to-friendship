@@ -273,12 +273,7 @@ func apply_state(s: Array) -> void:
 	shove_cooldown = float(s[6])
 	facing = int(s[7])
 
-# --- View ---------------------------------------------------------------------
-
-func set_view_active(active: bool) -> void:
-	# Camera `current` is a per-viewport exclusive flag: leaving every avatar's
-	# camera enabled means the last one spawned wins, which presents as "I am
-	# playing as someone else" rather than as a camera bug.
-	var cam := get_node_or_null("CameraPivot/Camera") as Camera3D
-	if cam != null:
-		cam.current = active
+# There is no per-player camera. The game has ONE camera, owned by the world,
+# fixed-yaw and locked to the bridge's centre line -- see
+# scripts/ui/bridge_camera.gd. Per-avatar cameras were removed with it, which
+# also retires the "last avatar spawned wins the viewport" hazard entirely.

@@ -17,6 +17,8 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
+const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
+const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 signal player_spawned(peer_id: int)
 signal player_despawned(peer_id: int)
@@ -41,6 +43,12 @@ var tick: int = 0
 
 var players: Dictionary = {}
 var grid: Node3D = null
+var camera: Camera3D = null
+
+# True on the world a human is looking at. False for headless test worlds and for
+# every world the net harness stands up, so they do not fight over the viewport's
+# single `current` camera.
+var view_active: bool = false
 
 # Tests and tools drive the sim by supplying inputs instead of a keyboard. When
 # set, called as input_provider.call(tick) -> [tick, move, actions]. It feeds the
@@ -105,6 +113,7 @@ func _build_level() -> void:
 		move_child(grid, 0)
 		for path in segment_paths:
 			grid.load_segment_file(path)
+		_build_camera(grid.width)
 		return
 	if level_scene_path == "":
 		return
@@ -118,6 +127,24 @@ func _build_level() -> void:
 	# Ahead of the players in the tree so its static bodies are registered with
 	# the physics server before anything is asked to stand on them.
 	move_child(_level, 0)
+	_build_camera(GridConfig.DEFAULT_WIDTH)
+
+# The one camera: fixed yaw, 45 degrees, the whole bridge across, tracking only
+# along the bridge. See scripts/ui/bridge_camera.gd for why each of those is
+# load-bearing rather than a preference.
+func _build_camera(bridge_width: int) -> void:
+	if camera != null:
+		return
+	camera = Camera3D.new()
+	camera.name = "BridgeCamera"
+	camera.set_script(BridgeCameraScript)
+	camera.bridge_width_cells = bridge_width
+	add_child(camera)
+	# Only a world someone is actually looking at takes the viewport. Headless
+	# test worlds -- and the several the net harness stands up at once -- would
+	# otherwise fight over `current`, which is a per-viewport exclusive flag.
+	if view_active:
+		camera.current = true
 
 # --- Tick ---------------------------------------------------------------------
 
@@ -444,7 +471,8 @@ func _spawn_player(peer: int, index: int) -> void:
 	_spawn_index[peer] = index
 	if not _inbox.has(peer):
 		_inbox[peer] = []
-	body.set_view_active(peer == local_peer)
+	if peer == local_peer and camera != null:
+		camera.focus_target = body
 	player_spawned.emit(peer)
 
 @rpc("authority", "call_local", "reliable")
@@ -461,9 +489,14 @@ func _despawn_player(peer: int) -> void:
 	player_despawned.emit(peer)
 
 func spawn_point(index: int) -> Vector3:
-	# A ring, so two players never spawn inside each other. Coincident bodies do
-	# not merely overlap: they depenetrate into a degenerate normal and get
-	# driven DOWN THROUGH THE FLOOR (see CLAUDE.md).
+	# On a bridge, players enter across the first row -- spread into separate
+	# lanes, never stacked. Coincident bodies do not merely overlap: they
+	# depenetrate into a degenerate normal and get driven DOWN THROUGH THE FLOOR
+	# (see CLAUDE.md).
+	if grid != null:
+		var surface: Vector3 = grid.cell_surface_world(grid.entry_spawn_cell(index))
+		return surface + Vector3(0.0, 1.2, 0.0)
+	# The gym has no grid: a ring around the origin.
 	var angle: float = TAU * float(index) / 4.0
 	return Vector3(cos(angle) * 4.0, 1.5, sin(angle) * 4.0)
 

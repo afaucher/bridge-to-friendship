@@ -7,6 +7,11 @@ extends Node3D
 
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
+# What a session actually plays. One segment today; M8 assembles a run from a
+# pool. The test fixtures are deliberately NOT this file, so tuning the playtest
+# map for feel can never break the gate.
+const PLAYTEST_SEGMENTS := ["res://segments/playtest_bridge.seg"]
+
 @onready var menu: VBoxContainer = $CanvasLayer/Menu
 @onready var status_label: Label = $CanvasLayer/Menu/StatusLabel
 @onready var spectator_camera: Camera3D = $SpectatorCamera
@@ -65,7 +70,7 @@ func _on_join_pressed() -> void:
 func _on_local_pressed() -> void:
 	menu.hide()
 	spectator_camera.current = false
-	_create_world(true, 1, false)
+	_create_world(true, 1, false, PLAYTEST_SEGMENTS)
 	world.host_spawn(1)
 
 # --- Session -----------------------------------------------------------------
@@ -73,7 +78,7 @@ func _on_local_pressed() -> void:
 func _on_session_started(is_host: bool) -> void:
 	menu.hide()
 	spectator_camera.current = false
-	_create_world(is_host, NetworkManager.local_id(), true)
+	_create_world(is_host, NetworkManager.local_id(), true, PLAYTEST_SEGMENTS)
 	if is_host:
 		world.host_spawn(1)
 	# A client spawns nothing itself: the host tells it about every avatar,
@@ -96,10 +101,13 @@ func _on_peer_left(id: int) -> void:
 	if world != null and NetworkManager.is_host:
 		world.host_remove_peer(id)
 
-func _create_world(is_host: bool, local_peer: int, networked: bool) -> void:
+func _create_world(is_host: bool, local_peer: int, networked: bool, segments: Array) -> void:
 	world = Node3D.new()
 	world.name = "GameWorld"
 	world.set_script(GameWorldScript)
+	world.segment_paths = segments
+	# This is the world a human is looking at, so its camera takes the viewport.
+	world.view_active = true
 	add_child(world)
 	# Started after being added to the tree: the RPC paths a GameWorld uses are
 	# resolved from its position in the tree, so it must be parented first.

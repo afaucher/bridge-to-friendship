@@ -15,7 +15,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 var name: String = ""
 var base_height: int = 0
-var width: int = GridConfig.WIDTH
+var width: int = GridConfig.DEFAULT_WIDTH
 var length: int = 0
 var tags: Array[String] = []
 

@@ -68,7 +68,10 @@ func _physics_process(_delta: float) -> void:
 		near(player.velocity.x, 0.0, 0.01, "horizontal velocity decays to zero on release")
 		near(player.velocity.z, 0.0, 0.01, "forward velocity decays to zero on release")
 
-	elif frame == SETTLE_TICKS + 100:
+	# Two ticks after the press, not ten: the dash is SHOVE_DURATION = 0.1 s,
+	# which is six ticks, so anything later than that is asserting about a dash
+	# that has already finished.
+	elif frame == SETTLE_TICKS + 93:
 		# The shove bit was set for exactly ONE tick, yet the dash is still
 		# running: an edge starts a committed action that outlives its input.
 		# Were the bit level-triggered instead, a reconciliation replay would

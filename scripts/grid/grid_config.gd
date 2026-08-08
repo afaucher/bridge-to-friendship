@@ -34,7 +34,16 @@ const MAX_HEIGHT_DIGIT := 15
 # atmosphere rather than as a slope you fight.
 const BRIDGE_PITCH_DEG := 4.0
 
-const WIDTH := 30              # cells across; see bridge_grid.md on why 30
+# Width is a property of the BRIDGE, not a global: a .seg declares its own, and
+# every cell<->world conversion below takes it as an argument. This exists only
+# as the fallback for a file that does not say.
+#
+# 15 cells (30 m) for the playtest bridge. 30 was the original brief, but a
+# 60 m deck lets 2-4 players spread past the point where anyone can help anyone,
+# which fights the co-op premise -- see "how wide is too wide" in
+# design_ideas/bridge_grid.md. The test fixtures declare 30 explicitly and are
+# unaffected.
+const DEFAULT_WIDTH := 15
 const DECK_THICKNESS := 1.0    # how far the deck slab hangs below its top face
 const WALL_HEIGHT := 2.0       # one cell -- contains plinko balls, blocks a walk-off
 const WALL_THICKNESS := 0.3
@@ -119,21 +128,47 @@ static func nearest_direction(heading: Vector2) -> int:
 static func cell_z_world(z: int) -> float:
 	return -(float(z) + 0.5) * CELL_SIZE
 
-static func cell_centre(x: int, z: int, height: int) -> Vector3:
+static func cell_centre(x: int, z: int, height: int, width: int) -> Vector3:
 	return Vector3(
-		(float(x) + 0.5 - float(WIDTH) * 0.5) * CELL_SIZE,
+		(float(x) + 0.5 - float(width) * 0.5) * CELL_SIZE,
 		float(height) * HEIGHT_UNIT,
 		cell_z_world(z)
 	)
 
-static func cell_origin_x(x: int) -> float:
-	return (float(x) - float(WIDTH) * 0.5) * CELL_SIZE
+static func cell_origin_x(x: int, width: int) -> float:
+	return (float(x) - float(width) * 0.5) * CELL_SIZE
 
-static func world_to_cell(position: Vector3) -> Vector2i:
+static func world_to_cell(position: Vector3, width: int) -> Vector2i:
 	return Vector2i(
-		int(floor(position.x / CELL_SIZE + float(WIDTH) * 0.5)),
+		int(floor(position.x / CELL_SIZE + float(width) * 0.5)),
 		int(floor(-position.z / CELL_SIZE))
 	)
+
+# --- Appearance ---------------------------------------------------------------
+
+# The deck is a CHECKERBOARD of two light browns, alternating on (x + z).
+#
+# Not decoration: it is the only thing that makes distance readable on a big
+# flat deck seen from a fixed 45-degree camera. Without it a player cannot tell
+# whether a gap is two cells away or four, and every judgement the game asks for
+# -- where a dash ends, whether a stone clears a hole -- is a judgement about
+# cells. The grid IS the gameplay, so the grid has to be visible.
+const DECK_LIGHT := Color(0.82, 0.70, 0.52)
+const DECK_DARK := Color(0.68, 0.55, 0.38)
+
+# Pillars are a THIRD brown, darker and more saturated than either deck shade.
+# A stone has to read as an object sitting on the checker rather than as another
+# square of it -- it is the one piece of scenery you can push, so telling it
+# apart at a glance from across the bridge is gameplay, not decoration.
+const STONE_COLOUR := Color(0.56, 0.38, 0.20)
+
+# Parapets go grey-brown so they read as structure, not as more deck.
+const WALL_COLOUR := Color(0.42, 0.36, 0.30)
+const RAMP_COLOUR := Color(0.75, 0.62, 0.45)
+const WATER_COLOUR := Color(0.35, 0.55, 0.68)
+
+static func deck_colour(x: int, z: int) -> Color:
+	return DECK_LIGHT if (x + z) % 2 == 0 else DECK_DARK
 
 static func height_to_world(height: int) -> float:
 	return float(height) * HEIGHT_UNIT

@@ -36,7 +36,9 @@ func setup(main) -> void:
 		check(player is CharacterBody3D, "player root is a CharacterBody3D")
 		check(player.has_method("step"), "player exposes the sim step() entry point")
 		check(player.get_node_or_null("Shape") != null, "player has a collision shape")
-		check(player.get_node_or_null("CameraPivot/Camera") != null, "player has a camera")
+		# No per-player camera: the game has ONE camera, owned by the world.
+		check(player.get_node_or_null("CameraPivot") == null,
+			"player carries no camera of its own")
 		player.free()
 
 	# A GameWorld runs standalone, with no networking at all -- the solo path.
@@ -49,6 +51,8 @@ func setup(main) -> void:
 	eq(world.players.size(), 1, "a solo world spawns exactly one player")
 	eq(world.player_state(1), PlayerBody.State.WALK, "the spawned player is in WALK")
 	check(world.get_node_or_null("Level") != null, "the world built its level")
+	check(world.camera != null, "the world built its camera")
+	eq(world.camera.focus_target, world.player_body(1), "and pointed it at the local player")
 	world.stop()
 
 	# No session has been started, so nothing should think it is networked.

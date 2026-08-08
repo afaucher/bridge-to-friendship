@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://btfstone1"]
+[gd_scene load_steps=5 format=3 uid="uid://btfstone1"]
 
 [ext_resource type="Script" path="res://scripts/sim/stone_body.gd" id="1_stone"]
 
@@ -8,6 +8,13 @@ size = Vector3(2, 2, 2)
 [sub_resource type="BoxMesh" id="Box_2"]
 size = Vector3(2, 2, 2)
 
+; The third brown -- see GridConfig.STONE_COLOUR. Darker and more saturated than
+; either deck shade, so a pushable stone reads as an object on the checkerboard
+; rather than as another square of it.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.56, 0.38, 0.2, 1)
+roughness = 0.9
+
 [node name="Stone" type="CharacterBody3D"]
 collision_layer = 4
 collision_mask = 1
@@ -15,6 +22,7 @@ script = ExtResource("1_stone")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("Box_2")
+material_override = SubResource("Mat_1")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 shape = SubResource("Box_1")

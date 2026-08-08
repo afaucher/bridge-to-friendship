@@ -23,11 +23,17 @@ func setup(_main) -> void:
 # --- The real files -----------------------------------------------------------
 
 func _test_shipped_segments() -> void:
-	for name in ["test_flat", "test_ascent"]:
+	# The playtest map is included on purpose. It is not a fixture -- no
+	# assertion below depends on its contents, so it stays free to be retuned --
+	# but a map that does not parse or does not validate should fail the gate
+	# rather than be discovered by walking into it.
+	for name in ["test_flat", "test_ascent", "playtest_bridge"]:
 		var seg = SegmentData.from_file("res://segments/%s.seg" % name)
 		if not check(seg.is_valid(), "%s parses (%s)" % [name, ", ".join(seg.errors)]):
 			continue
-		eq(seg.width, GridConfig.WIDTH, "%s is the standard width" % name)
+		# Width is a property of the bridge, not a global -- the fixtures declare
+		# 30 and the playtest map 15, and both are legitimate.
+		check(seg.width > 0, "%s declares a width" % name)
 		check(seg.length > 0, "%s has rows" % name)
 		var problems: Array = SegmentValidator.validate(seg)
 		check(problems.is_empty(), "%s validates (%s)" % [name, ", ".join(problems)])

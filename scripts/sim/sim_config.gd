@@ -49,10 +49,22 @@ const MAX_WALK_ANGLE_DEG := 40.0
 
 # --- Shove --------------------------------------------------------------------
 # The signature verb: a run locked to a compass axis that cannot be steered,
-# slowed or cancelled. ~11 m of travel is about half a typical playable corridor,
-# so one committed action crosses the play space to reach a friend.
-const SHOVE_SPEED := 14.0
-const SHOVE_DURATION := 0.8
+# slowed or cancelled.
+#
+# SPEED AND DURATION ARE A PAIR, and the distance is the thing being chosen:
+# 56 m/s for 0.1 s is 5.6 m, a little under three cells. Short enough to be a
+# committed jab at something specific rather than a way to cross the bridge, and
+# fast enough to read as a snap rather than a run.
+#
+# 0.1 s is SIX TICKS. That is close to the floor of what a fixed 60 Hz tick can
+# express -- a shorter dash would start quantising badly (five ticks is 17% less
+# distance, not 5%). If it ever needs to be shorter, the tick rate is what has to
+# change, not this number.
+#
+# 0.93 m of travel per tick is comfortably inside a 2 m cell and a 0.8 m body, so
+# move_and_slide's sweep still catches everything; it does not tunnel.
+const SHOVE_SPEED := 56.0
+const SHOVE_DURATION := 0.1
 # What a shoved PLAYER receives. Lower than the dash itself so a chain of players
 # shoving each other decays instead of accelerating forever.
 const SHOVE_TRANSFER_SPEED := 11.0

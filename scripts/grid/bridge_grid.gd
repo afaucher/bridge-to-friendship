@@ -21,6 +21,13 @@ const StoneBody = preload("res://scripts/sim/stone_body.gd")
 
 enum PushResult { BLOCKED, MOVED, FELL }
 
+# The bridge's width in cells, taken from the first segment loaded. Every
+# cell<->world conversion needs it, because the deck is centred on x = 0 -- so a
+# bridge of a different width is a different mapping, not just a shorter row.
+# Segments of differing widths would produce a step in the side of the bridge;
+# the loader refuses them.
+var width: int = GridConfig.DEFAULT_WIDTH
+
 # Loaded segments, each with the z at which it starts.
 var _segments: Array = []          # [{data, z_offset}]
 var _stones: Dictionary = {}       # Vector2i -> StoneBody
@@ -31,6 +38,17 @@ var _falling: Array = []           # stones no longer in the cell map
 # order, so the index is a stable identity across the network -- which the cell
 # is not, since the whole point of a stone is that its cell changes.
 var _stone_list: Array = []
+
+# Authored plinko shooter cells, in bridge coordinates. Collected by the loader
+# so M6 only has to build the thing that stands on them.
+var shooter_cells: Array = []
+
+# Where players enter the bridge. Taken from authored SPAWN cells when a segment
+# has them; otherwise a spread across the entry row, which is what every segment
+# so far relies on.
+func entry_spawn_cell(index: int) -> Vector2i:
+	var lane: int = clampi(width / 2 - 3 + index * 2, 0, width - 1)
+	return Vector2i(lane, 1)
 
 func _ready() -> void:
 	# Pitch the whole bridge so up-bridge is uphill. Rotating by +pitch about X
@@ -52,6 +70,13 @@ func load_segment_file(path: String) -> bool:
 	return true
 
 func load_segment(seg) -> void:
+	if _segments.is_empty():
+		width = seg.width
+	elif seg.width != width:
+		printerr("[BridgeGrid] segment '", seg.name, "' is ", seg.width,
+			" cells wide but the bridge is ", width, " -- refusing to join a step into the deck")
+		return
+
 	var z_offset := next_z()
 	_segments.append({"data": seg, "z_offset": z_offset})
 
@@ -61,6 +86,10 @@ func load_segment(seg) -> void:
 	for local_cell in built.stone_cells:
 		var cell := Vector2i(local_cell.x, local_cell.y + z_offset)
 		_spawn_stone(cell)
+
+	# Recorded, not yet built. M6 puts a shooter on each of these.
+	for local_cell in built.shooter_cells:
+		shooter_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 func next_z() -> int:
 	var total := 0
@@ -108,16 +137,16 @@ func has_wall(cell: Vector2i, dir: int) -> bool:
 	return r[0].has_wall(cell.x, r[1], dir)
 
 func cell_of(local_position: Vector3) -> Vector2i:
-	return GridConfig.world_to_cell(local_position)
+	return GridConfig.world_to_cell(local_position, width)
 
 # The cell under a point given in the PARENT's space (where players live). The
 # bridge is pitched, so anything holding a player position needs this rather
 # than cell_of().
 func cell_of_world(world_position: Vector3) -> Vector2i:
-	return GridConfig.world_to_cell(transform.affine_inverse() * world_position)
+	return GridConfig.world_to_cell(transform.affine_inverse() * world_position, width)
 
 func cell_surface(cell: Vector2i) -> Vector3:
-	return GridConfig.cell_centre(cell.x, cell.y, height_at(cell))
+	return GridConfig.cell_centre(cell.x, cell.y, height_at(cell), width)
 
 # The same point in the PARENT's space (the GameWorld's), which is where players
 # live. The bridge is pitched, so grid-local and world coordinates are not the
