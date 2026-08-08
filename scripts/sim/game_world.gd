@@ -18,6 +18,7 @@ const PlayerScene = preload("res://scenes/player.tscn")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
+const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 signal player_spawned(peer_id: int)
@@ -113,6 +114,12 @@ func _build_level() -> void:
 		move_child(grid, 0)
 		for path in segment_paths:
 			grid.load_segment_file(path)
+		# A bridge is assembled from .seg files, which describe structure and
+		# nothing else -- so unlike the gym it has no lighting of its own.
+		# Only for a world someone is looking at: a second WorldEnvironment in
+		# the same viewport is a warning and a coin toss over which one wins.
+		if view_active:
+			add_child(SceneLighting.build())
 		_build_camera(grid.width)
 		return
 	if level_scene_path == "":

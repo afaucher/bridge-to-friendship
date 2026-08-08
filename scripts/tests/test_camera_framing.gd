@@ -30,7 +30,22 @@ func setup(main) -> void:
 	world.set_script(GameWorldScript)
 	main.add_child(world)
 	world.segment_paths = ["res://segments/playtest_bridge.seg"]
+	# The world a human would be looking at, which is what gates the camera
+	# taking the viewport and the lighting being built at all.
+	world.view_active = true
 	world.start(true, 1, false)
+
+	# A bridge carries no lighting of its own -- .seg files describe structure
+	# and nothing else -- so if this ever stops being built the game renders
+	# flat-lit and nothing else fails.
+	var lighting: Node = world.get_node_or_null("Lighting")
+	if check(lighting != null, "a bridge world builds its own lighting"):
+		check(lighting.get_node_or_null("WorldEnvironment") != null, "with a sky")
+		var sun: DirectionalLight3D = lighting.get_node_or_null("Sun")
+		if check(sun != null, "and a sun"):
+			check(sun.shadow_enabled, "that casts shadows")
+			check(absf(sun.rotation_degrees.x) > 20.0 and absf(sun.rotation_degrees.x) < 80.0,
+				"at an angle that gives the deck relief rather than flattening it")
 
 	camera = world.camera
 	if not check(camera != null, "the world built a camera"):
