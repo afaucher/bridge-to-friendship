@@ -47,6 +47,17 @@ var players: Dictionary = {}
 var grid: Node3D = null
 var camera: Camera3D = null
 
+# Display names, keyed by peer id. Host-owned and pushed out reliably; a peer
+# that has not announced one falls back to default_player_name().
+#
+# It lives HERE and not on NetworkManager because of how the gate is wired: the
+# net harness gives each world its own SceneMultiplayer rooted at its own node,
+# so an RPC on the /root autoload would travel over the default (peerless)
+# MultiplayerAPI and could never be exercised by a test. Riding the world's own
+# multiplayer means name replication is tested by the same rig as everything
+# else.
+var player_names: Dictionary = {}
+
 # True on the world a human is looking at. False for headless test worlds and for
 # every world the net harness stands up, so they do not fight over the viewport's
 # single `current` camera.
@@ -116,6 +127,7 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	networked = is_networked
 	_build_level()
 	running = true
+	_announce_name()
 
 func stop() -> void:
 	running = false
@@ -734,6 +746,55 @@ func _reconcile(body: Node, e: Array) -> void:
 		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS])
 		_predicted.append([int(pending[PlayerInput.TICK]), body.capture_state()])
 
+# --- Names --------------------------------------------------------------------
+#
+# Each machine knows only its OWN name, so a client announces itself and the host
+# -- which is already the one thing that decides who exists -- republishes the
+# whole roster. The dictionary is four entries at most, so pushing all of it on
+# every change is cheaper than working out what changed.
+
+func _announce_name() -> void:
+	var display: String = _local_display_name()
+	if is_host:
+		player_names[local_peer] = display
+		_broadcast_names()
+	elif networked:
+		_submit_name.rpc_id(1, display)
+
+func _local_display_name() -> String:
+	# Steam persona where there is one; otherwise a name derived from OUR OWN peer
+	# id, not from NetworkManager's -- a headless world (and every world the net
+	# harness stands up) has no session, so NetworkManager.local_id() is 0 there
+	# and every player in the rig would be called the same thing.
+	var persona: String = NetworkManager.steam_display_name()
+	return persona if persona != "" else default_player_name(local_peer)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _submit_name(display: String) -> void:
+	if not is_host:
+		return
+	player_names[multiplayer.get_remote_sender_id()] = display
+	_broadcast_names()
+
+func _broadcast_names() -> void:
+	if networked:
+		_set_names.rpc(player_names)
+
+@rpc("authority", "call_remote", "reliable")
+func _set_names(names: Dictionary) -> void:
+	if is_host:
+		return
+	player_names = names.duplicate()
+
+func player_name(peer: int) -> String:
+	var stored: String = str(player_names.get(peer, ""))
+	return stored if stored != "" else default_player_name(peer)
+
+static func default_player_name(peer: int) -> String:
+	if peer >= PRACTICE_PEER_BASE:
+		return "Partner %d" % (peer - PRACTICE_PEER_BASE + 1)
+	return "Player %d" % peer
+
 # --- Spawning -----------------------------------------------------------------
 
 func host_spawn(peer: int) -> void:
@@ -756,6 +817,10 @@ func host_add_peer(peer: int) -> void:
 		var existing: int = int(existing_key)
 		_spawn_player.rpc_id(peer, existing, int(_spawn_index.get(existing, 0)))
 	host_spawn(peer)
+	# The newcomer needs everyone's name, and it may have announced its own
+	# before the host had it in `players`. Republishing here costs one small
+	# reliable packet and removes the ordering question entirely.
+	_broadcast_names()
 
 func host_remove_peer(peer: int) -> void:
 	if not is_host:
@@ -794,6 +859,7 @@ func _despawn_player(peer: int) -> void:
 	_last_input_tick.erase(peer)
 	_highest_queued.erase(peer)
 	_spawn_index.erase(peer)
+	player_names.erase(peer)
 	player_despawned.emit(peer)
 
 func spawn_point(index: int) -> Vector3:

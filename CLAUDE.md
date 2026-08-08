@@ -194,6 +194,21 @@ the moment it is written.
   Re-run the one test solo and compare the NUMBER. Identical → deterministic,
   debug it. Different → then it is jitter. That is one cheap run, versus tuning
   a budget that was never the cause.
+- **A DEV BOX HAS STEAM AND THE GATE DOES NOT, so never assert a display name.**
+  Observed 2026-08-08 writing the M9 HUD tests: `SteamManager` initialises fine
+  on a developer machine (`[Steam] ready: duckbob`), so `_local_display_name()`
+  returns the persona there and the `"Player 1"` fallback on CI. A test asserting
+  the literal passes in one place and fails in the other for a reason the code
+  does not control. **Assert the rule** — `default_player_name(1)`, or that a
+  name was announced *at all* — never the value. Generalises past names: anything
+  read out of the environment (persona, locale, machine name, wall clock) is not
+  a property of the code and does not belong in an assertion.
+- **Headless builds the whole Control tree; it just does not draw it.** So a HUD
+  or menu IS testable — node construction, `_ready`, `_process` and property
+  writes all really run. That matters because GDScript resolves properties at
+  runtime: `ProgressBar.tint_progress` is Godot 3 and raises on the first frame
+  and nowhere earlier. If nothing in the gate ever instantiates a UI script, it
+  ships having never been executed once (see `test_hud_view`).
 - **Tests seed the global RNG** (`seed()` in `main.gd`'s `_run_test`). `randf`/
   `randi` are otherwise entropy-seeded per launch, which makes any
   outcome-dependent test flaky run to run — and a flaky gate gets ignored, which
@@ -351,8 +366,9 @@ about *method*, not about that game.
   on one machine, so two tests sharing a port is a race that fails whichever
   loses, intermittently, and reads as a networking bug. Allocated so far:
   `test_enet_loopback` 28777, `test_network_session` 28778,
-  `test_authority_agreement` 28779, `test_client_prediction` 28780. Pick the next
-  free one and add it here.
+  `test_authority_agreement` 28779, `test_client_prediction` 28780,
+  `test_hud_rescue_visible` 28782 (28781 is reserved for M8.5's hat replication
+  test). Pick the next free one and add it here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
   cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no
   game state can gate. *(inherited — diagnosing its absence cost hours.)*

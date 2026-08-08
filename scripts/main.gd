@@ -6,6 +6,7 @@ extends Node3D
 # which is what lets a test stand up two of them in one process.
 
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const HudScript = preload("res://scripts/ui/hud.gd")
 
 # What a session actually plays. One segment today; M8 assembles a run from a
 # pool. The test fixtures are deliberately NOT this file, so tuning the playtest
@@ -17,6 +18,7 @@ const PLAYTEST_SEGMENTS := ["res://segments/playtest_bridge.seg"]
 @onready var spectator_camera: Camera3D = $SpectatorCamera
 
 var world: Node3D = null
+var hud: CanvasLayer = null
 
 func _ready() -> void:
 	# Headless entry points first, before any menu, network or Steam wiring: a
@@ -99,6 +101,11 @@ func _on_session_ended() -> void:
 		world.stop()
 		world.queue_free()
 		world = null
+	if hud != null:
+		# Cleared, not just hidden: the HUD holds a reference to the world we are
+		# about to free, and it reads it every frame.
+		hud.world = null
+		hud.hide()
 	menu.show()
 	spectator_camera.current = true
 	_set_status("Disconnected.")
@@ -122,6 +129,15 @@ func _create_world(is_host: bool, local_peer: int, networked: bool, segments: Ar
 	# Started after being added to the tree: the RPC paths a GameWorld uses are
 	# resolved from its position in the tree, so it must be parented first.
 	world.start(is_host, local_peer, networked)
+	_show_hud()
+
+func _show_hud() -> void:
+	if hud == null:
+		hud = HudScript.new()
+		hud.name = "Hud"
+		add_child(hud)
+	hud.world = world
+	hud.show()
 
 func _set_status(text: String) -> void:
 	if status_label != null:

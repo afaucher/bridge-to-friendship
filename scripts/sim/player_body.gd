@@ -497,9 +497,15 @@ func _find_carrier() -> Node:
 # Position is LOCAL, not global: the wire format must not encode where a world
 # happens to sit in someone's scene tree.
 
+# rescue_progress is the one field here that step() never reads, so it cannot
+# make a replay diverge. It is carried because the HUD has to DRAW it, and it is
+# incremented only by GameWorld._tick_haul/_tick_revive -- i.e. only on the host.
+# Left out (as it was until M9) the "a teammate is pulling you up" bar exists on
+# exactly one machine in the session, and every client shows an empty bar and no
+# error, which looks precisely like a rescue that is not happening.
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_dir, shove_cooldown,
-		facing, health, invulnerable, hang_dir]
+		facing, health, invulnerable, hang_dir, rescue_progress]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -513,6 +519,7 @@ func apply_state(s: Array) -> void:
 	health = int(s[8])
 	invulnerable = float(s[9])
 	hang_dir = int(s[10])
+	rescue_progress = float(s[11])
 
 # There is no per-player camera. The game has ONE camera, owned by the world,
 # fixed-yaw and locked to the bridge's centre line -- see

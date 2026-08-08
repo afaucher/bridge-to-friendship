@@ -300,12 +300,40 @@ count gets drawn.
 
 Full scoping: `implementation_plans/m8_5_hats.md`.
 
-## M9 — HUD
+## M9 — HUD — **DONE (2026-08-08)**
 
-**Proves:** players can read their own and each other's state.
+**Proves:** players can read their own and each other's state — and that *we* can
+read it during a playtest.
 
-Own health and three action slots top-left; friends' name, health and special
-top-right. The special slot is built and empty.
+Shipped: `hud_model.gd`, `hud.gd`, player names, and a simulation fix. Own health
+as pips, the grace window as a flash on them, and three action slots top-left;
+friends' name, health, state, bleed-out and rescue top-right. Four new tests.
+
+**The split that makes a HUD gateable:** `hud_model.gd` is a pure function from
+world state to a plain dictionary and holds every decision — which countdown
+applies, how full each bar is, who is a friend, what order they come in.
+`hud.gd` draws it and decides nothing. Same data/view split as the grid. It is
+also the extension point: a rope slot, a hat count and a special are new fields,
+not new layout.
+
+**Scoping it found two things the code did not have.** `rescue_progress` was
+host-only — missing from `capture_state()`, so the "a teammate is pulling you up"
+bar existed on exactly one machine in the session and every client showed an
+empty bar with no error. And there were no player names anywhere. Names became
+**world state on the world's own multiplayer**, not `NetworkManager` RPCs: the
+net harness roots each world at its own `SceneMultiplayer`, so an autoload RPC
+would travel over the default peerless API and no test could ever reach it.
+
+`test_hud_rescue_visible` was checked against the bug it exists for — reverting
+the one-field fix makes it report `rescue bar at 0.00` against a host reading
+0.333. It asserts the *transition* (empty while nobody helps, moving once someone
+does) precisely so it cannot pass against a stubbed constant.
+
+Two costs now in `CLAUDE.md`: never assert a display name (a dev box has Steam
+and the gate does not), and headless builds the whole Control tree — so a UI
+script nothing instantiates ships having never executed.
+
+Full write-up: `implementation_plans/m9_hud.md`.
 
 Exit: D5.
 

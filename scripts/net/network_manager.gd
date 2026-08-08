@@ -144,6 +144,17 @@ func local_id() -> int:
 		return 0
 	return multiplayer.get_unique_id()
 
+# The local player's name as Steam knows it, or "" when Steam is not available.
+#
+# A thin accessor and nothing more, because THIS is the boundary: D5 wants a
+# friend's name on the HUD, and the obvious way to get one is `Steam.*` from the
+# HUD -- which the gate, having no Steam client, could never run. The caller
+# decides the fallback; it knows its own peer id and this file does not.
+func steam_display_name() -> String:
+	if not SteamManager.available:
+		return ""
+	return SteamManager.username
+
 # --- Multiplayer callbacks ---------------------------------------------------
 
 func _on_peer_connected(id: int) -> void:
