@@ -18,6 +18,7 @@ const PlayerScene = preload("res://scenes/player.tscn")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
+const BallScene = preload("res://scenes/plinko_ball.tscn")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
@@ -84,6 +85,12 @@ var _next_spawn_index: int = 0
 # player whose rescue countdown expired land here; there is one way back.
 var _returning: Dictionary = {}
 
+# --- plinko ---
+var _balls: Array = []
+var _balls_root: Node3D = null
+var _shooter_timers: Dictionary = {}   # shooter cell -> seconds until next shot
+var _next_ball_id: int = 0
+
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
 const PLAYERS_LAYER_BIT := 2
 
@@ -96,6 +103,12 @@ func _ready() -> void:
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
 	add_child(_players_root)
+	# Balls live in WORLD space, not under the grid: the grid is pitched, and a
+	# ball rolls down that pitch under ordinary gravity rather than being carried
+	# by the node it hangs off.
+	_balls_root = Node3D.new()
+	_balls_root.name = "Balls"
+	add_child(_balls_root)
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -225,11 +238,112 @@ func _host_tick() -> void:
 		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
 		body.collision_mask = restore_mask
 
+	_process_plinko()
 	_process_rescue()
 	_process_hearts()
 
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
+
+# --- Plinko -------------------------------------------------------------------
+#
+# The world fires and simulates; the grid only draws the shooters. A ball is
+# authoritative gameplay -- it does damage -- so it belongs on the same side of
+# the line as momentum transfer.
+
+func _process_plinko() -> void:
+	if grid == null:
+		return
+	_fire_shooters()
+
+	for i in range(_balls.size() - 1, -1, -1):
+		var ball: Node = _balls[i]
+		if not is_instance_valid(ball):
+			_balls.remove_at(i)
+			continue
+		ball.step()
+		if ball.is_spent():
+			_balls.remove_at(i)
+			ball.queue_free()
+			continue
+		_resolve_ball_hits(ball)
+
+func _fire_shooters() -> void:
+	for cell in grid.shooter_cells:
+		var due: float = float(_shooter_timers.get(cell, _initial_shooter_delay(cell)))
+		due -= SimConfig.TICK_DELTA
+		if due <= 0.0:
+			due = SimConfig.PLINKO_FIRE_INTERVAL
+			_launch_ball(cell)
+		_shooter_timers[cell] = due
+
+# Stagger the first shot per shooter so a row of them does not fire in unison
+# forever. Derived from the cell rather than random, so it is the same on every
+# machine and in every run.
+func _initial_shooter_delay(cell: Vector2i) -> float:
+	var spread: float = float((cell.x * 7 + cell.y * 3) % 10) / 10.0
+	return SimConfig.PLINKO_FIRE_INTERVAL * (0.2 + spread * 0.8)
+
+func _launch_ball(cell: Vector2i) -> void:
+	if _balls.size() >= SimConfig.PLINKO_MAX_BALLS:
+		return
+	var ball: Node3D = BallScene.instantiate()
+	_next_ball_id += 1
+	ball.ball_id = _next_ball_id
+	ball.name = "Ball_%d" % _next_ball_id
+	_balls_root.add_child(ball)
+	_balls.append(ball)
+	ball.launch(grid.shooter_muzzle(cell), _launch_direction())
+
+# THE ONLY RANDOMISATION: the angle. Straight up, tilted by up to
+# PLINKO_CONE_DEG, in any direction. Speed is fixed, so every arc is the same
+# size and the field has a rhythm a player can learn -- see plinko.md.
+func _launch_direction() -> Vector3:
+	var tilt: float = deg_to_rad(randf() * SimConfig.PLINKO_CONE_DEG)
+	var azimuth: float = randf() * TAU
+	return Vector3(sin(tilt) * cos(azimuth), cos(tilt), sin(tilt) * sin(azimuth)).normalized()
+
+# Resolved by PROXIMITY rather than from a collision list, so it happens in one
+# place and once. The ball also collides physically, which is what makes it
+# bounce off you; this is only the gameplay consequence.
+func _resolve_ball_hits(ball: Node) -> void:
+	if ball.hit_cooldown > 0.0:
+		return
+	var reach: float = SimConfig.BALL_RADIUS + 0.5
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
+			continue
+		if body.position.distance_to(ball.position) > reach + PlayerBody.HALF_HEIGHT:
+			continue
+
+		# A DASHING PLAYER BATS IT AWAY. No damage, and the dash carries on --
+		# unlike a dash into a stone or a player, which ends on contact. It gives
+		# the shove a third job and makes the most committed action a defensive
+		# one.
+		if body.state == PlayerBody.State.SHOVE:
+			ball.deflect(GridConfig.DIR_VECTORS[body.shove_dir])
+			return
+
+		if body.invulnerable > 0.0:
+			continue
+
+		# Otherwise: every ball that connects tumbles you. One outcome, no
+		# invisible glancing/solid threshold.
+		var along := Vector3(ball.velocity.x, 0.0, ball.velocity.z)
+		if along.length_squared() < 0.01:
+			along = Vector3(0.0, 0.0, 1.0)
+		along = along.normalized()
+		body.take_damage(SimConfig.PLINKO_DAMAGE)
+		body.begin_tumble(Vector3(
+			along.x * SimConfig.PLINKO_KNOCKBACK,
+			SimConfig.PLINKO_KNOCKBACK_LIFT,
+			along.z * SimConfig.PLINKO_KNOCKBACK))
+		ball.hit_cooldown = SimConfig.PLINKO_HIT_COOLDOWN
+		return
+
+func ball_count() -> int:
+	return _balls.size()
 
 # --- Rescue: one countdown, two states, one drone -----------------------------
 #
@@ -498,25 +612,70 @@ func _broadcast_snapshot() -> void:
 		var peer: int = int(peer_key)
 		entries.append([peer, players[peer].capture_state(), int(_last_input_tick.get(peer, 0))])
 	var stones: Array = grid.stone_snapshot() if grid != null else []
-	_apply_snapshot.rpc(tick, entries, stones)
+	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot())
+
+# Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
+# clients simulating them from a shared seed -- is tempting and specifically
+# risky: a ball is exactly the thing whose trajectory has to agree, because two
+# machines disagreeing about where it is means two machines disagreeing about who
+# got hit. A ball is a position and a velocity and there are at most a couple of
+# dozen; measure before optimising this.
+func _ball_snapshot() -> Array:
+	var out: Array = []
+	for ball in _balls:
+		if is_instance_valid(ball):
+			out.append([ball.ball_id, ball.position, ball.velocity])
+	return out
+
+# Clients rebuild their ball set to match the host's, creating and freeing to
+# suit. Self-healing by construction: a dropped packet costs a frame of staleness
+# rather than a ball that exists forever on one machine.
+func _apply_ball_snapshot(balls: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in balls:
+		var id: int = int(entry[0])
+		seen[id] = true
+		var ball: Node = _ball_by_id(id)
+		if ball == null:
+			ball = BallScene.instantiate()
+			ball.ball_id = id
+			ball.name = "Ball_%d" % id
+			_balls_root.add_child(ball)
+			_balls.append(ball)
+		ball.position = entry[1]
+		ball.velocity = entry[2]
+
+	for i in range(_balls.size() - 1, -1, -1):
+		var existing: Node = _balls[i]
+		if not is_instance_valid(existing) or not seen.has(existing.ball_id):
+			_balls.remove_at(i)
+			if is_instance_valid(existing):
+				existing.queue_free()
+
+func _ball_by_id(id: int) -> Node:
+	for ball in _balls:
+		if is_instance_valid(ball) and ball.ball_id == id:
+			return ball
+	return null
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _apply_snapshot(server_tick: int, entries: Array, stones: Array) -> void:
+func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls])
 		return
-	_consume_snapshot(entries, stones)
+	_consume_snapshot(entries, stones, balls)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2])
+		_consume_snapshot(held[1], held[2], held[3])
 
-func _consume_snapshot(entries: Array, stones: Array) -> void:
+func _consume_snapshot(entries: Array, stones: Array, balls: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
+	_apply_ball_snapshot(balls)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)

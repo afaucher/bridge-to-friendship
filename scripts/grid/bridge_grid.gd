@@ -19,6 +19,7 @@ const StoneScene = preload("res://scenes/stone.tscn")
 # push then silently does nothing, which reads as "the shove missed".
 const StoneBody = preload("res://scripts/sim/stone_body.gd")
 const HeartScene = preload("res://scenes/heart.tscn")
+const ShooterScene = preload("res://scenes/shooter.tscn")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 enum PushResult { BLOCKED, MOVED, FELL }
@@ -89,9 +90,10 @@ func load_segment(seg) -> void:
 		var cell := Vector2i(local_cell.x, local_cell.y + z_offset)
 		_spawn_stone(cell)
 
-	# Recorded, not yet built. M6 puts a shooter on each of these.
 	for local_cell in built.shooter_cells:
-		shooter_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+		var cell := Vector2i(local_cell.x, local_cell.y + z_offset)
+		shooter_cells.append(cell)
+		_spawn_shooter(cell)
 
 	for local_cell in built.heart_cells:
 		_spawn_heart(Vector2i(local_cell.x, local_cell.y + z_offset))
@@ -227,6 +229,29 @@ func step_stones() -> void:
 		if stone.is_gone():
 			_falling.remove_at(i)
 			stone.queue_free()
+
+# --- Shooters -----------------------------------------------------------------
+#
+# The grid builds the shooter as SCENERY only. Firing is the world's job, because
+# a ball is authoritative gameplay and the grid is a view of authored data -- the
+# same split that keeps stones' cells in the grid and stones' motion in the sim.
+
+var _shooter_root: Node3D = null
+
+func _spawn_shooter(cell: Vector2i) -> void:
+	if _shooter_root == null:
+		_shooter_root = Node3D.new()
+		_shooter_root.name = "Shooters"
+		add_child(_shooter_root)
+	var shooter: Node3D = ShooterScene.instantiate()
+	shooter.name = "Shooter_%d_%d" % [cell.x, cell.y]
+	shooter.position = cell_surface(cell) + Vector3(0.0, GridConfig.CELL_SIZE * 0.5, 0.0)
+	_shooter_root.add_child(shooter)
+
+# Where a ball leaves the barrel, in the world's space. Above the pillar, so a
+# ball never spawns inside the thing that fired it.
+func shooter_muzzle(cell: Vector2i) -> Vector3:
+	return cell_surface_world(cell) + Vector3(0.0, GridConfig.CELL_SIZE + 0.9, 0.0)
 
 # --- Hearts -------------------------------------------------------------------
 #

@@ -1,0 +1,33 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfball1"]
+
+[ext_resource type="Script" path="res://scripts/sim/plinko_ball.gd" id="1_ball"]
+
+[sub_resource type="SphereShape3D" id="Sphere_1"]
+radius = 0.6
+
+[sub_resource type="SphereMesh" id="Sphere_2"]
+radius = 0.6
+height = 1.2
+
+; Dark and cold against a deck of warm browns. A ball has to be spotted early
+; enough to dodge or to commit a dash at, from a fixed camera, across a field of
+; pillars -- so it is the one thing on the bridge that is neither brown nor the
+; player's blue.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.16, 0.17, 0.22, 1)
+metallic = 0.6
+roughness = 0.35
+
+[node name="PlinkoBall" type="CharacterBody3D"]
+; Layer 8 = balls. Mask 7 = world | players | stones, so a ball bounces off the
+; deck, the parapets, the pillars AND the players.
+collision_layer = 8
+collision_mask = 7
+script = ExtResource("1_ball")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Sphere_2")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Sphere_1")

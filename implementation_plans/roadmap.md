@@ -206,9 +206,24 @@ going to fail, they fail here. Playtest before starting M6.
 
 Exit: B4, B4b, and the co-op half of A4.
 
-## M6 — Plinko — **NEXT**
+## M6 — Plinko — **DONE (2026-08-08)**
 
 **Proves:** there is a reason to keep moving.
+
+Shipped: the shooter (a pillar with a barrel, scenery built by the grid), balls
+simulated by the world, the launch cone, ricochet, the dash-deflect, and hit
+resolution. `test_plinko` covers all four claims.
+
+**Balls are fully authoritative and never predicted**, and the roadmap's open
+question is answered that way on purpose: a ball is exactly the thing whose
+trajectory must agree, because two machines disagreeing about where it is means
+two machines disagreeing about who got hit. Clients rebuild their ball set from
+the snapshot, so a dropped packet costs a frame of staleness rather than a ball
+that exists forever on one machine.
+
+**Health stopped being decorative here.** Plinko is the first real damage source,
+so M5's bar, grace window, downed state and hearts all began doing something.
+
 
 Full design in `design_ideas/plinko.md`. In short:
 

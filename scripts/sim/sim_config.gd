@@ -141,6 +141,43 @@ const DRONE_RETURN_SECONDS := 3.0
 const HEART_PICKUP_RADIUS := 1.2
 const HEART_HEAL := 1
 
+# --- Plinko -------------------------------------------------------------------
+# See design_ideas/plinko.md.
+
+const BALL_RADIUS := 0.6
+
+# ONE SOURCE OF VARIANCE: the angle. Every ball leaves at the same speed, so
+# every arc is the same size and the field has a learnable rhythm -- a player can
+# watch one ball and know roughly where the next goes. Randomising speed as well
+# would make each shot individually unreadable, and a hazard nobody can read is a
+# tax rather than an obstacle.
+const PLINKO_LAUNCH_SPEED := 10.0
+const PLINKO_CONE_DEG := 70.0
+
+# Bounce, and a proportional drag that decides the ROLLING speed. Gravity along
+# the bridge's 4-degree pitch is ~1.67 m/s^2, so terminal roll is about
+# 1.67 / drag -- at 0.35 that is roughly 4.8 m/s, comfortably under a player's
+# 6 m/s walk. Balls have to be outrunnable: the threat is that one is still
+# coming while you are busy, not that it is faster than you.
+const PLINKO_BOUNCE := 0.5
+const PLINKO_ROLL_DRAG := 0.35
+
+const PLINKO_FIRE_INTERVAL := 2.5
+const PLINKO_BALL_LIFETIME := 25.0
+# A backstop, not a design value. If firing ever outruns despawning, this is what
+# stops a runaway from becoming a frame-rate problem instead of a bug report.
+const PLINKO_MAX_BALLS := 24
+
+const PLINKO_DAMAGE := 1
+# What a hit throws you at. Reuses the shove transfer so a ball and a friend
+# knock you about the same amount -- one knockback rule, not two.
+const PLINKO_KNOCKBACK := SHOVE_TRANSFER_SPEED
+const PLINKO_KNOCKBACK_LIFT := SHOVE_TRANSFER_LIFT
+# A dashing player bats the ball away this fast.
+const PLINKO_DEFLECT_SPEED := 16.0
+# One ball cannot hit the same player twice in a row without leaving first.
+const PLINKO_HIT_COOLDOWN := 0.5
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

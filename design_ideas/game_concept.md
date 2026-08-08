@@ -120,13 +120,13 @@ an argument about a **capability everyone has at all times**. Legs make jumping 
   steep-ramp beat quietly stops happening. That is a content-density decision,
   not a code one, and it is the thing to check in playtest.
 
-**[open]** A legs jump plus a mid-air dash. Dashing while airborne is already
-legal today — nothing checks `grounded` in `_begin_shove` — but until legs, the
-only way to *get* airborne was to be hit by someone. Legs promote a rarity into a
-routine, and the combined horizontal reach is the number that decides whether
-hole fields still work. **Measure it against the widest authored hole before
-tuning anything**; do not pre-emptively ban the combo, because it is exactly the
-sort of thing A3 is made of.
+**Dashing while airborne is intended and stays** *(decided 2026-08-08)*, and legs
+change nothing about it. You can already run off any ledge and dash mid-air
+today — nothing checks `grounded` in `_begin_shove` — so the combo is live and
+available to everyone with no pickup at all.
+
+What legs add is only **height**. Descending has always been free: walk off. It
+is *up* that the bridge gates, which is the asymmetry the item is sold on.
 
 ## The punishment
 

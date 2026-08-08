@@ -1,0 +1,52 @@
+[gd_scene load_steps=6 format=3 uid="uid://btfshooter1"]
+
+; A shooter is a PILLAR WITH A BARREL. Same cylinder as every other pillar, so it
+; sits in the field as cover rather than as a machine bolted onto it -- a player
+; should not have to learn a second silhouette to read the field. The barrel is
+; no wider than the pillar; it exists only so it is obvious where the balls come
+; out.
+;
+; Fixed, not pushable: it is the source of the pressure, not part of the terrain
+; you rearrange. Layer 1 (world), so it collides like deck rather than like a
+; stone.
+
+[sub_resource type="CylinderShape3D" id="Body_1"]
+radius = 1.0
+height = 2.0
+
+[sub_resource type="CylinderMesh" id="Body_2"]
+top_radius = 1.0
+bottom_radius = 1.0
+height = 2.0
+
+[sub_resource type="CylinderMesh" id="Barrel_1"]
+top_radius = 0.45
+bottom_radius = 0.55
+height = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.42, 0.3, 0.16, 1)
+roughness = 0.85
+
+; The barrel reads darker than its own pillar, so the business end is the part
+; that catches the eye.
+[sub_resource type="StandardMaterial3D" id="Mat_2"]
+albedo_color = Color(0.2, 0.2, 0.23, 1)
+metallic = 0.5
+roughness = 0.4
+
+[node name="Shooter" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Body_2")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Body_1")
+
+[node name="Barrel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
+mesh = SubResource("Barrel_1")
+material_override = SubResource("Mat_2")
