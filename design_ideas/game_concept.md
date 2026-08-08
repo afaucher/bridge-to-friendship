@@ -187,3 +187,17 @@ not a feature to add later. See `physics_and_authority.md`.
    answer is the rope? That would give two distinct grades of cooperation
    instead of one.
 4. **Is the ledge grab automatic or a button press?** Defaulting to automatic.
+5. **Is a run scored, and how?** *(Recorded 2026-08-08 as an intent, deliberately
+   left open.)* A run is currently measured only in distance and checkpoints
+   reached. The intent is that it eventually also carries a **score**, banked at
+   each checkpoint alongside progress, and that **hats** (see
+   `implementation_plans/m8_5_hats.md`) are its first source: you are paid for
+   optional risk you took and held on to. What the units are, whether the score
+   is per-player or per-party, and whether anything else feeds it are all
+   unanswered and do not need answering yet.
+
+   **What this obliges M8 to leave room for, and nothing more:** checkpoint
+   banking should snapshot an *extensible* per-player record rather than a
+   distance integer, and the bank should be a **hook other systems can attach
+   to** rather than a closed function. That is a shape, not a feature — it costs
+   M8 nothing today and it is what stops scoring from reopening M8 later.

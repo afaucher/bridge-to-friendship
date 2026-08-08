@@ -123,6 +123,33 @@ party-window streaming.
 
 Exit: D1, D2, D3, D4.
 
+## M8.5 — Hats — **proposed, not agreed**
+
+**Proves:** there is a reason to take a risk you did not have to take.
+
+Stackable hats worn on the head, dislodged as a whole stack by a tumble, picked
+up by walking over a loose one, and banked for points at each checkpoint. Loose
+hats are authored content (a new `^` glyph).
+
+The real deliverable is **the carried-item channel** — carried, contested,
+droppable state that belongs to a player and is in neither `capture_state()` nor
+the grid. Hearts and specials are its next two clients, so building it as
+hats-only reopens this milestone twice.
+
+Aimed squarely at A2 and A3, the two exit criteria the rest of the milestone set
+addresses least directly.
+
+**Scoring is deferred by decision** (2026-08-08) and severed from the rest of the
+milestone: hats are complete and playable without it. `game_concept.md` records
+the intent and leaves the answer open; all M8 owes it is a *shape* — an
+extensible per-player bank record and a hook, not a distance integer.
+
+That leaves `TUMBLE` (M5) as the only hard dependency, so this could run as early
+as M5.5. It sits at M8.5 because it should precede M9, which is where the hat
+count gets drawn.
+
+Full scoping: `implementation_plans/m8_5_hats.md`.
+
 ## M9 — HUD
 
 **Proves:** players can read their own and each other's state.
