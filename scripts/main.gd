@@ -1,28 +1,21 @@
 extends Node3D
 
-# Root of the running game. Owns the menu, the spawned avatars, and the headless
-# entry points used by the test gate.
+# Application shell: the menu, the headless entry points, and the one GameWorld
+# that holds the running game. It deliberately holds no simulation itself --
+# everything that is part of the game world lives in scripts/sim/game_world.gd,
+# which is what lets a test stand up two of them in one process.
 
-const PlayerScene := preload("res://scenes/player.tscn")
-
-# Where the Nth player appears, on a ring so two peers never spawn inside each
-# other (a CharacterBody3D spawned overlapping another one gets pushed out in a
-# way that reads as a physics bug).
-const SPAWN_RADIUS := 4.0
-const SPAWN_HEIGHT := 1.0
+const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
 @onready var menu: VBoxContainer = $CanvasLayer/Menu
 @onready var status_label: Label = $CanvasLayer/Menu/StatusLabel
-@onready var players_root: Node3D = $Players
 @onready var spectator_camera: Camera3D = $SpectatorCamera
 
-# peer id -> player node. The host's copy is the source of truth for who exists;
-# clients receive it through _spawn_player.
-var players: Dictionary = {}
+var world: Node3D = null
 
 func _ready() -> void:
-	# Headless entry points come first: a test run must not touch the menu, the
-	# network, or Steam.
+	# Headless entry points first, before any menu, network or Steam wiring: a
+	# test run must not touch any of it.
 	var args := OS.get_cmdline_args()
 	for i in args.size():
 		if args[i] == "--run-test" and i + 1 < args.size():
@@ -71,69 +64,46 @@ func _on_join_pressed() -> void:
 
 func _on_local_pressed() -> void:
 	menu.hide()
-	_spawn_player(1)
+	spectator_camera.current = false
+	_create_world(true, 1, false)
+	world.host_spawn(1)
 
 # --- Session -----------------------------------------------------------------
 
 func _on_session_started(is_host: bool) -> void:
 	menu.hide()
+	spectator_camera.current = false
+	_create_world(is_host, NetworkManager.local_id(), true)
 	if is_host:
-		_spawn_player.rpc(1)
+		world.host_spawn(1)
 	# A client spawns nothing itself: the host tells it about every avatar,
-	# including its own, so there is exactly one place that decides who exists.
+	# including its own, so exactly one machine decides who exists.
 
 func _on_session_ended() -> void:
-	for id in players.keys():
-		_despawn_player(id)
+	if world != null:
+		world.stop()
+		world.queue_free()
+		world = null
 	menu.show()
 	spectator_camera.current = true
 	_set_status("Disconnected.")
 
 func _on_peer_joined(id: int) -> void:
-	if not NetworkManager.is_host:
-		return
-	# Catch the newcomer up on everyone already here, THEN announce it to
-	# everyone. In that order: the reverse makes the new peer's own avatar
-	# arrive before it knows about the others, which is harmless now but is the
-	# kind of ordering that breaks the moment spawn carries state.
-	for existing_id in players.keys():
-		_spawn_player.rpc_id(id, existing_id)
-	_spawn_player.rpc(id)
+	if world != null and NetworkManager.is_host:
+		world.host_add_peer(id)
 
 func _on_peer_left(id: int) -> void:
-	if NetworkManager.is_host:
-		_despawn_player.rpc(id)
+	if world != null and NetworkManager.is_host:
+		world.host_remove_peer(id)
 
-# --- Spawning ----------------------------------------------------------------
-
-# call_local: the host runs this too, so there is one spawn path rather than a
-# host branch and a client branch that can disagree.
-@rpc("authority", "call_local", "reliable")
-func _spawn_player(id: int) -> void:
-	if players.has(id):
-		return
-	var player := PlayerScene.instantiate()
-	player.name = "Player_%d" % id
-	player.peer_id = id
-	player.position = spawn_point(players.size())
-	players_root.add_child(player)
-	players[id] = player
-	if id == _local_id():
-		spectator_camera.current = false
-
-@rpc("authority", "call_local", "reliable")
-func _despawn_player(id: int) -> void:
-	if not players.has(id):
-		return
-	players[id].queue_free()
-	players.erase(id)
-
-func spawn_point(index: int) -> Vector3:
-	var angle := TAU * float(index) / float(NetworkManager.MAX_PLAYERS)
-	return Vector3(cos(angle) * SPAWN_RADIUS, SPAWN_HEIGHT, sin(angle) * SPAWN_RADIUS)
-
-func _local_id() -> int:
-	return NetworkManager.local_id() if NetworkManager.active else 1
+func _create_world(is_host: bool, local_peer: int, networked: bool) -> void:
+	world = Node3D.new()
+	world.name = "GameWorld"
+	world.set_script(GameWorldScript)
+	add_child(world)
+	# Started after being added to the tree: the RPC paths a GameWorld uses are
+	# resolved from its position in the tree, so it must be parented first.
+	world.start(is_host, local_peer, networked)
 
 func _set_status(text: String) -> void:
 	if status_label != null:
@@ -144,14 +114,12 @@ func _set_status(text: String) -> void:
 
 func _run_test(test_name: String) -> void:
 	print("Starting automated test: ", test_name)
-	menu.hide()
 
 	# Deterministic RNG for every test. The global randi/randf is otherwise
-	# seeded from entropy per launch, which makes any test whose OUTCOME depends
+	# seeded from entropy per launch, which makes any test whose outcome depends
 	# on a random draw flaky run to run -- and a flaky gate gets ignored, which
-	# costs the one real regression it exists to catch. One fixed seed here gives
-	# the whole run a repeatable draw sequence. Do NOT remove it; if a new test
-	# is flaky, check this first.
+	# costs the one real regression it exists to catch. Do NOT remove it; if a
+	# new test is flaky, check this first.
 	seed(20260808)
 
 	var path := "res://scripts/tests/%s.gd" % test_name
@@ -159,16 +127,30 @@ func _run_test(test_name: String) -> void:
 		printerr("[TEST FAILED] test script not found: ", path)
 		get_tree().quit(1)
 		return
+
+	# A script with a PARSE ERROR loads as null. Setting a null script leaves a
+	# bare Node that has no setup(), runs nothing, and never quits -- so a typo
+	# presented as a 600s HANG rather than a failure, and the real message
+	# (Parse Error) scrolled past in the .err.log while the runner sat there.
+	# Cost 300s on 2026-08-08 before anyone read the log. Fail loudly instead.
+	var script: Resource = load(path)
+	if script == null:
+		printerr("[TEST FAILED] ", test_name, " did not compile -- see the .err.log for the Parse Error")
+		get_tree().quit(1)
+		return
+
 	var node := Node.new()
 	node.name = test_name
-	node.set_script(load(path))
+	node.set_script(script)
 	add_child(node)
-	if node.has_method("setup"):
-		node.setup(self)
+	if not node.has_method("setup"):
+		printerr("[TEST FAILED] ", test_name, " has no setup(main) entry point")
+		get_tree().quit(1)
+		return
+	node.setup(self)
 
 func _run_sim(sim_name: String) -> void:
 	print("Starting simulation: ", sim_name)
-	menu.hide()
 	var path := "res://sims/%s.gd" % sim_name
 	if not ResourceLoader.exists(path):
 		printerr("[SIM FAILED] sim script not found: ", path)

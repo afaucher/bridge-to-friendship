@@ -14,9 +14,20 @@ mistake available here.
 
 ---
 
-## M1 — Authoritative simulation core
+## M1 — Authoritative simulation core — **DONE (2026-08-08)**
 
 **Proves:** two machines agree about a shared physics world.
+
+Shipped: `scripts/sim/` (config, input, player body, game world),
+`scripts/test_support/net_harness.gd`, the gym, and four new tests. Measured at
+the end: **1 correction over 240 ticks under 133 ms of injected latency**, i.e.
+prediction is right essentially always and B2's "no visible snap" holds with the
+worst single-tick displacement at the budget's edge rather than over it.
+
+Three things it cost that are now in `CLAUDE.md`: two perfectly coincident
+bodies fall through the floor; `is_on_floor()` is derived state that survives a
+rewind; and a readiness check that only runs in an event handler never runs
+again.
 
 Retires M0's client-authoritative movement, which
 `design_ideas/physics_and_authority.md` establishes cannot survive this design.
@@ -43,15 +54,22 @@ authoring is M10.
 
 Exit: C1, C2, and the grid half of A4 (`max_walk_slope` is enforced).
 
-## M3 — Shove
+## M3 — Bodies interacting: shove and riding
 
-**Proves:** the signature verb feels good and resolves legibly.
+**Proves:** the signature verb feels good and resolves legibly, and bodies stack.
 
 Direction lock, dash, the momentum transfer table, stone pushing (exactly one
 cell), leaving the deck. Fixed-yaw camera lands here, since the compass is
 unusable without it.
 
-Exit: B3.
+Also **riding**: anything standing on another sim body is carried by it — stand
+on a player and they carry you; an enemy landing on you gets carried by you. It
+sits here rather than in M1 because it is a gameplay rule about bodies
+interacting, which is what this milestone is. Godot does not provide it for
+`CharacterBody3D` on `CharacterBody3D`; it needs an explicit carrier probe and a
+carriers-before-riders step order. See `design_ideas/physics_and_authority.md`.
+
+Exit: B3, B3b.
 
 ## M4 — Rope
 

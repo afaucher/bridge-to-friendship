@@ -1,0 +1,70 @@
+[gd_scene load_steps=8 format=3 uid="uid://btfgym1"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMat_1")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+
+[sub_resource type="BoxMesh" id="GroundMesh_1"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxShape3D" id="GroundShape_1"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxMesh" id="StoneMesh_1"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="BoxShape3D" id="StoneShape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="Gym" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 12, 0)
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("GroundMesh_1")
+
+[node name="Shape" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("GroundShape_1")
+
+[node name="Stones" type="Node3D" parent="."]
+
+[node name="StoneA" type="StaticBody3D" parent="Stones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 1, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="Stones/StoneA"]
+mesh = SubResource("StoneMesh_1")
+
+[node name="Shape" type="CollisionShape3D" parent="Stones/StoneA"]
+shape = SubResource("StoneShape_1")
+
+[node name="StoneB" type="StaticBody3D" parent="Stones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="Stones/StoneB"]
+mesh = SubResource("StoneMesh_1")
+
+[node name="Shape" type="CollisionShape3D" parent="Stones/StoneB"]
+shape = SubResource("StoneShape_1")
+
+[node name="StoneC" type="StaticBody3D" parent="Stones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -12)
+
+[node name="Mesh" type="MeshInstance3D" parent="Stones/StoneC"]
+mesh = SubResource("StoneMesh_1")
+
+[node name="Shape" type="CollisionShape3D" parent="Stones/StoneC"]
+shape = SubResource("StoneShape_1")

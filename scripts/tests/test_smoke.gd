@@ -5,18 +5,28 @@ extends "res://scripts/test_support/test_case.gd"
 # the whole suite goes red at once (a broken autoload or a renamed scene fails
 # every test, and only this one says why in a single line).
 
+const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
+
 func setup(main) -> void:
 	# Autoloads, by the names the rest of the code calls them.
 	check(DebugSettings != null, "DebugSettings autoload is present")
 	check(SteamManager != null, "SteamManager autoload is present")
 	check(NetworkManager != null, "NetworkManager autoload is present")
 
-	# The main scene really is the 3D root, not a 2D one left over from a
-	# template. Cheap to assert, and the failure is otherwise a pile of
-	# confusing type errors deep in a movement test.
+	# The main scene is the application shell: menu and camera, no world. The
+	# world is a GameWorld created at runtime, which is what lets a test stand up
+	# two of them in one process.
 	check(main is Node3D, "main scene root is a Node3D")
-	check(main.get_node_or_null("World/Ground") != null, "world has a ground body")
-	check(main.get_node_or_null("Players") != null, "world has a Players container")
+	check(main.get_node_or_null("CanvasLayer/Menu") != null, "main scene has a menu")
+	check(main.get_node_or_null("SpectatorCamera") != null, "main scene has a spectator camera")
+
+	# The level loads and has something to stand on.
+	var gym := load("res://scenes/gym.tscn") as PackedScene
+	if check(gym != null, "gym level loads"):
+		var level := gym.instantiate()
+		check(level.get_node_or_null("Ground") != null, "gym has a ground body")
+		level.free()
 
 	# The player scene loads and instantiates. Loading a .tscn is where a bad
 	# sub-resource or a renamed script surfaces.
@@ -24,9 +34,22 @@ func setup(main) -> void:
 	if check(player_scene != null, "player scene loads"):
 		var player := player_scene.instantiate()
 		check(player is CharacterBody3D, "player root is a CharacterBody3D")
+		check(player.has_method("step"), "player exposes the sim step() entry point")
 		check(player.get_node_or_null("Shape") != null, "player has a collision shape")
 		check(player.get_node_or_null("CameraPivot/Camera") != null, "player has a camera")
 		player.free()
+
+	# A GameWorld runs standalone, with no networking at all -- the solo path.
+	var world := Node3D.new()
+	world.name = "SmokeWorld"
+	world.set_script(GameWorldScript)
+	main.add_child(world)
+	world.start(true, 1, false)
+	world.host_spawn(1)
+	eq(world.players.size(), 1, "a solo world spawns exactly one player")
+	eq(world.player_state(1), PlayerBody.State.WALK, "the spawned player is in WALK")
+	check(world.get_node_or_null("Level") != null, "the world built its level")
+	world.stop()
 
 	# No session has been started, so nothing should think it is networked.
 	eq(NetworkManager.active, false, "no session is active at boot")

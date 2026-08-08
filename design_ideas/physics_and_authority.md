@@ -95,6 +95,42 @@ verbs" is a statement about the *player's* state, not about the bus. Building
 the state machine with that shape now costs nothing; discovering it later means
 unpicking every ability check.
 
+## Riding: anything on top of another body is carried — NOT BUILT YET
+
+**Decided 2026-08-08, scheduled for M3. Nothing implements this today.**
+
+Anything standing on another sim body is carried by it: from the rider's point
+of view the thing underneath is not moving. Stand on a player and they carry you.
+An enemy that lands on you gets carried by you. It applies to every sim body, not
+just players — a stone, a plinko ball at rest, the bus.
+
+This is why the player collider is a **cylinder and not a capsule** (already
+changed in `scenes/player.tscn`). A capsule's domed cap slides a landing body
+straight off; the flat top is what makes standing on someone possible at all, and
+the flat bottom is what lets a body come to rest on a stone rather than teeter on
+it. The collider never tips — `CharacterBody3D` is kinematic and does not rotate
+from physics — which is a constraint on TUMBLE when it arrives: **tumble must
+roll the mesh and leave the collider upright**, or a rolling player stops being
+something anyone can stand on halfway through the roll.
+
+**Godot will not do this for us.** `CharacterBody3D` inherits platform motion
+only from bodies the physics server tracks as platforms (`AnimatableBody3D` and
+friends); one `CharacterBody3D` standing on another just gets left behind as the
+lower one walks out from under it. Since we own the integrator anyway, the
+transport is explicit, and it brings two requirements with it:
+
+1. **Step order matters.** A carrier must step before its riders, or a rider
+   inherits last tick's motion and visibly slides around on its carrier's head.
+   With a stack this is a topological order, and it needs a cycle guard — two
+   bodies each reporting the other as its carrier is physically impossible and
+   would still spin forever.
+2. **The carrier must be re-derivable, not replicated.** A reconciliation replay
+   has to arrive at the same carrier the host did. Deriving it from a downward
+   probe each step keeps it a function of position, which a replay reproduces.
+   Reading it from the last `move_and_slide` collision list does not work: a body
+   resting motionless can report zero slide collisions, which drops the carrier
+   on exactly the frames where standing still on a friend matters most.
+
 ## The authoritative world is data; the scene is a view
 
 Grid-resident things — cells, pillar stones, hearts, pickups, shooters — live in

@@ -122,6 +122,11 @@ run.
   when the destination is clear and **zero cells** when it is blocked; dash into
   a player transfers momentum along the dash axis; dash off the deck leaves the
   bridge.
+- **B3b [test]** Riding: a player standing on another player is **carried** by
+  them — the lower one walks and the rider goes with it, staying put relative to
+  its carrier rather than sliding off the back. Holds for a stack (A on B on the
+  ground) and for any sim body, not just players. A stationary stack neither
+  jitters nor creeps.
 - **B4 [test]** Rope: a taut rope holds its maximum length between two bodies; a
   dash by either end **moves the other**; a roped, taut player struck by a ball
   enters `SWING` and **not** `TUMBLE`.
@@ -173,6 +178,11 @@ run.
   ramp gate, hole field, missing-parapet run, water crossing, and a pillar
   field with a plinko shooter — with more than one segment per idea, so the
   assembler has something to choose between.
+- **E1b** Every elevation change is crossed by at least one **ascender**, and
+  the mix is authored deliberately: ladders (free), gentle ramps (free), steep
+  ramps (two players), bouncers. A layer with no way up fails validation, and no
+  layer is solvable *only* by a cooperating pair — drop-in means the party can be
+  one player, and a solo-impossible layer strands them permanently.
 - **E2 [playtest]** Difficulty demonstrably rises with distance: an
   experienced pair reaches roughly **checkpoint 3–5** before their first wipe,
   and a first-time pair reaches roughly **checkpoint 1–2**.

@@ -1,13 +1,25 @@
 [gd_scene load_steps=4 format=3 uid="uid://btfplayer1"]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
 
-[sub_resource type="CapsuleShape3D" id="Cap_1"]
+; A CYLINDER, not a capsule, and it never tips.
+;
+; The flat top is the whole point: players must be able to stand on each other,
+; and a capsule's domed cap slides a body off the moment it lands. The flat
+; bottom matters too -- it is what lets a player come to rest on a stone or on
+; another player instead of teetering.
+;
+; Upright is free rather than enforced: CharacterBody3D is kinematic and never
+; rotates from physics. When TUMBLE arrives (M5) it must roll the MESH and leave
+; this collider upright, or a rolling player stops being something anyone can
+; stand on halfway through the roll.
+[sub_resource type="CylinderShape3D" id="Cyl_1"]
 radius = 0.4
 height = 1.8
 
-[sub_resource type="CapsuleMesh" id="Cap_2"]
-radius = 0.4
+[sub_resource type="CylinderMesh" id="Cyl_2"]
+top_radius = 0.4
+bottom_radius = 0.4
 height = 1.8
 
 [node name="Player" type="CharacterBody3D"]
@@ -16,10 +28,10 @@ collision_mask = 3
 script = ExtResource("1_player")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
-mesh = SubResource("Cap_2")
+mesh = SubResource("Cyl_2")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
-shape = SubResource("Cap_1")
+shape = SubResource("Cyl_1")
 
 [node name="CameraPivot" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)

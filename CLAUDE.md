@@ -89,6 +89,40 @@ the moment it is written.
   `"any_peer"` accepts it from anyone. Player state uses the former precisely so
   a client cannot move another client's avatar.
 
+## Simulation traps (M1)
+
+- **Two PERFECTLY coincident bodies fall through the floor.** Measured
+  2026-08-08: two player cylinders at identical coordinates depenetrate into a
+  degenerate normal that drives both DOWN through the ground (they settle at
+  y = -1.9), while the same two bodies 1 m apart land correctly at y = 0.9. The
+  symptom is every player free-falling from tick one, which reads as broken
+  gravity — it is not; it is two things in the same place. Spawn points are a
+  ring for this reason, and **any future code that places a body — the M5 drone
+  return most of all — must not place it exactly on another one.**
+- **`is_on_floor()` is derived state that survives `apply_state()`.** It lives
+  inside the `CharacterBody3D` and rewinding cannot touch it, so a client that
+  corrects to an airborne authoritative frame would replay its first tick still
+  believing it was standing. `player_body.gd` keeps its own `grounded` flag,
+  refreshed after every `move_and_slide` and carried in `capture_state()`. **Any
+  state that affects stepping must be in `capture_state()` or replays diverge**,
+  and the tell is `GameWorld.corrections` climbing every tick instead of sitting
+  near zero.
+- **A sim tick must equal a physics tick.** `move_and_slide()` takes its delta
+  from the physics frame, so replaying N ticks inside one frame only reproduces N
+  frames because the two are the same duration. `test_sim_determinism` is the
+  tripwire; if `physics_ticks_per_second` ever changes, `SimConfig.TICK_DELTA`
+  changes with it.
+- **A readiness check that only runs in an event handler never runs again.** The
+  net harness checked "is everyone spawned?" from `peer_connected` and
+  `connected_to_server` — both of which fire *before* the host's spawn RPCs
+  arrive — so it saw an incomplete roster once and never re-checked. The session
+  was fine; the harness reported not-ready forever and every net test timed out.
+  Poll readiness.
+- **Two worlds in one process share ONE physics space.** The test harness offsets
+  each world by 1 km for exactly this reason. It is also why the snapshot wire
+  format carries **world-local** coordinates: a protocol with absolute positions
+  would teleport a client's player into the host's copy of the world.
+
 ## Headless gotchas
 
 - **A fresh clone or `git worktree` is NOT a runnable checkout — import first.**
@@ -126,6 +160,19 @@ the moment it is written.
   read back as 0 lines until it is flushed or closed.
 - **Kill stragglers** if a run hangs:
   `taskkill //F //IM Godot_v4.4.1-stable_win64.exe`.
+- **PowerShell's `-Encoding utf8` writes a BOM, and a BOM breaks Godot's text
+  formats.** Observed 2026-08-08 rewriting a `.tscn` with `Set-Content -Encoding
+  utf8`: every load failed with `Parse Error: Expected '['` at **line 1**, and
+  the file looked perfectly correct in every editor. The cascade then blamed
+  eight unrelated scripts that merely preload the scene. Use the Write tool, or
+  `[System.IO.File]::WriteAllText`, for any file Godot parses. A line-1 parse
+  error on a file that reads fine is a BOM until proven otherwise.
+- **A test script that fails to compile used to HANG the runner rather than fail
+  it.** `load()` returns null on a parse error; setting a null script leaves a
+  bare Node with no `setup()`, which runs nothing and never quits — so a typo
+  presented as a 600 s timeout while the real `Parse Error` sat in the
+  `.err.log`. `main.gd` now checks for this and exits 1 with a pointed message.
+  The general lesson stands: **a hang is very often a compile failure.**
 - **PowerShell capture traps, both of which silently corrupt a long run.**
   *(inherited)* `Select-Object -First N` TERMINATES the upstream pipeline, which
   kills the Godot process mid-run — a truncated run then looks like a crash or a
@@ -255,9 +302,10 @@ about *method*, not about that game.
   gitignored).
 - **Every test binds its own port.** The gate runs tests as PARALLEL processes
   on one machine, so two tests sharing a port is a race that fails whichever
-  loses, intermittently, and reads as a networking bug. `test_enet_loopback`
-  uses 28777 and `test_network_session` 28778; pick a fresh one and note it here
-  as they are added.
+  loses, intermittently, and reads as a networking bug. Allocated so far:
+  `test_enet_loopback` 28777, `test_network_session` 28778,
+  `test_authority_agreement` 28779, `test_client_prediction` 28780. Pick the next
+  free one and add it here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
   cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no
   game state can gate. *(inherited — diagnosing its absence cost hours.)*

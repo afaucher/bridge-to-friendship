@@ -14,10 +14,20 @@ engine is wrong by 100x and you find out via jitter rather than via an error.
 onto +Z for exactly this reason — the sign flip lives in one line, commented,
 rather than being scattered.
 
-The reference avatar is a **1.8 m capsule, 0.4 m radius**, resting with its
+The reference avatar is a **1.8 m cylinder, 0.4 m radius**, resting with its
 centre at y = 0.9 on ground whose top face is y = 0. `test_player_movement`
-asserts that resting height, so a change to the capsule is a change that a test
+asserts that resting height, so a change to the collider is a change that a test
 notices.
+
+**A cylinder, not a capsule, and it never tips.** Players must be able to stand
+on each other and on stones, and a capsule's domed cap slides a landing body
+straight off. The flat bottom matters equally — it lets a body come to rest on a
+stone instead of teetering on it. Upright is free rather than enforced:
+`CharacterBody3D` is kinematic and does not rotate from physics. That is a
+constraint on TUMBLE when it arrives — **tumble rolls the mesh and leaves the
+collider upright**, or a rolling player stops being something anyone can stand on
+halfway through the roll. Riding (being carried by whatever you stand on) is an
+M3 deliverable; see `physics_and_authority.md`.
 
 ## Physics layers
 

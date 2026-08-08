@@ -89,6 +89,38 @@ beat is therefore not a scripted event, it is a steep enough ramp.
 you, so the only answer is the rope? That would give two distinct grades of
 cooperation instead of one.
 
+## Going up: ascenders
+
+Every elevation change on the bridge is crossed by an **ascender** — an authored
+thing that gets you up a layer. Ascenders are graded by what they cost the
+party, and that grading is the difficulty dial for vertical progress:
+
+| ascender | cooperation cost | notes |
+|---|---|---|
+| **ladder** | none | the ordinary case. One player, no help, no risk. |
+| **gentle ramp** | none | walkable, below `max_walk_slope`. |
+| **steep ramp** | two players | shove someone up, or rope down to them. The signature beat. |
+| **bouncer** | none to some | launches you up; may need aiming, timing, or a shove to reach. |
+| *(more to come)* | | |
+
+**The ladder is the baseline, and its absence is the design statement.** A layer
+with a ladder is a breather. A layer without one is a demand, and what it demands
+is whichever alternatives were authored in its place.
+
+Two rules fall out of this and both belong in the segment validator:
+
+1. **Every elevation change has at least one ascender.** A layer with no way up
+   is a dead run, and it is exactly the mistake a text format makes easy.
+2. **An ascender that requires cooperation must not be the only one when the
+   party could be a single player.** Drop-in means the party size varies; a
+   solo-impossible layer strands a lone player permanently. Either guarantee a
+   solo-capable ascender, or make the drone return able to place a player past
+   the obstacle.
+
+**[open]** Should ascender variety be a *tag* the assembler balances — so it can
+avoid three steep-ramp segments in a row, or deliberately stack them as an
+escalation? That is the natural place for the difficulty curve to act.
+
 ## Segment authoring: ASCII layers
 
 Segments are text files, one per segment, under `segments/`. Text rather than
