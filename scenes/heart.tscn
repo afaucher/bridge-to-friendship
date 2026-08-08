@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://btfheart1"]
+
+[sub_resource type="SphereMesh" id="Sphere_1"]
+radius = 0.35
+height = 0.7
+
+; Red, and emissive enough to be spotted across a deck of browns from a fixed
+; 45-degree camera. Hearts are first come, first served -- they are only worth
+; communicating about if both players can see one.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.9, 0.15, 0.25, 1)
+emission_enabled = true
+emission = Color(0.7, 0.05, 0.12, 1)
+emission_energy_multiplier = 0.6
+
+; No collision body: pickup is a proximity check in BridgeGrid.try_take_heart,
+; so a heart can never block a dash or be something you bump into.
+[node name="Heart" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Sphere_1")
+material_override = SubResource("Mat_1")

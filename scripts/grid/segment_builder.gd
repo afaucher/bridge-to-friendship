@@ -31,6 +31,7 @@ class Built:
 	# Collected now so M6 only has to put something there. Authoring a shooter is
 	# already possible; nothing stands on the cell yet.
 	var shooter_cells: Array = []
+	var heart_cells: Array = []
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -288,6 +289,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.spawn_cells.append(Vector2i(x, z))
 				GridConfig.Content.SHOOTER:
 					out.shooter_cells.append(Vector2i(x, z))
+				GridConfig.Content.HEART:
+					out.heart_cells.append(Vector2i(x, z))
 
 # --- Helpers ------------------------------------------------------------------
 

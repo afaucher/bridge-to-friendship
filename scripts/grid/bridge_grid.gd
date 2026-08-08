@@ -18,6 +18,8 @@ const StoneScene = preload("res://scenes/stone.tscn")
 # ABORTS THE REST OF THE FUNCTION for that frame without halting the engine. A
 # push then silently does nothing, which reads as "the shove missed".
 const StoneBody = preload("res://scripts/sim/stone_body.gd")
+const HeartScene = preload("res://scenes/heart.tscn")
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 enum PushResult { BLOCKED, MOVED, FELL }
 
@@ -90,6 +92,9 @@ func load_segment(seg) -> void:
 	# Recorded, not yet built. M6 puts a shooter on each of these.
 	for local_cell in built.shooter_cells:
 		shooter_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.heart_cells:
+		_spawn_heart(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 func next_z() -> int:
 	var total := 0
@@ -222,6 +227,45 @@ func step_stones() -> void:
 		if stone.is_gone():
 			_falling.remove_at(i)
 			stone.queue_free()
+
+# --- Hearts -------------------------------------------------------------------
+#
+# First come, first served: a thing to communicate about rather than a thing to
+# collect. Exclusivity is by construction -- taking one removes it, so a second
+# player arriving a tick later finds nothing.
+
+var _hearts: Dictionary = {}     # Vector2i -> the node drawn there
+var _heart_root: Node3D = null
+
+func _spawn_heart(cell: Vector2i) -> void:
+	if _heart_root == null:
+		_heart_root = Node3D.new()
+		_heart_root.name = "Hearts"
+		add_child(_heart_root)
+	var heart: Node3D = HeartScene.instantiate()
+	heart.name = "Heart_%d_%d" % [cell.x, cell.y]
+	heart.position = cell_surface(cell) + Vector3(0.0, 0.8, 0.0)
+	_heart_root.add_child(heart)
+	_hearts[cell] = heart
+
+func heart_count() -> int:
+	return _hearts.size()
+
+# Take the heart within reach of `world_position`, if there is one. Returns true
+# exactly once per heart.
+func try_take_heart(world_position: Vector3) -> bool:
+	if _hearts.is_empty():
+		return false
+	var local: Vector3 = transform.affine_inverse() * world_position
+	for cell in _hearts.keys():
+		var heart: Node3D = _hearts[cell]
+		if not is_instance_valid(heart):
+			continue
+		if heart.position.distance_to(local) <= SimConfig.HEART_PICKUP_RADIUS:
+			_hearts.erase(cell)
+			heart.queue_free()
+			return true
+	return false
 
 func all_stones() -> Array:
 	var out: Array = _stones.values().duplicate()

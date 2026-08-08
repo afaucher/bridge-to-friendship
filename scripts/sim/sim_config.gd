@@ -80,6 +80,54 @@ const STONE_PUSH_SPEED := 6.0
 # Anything below this has left the world.
 const FALL_KILL_Y := -30.0
 
+# --- Health -------------------------------------------------------------------
+const MAX_HEALTH := 5
+
+# Invulnerability after any hit. Without it a single tumble through a pillar
+# field drains the whole bar before the player regains control -- they never made
+# a decision and lost everything. Close to mandatory once tumble and plinko
+# exist together.
+const HIT_GRACE := 0.75
+
+# --- Tumble -------------------------------------------------------------------
+# A PINWHEEL, NOT A SLIDE. A hard hit throws a chaotic bouncing body that KEEPS
+# its momentum: on a bridge full of holes the threat is displacement, not damage,
+# and a tumble that decelerates politely is not a threat at all.
+const TUMBLE_BOUNCE := 0.55        # how much speed survives an impact
+const TUMBLE_FRICTION := 1.2       # per second, while rolling on the ground
+const TUMBLE_MIN_SECONDS := 0.5    # you do not pop straight back up
+const TUMBLE_MAX_SECONDS := 5.0    # ...but you are never stuck rolling forever
+const TUMBLE_RECOVER_SPEED := 3.5  # must have slowed to this to stand up
+const TUMBLE_SPIN_RATE := 9.0      # radians/sec of MESH spin; the collider never tips
+
+# --- Ledges and rescue --------------------------------------------------------
+# The catch is AUTOMATIC (no input): it fires most often while the player is
+# mid-tumble with no control, so a prompt they could not answer would read as the
+# game cheating.
+#
+# The asymmetry these two numbers create IS the design: shoved along the deck and
+# you catch the lip and are rescuable; launched clear of it and you simply fall.
+# Whether your friends can save you is decided by how you got hit.
+const LEDGE_CATCH_REACH := 1.4     # how far below a lip you can still reach it
+const LEDGE_CATCH_MAX_SPEED := 16.0  # arriving faster than this and you miss
+
+# Both waiting-to-be-rescued states run a countdown and end in the drone.
+const LEDGE_HANG_SECONDS := 8.0
+const DOWNED_SECONDS := 15.0
+
+# Revive is by PROXIMITY, not by rope: M5 ships before M4, and a downed player
+# whose only rescue needed a mechanic that does not exist would be unrescuable.
+const REVIVE_RADIUS := 2.5
+const REVIVE_SECONDS := 1.5
+const REVIVE_HEALTH := 1
+
+# How long the drone takes to put a lost player back next to a teammate.
+const DRONE_RETURN_SECONDS := 3.0
+
+# --- Hearts -------------------------------------------------------------------
+const HEART_PICKUP_RADIUS := 1.2
+const HEART_HEAL := 1
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

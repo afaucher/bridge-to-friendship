@@ -122,7 +122,21 @@ moves later, and that moment is the roadmap's own stated riskiest unknown. M5's
 practice-partner support (already shipped) is the mitigation — tumble, ledges and
 the drone return can all be felt solo before the rope arrives.
 
-## M5 — Damage, tumble, ledge grab and return — **NEXT**
+## M5 — Damage, tumble, ledge grab and return — **DONE (2026-08-08)**
+
+Shipped: health with a grace window, TUMBLE as a bouncing pinwheel, the automatic
+ledge catch, DOWNED with proximity revive, the shared rescue countdown, the drone
+return, and hearts as exclusive pickups. One test (`test_rescue`) walks the whole
+failure-and-rescue loop.
+
+**A shove now tumbles its target.** A dash arrives at 56 m/s, which is not a
+nudge — so M3's shove is M5's first real damage-adjacent source, and the whole
+loop is playable solo with practice partners: shove a partner into a gap, watch
+them catch the lip, and mantle them out.
+
+The `mantle()` primitive ships unused. Nothing can pull a hanging player yet;
+that is precisely what M4 supplies, and it is the reason M5 went first.
+
 
 **Proves:** failure is a setback with a rescue window, not a wall.
 
@@ -155,9 +169,25 @@ pulled can. M4 then supplies the pull and nothing else.
 
 Exit: B5, B6, B7, B8.
 
-## M4 — Rope
+## M4 — Rope — **DEFERRED (2026-08-08)**
 
-**Proves:** the game is cooperative rather than parallel.
+**Deferred until there is a better solution for the rope**, by decision, not by
+oversight. The design in `rope.md` settles what the rope *does* — soft simulated
+shape, one authoritative force rule at the endpoints, and a yank that lifts
+nobody by itself — but not yet how to build a particle chain that feels good
+without being fragile. Building it half-convinced would be the expensive mistake.
+
+What that costs, named plainly: **the co-op premise is still unproven.** A1 and
+A3 — two strangers discovering the ramp solution, and the group laughing at an
+outcome nobody chose — are the exit criteria most of the milestone set does not
+address, and the rope is what was meant to address them. Everything downstream of
+here is content and pressure on a loop whose central verb is missing.
+
+The consolation is that M5 shipped the half that does not need it: a player can
+be shoved into a gap, catch the lip, hang, and be mantled out. `mantle()` exists
+and works; nothing calls it. M4 supplies the pull and nothing else.
+
+**Proves (when built):** the game is cooperative rather than parallel.
 
 A real soft simulated rope — a particle chain that drapes and swings — with grab
 targeting, player-to-player tie, and the yank. Full design in

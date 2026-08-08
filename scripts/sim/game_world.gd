@@ -80,6 +80,10 @@ var _last_input_tick: Dictionary = {}
 var _highest_queued: Dictionary = {}
 var _next_spawn_index: int = 0
 
+# peer -> seconds left before the drone puts them back. Both a lost player and a
+# player whose rescue countdown expired land here; there is one way back.
+var _returning: Dictionary = {}
+
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
 const PLAYERS_LAYER_BIT := 2
 
@@ -221,8 +225,126 @@ func _host_tick() -> void:
 		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
 		body.collision_mask = restore_mask
 
+	_process_rescue()
+	_process_hearts()
+
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
+
+# --- Rescue: one countdown, two states, one drone -----------------------------
+#
+# LEDGE_HANG and DOWNED are the same situation wearing different hats -- immobile,
+# no verbs, a countdown, a teammate who can end it early, and the drone if nobody
+# does. Handled together on purpose: two near-identical implementations would
+# drift apart, and every rule that applies to one applies to the other.
+func _process_rescue() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+
+		# Off the bottom of the world. Not a death -- a setback and a laugh.
+		if body.position.y < SimConfig.FALL_KILL_Y and not _returning.has(peer):
+			_begin_drone_return(peer)
+			continue
+
+		if body.state == PlayerBody.State.LEDGE_HANG:
+			if body.state_timer >= SimConfig.LEDGE_HANG_SECONDS:
+				body.release_ledge()
+		elif body.state == PlayerBody.State.DOWNED:
+			_tick_revive(peer, body)
+
+	_tick_drone_returns()
+
+# A downed player is revived by a teammate STANDING WITH THEM. Proximity rather
+# than rope, because M5 ships before M4 and a downed player whose only rescue
+# needed a mechanic that does not exist would be unrescuable.
+func _tick_revive(peer: int, body: Node) -> void:
+	var helper_present := false
+	for other_key in players.keys():
+		var other: int = int(other_key)
+		if other == peer:
+			continue
+		var helper: Node = players[other]
+		if helper.state == PlayerBody.State.DOWNED or helper.state == PlayerBody.State.LEDGE_HANG:
+			continue
+		if helper.position.distance_to(body.position) <= SimConfig.REVIVE_RADIUS:
+			helper_present = true
+			break
+
+	if helper_present:
+		body.revive_progress += SimConfig.TICK_DELTA
+		if body.revive_progress >= SimConfig.REVIVE_SECONDS:
+			body.revive()
+			return
+	else:
+		# Reset rather than pause: wandering off and back should not bank credit.
+		body.revive_progress = 0.0
+
+	if body.state_timer >= SimConfig.DOWNED_SECONDS:
+		_begin_drone_return(peer)
+
+func _begin_drone_return(peer: int) -> void:
+	if _returning.has(peer):
+		return
+	_returning[peer] = SimConfig.DRONE_RETURN_SECONDS
+	var body: Node = players.get(peer)
+	if body != null:
+		body.visible = false
+		body.velocity = Vector3.ZERO
+
+func _tick_drone_returns() -> void:
+	for peer_key in _returning.keys():
+		var peer: int = int(peer_key)
+		_returning[peer] = float(_returning[peer]) - SimConfig.TICK_DELTA
+		if float(_returning[peer]) > 0.0:
+			continue
+		_returning.erase(peer)
+		var body: Node = players.get(peer)
+		if body == null:
+			continue
+		body.position = _drone_drop_point(peer)
+		body.velocity = Vector3.ZERO
+		body.state = PlayerBody.State.WALK
+		body.state_timer = 0.0
+		body.grounded = false
+		body.health = maxi(body.health, SimConfig.REVIVE_HEALTH)
+		body.invulnerable = SimConfig.HIT_GRACE
+		body.visible = true
+
+# Dropped NEXT TO A TEAMMATE, which is the whole point -- being returned should
+# put you back in the game rather than alone somewhere behind it.
+func _drone_drop_point(peer: int) -> Vector3:
+	var best: Node = null
+	for other_key in players.keys():
+		var other: int = int(other_key)
+		if other == peer or _returning.has(other):
+			continue
+		var candidate: Node = players[other]
+		# The one furthest up the bridge, so a return never drags the party back.
+		if best == null or candidate.position.z < best.position.z:
+			best = candidate
+	if best != null:
+		# Beside them, never on top: coincident bodies depenetrate through the
+		# floor (see CLAUDE.md).
+		return best.position + Vector3(1.6, 1.0, 0.0)
+	if grid != null:
+		return grid.cell_surface_world(grid.entry_spawn_cell(0)) + Vector3(0.0, 1.2, 0.0)
+	return spawn_point(0)
+
+# --- Hearts -------------------------------------------------------------------
+#
+# First come, first served -- a thing to communicate about rather than a thing to
+# collect. Exclusivity is by construction: the first body found within reach
+# takes it and the heart is gone.
+func _process_hearts() -> void:
+	if grid == null:
+		return
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body.is_awaiting_rescue():
+			continue
+		if grid.try_take_heart(body.position) and body.heal(SimConfig.HEART_HEAL):
+			pass
 
 # Peers ordered so that anything being stood on is stepped before whoever is
 # standing on it. Otherwise a rider inherits its carrier's PREVIOUS motion and

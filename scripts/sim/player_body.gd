@@ -66,6 +66,18 @@ var shove_cooldown: float = 0.0
 var carrier: Node = null          # what we are standing on, if it is a sim body
 var motion_delta: Vector3 = Vector3.ZERO   # how far we moved in our last step
 
+# --- Health and rescue --------------------------------------------------------
+
+var health: int = SimConfig.MAX_HEALTH
+var invulnerable: float = 0.0     # counts down after any hit
+
+# While hanging: the compass direction from this body toward the deck it caught,
+# which is the way a mantle has to go.
+var hang_dir: int = GridConfig.DIR_NORTH
+
+# How long a teammate has been stood next to this body while it is DOWNED.
+var revive_progress: float = 0.0
+
 const HALF_HEIGHT := 0.9          # matches the CylinderShape3D in player.tscn
 const FOOT_PROBE := 0.25          # how far below the feet to look for a carrier
 
@@ -106,11 +118,19 @@ func step(move: Vector2, actions: int) -> void:
 	state_timer += SimConfig.TICK_DELTA
 	shove_cooldown = maxf(0.0, shove_cooldown - SimConfig.TICK_DELTA)
 
+	invulnerable = maxf(0.0, invulnerable - SimConfig.TICK_DELTA)
+
 	match state:
 		State.WALK:
 			_step_walk(move, actions)
 		State.SHOVE:
 			_step_shove()
+		State.TUMBLE:
+			_step_tumble()
+		State.LEDGE_HANG:
+			_step_hang()
+		State.DOWNED:
+			pass          # immobile; the world runs the countdown and the rescue
 		_:
 			_step_inert()
 
@@ -223,15 +243,200 @@ func end_shove() -> void:
 # Momentum arriving from someone else's dash. Called by the world, which owns
 # the transfer rules.
 func receive_shove(dir: int) -> void:
+	if state == State.DOWNED or state == State.LEDGE_HANG:
+		return
 	var axis: Vector3 = GridConfig.DIR_VECTORS[dir]
-	velocity.x = axis.x * SimConfig.SHOVE_TRANSFER_SPEED
-	velocity.z = axis.z * SimConfig.SHOVE_TRANSFER_SPEED
-	velocity.y = maxf(velocity.y, SimConfig.SHOVE_TRANSFER_LIFT)
+	# A dash arrives at 56 m/s. That is not a nudge -- it TUMBLES you, which is
+	# where the comedy lives: the shoved player loses control and goes wherever
+	# the bridge sends them.
+	begin_tumble(Vector3(
+		axis.x * SimConfig.SHOVE_TRANSFER_SPEED,
+		SimConfig.SHOVE_TRANSFER_LIFT,
+		axis.z * SimConfig.SHOVE_TRANSFER_SPEED))
+
+# --- Tumble -------------------------------------------------------------------
+
+func _step_tumble() -> void:
+	var dt := SimConfig.TICK_DELTA
+	velocity.y -= SimConfig.GRAVITY * dt
+
+	# Ground friction only. Airborne, the body keeps everything it was given --
+	# that is what makes a tumble carry you somewhere you did not want to go.
+	if grounded:
+		var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+		horizontal = horizontal.move_toward(Vector3.ZERO, SimConfig.TUMBLE_FRICTION * dt * horizontal.length())
+		velocity.x = horizontal.x
+		velocity.z = horizontal.z
+
+	move_and_slide()
+	grounded = is_on_floor()
+
+	# BOUNCE off whatever it hits, rather than stopping dead against it. A
+	# tumbling player ricocheting off a parapet and back into the pillar field is
+	# the whole point; sliding to a halt at the first wall is not a threat.
+	for i in get_slide_collision_count():
+		var normal := get_slide_collision(i).get_normal()
+		if velocity.dot(normal) < 0.0:
+			velocity = velocity.bounce(normal) * SimConfig.TUMBLE_BOUNCE
+
+	_spin_mesh()
+
+	# Falling past a lip is the rescue window: catching it is automatic.
+	if not grounded and _try_catch_ledge():
+		return
+
+	var slow_enough: bool = velocity.length() < SimConfig.TUMBLE_RECOVER_SPEED
+	if state_timer >= SimConfig.TUMBLE_MAX_SECONDS \
+			or (state_timer >= SimConfig.TUMBLE_MIN_SECONDS and grounded and slow_enough):
+		_end_tumble()
+
+func begin_tumble(launch: Vector3) -> void:
+	if state == State.DOWNED or state == State.LEDGE_HANG:
+		return
+	state = State.TUMBLE
+	state_timer = 0.0
+	velocity = launch
 	grounded = false
-	# A shoved player is launched, not driving. End any dash of their own so two
-	# dashes cannot compound into something unrecoverable.
-	if state == State.SHOVE:
-		end_shove()
+
+func _end_tumble() -> void:
+	state = State.WALK
+	state_timer = 0.0
+	velocity.x = 0.0
+	velocity.z = 0.0
+	_reset_mesh()
+
+# The MESH pinwheels; the collider never tips. A rolling player has to stay
+# something a friend can stand on -- see design_ideas/3d_conventions.md.
+func _spin_mesh() -> void:
+	var mesh := get_node_or_null("Mesh") as Node3D
+	if mesh == null:
+		return
+	var speed: float = Vector2(velocity.x, velocity.z).length()
+	# Spin about the axis perpendicular to travel, so the body rolls the way it
+	# is going rather than spinning on the spot.
+	var axis := Vector3(velocity.z, 0.0, -velocity.x)
+	if axis.length_squared() < 0.001:
+		return
+	mesh.rotate(axis.normalized(), SimConfig.TUMBLE_SPIN_RATE * SimConfig.TICK_DELTA * minf(speed / 10.0, 1.5))
+
+func _reset_mesh() -> void:
+	var mesh := get_node_or_null("Mesh") as Node3D
+	if mesh != null:
+		mesh.rotation = Vector3.ZERO
+
+# --- Ledges -------------------------------------------------------------------
+
+# Catch a lip you are falling past. AUTOMATIC, no input: this fires most often
+# mid-tumble, when the player has no control to answer a prompt with.
+#
+# Grid-based rather than a geometric probe, because the bridge IS a grid: "am I
+# over a hole with solid deck beside me at about my height" is exactly the
+# question, and it is a pure function of position, so a replay re-derives it.
+func _try_catch_ledge() -> bool:
+	if world == null or world.grid == null:
+		return false
+	if velocity.y > 0.0 or velocity.length() > SimConfig.LEDGE_CATCH_MAX_SPEED:
+		return false
+
+	var grid: Node = world.grid
+	var cell: Vector2i = grid.cell_of_world(position)
+	if grid.is_solid(cell):
+		return false          # still over deck; nothing to catch
+
+	for dir in 4:
+		var neighbour: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if not grid.is_solid(neighbour):
+			continue
+		var lip: Vector3 = grid.cell_surface_world(neighbour)
+		# Level with the lip, or just below it. Far below and you are past it --
+		# which is exactly the "launched clear of the deck" case that is meant to
+		# have no rescue.
+		if position.y > lip.y or lip.y - position.y > SimConfig.LEDGE_CATCH_REACH:
+			continue
+		_begin_hang(lip, dir)
+		return true
+	return false
+
+func _begin_hang(lip: Vector3, dir: int) -> void:
+	state = State.LEDGE_HANG
+	state_timer = 0.0
+	velocity = Vector3.ZERO
+	grounded = false
+	hang_dir = dir
+	_reset_mesh()
+	# Hanging just off the edge on the hole side, head about level with the deck.
+	var outward: Vector3 = GridConfig.DIR_VECTORS[dir]
+	position = lip - outward * (GridConfig.CELL_SIZE * 0.5 + 0.35) - Vector3(0.0, HALF_HEIGHT, 0.0)
+
+func _step_hang() -> void:
+	# Nothing to simulate: a hanging player holds still. The world runs the
+	# countdown, because letting go and being drone-returned are its business.
+	velocity = Vector3.ZERO
+
+# Climb onto the deck being hung from. A hanging player CANNOT call this on their
+# own -- that is the whole point of the state. It exists for whatever is pulling
+# them: the rope, in M4.
+func mantle() -> bool:
+	if state != State.LEDGE_HANG or world == null or world.grid == null:
+		return false
+	var grid: Node = world.grid
+	var cell: Vector2i = grid.cell_of_world(position)
+	var target: Vector2i = cell + GridConfig.DIR_CELLS[hang_dir]
+	if not grid.is_solid(target):
+		return false
+	position = grid.cell_surface_world(target) + Vector3(0.0, HALF_HEIGHT + 0.05, 0.0)
+	state = State.WALK
+	state_timer = 0.0
+	velocity = Vector3.ZERO
+	grounded = true
+	return true
+
+# Let go, and fall. What happens when the hang timer runs out.
+func release_ledge() -> void:
+	if state != State.LEDGE_HANG:
+		return
+	state = State.TUMBLE
+	state_timer = 0.0
+	grounded = false
+
+# --- Damage -------------------------------------------------------------------
+
+# Returns true if the hit landed. The grace window is the reason it might not:
+# without it one tumble through a pillar field costs the whole bar.
+func take_damage(amount: int) -> bool:
+	if amount <= 0 or invulnerable > 0.0:
+		return false
+	if state == State.DOWNED:
+		return false          # already out; nothing left to take
+	health = maxi(0, health - amount)
+	invulnerable = SimConfig.HIT_GRACE
+	if health == 0:
+		begin_downed()
+	return true
+
+func heal(amount: int) -> bool:
+	if health >= SimConfig.MAX_HEALTH or state == State.DOWNED:
+		return false
+	health = mini(SimConfig.MAX_HEALTH, health + amount)
+	return true
+
+func begin_downed() -> void:
+	state = State.DOWNED
+	state_timer = 0.0
+	revive_progress = 0.0
+	health = 0
+	velocity = Vector3.ZERO
+	_reset_mesh()
+
+func revive() -> void:
+	state = State.WALK
+	state_timer = 0.0
+	revive_progress = 0.0
+	health = SimConfig.REVIVE_HEALTH
+	invulnerable = SimConfig.HIT_GRACE
+
+func is_awaiting_rescue() -> bool:
+	return state == State.DOWNED or state == State.LEDGE_HANG
 
 func _step_inert() -> void:
 	if not grounded:
@@ -284,7 +489,8 @@ func _find_carrier() -> Node:
 # happens to sit in someone's scene tree.
 
 func capture_state() -> Array:
-	return [position, velocity, state, state_timer, grounded, shove_dir, shove_cooldown, facing]
+	return [position, velocity, state, state_timer, grounded, shove_dir, shove_cooldown,
+		facing, health, invulnerable, hang_dir]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -295,6 +501,9 @@ func apply_state(s: Array) -> void:
 	shove_dir = int(s[5])
 	shove_cooldown = float(s[6])
 	facing = int(s[7])
+	health = int(s[8])
+	invulnerable = float(s[9])
+	hang_dir = int(s[10])
 
 # There is no per-player camera. The game has ONE camera, owned by the world,
 # fixed-yaw and locked to the bridge's centre line -- see
