@@ -1,0 +1,263 @@
+# CLAUDE.md
+
+Operational guide for working on this repo with Claude Code. This is the
+*how-to-work-here* companion to the design docs (`design_ideas/`) and the
+milestone plans (`implementation_plans/`). See `README.md` for build/run.
+
+Godot 4.4.1, GDScript, 3D, headless test workflow. Multiplayer is host-
+authoritative over two interchangeable transports: Steam (GodotSteam) for
+release, ENet for development and for every test.
+
+**Provenance note.** The engine-level traps below marked *(inherited)* were paid
+for in a sibling Godot project and are reproduced here because they are
+properties of Godot and PowerShell, not of that game — they will bite here on
+the day this project grows the same feature. Entries marked with a date were
+observed *in this repo*. Do not silently promote an inherited note to a local
+one; if you confirm one here, add the date and what you saw.
+
+## Running tests
+
+Tests live in `scripts/tests/*.gd`, one file per test, and are run by name:
+
+```bash
+# Via the runner (writes logs to test_logs/, prints a pass/fail line):
+powershell -NoProfile -ExecutionPolicy Bypass -File ./test_runner.ps1 -TestName test_smoke
+
+# Direct (simplest to capture output for grepping):
+./Godot_v4.4.1-stable_win64.exe --path . --headless --fixed-fps 60 --run-test test_smoke
+```
+
+- **Pass marker:** `>>> [TEST PASSED] <name> <<<`. Failures print
+  `ASSERT FAILED` lines to stderr and `[TEST FAILED]`. The runner requires
+  **both** exit code 0 and the marker — a test that crashes after printing its
+  marker still exits non-zero, and a test that exits 0 without asserting never
+  printed one.
+- **Pass `--fixed-fps 60` on direct runs** (the runner already does). Without
+  it, headless Godot runs the loop in REAL TIME — it *sleeps* to hold 60Hz — so
+  a frame-counted test takes its simulated duration in wall clock. `--fixed-fps`
+  uses the same 1/60 delta and identical frame counts (fully deterministic) but
+  stops sleeping.
+- **Reading output:** `test_runner.ps1` writes the real Godot output to
+  `test_logs/<TestName>.log` and `.err.log` — read those. Piping the runner's
+  stdout is lossy; the real message for a *parse* error appears only in the
+  `.err.log` and never in the summary.
+- **Writing a test:** subclass `res://scripts/test_support/test_case.gd`,
+  implement `setup(main)`, assert with `check/eq/near`, call `finish()`. Use
+  `_physics_process` for anything frame-based — the base class uses `_process`
+  for its deadline, so overriding that disables the timeout.
+- Anything under `scripts/test_support/` is a helper, not a test: the gate globs
+  `scripts/tests/*.gd` only. Put shared rigs there so they do not run as tests.
+
+`build.ps1` / `build.sh` run every test in parallel (capped) and abort the
+export on any failure.
+
+## Multiplayer
+
+The whole networking surface is `scripts/net/`: `SteamManager` (lobbies, the
+Steamworks API, nothing else) and `NetworkManager` (sessions, peers, the two
+transports). **Gameplay code must never call `Steam.*` directly** — the gate has
+no Steam client, so anything that reaches past NetworkManager becomes untestable
+the moment it is written.
+
+- **`get_unique_id() == 1` does NOT mean "I am the host."** Godot's
+  MultiplayerAPI is never peerless: with no session it holds an
+  `OfflineMultiplayerPeer` whose unique id is *also* 1. So a game that never
+  connected to anything reports exactly what a host reports. Ask
+  `NetworkManager.local_id()` (returns 0 when there is no session) or
+  `NetworkManager.is_host`. Cost 2026-08-08: one wrong assertion in
+  `test_network_session`, caught immediately because the test existed.
+- **The two ends of a connection do not become ready in the same frame.**
+  Observed 2026-08-08 in `test_enet_loopback`: the client's
+  `connected_to_server` fires a frame or two BEFORE the host's `peer_connected`,
+  because each MultiplayerAPI reports what its own poll has seen. An RPC
+  broadcast on the client's signal alone goes to an *empty peer list* — the call
+  succeeds, nothing receives it, and the symptom three seconds later is a
+  silently lost packet rather than an error at the send. **Wait for both sides.**
+  This generalizes past tests: any "on connect, immediately send X" is the same
+  bug in gameplay code.
+- **Two peers CAN share one process,** which is what makes the transport
+  testable in the gate: a SceneTree holds several MultiplayerAPI instances, each
+  rooted at a different node via `SceneTree.set_multiplayer()`. RPCs resolve by
+  node path *relative to that root*, so `Pinger` under `NetHost` and `Pinger`
+  under `NetClient` are the same address and the call crosses the socket. See
+  `test_enet_loopback.gd`; copy that shape for any new replication test.
+- **Test replication over ENet, not Steam.** Same MultiplayerAPI, same RPC
+  routing, same peer-id semantics, different socket. A CI box has no Steam
+  client, so a Steam-only mechanism has no gate at all.
+- **`@rpc` mode is a security boundary, not a hint.** `"authority"` makes the
+  API drop the packet unless it came from that node's authority peer;
+  `"any_peer"` accepts it from anyone. Player state uses the former precisely so
+  a client cannot move another client's avatar.
+
+## Headless gotchas
+
+- **A fresh clone or `git worktree` is NOT a runnable checkout — import first.**
+  *(inherited)* `.godot/` is not tracked, so a new checkout has no import cache
+  and no global class cache; every run dies in a parse-error cascade *before
+  reaching the test*, and the process can stay resident afterwards so a task
+  list shows a healthy Godot. `import_check.ps1`/`.sh` now handle this
+  automatically (they run `--headless --import` when `.godot/` is absent), but
+  recognise the symptom: **several logs of exactly the same size are several
+  runs that produced no run-specific output.**
+- **Do NOT trust `--headless --check-only --script <path>` for validation.**
+  *(inherited)* It reports *false* parse errors on autoload identifiers —
+  `DebugSettings`, `NetworkManager`, `SteamManager` are used all over this
+  codebase, so a syntax gate built on it fails on correct code. Both build
+  scripts deliberately omit that step; scripts are validated by the tests that
+  load them, and `test_smoke` is the one that fails first and cheapest.
+- **Godot 3D physics is not bit-deterministic run to run** *(inherited)*
+  (contact-solver / float ordering), even with a fixed delta and a seeded RNG.
+  Assert *robustly* — margins and tolerances, as `test_player_movement` does
+  with `near()` — never on an exact position or an exact frame.
+- **But a margin-shaped failure is NOT automatically jitter.** *(inherited)*
+  Re-run the one test solo and compare the NUMBER. Identical → deterministic,
+  debug it. Different → then it is jitter. That is one cheap run, versus tuning
+  a budget that was never the cause.
+- **Tests seed the global RNG** (`seed()` in `main.gd`'s `_run_test`). `randf`/
+  `randi` are otherwise entropy-seeded per launch, which makes any
+  outcome-dependent test flaky run to run — and a flaky gate gets ignored, which
+  costs the one real regression it exists to catch. Do not remove the seed.
+- **GDScript's `%` has no `%g`, and an unsupported specifier does not raise — it
+  returns THE FORMAT STRING.** *(inherited)* One line to stderr, then
+  `"%g" % [1.5]` evaluates to the literal `"%g"`. Supported: `%s %d %f %x %c %%`
+  with `-`/width/`.precision`/`*` modifiers. **A generator's exit code and file
+  size prove nothing — grep its output for a value you can predict.**
+- **`FileAccess.store_line` buffers** *(inherited)* — a file being written may
+  read back as 0 lines until it is flushed or closed.
+- **Kill stragglers** if a run hangs:
+  `taskkill //F //IM Godot_v4.4.1-stable_win64.exe`.
+- **PowerShell capture traps, both of which silently corrupt a long run.**
+  *(inherited)* `Select-Object -First N` TERMINATES the upstream pipeline, which
+  kills the Godot process mid-run — a truncated run then looks like a crash or a
+  clean finish depending on where it stopped. And `Select-String` is
+  case-insensitive by default, so a pattern like `RETURNED` matches
+  `returned_empty=0` in every routine status line. Separately, `*>` does NOT
+  capture a native executable's stdout the way it captures a `.ps1`'s streams:
+  the file is created and stays empty. Pipe to `Select-String` (no `-First`, add
+  `-CaseSensitive`) rather than redirecting.
+- Long-running commands get auto-backgrounded by the harness; wait for the
+  completion notification, then read the log file.
+- **A DURABLE log is guilty until proven fresh — check its mtime before reading
+  it as this run's result.** *(inherited)* Files under `test_logs/` persist
+  between runs. Reading a stale one produced a wrong "the gate is red" call and
+  a whole A/B chasing a failure that did not exist. **Identical timings across
+  two runs means you are reading one run twice.** Prefer the invocation's own
+  captured stdout.
+
+## GDScript traps
+
+- **`:=` cannot infer a type from a Variant expression.** Observed 2026-08-08 in
+  `debug_settings.gd`: `var env_name := "BTF_" + key.to_upper()`, where `key`
+  came from iterating a Dictionary, is a *parse* error — "Cannot infer the type
+  of ... because the value doesn't have a set type". Write the type out:
+  `var env_name: String = "BTF_" + str(key).to_upper()`. Same for
+  `var x := arr.filter(...)` → `var x: Array = arr.filter(...)`.
+- **A parse error in one script fails EVERY script that depends on it,** and the
+  suite then reports damage nowhere near the cause. The above broke
+  `test_smoke` and `test_debug_settings`, which name-drop `DebugSettings` and
+  otherwise had nothing to do with it. **After any multi-site or mechanical
+  edit, run ONE affected test directly and read its `.err.log`** before spending
+  ten minutes on a full gate — a compile failure surfaces there in seconds.
+- **A missing `Dictionary[key]` access aborts the rest of that function for the
+  frame** *(inherited)* — it raises a runtime error rather than halting the
+  engine. In a hot path like `_physics_process`, one missing field silently
+  kills the whole per-frame update with no crash. Use `d.get("field", default)`
+  for anything not guaranteed to be present.
+- **Adding a `preload` const can create a CLASS CYCLE that HANGS the run, not
+  fails it.** *(inherited)* A bare `class_name` reference resolves lazily; a
+  `const X = preload(...)` forces the script to resolve earlier and can close a
+  loop. The errors read `Parse Error: Could not resolve class "..."` and the run
+  wedges rather than reporting a failure. **If a test that passed a minute ago
+  now hangs, suspect a newly-added preload before suspecting the game.** The fix
+  is usually structural — move the logic onto the class that already imports the
+  other — rather than a forward-declare dodge.
+- **A reject-sampling `while` is an infinite loop waiting for a degenerate
+  input.** *(inherited)* `while j == i: j = randi() % n` never terminates when
+  `n == 1`, and it burns CPU *inside a single physics frame*, so the game stops
+  advancing while the process looks perfectly busy. Prefer an offset pick
+  (`j = (i + 1 + randi() % (n - 1)) % n`) and guard `n < 2` explicitly.
+
+## Architecture orientation (pointers, not a re-doc)
+
+- **`scripts/main.gd` is the root of everything running.** It owns the menu, the
+  spawned avatars, and the two headless entry points (`--run-test`,
+  `--run-sim`). The headless check is the FIRST thing `_ready()` does, before
+  any menu or network wiring — a test run must not touch Steam.
+- **Spawning is host-decided, one code path.** `_spawn_player` is an
+  `@rpc("authority", "call_local")`, so the host runs the same function it tells
+  clients to run rather than having a host branch and a client branch that can
+  disagree. A newcomer is caught up on existing avatars *before* being announced
+  to everyone.
+- **Player movement is client-authoritative** (each avatar's authority is its
+  own peer; remote copies interpolate toward a broadcast state). Fine for co-op,
+  wrong for competitive. The swap — clients send input, host simulates all
+  bodies — is deliberately confined to `player.gd`'s `_physics_process`.
+- **Debug knobs live in the `DebugSettings` autoload** as a registry (`OPTIONS`
+  dict). Read with `DebugSettings.get_choice("key")` / `is_on("key")`; add one
+  by appending a single `OPTIONS` entry. Every knob is also settable from the
+  environment as `BTF_<KEY>=<index or name>`, so a headless run can flip one
+  without any UI.
+
+## Measuring a change
+
+These are the expensive lessons from a sibling project, kept because they are
+about *method*, not about that game.
+
+- **MEASURE THE STAGE YOU CHANGED, not the end of the funnel.** A change built
+  to raise stage-2 throughput, judged on the stage-5 outcome, reads as null: a
+  funnel's end sums every failure mode, so a real gain at one stage is invisible
+  while a later stage still fails. Corollary: with an event that occurs 0–2
+  times per run, three samples cannot distinguish anything.
+- **"Attempted" is not "delivered," including in instrumentation you just
+  wrote.** A send function that returns a sequence number whether or not anyone
+  was listening produced a "12/12 landed" counter that was measuring sends. The
+  honest count has to be incremented on the RECEIVING side, at the line that
+  consumes the message. (This is exactly the shape of the empty-peer-list RPC
+  bug above.)
+- **VALIDATE AN INSTRUMENT AGAINST A CASE WHERE IT MUST REPORT FAILURE before
+  trusting its output.** Probes that could only ever return 0, and probes that
+  sampled state after it had already been released, both produced confident
+  *wrong* eliminations. Knowing this rule does not prevent repeating it — the
+  check has to be mechanical: feed the instrument a known-bad case and confirm
+  it says so.
+- **The absence of a gated log is NOT the absence of the event.** A `grep -c`
+  returning 0 usually means the print sits behind a `DebugSettings` toggle that
+  is off. Cross-subsystem disagreement is the reliable signal; a silent log is
+  not evidence.
+- **Build the smallest rig that reproduces the mechanism before instrumenting
+  the whole game.** A two-body question chased through full-scale runs for six
+  turns was answered in 1.5 seconds by a purpose-built two-body harness. The
+  full game is where RATES are measured; it is a terrible place to debug a
+  MECHANISM.
+- **A max/peak answers "did it ever," never "does it usually." When the question
+  is whether a behaviour is RUNNING, measure DUTY CYCLE.** One transient frame
+  sets a max, which once produced a confident conclusion that was the exact
+  opposite of the truth. And two maxima are only comparable if they were sampled
+  over the same frames — state the window when you record one.
+- **`git log --grep` BEFORE proposing a change to load-bearing behaviour.**
+  Behaviour that looks wrong in one context is often deliberate in another, and
+  the commit message is where that reasoning lives.
+- **Prefer a DIRECT COUNT at the line that does the thing.** Counting where the
+  event happens cannot be argued with; eliminating candidates by reading can be,
+  and often wrongly.
+
+## Conventions
+
+- Commit messages use a `feat:`/`fix:` prefix.
+- Design decisions get a short doc in `design_ideas/`; milestones get a plan in
+  `implementation_plans/`. Prefer adding to those over inline essays.
+- **Temporary files go in `tmp/`** (gitignored). Any throwaway output — a dump,
+  a scratch CSV, a debug capture, a one-off script's result — writes under
+  `tmp/` (`res://tmp/...` from GDScript; call
+  `DirAccess.make_dir_recursive_absolute("res://tmp")` first, it is idempotent)
+  so a run never dirties the working tree. Do NOT write scratch files to the
+  repo root. Test logs are the named exception and go to `test_logs/` (also
+  gitignored).
+- **Every test binds its own port.** The gate runs tests as PARALLEL processes
+  on one machine, so two tests sharing a port is a race that fails whichever
+  loses, intermittently, and reads as a networking bug. `test_enet_loopback`
+  uses 28777 and `test_network_session` 28778; pick a fresh one and note it here
+  as they are added.
+- **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
+  cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no
+  game state can gate. *(inherited — diagnosing its absence cost hours.)*

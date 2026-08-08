@@ -1,0 +1,83 @@
+[gd_scene load_steps=7 format=3 uid="uid://btfmain1"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMat_1")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+
+[sub_resource type="BoxMesh" id="GroundMesh_1"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxShape3D" id="GroundShape_1"]
+size = Vector3(60, 1, 60)
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 12, 0)
+shadow_enabled = true
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Ground" type="StaticBody3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="World/Ground"]
+mesh = SubResource("GroundMesh_1")
+
+[node name="Shape" type="CollisionShape3D" parent="World/Ground"]
+shape = SubResource("GroundShape_1")
+
+[node name="Players" type="Node3D" parent="."]
+
+[node name="SpectatorCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 8, 14)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Menu" type="VBoxContainer" parent="CanvasLayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -140.0
+offset_top = -90.0
+offset_right = 140.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="Title" type="Label" parent="CanvasLayer/Menu"]
+layout_mode = 2
+text = "BRIDGE TO FRIENDSHIP"
+horizontal_alignment = 1
+
+[node name="HostButton" type="Button" parent="CanvasLayer/Menu"]
+layout_mode = 2
+text = "HOST (STEAM LOBBY)"
+
+[node name="JoinButton" type="Button" parent="CanvasLayer/Menu"]
+layout_mode = 2
+text = "JOIN (STEAM LOBBY)"
+
+[node name="LocalButton" type="Button" parent="CanvasLayer/Menu"]
+layout_mode = 2
+text = "SOLO / LOCAL"
+
+[node name="StatusLabel" type="Label" parent="CanvasLayer/Menu"]
+layout_mode = 2
+text = "Not connected."
+horizontal_alignment = 1
