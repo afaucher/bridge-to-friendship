@@ -87,16 +87,26 @@ special is not carrying any other.
 
 | special | what it is |
 |---|---|
-| shotgun | ranged shove, several uses |
+| shotgun | ranged shove, several uses; **kills** what is destructible |
+| rifle | precise and long — a shove aimed at one thing 30 m away |
 | sword | melee, arcs, hits more than one thing |
 | thrown bomb | area knockback, arrives late |
-| anchoring shield | plant it; blocks or absorbs |
+| anchoring shield | plant it; immovable while planted and doing nothing else |
 | **legs** | **jump one full block high, a few times** |
+| transfusion | give a teammate **your own** hit points |
 
-The first four are **committed actions aimed at something** — press, and the
-world resolves what happened, exactly like a shove. Legs are not: they modify
-ordinary movement. That difference is small in design and large in engineering;
-see below and `implementation_plans/roadmap.md` M12.
+Which hazard each one answers, and why the knockback reducer was cut, is in
+`hazards.md`. Two properties of the set matter here:
+
+**A special is never the only answer.** Every obstacle stays solvable without
+one; a special makes the answer *cleaner*, never *possible*. Drop-in is the
+reason — specials are contested and unevenly distributed, so anything that
+*requires* one strands the players who did not get it.
+
+**Most are committed actions aimed at something** — press, and the world resolves
+what happened, exactly like a shove. Legs are the exception: they modify ordinary
+movement, which is small in design and large in engineering. See below, and
+`implementation_plans/roadmap.md` M12.
 
 #### Legs, and the jump that was removed
 

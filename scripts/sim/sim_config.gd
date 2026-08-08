@@ -160,7 +160,19 @@ const PLINKO_CONE_DEG := 70.0
 # 6 m/s walk. Balls have to be outrunnable: the threat is that one is still
 # coming while you are busy, not that it is faster than you.
 const PLINKO_BOUNCE := 0.5
-const PLINKO_ROLL_DRAG := 0.35
+
+# Below this approach speed a contact is a ROLL, not a bounce. Resting on the
+# deck still reports a floor collision every tick, and treating those as bounces
+# multiplies the tangential roll away in a fraction of a second -- which presents
+# as "the friction is far too high" while the friction is doing nothing wrong.
+const PLINKO_BOUNCE_MIN_SPEED := 1.5
+
+# Proportional drag, which sets the ROLLING speed: gravity along the bridge's
+# 4-degree pitch is ~1.67 m/s^2, so terminal roll is about 1.67 / drag. At 0.25
+# that is ~6.7 m/s -- a shade above a player's 6 m/s walk, so a ball on your tail
+# cannot simply be out-walked in a straight line and has to be dodged sideways,
+# which is the play the design asks for.
+const PLINKO_ROLL_DRAG := 0.25
 
 const PLINKO_FIRE_INTERVAL := 2.5
 const PLINKO_BALL_LIFETIME := 25.0

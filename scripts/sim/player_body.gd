@@ -275,6 +275,14 @@ func _step_tumble() -> void:
 	# BOUNCE off whatever it hits, rather than stopping dead against it. A
 	# tumbling player ricocheting off a parapet and back into the pillar field is
 	# the whole point; sliding to a halt at the first wall is not a threat.
+	#
+	# THIS ALSO SCRUBS SPEED EVERY TICK WHILE GROUNDED, and that is DELIBERATE --
+	# do not "fix" it. A resting body reports a floor contact each tick, so this
+	# applies the restitution repeatedly and a tumble settles quickly once it is
+	# down. The plinko ball had the identical pattern and it was a bug there,
+	# because a ball has to keep rolling; here it is the behaviour, and it was
+	# kept after playtest (2026-08-08) in preference to the "correct" version.
+	# Consistency with the ball is not worth a tumble that feels worse.
 	for i in get_slide_collision_count():
 		var normal := get_slide_collision(i).get_normal()
 		if velocity.dot(normal) < 0.0:

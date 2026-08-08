@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://btfball1"]
+[gd_scene load_steps=6 format=3 uid="uid://btfball1"]
 
 [ext_resource type="Script" path="res://scripts/sim/plinko_ball.gd" id="1_ball"]
 
@@ -18,11 +18,19 @@ albedo_color = Color(0.16, 0.17, 0.22, 1)
 metallic = 0.6
 roughness = 0.35
 
-[node name="PlinkoBall" type="CharacterBody3D"]
+; Enough bounce to ricochet off a pillar, enough friction to ROLL rather than
+; skid -- a ball that slides is a ball that stops.
+[sub_resource type="PhysicsMaterial" id="Phys_1"]
+friction = 0.45
+bounce = 0.5
+
+[node name="PlinkoBall" type="RigidBody3D"]
 ; Layer 8 = balls. Mask 7 = world | players | stones, so a ball bounces off the
 ; deck, the parapets, the pillars AND the players.
 collision_layer = 8
 collision_mask = 7
+mass = 2.0
+physics_material_override = SubResource("Phys_1")
 script = ExtResource("1_ball")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

@@ -137,6 +137,26 @@ the moment it is written.
   reliably produce a floor collision in `move_and_slide`, and everything
   downstream flickers with it — the grounded flag, and therefore the carrier
   probe. `SimConfig.FLOOR_STICK` keeps a small downward push on while grounded.
+- **`CharacterBody3D` is the wrong body for anything that rolls.** Observed
+  2026-08-08 on plinko balls, and it took three wrong fixes to find. Its default
+  GROUNDED motion mode brings a character's floor logic with it, including
+  `floor_stop_on_slope`, whose entire job is to stop a CHARACTER sliding down a
+  ramp — so balls landed on a 4-degree deck and sat there. `MOTION_MODE_FLOATING`
+  removes that but not the deeper problem: a sphere micro-bounces on a shallow
+  slope, so it is airborne on most ticks and `move_and_slide` never gets to
+  convert gravity into roll. The symptom throughout was "the friction is far too
+  high", and the friction was innocent every time. **A ball is a `RigidBody3D`** —
+  it is the one object here whose behaviour is physics rather than a designed
+  rule, and it is host-authoritative and never predicted, so the determinism
+  objection to rigid bodies does not apply to it.
+- **A resting body reports a collision EVERY tick, so "bounce on contact" scrubs
+  velocity sixty times a second.** `velocity.dot(normal) < 0` is true by a hair
+  once a body is settled, and multiplying the whole velocity by the restitution
+  each tick is `0.5^60`. Decide a bounce from the velocity captured BEFORE
+  `move_and_slide` (afterwards the into-surface component has already been
+  removed, so it tells you nothing) and only above a real impact speed.
+  **Deliberately NOT fixed for `TUMBLE`** — the per-tick scrub is what makes a
+  tumble settle, and it was kept after playtest. See the note in `_step_tumble`.
 - **Check the collision MASK before debugging the behaviour.** A dash passed
   straight through a pillar for two rounds of diagnosis: stones are on layer 4
   and the player's mask was 3. Nothing errors; the shove simply never contacts

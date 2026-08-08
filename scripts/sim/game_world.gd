@@ -293,6 +293,7 @@ func _launch_ball(cell: Vector2i) -> void:
 	ball.name = "Ball_%d" % _next_ball_id
 	_balls_root.add_child(ball)
 	_balls.append(ball)
+	ball.set_simulated(true)
 	ball.launch(grid.shooter_muzzle(cell), _launch_direction())
 
 # THE ONLY RANDOMISATION: the angle. Straight up, tilted by up to
@@ -330,7 +331,7 @@ func _resolve_ball_hits(ball: Node) -> void:
 
 		# Otherwise: every ball that connects tumbles you. One outcome, no
 		# invisible glancing/solid threshold.
-		var along := Vector3(ball.velocity.x, 0.0, ball.velocity.z)
+		var along := Vector3(ball.linear_velocity.x, 0.0, ball.linear_velocity.z)
 		if along.length_squared() < 0.01:
 			along = Vector3(0.0, 0.0, 1.0)
 		along = along.normalized()
@@ -624,7 +625,7 @@ func _ball_snapshot() -> Array:
 	var out: Array = []
 	for ball in _balls:
 		if is_instance_valid(ball):
-			out.append([ball.ball_id, ball.position, ball.velocity])
+			out.append([ball.ball_id, ball.position, ball.linear_velocity])
 	return out
 
 # Clients rebuild their ball set to match the host's, creating and freeing to
@@ -642,8 +643,11 @@ func _apply_ball_snapshot(balls: Array) -> void:
 			ball.name = "Ball_%d" % id
 			_balls_root.add_child(ball)
 			_balls.append(ball)
+			# A client is TOLD where a ball is. Left simulating, its own physics
+			# would fight the snapshot overwriting it every frame.
+			ball.set_simulated(false)
 		ball.position = entry[1]
-		ball.velocity = entry[2]
+		ball.linear_velocity = entry[2]
 
 	for i in range(_balls.size() - 1, -1, -1):
 		var existing: Node = _balls[i]

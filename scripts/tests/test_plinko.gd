@@ -105,9 +105,21 @@ func _phase_shooters_fire() -> void:
 		var travelled: float = -9999.0
 		for ball in world._balls:
 			travelled = maxf(travelled, ball.position.z)
-		check(travelled > float(recorded["ball_z"]),
-			"balls work their way back down the bridge under the deck's pitch (%.1f -> %.1f)"
+		# A MEANINGFUL distance, not merely "more than before". The first version
+		# of this assertion asked only that the number went up, and it passed
+		# happily while every ball landed and then sat there creeping a
+		# millimetre a second -- which is exactly the bug it was supposed to
+		# catch. Four seconds of rolling should cover several metres.
+		check(travelled > float(recorded["ball_z"]) + 4.0,
+			"balls roll back down the bridge under the deck's pitch (%.1f -> %.1f)"
 				% [recorded["ball_z"], travelled])
+
+		# And they are still MOVING at the end of it, rather than having come to
+		# rest somewhere up-bridge.
+		var fastest := 0.0
+		for ball in world._balls:
+			fastest = maxf(fastest, Vector2(ball.linear_velocity.x, ball.linear_velocity.z).length())
+		check(fastest > 1.5, "and are still rolling (fastest %.2f m/s)" % fastest)
 		_advance(1)
 
 # --- 2. A ball that connects tumbles you and costs a hit point ----------------
@@ -191,6 +203,6 @@ func _place_ball(at: Vector3, velocity: Vector3) -> Node:
 	world._launch_ball(recorded["shooters"][0])
 	var ball: Node = world._balls[world._balls.size() - 1]
 	ball.position = at
-	ball.velocity = velocity
+	ball.linear_velocity = velocity
 	ball.hit_cooldown = 0.0
 	return ball
