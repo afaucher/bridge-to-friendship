@@ -121,6 +121,19 @@ const REVIVE_RADIUS := 2.5
 const REVIVE_SECONDS := 1.5
 const REVIVE_HEALTH := 1
 
+# Hauling a hanging player up, by a teammate standing at the lip. Quicker than a
+# revive -- you are grabbing an arm, not resuscitating anyone.
+#
+# THE SAME STAND-IN AS PROXIMITY REVIVE, for the same reason. A hanging player
+# whose only rescue is the rope is unrescuable while the rope does not exist, and
+# an unrescuable state is a dead end that reads as a bug. When M4 lands, the rope
+# does this at RANGE -- reaching someone you cannot stand next to, or catching
+# them mid-fall -- and this stays as the cheap close-range version.
+#
+# It does not weaken the co-op gate: it still takes a second player. What a
+# hanging player still cannot do is get themselves out.
+const LEDGE_HAUL_SECONDS := 0.8
+
 # How long the drone takes to put a lost player back next to a teammate.
 const DRONE_RETURN_SECONDS := 3.0
 

@@ -248,37 +248,53 @@ func _process_rescue() -> void:
 			continue
 
 		if body.state == PlayerBody.State.LEDGE_HANG:
-			if body.state_timer >= SimConfig.LEDGE_HANG_SECONDS:
-				body.release_ledge()
+			_tick_haul(peer, body)
 		elif body.state == PlayerBody.State.DOWNED:
 			_tick_revive(peer, body)
 
 	_tick_drone_returns()
 
-# A downed player is revived by a teammate STANDING WITH THEM. Proximity rather
-# than rope, because M5 ships before M4 and a downed player whose only rescue
-# needed a mechanic that does not exist would be unrescuable.
-func _tick_revive(peer: int, body: Node) -> void:
-	var helper_present := false
+# Is a teammate on their feet, close enough to help? The same question for both
+# rescues, so it is asked in one place.
+func _helper_near(peer: int, body: Node) -> bool:
 	for other_key in players.keys():
 		var other: int = int(other_key)
-		if other == peer:
+		if other == peer or _returning.has(other):
 			continue
 		var helper: Node = players[other]
-		if helper.state == PlayerBody.State.DOWNED or helper.state == PlayerBody.State.LEDGE_HANG:
+		# Someone who is themselves hanging or downed cannot help anyone.
+		if helper.is_awaiting_rescue():
 			continue
 		if helper.position.distance_to(body.position) <= SimConfig.REVIVE_RADIUS:
-			helper_present = true
-			break
+			return true
+	return false
 
-	if helper_present:
-		body.revive_progress += SimConfig.TICK_DELTA
-		if body.revive_progress >= SimConfig.REVIVE_SECONDS:
+# A hanging player is hauled up by a teammate standing at the lip. They still
+# cannot get themselves out -- that is the entire point of the state -- but
+# "cannot get out AT ALL" is a dead end, and until the rope exists a teammate
+# standing right there is the only puller available.
+func _tick_haul(peer: int, body: Node) -> void:
+	if _helper_near(peer, body):
+		body.rescue_progress += SimConfig.TICK_DELTA
+		if body.rescue_progress >= SimConfig.LEDGE_HAUL_SECONDS:
+			body.mantle()
+			return
+	else:
+		body.rescue_progress = 0.0
+
+	if body.state_timer >= SimConfig.LEDGE_HANG_SECONDS:
+		body.release_ledge()
+
+# A downed player is revived by a teammate STANDING WITH THEM.
+func _tick_revive(peer: int, body: Node) -> void:
+	if _helper_near(peer, body):
+		body.rescue_progress += SimConfig.TICK_DELTA
+		if body.rescue_progress >= SimConfig.REVIVE_SECONDS:
 			body.revive()
 			return
 	else:
 		# Reset rather than pause: wandering off and back should not bank credit.
-		body.revive_progress = 0.0
+		body.rescue_progress = 0.0
 
 	if body.state_timer >= SimConfig.DOWNED_SECONDS:
 		_begin_drone_return(peer)

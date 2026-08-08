@@ -75,8 +75,9 @@ var invulnerable: float = 0.0     # counts down after any hit
 # which is the way a mantle has to go.
 var hang_dir: int = GridConfig.DIR_NORTH
 
-# How long a teammate has been stood next to this body while it is DOWNED.
-var revive_progress: float = 0.0
+# How long a teammate has been stood next to this body while it waits to be
+# rescued. Shared by LEDGE_HANG and DOWNED, because they are the same machinery.
+var rescue_progress: float = 0.0
 
 const HALF_HEIGHT := 0.9          # matches the CylinderShape3D in player.tscn
 const FOOT_PROBE := 0.25          # how far below the feet to look for a carrier
@@ -423,7 +424,7 @@ func heal(amount: int) -> bool:
 func begin_downed() -> void:
 	state = State.DOWNED
 	state_timer = 0.0
-	revive_progress = 0.0
+	rescue_progress = 0.0
 	health = 0
 	velocity = Vector3.ZERO
 	_reset_mesh()
@@ -431,7 +432,7 @@ func begin_downed() -> void:
 func revive() -> void:
 	state = State.WALK
 	state_timer = 0.0
-	revive_progress = 0.0
+	rescue_progress = 0.0
 	health = SimConfig.REVIVE_HEALTH
 	invulnerable = SimConfig.HIT_GRACE
 

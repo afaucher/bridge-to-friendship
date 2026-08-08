@@ -94,7 +94,7 @@ func _phase_downed_and_revive() -> void:
 	if phase_frame == 30:
 		eq(a.position, recorded["down_at"], "downed where they fell, not moved")
 		check(not a.take_damage(1), "a downed player takes no further damage")
-		eq(a.revive_progress, 0.0, "and nobody is reviving them yet")
+		eq(a.rescue_progress, 0.0, "and nobody is reviving them yet")
 		# Bring the helper alongside.
 		b.position = a.position + Vector3(1.5, 0.0, 0.0)
 		return
@@ -122,6 +122,8 @@ func _phase_ledge_catch() -> void:
 		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
 		a.health = SimConfig.MAX_HEALTH
 		a.begin_tumble(Vector3(0.0, 0.0, -1.0))
+		# The helper goes well clear, so the hang is genuinely unassisted first.
+		_park(b, Vector2i(13, 8))
 		return
 	if phase_frame == 90:
 		eq(a.state, PlayerBody.State.LEDGE_HANG,
@@ -129,27 +131,46 @@ func _phase_ledge_catch() -> void:
 		check(a.position.y > SimConfig.FALL_KILL_Y, "and is still in the world")
 		recorded["hang_y"] = a.position.y
 		return
-	if phase_frame == 120:
-		# A hanging player cannot get themselves out. That is the entire point of
-		# the state, and the reason the rope has something to do in M4.
-		near(a.position.y, float(recorded["hang_y"]), 0.05,
-			"and hangs there rather than climbing out on their own")
-		check(a.mantle(), "but CAN be mantled onto the deck when something pulls")
-		eq(a.state, PlayerBody.State.WALK, "which puts them back in control")
+	if phase_frame == 150:
+		# ALONE, THERE IS NO WAY OUT. Not a missing button -- the entire point of
+		# the state. If this ever starts passing on its own, the co-op gate has
+		# quietly opened.
+		eq(a.state, PlayerBody.State.LEDGE_HANG, "and cannot get out on their own")
+		near(a.position.y, float(recorded["hang_y"]), 0.05, "hanging where they caught")
+		eq(a.rescue_progress, 0.0, "with nobody helping")
+		# Bring a teammate to the lip.
+		_park(b, Vector2i(6, 1))
+		return
+	if phase_frame > 150 and a.state == PlayerBody.State.WALK:
+		check(phase_frame < 150 + int(SimConfig.LEDGE_HAUL_SECONDS * 60.0) + 20,
+			"a teammate at the lip hauls them up, and promptly")
+		check(a.grounded, "putting them back on the deck in control")
+		_advance(3)
+		return
+	if phase_frame > 400:
+		fail("a teammate stood at the lip and never hauled the hanging player up")
 		_advance(3)
 
 # --- 4. Launched clear of the deck: no rescue, and that is intended -----------
 
+# Deliberately the SAME lip, from the SAME spot, at a different speed -- so the
+# only thing that can explain the different outcome is the speed. An earlier
+# version launched the player right across the bridge and checked 2.5 s later; it
+# failed, correctly, because the body had bounced, slowed, and caught a lip
+# somewhere else entirely. That is the right behaviour and the wrong test.
 func _phase_launched_clear() -> void:
 	if phase_frame == 1:
-		_park(a, Vector2i(6, 1), 6.0)
-		# Thrown hard and high, the way a plinko ball to the chest will throw
-		# someone. Nothing to catch: they are nowhere near a lip.
-		a.begin_tumble(Vector3(0.0, 6.0, -26.0))
+		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.begin_tumble(Vector3(0.0, -2.0, -SimConfig.LEDGE_CATCH_MAX_SPEED * 1.6))
+		recorded["caught_fast"] = false
 		return
-	if phase_frame == 150:
-		check(a.state != PlayerBody.State.LEDGE_HANG,
-			"a player launched clear of the deck catches nothing")
+	if phase_frame <= 24:
+		if a.state == PlayerBody.State.LEDGE_HANG:
+			recorded["caught_fast"] = true
+		return
+	if phase_frame == 25:
+		check(not bool(recorded["caught_fast"]),
+			"a player arriving at a lip too fast catches nothing -- launched clear is launched clear")
 		_advance(4)
 
 # --- 5. Falling is a setback: the drone brings you back next to a friend ------
