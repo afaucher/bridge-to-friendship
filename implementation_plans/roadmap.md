@@ -102,28 +102,64 @@ carriers-before-riders step order. See `design_ideas/physics_and_authority.md`.
 
 Exit: B3, B3b.
 
+## BUILD ORDER: M5 BEFORE M4 (decided 2026-08-08)
+
+The numbering stays as it is — the exit criteria reference it — but **M5 is
+built first.**
+
+The reason is the question "how does a yank get anyone up anything?". It does
+not, on its own: a yank is a horizontal tug, and a player dragged into the side
+of a 2 m step just slams into it. The rope only lifts someone because the
+someone is **hanging from a ledge** and gets pulled up and over it — the vertical
+component comes from the geometry of pulling toward a friend who is already up
+there, not from the rope pulling upward.
+
+So the ledge mechanic is the prerequisite, not the payoff. Building M4 first
+would mean building a yank with nothing to yank anyone onto, then rebuilding it.
+
+The cost is real and worth naming: the first genuinely playtestable co-op moment
+moves later, and that moment is the roadmap's own stated riskiest unknown. M5's
+practice-partner support (already shipped) is the mitigation — tumble, ledges and
+the drone return can all be felt solo before the rope arrives.
+
+## M5 — Damage, tumble, ledge grab and return — **NEXT**
+
+**Proves:** failure is a setback with a rescue window, not a wall.
+
+Hit points, the grace window, hearts as exclusive pickups, the ledge-grab rule
+and its bleed-out timer, and the drone return. Resolves the open question of what
+zero health does.
+
+**TUMBLE is a pinwheel, not a slide.** A hard hit throws a chaotic, bouncing body
+that KEEPS its momentum — on a bridge full of holes the threat is displacement,
+not damage, and a tumble that decelerates politely is not a threat at all.
+
+Ships the **ledge primitive** the rope depends on: a player near a lip catches
+it and hangs; a hanging player cannot mantle unaided; a hanging player being
+pulled can. M4 then supplies the pull and nothing else.
+
+Exit: B5, B6, B7, B8.
+
 ## M4 — Rope
 
 **Proves:** the game is cooperative rather than parallel.
 
-Grab targeting, the distance constraint, player-to-player tie, the yank, and
-`SWING` replacing `TUMBLE` while taut.
+A real soft simulated rope — a particle chain that drapes and swings — with grab
+targeting, player-to-player tie, and the yank. Full design in
+`design_ideas/rope.md`; the load-bearing idea is that **the rope's SHAPE is
+cosmetic and simulated on every machine, while the rope's FORCE is one
+authoritative rule at the endpoints.** That is what makes a simulated rope
+affordable in a game with rewind-and-replay: the chain is never in
+`capture_state()`, never in a snapshot, and never replayed.
 
-**This is the first playtestable moment of the actual game** — two players, a
-gym, a ramp, a rope. If A1 and A3 are going to fail, they fail here, when
-nothing has been built on top of them yet. Playtest before starting M5.
+There is no `SWING` state. A tumbling player on a taut rope swings because that
+is what a body on a line does; it falls out of the constraint.
 
-Exit: B4, and the co-op half of A4.
+**This is the first playtestable moment of the whole co-op premise** — two
+players, a ledge, a rope, and a friend hauling you back up. If A1 and A3 are
+going to fail, they fail here. Playtest before starting M6.
 
-## M5 — Damage, tumble, ledge grab and return
-
-**Proves:** failure is a setback with a rescue window, not a wall.
-
-Tumble state, hit points, the grace window, hearts as exclusive pickups, the
-ledge-grab rule and its bleed-out timer, rope-assisted recovery, and the drone
-return. Resolves the open question of what zero health does.
-
-Exit: B5, B6, B7, B8.
+Exit: B4, B4b, and the co-op half of A4.
 
 ## M6 — Plinko
 
@@ -226,10 +262,46 @@ Needs the player state machine's `BUS_DRIVER` / `BUS_RIDER` states (reserved in
 M1), road-surfaced segments (the grid already supports them), a vehicle in the
 authoritative sim, and the seat-rotation `switch` that tells nobody it happened.
 
-## M12 — Weapon specials
+## M12 — Specials
 
-Shotguns, swords, thrown bombs, anchoring shields. Fixed uses, dropped when
-spent, replacing one leaves the spent one behind. The HUD slot exists from M9.
+Shotguns, swords, thrown bombs, anchoring shields, **legs**. Fixed uses, dropped
+when spent, replacing one leaves the spent one behind. One slot. The HUD slot
+exists from M9; the carried-item channel exists from M8.5.
+
+**Build legs first**, even though it reads as the simplest, because it is the one
+that decides the shape of the whole system.
+
+The other four are committed actions: press, and the host resolves what happened.
+They need no prediction, for exactly the reason a shove needs none — the player
+has no control over the outcome, so there is nothing to mispredict. Legs are the
+opposite. They modify ordinary walking, the player keeps air control, and a jump
+that arrives 80 ms late feels broken in a way an unsteerable dash never does. So
+legs must be **client-predicted**, which drags the charge count onto the
+reconciliation path: whether tick N produces a jump depends on how many charges
+are left.
+
+That splits a special's state in two, and the split is the finding:
+
+- **The part that affects stepping** — charges remaining, mid-jump flags — goes
+  in `PlayerBody.capture_state()`. Not an exception to the hats milestone's "keep
+  items out of the blob" rule but the same rule read correctly: `CLAUDE.md` says
+  anything affecting stepping must be in `capture_state()` or replays diverge,
+  and hats were excluded because hats *do nothing*.
+- **The part that does not** — which special you are holding, its style, who
+  dropped it where — is the M8.5 carried-item channel, reliable and unpredicted.
+
+Design consequences of legs are settled in `game_concept.md` §Special: 2 m of
+rise (one layer, so a solo player can get themselves up); a shortcut and never an
+ascender, so `SegmentValidator`'s two rise budgets are untouched; and the failure
+mode to watch is legs being *common*, not legs being *strong*.
+
+`ACTION_SPECIAL` must stay edge-triggered for exactly one tick, or a
+reconciliation replay re-fires the jump and burns the charges — the trap
+`player_input.gd` already documents for shove.
+
+`sim_config.gd`'s "THERE IS NO JUMP" note asks that nobody restore a jump without
+deciding what it does to the ascender grades. That decision is now made and
+recorded; update the comment to point at it when this milestone lands.
 
 ## Later
 

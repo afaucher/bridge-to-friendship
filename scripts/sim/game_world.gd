@@ -519,3 +519,44 @@ func player_state(peer: int) -> int:
 
 func player_body(peer: int) -> Node:
 	return players.get(peer)
+
+# --- Practice partners (solo dev only) ----------------------------------------
+#
+# Every interesting verb in this game needs two bodies -- shove one player into
+# another, stand on them, rope them together -- and none of it can be tried by
+# one person without a second body to try it on. Standing up two networked
+# clients to check whether a dash feels right is a wildly disproportionate loop.
+#
+# A practice partner is a real player in every respect: same body, same step(),
+# same rules. It simply has nobody sending it input until you switch to it.
+# Solo only, because in a networked session peer ids belong to actual peers.
+
+const PRACTICE_PEER_BASE := 1000
+
+func debug_add_practice_player() -> int:
+	if networked:
+		push_warning("[GameWorld] practice players are solo-only")
+		return 0
+	var peer: int = PRACTICE_PEER_BASE + players.size()
+	host_spawn(peer)
+	# Beside whoever is being controlled, so it is immediately in reach --
+	# offset, never coincident, or both bodies depenetrate through the floor
+	# (see CLAUDE.md).
+	var controlled: Node = players.get(local_peer)
+	var partner: Node = players.get(peer)
+	if controlled != null and partner != null:
+		partner.position = controlled.position + Vector3(2.5, 0.0, 0.0)
+	return peer
+
+# Hand local input to the next player in the world, and move the camera with it.
+# What makes a practice partner useful: dash A into B, switch, and dash B back.
+func debug_cycle_control() -> int:
+	if networked or players.is_empty():
+		return local_peer
+	var ids: Array = players.keys()
+	ids.sort()
+	var index: int = ids.find(local_peer)
+	local_peer = int(ids[(index + 1) % ids.size()])
+	if camera != null:
+		camera.focus_target = players.get(local_peer)
+	return local_peer

@@ -47,6 +47,16 @@ func _ready() -> void:
 func _unhandled_input(_event: InputEvent) -> void:
 	if Input.is_action_just_pressed("system_exit"):
 		get_tree().quit()
+		return
+	if world == null:
+		return
+	# F2 adds a practice partner, F3 hands control to the next player. Every verb
+	# in this game needs two bodies, and standing up two networked clients to
+	# find out whether a dash feels right is a disproportionate loop.
+	if Input.is_action_just_pressed("debug_add_player"):
+		_set_status("Practice partner %d added (F3 to switch)" % world.debug_add_practice_player())
+	elif Input.is_action_just_pressed("debug_switch_player"):
+		_set_status("Controlling player %d" % world.debug_cycle_control())
 
 # --- Menu --------------------------------------------------------------------
 

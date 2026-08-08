@@ -72,10 +72,53 @@ Fire at a grab target; a taut line forms that pulls but never pushes.
   dash is strong enough to pull the catcher over too, which is the joke.
 
 ### Special
-A pickup weapon with a fixed number of uses — shotgun, sword, thrown bomb,
-anchoring shield. Common, disposable, and picking up a new one drops the spent
-one where you stand. Specials complement shove and rope; they never replace
-them.
+A pickup with a fixed number of uses. Common, disposable, and picking up a new
+one drops the spent one where you stand. Specials complement shove and rope; they
+never replace them. **One slot**, which is the whole balance: carrying one
+special is not carrying any other.
+
+| special | what it is |
+|---|---|
+| shotgun | ranged shove, several uses |
+| sword | melee, arcs, hits more than one thing |
+| thrown bomb | area knockback, arrives late |
+| anchoring shield | plant it; blocks or absorbs |
+| **legs** | **jump one full block high, a few times** |
+
+The first four are **committed actions aimed at something** — press, and the
+world resolves what happened, exactly like a shove. Legs are not: they modify
+ordinary movement. That difference is small in design and large in engineering;
+see below and `implementation_plans/roadmap.md` M12.
+
+#### Legs, and the jump that was removed
+
+*(Added 2026-08-08.)* M3 removed jump outright, and `sim_config.gd` still carries
+the reason: *"a small ledge stops being a co-op moment the instant everyone can
+hop it."* That argument is intact, and Legs do not contradict it, because it is
+an argument about a **capability everyone has at all times**. Legs make jumping a
+**resource**: a few charges, one slot, one player, gone when spent.
+
+- **One full block — 2 m, one layer.** A player with legs can put themselves on
+  the next level unaided. That is the point of the item.
+- **Legs are a shortcut, never an ascender.** A layer must still be solo-passable
+  by authored terrain — a ladder, a bouncer, a walkable ramp — with legs
+  credited for nothing. This is not conservatism, it is E1b applied to items
+  instead of players: a special is contested and disposable, so a route that
+  *requires* legs strands the three party members who did not get the pickup,
+  which is the exact failure E1b exists to prevent. `SegmentValidator` therefore
+  does not learn about legs, and its two rise budgets stand unchanged.
+- **The failure mode to watch is abundance, not power.** If legs become common
+  enough that someone always has a pair, M3's objection returns in full and the
+  steep-ramp beat quietly stops happening. That is a content-density decision,
+  not a code one, and it is the thing to check in playtest.
+
+**[open]** A legs jump plus a mid-air dash. Dashing while airborne is already
+legal today — nothing checks `grounded` in `_begin_shove` — but until legs, the
+only way to *get* airborne was to be hit by someone. Legs promote a rarity into a
+routine, and the combined horizontal reach is the number that decides whether
+hole fields still work. **Measure it against the widest authored hole before
+tuning anything**; do not pre-emptively ban the combo, because it is exactly the
+sort of thing A3 is made of.
 
 ## The punishment
 

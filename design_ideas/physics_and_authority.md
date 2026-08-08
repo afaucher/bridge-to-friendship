@@ -85,7 +85,6 @@ Every player runs the same integrator with an explicit state:
 | `WALK` | full | analog movement, client-predicted |
 | `SHOVE` | none | locked axis, fixed speed, ends on impact/edge/distance |
 | `TUMBLE` | none | ball-like, rolls with inherited momentum, timed recovery |
-| `SWING` | partial | roped and taut; replaces TUMBLE on impact |
 | `DOWNED` | none | zero health, awaiting a teammate |
 | `BUS_DRIVER` | steering only | every other verb suppressed |
 | `BUS_RIDER` | verbs, no movement | |

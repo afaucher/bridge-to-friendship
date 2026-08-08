@@ -19,9 +19,16 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 enum State {
 	WALK,        # full control
 	SHOVE,       # committed dash along a compass axis
-	TUMBLE,      # M5
-	SWING,       # M4 -- roped and taut; replaces TUMBLE on impact
-	LEDGE_HANG,  # M5 -- caught an edge, bleeding out, rescuable by rope
+	# M5. A chaotic pinwheeling bounce that KEEPS its momentum rather than
+	# sliding to a stop -- displacement is the threat on a bridge full of holes,
+	# not the damage.
+	#
+	# There is no SWING state, and an earlier design that had one was wrong: a
+	# tumbling player on the end of a taut rope swings because that is what a
+	# body on a line does. It falls out of the constraint. Two states describing
+	# the same physical situation only ever drift apart.
+	TUMBLE,
+	LEDGE_HANG,  # M5 -- caught a lip; cannot mantle unaided, can while pulled
 	DOWNED,      # M5
 	BUS_DRIVER,  # M11 -- steering only
 	BUS_RIDER,   # M11 -- verbs but no movement

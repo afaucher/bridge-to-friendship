@@ -53,6 +53,20 @@ func setup(main) -> void:
 	check(world.get_node_or_null("Level") != null, "the world built its level")
 	check(world.camera != null, "the world built its camera")
 	eq(world.camera.focus_target, world.player_body(1), "and pointed it at the local player")
+
+	# A practice partner is a REAL player -- same body, same step(), same rules --
+	# with nobody sending it input until control is handed over. It is what makes
+	# every two-body verb (shove, carry, rope) testable by one person.
+	var partner: int = world.debug_add_practice_player()
+	eq(world.players.size(), 2, "a practice partner joins the world")
+	check(world.player_body(partner) != null, "and has a real body")
+	check(world.player_body(partner).position.distance_to(world.player_body(1).position) > 1.0,
+		"placed beside the controlled player, not on top of it")
+
+	eq(world.debug_cycle_control(), partner, "control hands over to the partner")
+	eq(world.local_peer, partner, "and the world agrees who is being driven")
+	eq(world.camera.focus_target, world.player_body(partner), "the camera follows control")
+	eq(world.debug_cycle_control(), 1, "and cycles back round")
 	world.stop()
 
 	# No session has been started, so nothing should think it is networked.

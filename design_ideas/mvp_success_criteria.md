@@ -127,9 +127,15 @@ run.
   its carrier rather than sliding off the back. Holds for a stack (A on B on the
   ground) and for any sim body, not just players. A stationary stack neither
   jitters nor creeps.
-- **B4 [test]** Rope: a taut rope holds its maximum length between two bodies; a
-  dash by either end **moves the other**; a roped, taut player struck by a ball
-  enters `SWING` and **not** `TUMBLE`.
+- **B4 [test]** Rope: a taut rope holds its maximum length between two bodies and
+  never pushes; a dash by either end **moves the other**; a tumbling player on a
+  taut rope is caught at maximum length and swings instead of continuing away.
+  The swing is not a state — it falls out of the constraint. See
+  `design_ideas/rope.md`.
+- **B4b [test]** The rescue, end to end: a player hanging from a ledge cannot
+  mantle unaided, and **can** while a roped teammate dashes away from the edge.
+  That is the whole co-op payoff and it spans two milestones, so it is asserted
+  as one behaviour rather than as two halves that each pass alone.
 - **B5 [test]** Ledge grab: a player shoved over an edge along the deck enters
   `LEDGE_HANG`; a player launched clear of the deck does **not**; a hanging
   player roped by a teammate returns to the deck; an unrescued one falls when the
