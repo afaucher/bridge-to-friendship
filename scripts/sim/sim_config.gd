@@ -224,6 +224,20 @@ const PLINKO_BALL_LIFETIME := 25.0
 # stops a runaway from becoming a frame-rate problem instead of a bug report.
 const PLINKO_MAX_BALLS := 24
 
+# A ball has to still be MOVING at you to hurt. Below this closing speed it is
+# just an object you bumped into -- it still collides physically and gets in your
+# way, it simply does not tumble you or cost a hit point.
+#
+# This is NOT the glancing/solid split the design deliberately dropped. That was
+# an invisible threshold in the middle of the dangerous range, where two hits
+# that looked identical did different things. This is the line where a ball STOPS
+# being dangerous at all, and it is legible from across the bridge: a ball
+# trickling to a halt visibly has nothing left.
+#
+# Under the terminal roll (~6.7 m/s), so a ball still rolling at you under the
+# deck's pitch always hurts. Only the ones that have genuinely run out do not.
+const PLINKO_MIN_HIT_SPEED := 4.0
+
 const PLINKO_DAMAGE := 1
 # What a hit throws you at. Reuses the shove transfer so a ball and a friend
 # knock you about the same amount -- one knockback rule, not two.

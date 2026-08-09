@@ -77,7 +77,8 @@ func _physics_process(_delta: float) -> void:
 	match phase:
 		0: _phase_shooters_fire()
 		1: _phase_ball_hurts()
-		2: _phase_dash_deflects()
+		2: _phase_spent_ball_is_harmless()
+		3: _phase_dash_deflects()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -140,6 +141,25 @@ func _phase_ball_hurts() -> void:
 			"a ball that connects costs a hit point")
 		eq(victim.state, PlayerBody.State.TUMBLE, "and tumbles you -- every ball, no threshold")
 		_advance(2)
+
+# --- 2b. A ball that has run out of steam is not a hazard --------------------
+#
+# Deliberately the SAME ball at the SAME spot as the phase above, at a different
+# speed -- so the only thing that can explain the different outcome is the speed.
+# A ball trickling into your ankle used to cost a hit point and tumble you, which
+# is the same result as one arriving at full pelt.
+func _phase_spent_ball_is_harmless() -> void:
+	if phase_frame == 1:
+		_isolate()
+		return
+	if phase_frame == 20:
+		recorded["ball"] = _place_ball(victim.position + Vector3(0.0, 0.0, 3.0),
+			Vector3(0.0, 0.0, -SimConfig.PLINKO_MIN_HIT_SPEED * 0.4))
+		return
+	if phase_frame == 120:
+		eq(victim.health, SimConfig.MAX_HEALTH, "a spent ball costs nothing")
+		check(victim.state != PlayerBody.State.TUMBLE, "and does not tumble you")
+		_advance(3)
 
 # --- 3. A dashing player bats it away and keeps dashing ----------------------
 

@@ -56,6 +56,23 @@ and rewards reading a ball early enough to commit to an axis.
 **Otherwise it hits you.** Knockback along the ball's travel, straight into
 `TUMBLE`, and one hit point.
 
+**Unless it has run out of steam.** A ball must still be *closing on you* above a
+minimum speed to count; below that it is an object you bumped into — it still
+collides and gets in your way, it simply does nothing to you. *(Added 2026-08-08
+after playtest: "very small ball taps feel too powerful". They were doing full
+damage and a full tumble.)*
+
+The speed measured is the **ball's** closing speed, not the relative speed. A
+ball that has stopped is not made dangerous by you walking into it, and one
+rolling away has already had its go.
+
+This is not the glancing/solid split reintroduced. That was an invisible
+threshold *inside* the dangerous range, where two hits that looked the same did
+different things. This is the line where a ball stops being dangerous at all, and
+it is legible from across the bridge: a ball trickling to a halt visibly has
+nothing left. The threshold sits under the terminal roll speed, so any ball still
+coming at you under the deck's pitch always hurts.
+
 ### This drops a distinction the design used to have
 
 `game_concept.md` previously said a glancing hit shoves and a solid hit tumbles.

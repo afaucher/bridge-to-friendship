@@ -486,8 +486,18 @@ func _resolve_ball_hits(ball: Node) -> void:
 		if body.invulnerable > 0.0:
 			continue
 
-		# Otherwise: every ball that connects tumbles you. One outcome, no
-		# invisible glancing/solid threshold.
+		# A ball has to still be COMING AT YOU to hurt. Measured on the ball's
+		# closing speed only, not the relative speed: a ball that has stopped is
+		# not made dangerous by you walking into it, and one rolling away from you
+		# has already had its go.
+		var toward: Vector3 = body.position - ball.position
+		if toward.length_squared() < 0.0001:
+			continue
+		if ball.linear_velocity.dot(toward.normalized()) < SimConfig.PLINKO_MIN_HIT_SPEED:
+			continue
+
+		# Otherwise: every ball that connects tumbles you. One outcome, and no
+		# invisible threshold inside the dangerous range.
 		var along := Vector3(ball.linear_velocity.x, 0.0, ball.linear_velocity.z)
 		if along.length_squared() < 0.01:
 			along = Vector3(0.0, 0.0, 1.0)

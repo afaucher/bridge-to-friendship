@@ -212,10 +212,11 @@ Balls are **slow, and dodgeable on sight**. The threat is not reaction time; it
 is that one is still coming while you are busy, on a bridge full of holes to be
 knocked into.
 
-**A dashing player bats a ball away and takes nothing.** Any other contact is
-knockback, `TUMBLE`, and a hit point — every ball that connects tumbles you.
-There is no glancing/solid distinction; the interesting choice is *do I commit to
-a dash*, not *was that hit hard enough*. Full design in `plinko.md`.
+**A dashing player bats a ball away and takes nothing.** Any other contact from a
+ball still *coming at you* is knockback, `TUMBLE`, and a hit point. There is no
+glancing/solid distinction inside that — the interesting choice is *do I commit
+to a dash*, not *was that hit hard enough*. A ball that has run out of steam is
+simply an object in the way. Full design in `plinko.md`.
 
 ## Bus mode
 
