@@ -224,19 +224,22 @@ const PLINKO_BALL_LIFETIME := 25.0
 # stops a runaway from becoming a frame-rate problem instead of a bug report.
 const PLINKO_MAX_BALLS := 24
 
-# A ball has to still be MOVING at you to hurt. Below this closing speed it is
-# just an object you bumped into -- it still collides physically and gets in your
-# way, it simply does not tumble you or cost a hit point.
+# A ball has to still be MOVING to hurt. Below this it is just an object you
+# bumped into -- it still collides physically and gets in your way, it simply
+# does not tumble you or cost a hit point.
 #
-# This is NOT the glancing/solid split the design deliberately dropped. That was
-# an invisible threshold in the middle of the dangerous range, where two hits
-# that looked identical did different things. This is the line where a ball STOPS
-# being dangerous at all, and it is legible from across the bridge: a ball
-# trickling to a halt visibly has nothing left.
+# THE ONLY JOB OF THIS NUMBER IS TO EXCLUDE A BALL THAT HAS STOPPED. It went in
+# at 4.0, which is under the ~6.7 m/s terminal roll and looked defensible on
+# paper -- and playtest came straight back with "now they are way too safe",
+# because most balls in a real field have bounced off something and are well
+# under terminal. 2 m/s is a third of a walking pace: visibly, obviously spent.
 #
-# Under the terminal roll (~6.7 m/s), so a ball still rolling at you under the
-# deck's pitch always hurts. Only the ones that have genuinely run out do not.
-const PLINKO_MIN_HIT_SPEED := 4.0
+# It is NOT the glancing/solid split the design deliberately dropped. That was an
+# invisible threshold in the MIDDLE of the dangerous range, where two hits that
+# looked identical did different things. This is the line where a ball stops
+# being dangerous at all, and a ball trickling to a halt visibly has nothing
+# left.
+const PLINKO_MIN_HIT_SPEED := 2.0
 
 const PLINKO_DAMAGE := 1
 # What a hit throws you at. Reuses the shove transfer so a ball and a friend

@@ -56,15 +56,26 @@ and rewards reading a ball early enough to commit to an axis.
 **Otherwise it hits you.** Knockback along the ball's travel, straight into
 `TUMBLE`, and one hit point.
 
-**Unless it has run out of steam.** A ball must still be *closing on you* above a
-minimum speed to count; below that it is an object you bumped into — it still
-collides and gets in your way, it simply does nothing to you. *(Added 2026-08-08
-after playtest: "very small ball taps feel too powerful". They were doing full
-damage and a full tumble.)*
+**Unless it has run out of steam.** A ball must still be *moving*, above a
+minimum speed, and moving toward you at all; below that it is an object you
+bumped into — it still collides and gets in your way, it simply does nothing to
+you. *(Added 2026-08-08 after playtest: "very small ball taps feel too powerful".
+They were doing full damage and a full tumble.)*
 
-The speed measured is the **ball's** closing speed, not the relative speed. A
-ball that has stopped is not made dangerous by you walking into it, and one
-rolling away has already had its go.
+Two separate questions, deliberately not combined. **Speed** is the ball's own,
+not the relative speed — a ball that has stopped is not made dangerous by you
+walking into it. **Direction** is only a sign test: is it coming at me at all.
+
+Thresholding the velocity *projected onto the ball-to-player line* was the first
+attempt and it was wrong twice: that line runs from a ball 0.6 m off the deck to
+a body centre 0.9 m up, so a ball rolling flat at you scored under its real
+speed — and a ball dropping onto you out of a shooter's arc scored almost
+nothing, despite arriving with more energy than anything else in the game.
+
+**The number's only job is to exclude a ball that has stopped.** It went in at
+4 m/s, which is under the terminal roll and looked defensible, and playtest came
+straight back with "way too safe" — most balls in a real field have bounced off
+something and are well under terminal.
 
 This is not the glancing/solid split reintroduced. That was an invisible
 threshold *inside* the dangerous range, where two hits that looked the same did

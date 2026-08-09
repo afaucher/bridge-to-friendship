@@ -486,15 +486,24 @@ func _resolve_ball_hits(ball: Node) -> void:
 		if body.invulnerable > 0.0:
 			continue
 
-		# A ball has to still be COMING AT YOU to hurt. Measured on the ball's
-		# closing speed only, not the relative speed: a ball that has stopped is
-		# not made dangerous by you walking into it, and one rolling away from you
-		# has already had its go.
+		# A ball has to still be MOVING, and moving toward you, to hurt.
+		#
+		# Two separate questions, deliberately not combined into one. SPEED is the
+		# ball's own -- not the relative speed, because a ball that has stopped is
+		# not made dangerous by you walking into it. DIRECTION is only a sign
+		# test: is it coming at me at all.
+		#
+		# Projecting the velocity onto the ball-to-player line and thresholding
+		# THAT was the first attempt and it was wrong twice over: the line runs
+		# from a ball 0.6 m off the deck to a body centre 0.9 m up, so a ball
+		# rolling flat at you scored well under its real speed; and a ball
+		# dropping onto you from a shooter's arc scored almost nothing at all,
+		# despite arriving with the most energy of anything in the game.
 		var toward: Vector3 = body.position - ball.position
-		if toward.length_squared() < 0.0001:
+		if ball.linear_velocity.length() < SimConfig.PLINKO_MIN_HIT_SPEED:
 			continue
-		if ball.linear_velocity.dot(toward.normalized()) < SimConfig.PLINKO_MIN_HIT_SPEED:
-			continue
+		if ball.linear_velocity.dot(toward) <= 0.0:
+			continue          # rolling away; it has had its go
 
 		# Otherwise: every ball that connects tumbles you. One outcome, and no
 		# invisible threshold inside the dangerous range.
