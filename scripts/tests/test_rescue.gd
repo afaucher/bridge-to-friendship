@@ -178,10 +178,22 @@ func _phase_launched_clear() -> void:
 func _phase_drone_return() -> void:
 	if phase_frame == 1:
 		_park(b, Vector2i(7, 12))
-		a.position = Vector3(0.0, SimConfig.FALL_KILL_Y - 5.0, -20.0)
-		a.state = PlayerBody.State.TUMBLE
+		# A REAL tumble first, not a state assignment: the mesh spin has to be
+		# produced by the game's own mechanism for the "comes back upright"
+		# assertion below to mean anything.
+		_park(a, Vector2i(7, 14))
+		a.begin_tumble(Vector3(9.0, 3.0, 0.0))
 		return
-	if phase_frame == 30:
+	if phase_frame == 20:
+		# VALIDATE THE INSTRUMENT BEFORE TRUSTING IT. If the mesh never tilted in
+		# the first place, "upright at the end" passes no matter what the respawn
+		# does, and this whole phase would be measuring nothing.
+		recorded["tilt"] = _mesh_tilt(a)
+		check(float(recorded["tilt"]) > 0.2,
+			"a tumbling player's mesh pinwheels (%.2f rad off vertical)" % recorded["tilt"])
+		a.position = Vector3(0.0, SimConfig.FALL_KILL_Y - 5.0, -20.0)
+		return
+	if phase_frame == 40:
 		check(world._returning.has(1), "a player who falls out of the world is picked up")
 		return
 	if phase_frame == int(SimConfig.DRONE_RETURN_SECONDS * 60.0) + 40:
@@ -191,4 +203,25 @@ func _phase_drone_return() -> void:
 			"dropped next to a teammate (%.1f m away), not alone behind the party"
 				% a.position.distance_to(b.position))
 		check(a.health >= SimConfig.REVIVE_HEALTH, "and able to carry on")
+
+		# Reported from playtest: "if you get knocked off into space, when you
+		# respawn you might be rotated." The mesh angle was an accumulator that
+		# only the normal exits from TUMBLE cleared, and the drone return is not
+		# one of them -- it sets WALK from GameWorld directly -- so a player came
+		# back leaning for the rest of the run. It is now derived from state.
+		check(_mesh_tilt(a) < 0.01,
+			"and STANDING UP straight, not still leaning from the tumble (%.3f rad)"
+				% _mesh_tilt(a))
+
+		# The other two things a hand-written respawn list kept forgetting.
+		eq(a.rescue_progress, 0.0, "with no rescue credit banked from before the fall")
+		eq(a.shove_cooldown, 0.0, "and a dash ready, so the first press after a respawn works")
 		finish()
+
+# How far the mesh's own up-axis has fallen away from vertical. Reads the thing a
+# player actually sees, rather than an euler triple that wraps.
+func _mesh_tilt(body: CharacterBody3D) -> float:
+	var mesh := body.get_node_or_null("Mesh") as Node3D
+	if mesh == null:
+		return 0.0
+	return mesh.transform.basis.y.angle_to(Vector3.UP)

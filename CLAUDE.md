@@ -271,6 +271,18 @@ the moment it is written.
   presented as a 600 s timeout while the real `Parse Error` sat in the
   `.err.log`. `main.gd` now checks for this and exits 1 with a pointed message.
   The general lesson stands: **a hang is very often a compile failure.**
+- **`Compress-Archive` SILENTLY SKIPS a file it cannot open.** Observed
+  2026-08-08: the release zip came out 1.5 MB instead of 33 MB because the 97 MB
+  `.exe`, written seconds earlier and still being scanned by the on-access
+  antivirus, was locked at the moment it was read. No error, no warning, exit
+  code 0, and the script printed "Build Complete!" over an archive containing the
+  `.pck` and the DLLs and **no game**. Intermittent, which is worse — the same
+  command a minute later produced a correct archive. `build.ps1` now verifies the
+  archive entry-by-entry against the directory (presence *and* length) and
+  retries before failing. **A packaging step that reports its own success is not
+  evidence; open the artifact.** Generalises: this is the shipped-artifact twin
+  of the `include_filter` trap above — both produce a broken build that no test
+  run can see.
 - **PowerShell capture traps, both of which silently corrupt a long run.**
   *(inherited)* `Select-Object -First N` TERMINATES the upstream pipeline, which
   kills the Godot process mid-run — a truncated run then looks like a crash or a

@@ -365,14 +365,10 @@ func _restart_at_checkpoint() -> void:
 	for peer_key in players.keys():
 		var body: Node = players[int(peer_key)]
 		var cell := Vector2i(grid.entry_spawn_cell(lane).x, checkpoint_row + 1)
-		body.position = grid.cell_surface_world(cell) + Vector3(0.0, 1.2, 0.0)
-		body.velocity = Vector3.ZERO
-		body.state = PlayerBody.State.WALK
-		body.state_timer = 0.0
-		body.health = SimConfig.MAX_HEALTH
-		body.invulnerable = SimConfig.HIT_GRACE
-		body.rescue_progress = 0.0
-		body.visible = true
+		# A wipe is the one place health comes back in full -- the run has already
+		# taken the ground back, which is the cost.
+		body.respawn_at(grid.cell_surface_world(cell) + Vector3(0.0, 1.2, 0.0),
+			SimConfig.MAX_HEALTH)
 		lane += 1
 
 # Nobody gets left behind far enough that the party stops being a party. Under
@@ -609,14 +605,9 @@ func _tick_drone_returns() -> void:
 		var body: Node = players.get(peer)
 		if body == null:
 			continue
-		body.position = _drone_drop_point(peer)
-		body.velocity = Vector3.ZERO
-		body.state = PlayerBody.State.WALK
-		body.state_timer = 0.0
-		body.grounded = false
-		body.health = maxi(body.health, SimConfig.REVIVE_HEALTH)
-		body.invulnerable = SimConfig.HIT_GRACE
-		body.visible = true
+		# Never LESS health than you went out with: the drone is a setback and a
+		# laugh, not a punishment on top of the fall.
+		body.respawn_at(_drone_drop_point(peer), maxi(body.health, SimConfig.REVIVE_HEALTH))
 
 # Dropped NEXT TO A TEAMMATE, which is the whole point -- being returned should
 # put you back in the game rather than alone somewhere behind it.

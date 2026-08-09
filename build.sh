@@ -272,6 +272,11 @@ export_target() {
     printf '%s\n' "$BUILD_VERSION" >"$out_dir/version.txt"
     chmod +x "$out_dir/$out_file" 2>/dev/null || true
 
+    # Note: build.ps1 verifies its archive entry-by-entry because PowerShell's
+    # Compress-Archive SILENTLY SKIPS a file it cannot open, and shipped a zip
+    # with no .exe in it once (2026-08-08). Nothing here has that failure mode --
+    # zip/7z/tar all report an unreadable file and every call below is checked --
+    # so this stays a plain exit-code check rather than a copy of that machinery.
     local archive
     if [[ "$target" == "windows" ]]; then
         archive="$BUILD_DIR/${GAME_NAME}_Windows_v$BUILD_VERSION.zip"

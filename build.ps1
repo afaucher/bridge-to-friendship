@@ -239,10 +239,75 @@ if ($process.ExitCode -ne 0 -or -not (Test-Path $exportPath)) {
 Write-Host "Export successful!" -ForegroundColor Green
 
 # --- Package ------------------------------------------------------------------
+#
+# COMPRESS-ARCHIVE SILENTLY SKIPS A FILE IT CANNOT OPEN. Observed 2026-08-08: the
+# zip came out 1.5 MB instead of 33 MB because the 97 MB .exe -- written seconds
+# earlier and still being scanned by the on-access antivirus -- was locked at the
+# moment it was read. No error, no warning, exit code 0, and the script cheerfully
+# printed "Build Complete!" over an archive containing the .pck and the DLLs and
+# NO GAME. It is intermittent, which is worse: the same command run a minute later
+# produced a correct archive.
+#
+# So the archive is VERIFIED against the directory it came from rather than
+# trusted. A size heuristic would not do -- the whole failure mode is that the
+# thing looks like a plausible zip.
 $zipPath = "$buildDir\${GameName}_Windows_v$buildVersion.zip"
 Write-Host "Packaging build into $zipPath..." -ForegroundColor Cyan
 Set-Content -Path "$windowsBuildDir\version.txt" -Value $buildVersion
-Compress-Archive -Path "$windowsBuildDir\*" -DestinationPath $zipPath -Force
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+function Get-MissingFromArchive {
+    param([string]$SourceDir, [string]$ZipPath)
+
+    $expected = Get-ChildItem -Path $SourceDir -File -Recurse
+    $packed = @{}
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($entry in $zip.Entries) {
+            $packed[$entry.FullName.Replace('\', '/')] = $entry.Length
+        }
+    } finally {
+        $zip.Dispose()
+    }
+
+    $missing = @()
+    foreach ($file in $expected) {
+        $rel = $file.FullName.Substring($SourceDir.Length).TrimStart('\', '/').Replace('\', '/')
+        # Length as well as presence: a truncated entry is the same class of
+        # silent damage as an absent one.
+        if (-not $packed.ContainsKey($rel)) {
+            $missing += "$rel (absent)"
+        } elseif ($packed[$rel] -ne $file.Length) {
+            $missing += "$rel (packed $($packed[$rel]) of $($file.Length) bytes)"
+        }
+    }
+    return $missing
+}
+
+$packAttempts = 3
+$missing = @()
+for ($attempt = 1; $attempt -le $packAttempts; $attempt++) {
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    Compress-Archive -Path "$windowsBuildDir\*" -DestinationPath $zipPath -Force
+    $missing = Get-MissingFromArchive -SourceDir $windowsBuildDir -ZipPath $zipPath
+    if ($missing.Count -eq 0) { break }
+
+    Write-Host "Archive is incomplete (attempt $attempt of $packAttempts):" -ForegroundColor Yellow
+    foreach ($m in $missing) { Write-Host "    MISSING  $m" -ForegroundColor Yellow }
+    if ($attempt -lt $packAttempts) {
+        # Whatever held the file open is transient by nature. Give it a moment
+        # rather than failing a build over an antivirus scan.
+        Write-Host "  Retrying in 5s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
+    }
+}
+
+if ($missing.Count -gt 0) {
+    Write-Host "BUILD FAILED: could not package a complete archive after $packAttempts attempts." -ForegroundColor Red
+    Write-Host "Something is holding these files open -- an antivirus scan, or a running copy of the game." -ForegroundColor Red
+    exit 1
+}
 
 $exeSize = [math]::Round((Get-Item $exportPath).Length / 1MB, 1)
 $zipSize = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)

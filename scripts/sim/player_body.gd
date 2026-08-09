@@ -138,6 +138,7 @@ func step(move: Vector2, actions: int) -> void:
 	motion_delta = position - before
 	carrier = _find_carrier()
 	_point_nose()
+	_sync_mesh()
 
 # Turn the facing marker to match the compass axis a dash would take. Driven from
 # `facing`, which is captured state, so it survives a reconciliation replay
@@ -301,8 +302,6 @@ func _step_tumble() -> void:
 		if velocity.dot(normal) < 0.0:
 			velocity = velocity.bounce(normal) * SimConfig.TUMBLE_BOUNCE
 
-	_spin_mesh()
-
 	# Falling past a lip is the rescue window: catching it is automatic.
 	if not grounded and _try_catch_ledge():
 		return
@@ -356,7 +355,24 @@ func _end_tumble() -> void:
 	state_timer = 0.0
 	velocity.x = 0.0
 	velocity.z = 0.0
-	_reset_mesh()
+
+# THE MESH ANGLE IS DERIVED FROM STATE, never left over from an earlier one.
+#
+# It used to be an accumulator that each exit from TUMBLE had to remember to
+# clear, and one route did not: falling off the world and being drone-returned
+# sets state = WALK from GameWorld directly, so the body came back standing at a
+# jaunty angle for the rest of the run. Every route that ever reaches WALK would
+# have to be found and fixed, forever, including ones that do not exist yet.
+#
+# Asking "what should the mesh look like right now" instead makes the wrong
+# answer unreachable rather than merely absent, and costs one branch a tick.
+# Called from step() AND from apply_state(), so a client shown a remote player
+# who stopped tumbling somewhere it never simulated also puts them upright.
+func _sync_mesh() -> void:
+	if state == State.TUMBLE:
+		_spin_mesh()
+	else:
+		_reset_mesh()
 
 # The MESH pinwheels; the collider never tips. A rolling player has to stay
 # something a friend can stand on -- see design_ideas/3d_conventions.md.
@@ -416,7 +432,6 @@ func _begin_hang(lip: Vector3, dir: int) -> void:
 	velocity = Vector3.ZERO
 	grounded = false
 	hang_dir = dir
-	_reset_mesh()
 	# Hanging just off the edge on the hole side, head about level with the deck.
 	var outward: Vector3 = GridConfig.DIR_VECTORS[dir]
 	position = lip - outward * (GridConfig.CELL_SIZE * 0.5 + 0.35) - Vector3(0.0, HALF_HEIGHT, 0.0)
@@ -479,7 +494,6 @@ func begin_downed() -> void:
 	rescue_progress = 0.0
 	health = 0
 	velocity = Vector3.ZERO
-	_reset_mesh()
 
 func revive() -> void:
 	state = State.WALK
@@ -487,6 +501,29 @@ func revive() -> void:
 	rescue_progress = 0.0
 	health = SimConfig.REVIVE_HEALTH
 	invulnerable = SimConfig.HIT_GRACE
+
+# Put this body back in play somewhere. The drone return and a checkpoint restart
+# after a wipe are the two callers, and they used to do it by assigning seven
+# fields each from GameWorld -- two hand-written lists of what a respawn means.
+#
+# THE TWO LISTS HAD ALREADY DRIFTED. The drone return cleared `grounded` and
+# forgot `rescue_progress`; the checkpoint restart did the exact opposite. Both
+# forgot the mesh. None of that is a hard bug to write -- it is the inevitable
+# one, because nothing anywhere said what the full set was. It says so here now.
+func respawn_at(where: Vector3, restored_health: int) -> void:
+	position = where
+	velocity = Vector3.ZERO
+	state = State.WALK
+	state_timer = 0.0
+	grounded = false          # dropped in, not standing; the first step settles it
+	rescue_progress = 0.0
+	health = restored_health
+	invulnerable = SimConfig.HIT_GRACE
+	# Coming back on cooldown reads as a dropped input on the first dash after a
+	# respawn, which is exactly when someone is most likely to try one.
+	shove_cooldown = 0.0
+	visible = true
+	_sync_mesh()
 
 func is_awaiting_rescue() -> bool:
 	return state == State.DOWNED or state == State.LEDGE_HANG
@@ -564,6 +601,11 @@ func apply_state(s: Array) -> void:
 	invulnerable = float(s[9])
 	hang_dir = int(s[10])
 	rescue_progress = float(s[11])
+	# The mesh angle is not on the wire -- it is cosmetic, and derivable. But it
+	# must be derived HERE too: a remote player is shown by applying snapshots,
+	# never by stepping, so without this a client keeps drawing a friend spinning
+	# after the host has stood them back up.
+	_sync_mesh()
 
 # There is no per-player camera. The game has ONE camera, owned by the world,
 # fixed-yaw and locked to the bridge's centre line -- see
