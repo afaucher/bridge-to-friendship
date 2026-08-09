@@ -20,6 +20,7 @@ const StoneScene = preload("res://scenes/stone.tscn")
 const StoneBody = preload("res://scripts/sim/stone_body.gd")
 const HeartScene = preload("res://scenes/heart.tscn")
 const ShooterScene = preload("res://scenes/shooter.tscn")
+const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 enum PushResult { BLOCKED, MOVED, FELL }
@@ -30,6 +31,39 @@ enum PushResult { BLOCKED, MOVED, FELL }
 # Segments of differing widths would produce a step in the side of the bridge;
 # the loader refuses them.
 var width: int = GridConfig.DEFAULT_WIDTH
+
+# The deck height the next segment will be stacked at -- the running total of
+# every loaded segment's climb.
+var _next_height: int = 0
+
+# The run this bridge was assembled from. Held so a joining client can be told
+# what to build rather than being sent the world.
+var run_seed: int = 0
+
+func segment_count() -> int:
+	return _segments.size()
+
+# Which segment a cell row belongs to. Segments vary in length, so this walks
+# rather than dividing by a nominal size.
+func segment_index_of_row(row: int) -> int:
+	for i in _segments.size():
+		var start: int = int(_segments[i]["z_offset"])
+		if row >= start and row < start + int(_segments[i]["data"].length):
+			return i
+	return maxi(0, _segments.size() - 1)
+
+func first_row_of_segment(index: int) -> int:
+	if index < 0 or index >= _segments.size():
+		return 0
+	return int(_segments[index]["z_offset"])
+
+# Build (or extend) a run from the pool. Deterministic in the seed, so every
+# machine that is told the same seed and count builds the same bridge.
+func build_run(seed_value: int, segment_count_wanted: int) -> void:
+	run_seed = seed_value
+	var plan: Array = SegmentPool.plan(seed_value, segment_count_wanted)
+	for i in range(_segments.size(), plan.size()):
+		load_segment_file(String(plan[i]))
 
 # Loaded segments, each with the z at which it starts.
 var _segments: Array = []          # [{data, z_offset}]
@@ -81,9 +115,15 @@ func load_segment(seg) -> void:
 		return
 
 	var z_offset := next_z()
-	_segments.append({"data": seg, "z_offset": z_offset})
+	# Every pool segment is authored starting at its own height 0 and climbing.
+	# The run stacks them: each one is raised by wherever the previous one
+	# finished, so the bridge keeps going up without any segment having to know
+	# what came before it.
+	var h_offset := _next_height
+	_segments.append({"data": seg, "z_offset": z_offset, "h_offset": h_offset})
+	_next_height = h_offset + seg.exit_height()
 
-	var built = SegmentBuilder.build(seg, z_offset)
+	var built = SegmentBuilder.build(seg, z_offset, h_offset)
 	add_child(built.root)
 
 	for local_cell in built.stone_cells:
@@ -116,7 +156,7 @@ func _resolve(cell: Vector2i) -> Array:
 	for s in _segments:
 		var local_z: int = cell.y - int(s["z_offset"])
 		if local_z >= 0 and local_z < s["data"].length:
-			return [s["data"], local_z]
+			return [s["data"], local_z, int(s["h_offset"])]
 	return []
 
 func kind_at(cell: Vector2i) -> int:
@@ -129,7 +169,9 @@ func height_at(cell: Vector2i) -> int:
 	var r := _resolve(cell)
 	if r.is_empty():
 		return 0
-	return r[0].height_at(cell.x, r[1])
+	# Plus the segment's stacking offset -- a cell's height is where it sits in
+	# the RUN, not where it sits in the file it was authored in.
+	return r[0].height_at(cell.x, r[1]) + int(r[2])
 
 func is_solid(cell: Vector2i) -> bool:
 	var r := _resolve(cell)
@@ -304,13 +346,56 @@ func all_stones() -> Array:
 # would be guessing. Indexed by creation order, which both machines agree on
 # because both loaded the same segments.
 
+# MOST STONES NEVER MOVE, so most ticks send nothing about them.
+#
+# Sending every stone every tick was measured at 4595 bytes on a three-segment
+# run -- over ENet's 1392-byte MTU, which fragments an UNRELIABLE packet and
+# raises the loss rate on exactly the channel that can least afford it. A run is
+# mostly scenery standing still; only the handful mid-slide are news.
+#
+# `full` is the periodic resync: a client that missed the one tick a push
+# happened on would otherwise hold a stale cell forever, so the whole list goes
+# out on a slow cadence and any drift heals within half a second.
 func stone_snapshot() -> Array:
 	var out: Array = []
 	for i in _stone_list.size():
 		var stone: Node = _stone_list[i]
-		if is_instance_valid(stone):
+		if is_instance_valid(stone) and stone.mode != StoneBody.Mode.SETTLED:
 			out.append([i, stone.capture_state()])
 	return out
+
+# The resync: just WHERE EACH STONE IS, as three ints. A settled stone's position
+# is derivable from its cell, so sending its full state is sending the same fact
+# twice in a much more expensive format -- measured 4582 bytes for one run's
+# worth against roughly 800 for this.
+func stone_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for i in _stone_list.size():
+		var stone: Node = _stone_list[i]
+		if not is_instance_valid(stone):
+			continue
+		out.append(i)
+		out.append(stone.cell.x)
+		out.append(stone.cell.y)
+	return out
+
+func apply_stone_layout(data: PackedInt32Array) -> void:
+	var i := 0
+	while i + 2 < data.size():
+		var index: int = data[i]
+		var cell := Vector2i(data[i + 1], data[i + 2])
+		i += 3
+		if index < 0 or index >= _stone_list.size():
+			continue
+		var stone: Node = _stone_list[index]
+		# A stone mid-slide is being driven by the per-tick entries; snapping it
+		# to a cell here would fight them.
+		if not is_instance_valid(stone) or stone.mode != StoneBody.Mode.SETTLED:
+			continue
+		if stone.cell != cell:
+			stone.cell = cell
+			stone.position = _stone_rest_position(cell)
+	_rebuild_cell_map()
 
 func apply_stone_snapshot(entries: Array) -> void:
 	for e in entries:

@@ -57,6 +57,30 @@ func no_wall_at(x: int, z: int) -> bool:
 		return false
 	return no_wall[z][x]
 
+# The deck height a segment starts and finishes at, used to stack segments into a
+# continuous run. Taken as the height of the WIDEST run of solid cells in the
+# row, not the maximum: a single stray pillar cell at a different height should
+# not decide where the next segment joins.
+func entry_height() -> int:
+	return _row_height(0)
+
+func exit_height() -> int:
+	return _row_height(length - 1)
+
+func _row_height(z: int) -> int:
+	var tally: Dictionary = {}
+	var best_height := 0
+	var best_count := 0
+	for x in width:
+		if not is_solid(x, z):
+			continue
+		var h: int = height_at(x, z)
+		tally[h] = int(tally.get(h, 0)) + 1
+		if int(tally[h]) > best_count:
+			best_count = int(tally[h])
+			best_height = h
+	return best_height
+
 func is_solid(x: int, z: int) -> bool:
 	var k := kind_at(x, z)
 	return k == GridConfig.Kind.DECK or k == GridConfig.Kind.WATER or k == GridConfig.Kind.RAMP

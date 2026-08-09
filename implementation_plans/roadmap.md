@@ -263,15 +263,48 @@ headway.
 
 Exit: C4.
 
-## M8 — Session: lobby, drop-in, checkpoints, leash
+## M8 — Session: lobby, drop-in, checkpoints, leash — **MOSTLY DONE (2026-08-08)**
 
 **Proves:** friends can actually get into a game together and stay there.
 
-Menu create/join over Steam. Drop-in join with a world snapshot. Segment
-assembly from a pool, checkpoint banking, wipe-and-restart. The soft leash and
-party-window streaming.
+Shipped: the segment pool and its deterministic assembler, segment stacking,
+lazy run extension, checkpoint banking, the wipe-and-restart, the soft leash, and
+the drop-in handshake. `test_run_session` covers D2, D3 and D4.
 
-Exit: D1, D2, D3, D4.
+**The load-bearing idea: the bridge is a pure function of (seed, segment
+count).** A joining client is told two numbers and builds the identical bridge
+locally; everything after that is a diff of what has moved. Sending the world
+instead would put D2's five-second budget out of reach. Two consequences fell
+straight out of it:
+
+- **A client must not build eagerly.** It has no seed until told, `build_run`
+  only ever appends, and segments built from the wrong seed would survive being
+  told the right one. The bridges then differ for the rest of the session.
+- **The assembler must not touch the global RNG**, which is seeded once per
+  launch and consumed by everything else. A run planned from it would differ
+  between two machines that had drawn a different number of randoms beforehand.
+
+**Bandwidth.** Sending every stone every tick measured 4582 bytes on a
+three-segment run — over ENet's 1392-byte MTU, which fragments an *unreliable*
+packet on the channel that can least afford it. Now only moving stones go each
+tick, and a compact cell-only layout resyncs twice a second; a settled stone's
+position is derivable from its cell, so full state was sending the same fact
+twice in an expensive format.
+
+**Still open, and deliberately:**
+
+- **D1 cannot be gate-tested** — two players over a Steam lobby needs a Steam
+  client, which CI does not have. ENet proves the replication; Steam is the
+  transport swap, and that is exactly why `NetworkManager` has two. It needs a
+  manual two-machine check before this milestone is called finished.
+- **The lobby browser is still "join the first lobby found"**, with the `TODO`
+  it shipped with in M0.
+- **Nothing unloads behind the party.** The run extends ahead lazily, which is
+  the half that makes it endless; unloading is the half that makes it cheap, and
+  it is riskier — a straggler unloaded out from under themselves is a fall out of
+  the world. The leash is what makes it safe to attempt.
+
+Exit: D2, D3, D4 met. D1 outstanding.
 
 ## M8.5 — Hats — **proposed, not agreed**
 

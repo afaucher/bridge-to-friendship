@@ -8,10 +8,10 @@ extends Node3D
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
 
-# What a session actually plays. One segment today; M8 assembles a run from a
-# pool. The test fixtures are deliberately NOT this file, so tuning the playtest
-# map for feel can never break the gate.
-const PLAYTEST_SEGMENTS := ["res://segments/playtest_bridge.seg"]
+# A session plays an assembled RUN, not a fixed map -- see scripts/grid/
+# segment_pool.gd. Every run opens on the same first segment, so nobody is
+# dropped straight into the hardest thing in the pool, and the test fixtures are
+# deliberately not in that pool: tuning content for feel can never break the gate.
 
 @onready var menu: VBoxContainer = $CanvasLayer/Menu
 @onready var status_label: Label = $CanvasLayer/Menu/StatusLabel
@@ -82,7 +82,7 @@ func _on_join_pressed() -> void:
 func _on_local_pressed() -> void:
 	menu.hide()
 	spectator_camera.current = false
-	_create_world(true, 1, false, PLAYTEST_SEGMENTS)
+	_create_world(true, 1, false)
 	world.host_spawn(1)
 
 # --- Session -----------------------------------------------------------------
@@ -90,7 +90,7 @@ func _on_local_pressed() -> void:
 func _on_session_started(is_host: bool) -> void:
 	menu.hide()
 	spectator_camera.current = false
-	_create_world(is_host, NetworkManager.local_id(), true, PLAYTEST_SEGMENTS)
+	_create_world(is_host, NetworkManager.local_id(), true)
 	if is_host:
 		world.host_spawn(1)
 	# A client spawns nothing itself: the host tells it about every avatar,
@@ -118,11 +118,16 @@ func _on_peer_left(id: int) -> void:
 	if world != null and NetworkManager.is_host:
 		world.host_remove_peer(id)
 
-func _create_world(is_host: bool, local_peer: int, networked: bool, segments: Array) -> void:
+func _create_world(is_host: bool, local_peer: int, networked: bool) -> void:
 	world = Node3D.new()
 	world.name = "GameWorld"
 	world.set_script(GameWorldScript)
-	world.segment_paths = segments
+	world.assemble_run = true
+	# Only the host picks a seed. A client is told which run this is over the
+	# wire and builds the identical bridge from it -- that one number is the
+	# whole world, which is what makes joining a run in progress affordable.
+	if is_host:
+		world.run_seed = randi()
 	# This is the world a human is looking at, so its camera takes the viewport.
 	world.view_active = true
 	add_child(world)

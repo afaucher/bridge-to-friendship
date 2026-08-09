@@ -34,8 +34,18 @@ const S_ACKED_INPUT := 2
 @export var level_scene_path: String = "res://scenes/gym.tscn"
 
 # When non-empty, the level is a bridge built from these .seg files instead of
-# the gym scene.
+# the gym scene. Leave it empty and set `run_seed` to assemble a run from the
+# pool instead -- which is what a real session does.
 var segment_paths: Array = []
+
+# Assemble the level from the pool rather than from a fixed list. An explicit
+# flag, not "segment_paths is empty", because seed 0 is a perfectly good seed and
+# a level with no segments is not the same thing as the gym.
+var assemble_run: bool = false
+
+# The seed a run is assembled from. The bridge is a pure function of this and the
+# segment count, so a client is told two numbers rather than a world.
+var run_seed: int = 0
 
 var is_host: bool = false
 var local_peer: int = 1
@@ -102,6 +112,11 @@ var _balls_root: Node3D = null
 var _shooter_timers: Dictionary = {}   # shooter cell -> seconds until next shot
 var _next_ball_id: int = 0
 
+# --- the run ---
+var checkpoint_index: int = 0
+var checkpoint_row: int = 0
+var wipes: int = 0
+
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
 const PLAYERS_LAYER_BIT := 2
 
@@ -135,14 +150,27 @@ func stop() -> void:
 func _build_level() -> void:
 	if _level != null or grid != null:
 		return
-	if segment_paths.size() > 0:
+	if segment_paths.size() > 0 or assemble_run:
 		grid = Node3D.new()
 		grid.name = "Bridge"
 		grid.set_script(BridgeGridScript)
 		add_child(grid)
 		move_child(grid, 0)
-		for path in segment_paths:
-			grid.load_segment_file(path)
+		if segment_paths.size() > 0:
+			# An explicit list -- used by tests and by anything pinning a
+			# specific map. A run assembled from the pool ignores this.
+			for path in segment_paths:
+				grid.load_segment_file(path)
+		elif is_host:
+			# A RUN. Deterministic in the seed, which is the whole reason a
+			# joining client can be told two numbers instead of a world.
+			#
+			# HOST ONLY. A client must not build anything until it has been told
+			# which run this is: building eagerly means building from whatever
+			# seed it happened to hold (0), and `build_run` only ever APPENDS, so
+			# those wrong segments would survive being told the right seed and
+			# the two bridges would differ for the rest of the session.
+			grid.build_run(run_seed, SimConfig.RUN_INITIAL_SEGMENTS)
 		# A bridge is assembled from .seg files, which describe structure and
 		# nothing else -- so unlike the gym it has no lighting of its own.
 		# Only for a world someone is looking at: a second WorldEnvironment in
@@ -250,12 +278,123 @@ func _host_tick() -> void:
 		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
 		body.collision_mask = restore_mask
 
+	_process_run()
 	_process_plinko()
 	_process_rescue()
 	_process_hearts()
 
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
+
+# --- The run: lookahead, checkpoints, wipes, and the leash --------------------
+
+func _process_run() -> void:
+	if grid == null:
+		return
+	_extend_run()
+	_bank_checkpoint()
+	_check_wipe()
+	_apply_leash()
+
+# The bridge is endless; it is just built lazily. Keep a couple of segments ahead
+# of whoever is furthest up, and tell clients so they build the same thing.
+func _extend_run() -> void:
+	var lead_segment: int = _segment_of(_front_position().z)
+	var wanted: int = lead_segment + 1 + SimConfig.RUN_LOOKAHEAD_SEGMENTS
+	if wanted <= grid.segment_count():
+		return
+	grid.build_run(grid.run_seed, wanted)
+	if networked:
+		_extend_run_to.rpc(grid.run_seed, wanted)
+
+# Which segment a world-space z falls in. Segments vary in length, so this walks
+# rather than dividing.
+func _segment_of(world_z: float) -> int:
+	var cell: Vector2i = grid.cell_of_world(Vector3(0.0, 0.0, world_z))
+	return grid.segment_index_of_row(cell.y)
+
+func _front_position() -> Vector3:
+	var best: Vector3 = Vector3.ZERO
+	var found := false
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if not found or body.position.z < best.z:
+			best = body.position
+			found = true
+	return best
+
+# Progress banks every few segments. What is stored is the CELL ROW, not a
+# position, so a restart puts everyone back on authored deck rather than at
+# whatever coordinate somebody happened to be standing at.
+func _bank_checkpoint() -> void:
+	var lead_segment: int = _segment_of(_front_position().z)
+	var reached: int = lead_segment / SimConfig.CHECKPOINT_EVERY_SEGMENTS
+	if reached > checkpoint_index:
+		checkpoint_index = reached
+		checkpoint_row = grid.first_row_of_segment(reached * SimConfig.CHECKPOINT_EVERY_SEGMENTS)
+
+# A WIPE is everyone out at once -- downed, hanging, or waiting on the drone.
+# Nothing else can end a run: the drone always brings people back, so "everyone
+# is out simultaneously" is the only moment where the party has actually lost
+# ground rather than lost a player.
+func _check_wipe() -> void:
+	if players.is_empty():
+		return
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if not body.is_awaiting_rescue() and not _returning.has(peer):
+			return
+	_restart_at_checkpoint()
+
+func _restart_at_checkpoint() -> void:
+	wipes += 1
+	_returning.clear()
+	for ball in _balls:
+		if is_instance_valid(ball):
+			ball.queue_free()
+	_balls.clear()
+
+	var lane := 0
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		var cell := Vector2i(grid.entry_spawn_cell(lane).x, checkpoint_row + 1)
+		body.position = grid.cell_surface_world(cell) + Vector3(0.0, 1.2, 0.0)
+		body.velocity = Vector3.ZERO
+		body.state = PlayerBody.State.WALK
+		body.state_timer = 0.0
+		body.health = SimConfig.MAX_HEALTH
+		body.invulnerable = SimConfig.HIT_GRACE
+		body.rescue_progress = 0.0
+		body.visible = true
+		lane += 1
+
+# Nobody gets left behind far enough that the party stops being a party. Under
+# SOFT nothing happens at all; past it a straggler is helped along; past HARD
+# they are simply moved, because at that range they are off everyone's screen and
+# cannot be helped by anyone.
+func _apply_leash() -> void:
+	if players.size() < 2:
+		return
+	var front: Vector3 = _front_position()
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body.is_awaiting_rescue() or _returning.has(peer):
+			continue
+		var behind: float = body.position.z - front.z      # +Z is down-bridge
+		if behind > SimConfig.LEASH_HARD:
+			body.position = front + Vector3(1.6, 1.0, 4.0)
+			body.velocity = Vector3.ZERO
+		elif behind > SimConfig.LEASH_SOFT and body.state == PlayerBody.State.WALK:
+			# A gentle hand forward, not a tow. A leash you can feel dragging you
+			# is worse than one you cannot.
+			body.velocity.z -= SimConfig.LEASH_ASSIST * SimConfig.TICK_DELTA
+
+@rpc("authority", "call_remote", "reliable")
+func _extend_run_to(seed_value: int, wanted: int) -> void:
+	if grid != null:
+		grid.build_run(seed_value, wanted)
 
 # --- Plinko -------------------------------------------------------------------
 #
@@ -625,7 +764,11 @@ func _broadcast_snapshot() -> void:
 		var peer: int = int(peer_key)
 		entries.append([peer, players[peer].capture_state(), int(_last_input_tick.get(peer, 0))])
 	var stones: Array = grid.stone_snapshot() if grid != null else []
-	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot())
+	# The layout only on a slow cadence -- see BridgeGrid.stone_layout().
+	var layout: PackedInt32Array = PackedInt32Array()
+	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
+		layout = grid.stone_layout()
+	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout)
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -675,22 +818,24 @@ func _ball_by_id(id: int) -> Node:
 	return null
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array) -> void:
+func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array, layout: PackedInt32Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout])
 		return
-	_consume_snapshot(entries, stones, balls)
+	_consume_snapshot(entries, stones, balls, layout)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3])
+		_consume_snapshot(held[1], held[2], held[3], held[4])
 
-func _consume_snapshot(entries: Array, stones: Array, balls: Array) -> void:
+func _consume_snapshot(entries: Array, stones: Array, balls: Array, layout: PackedInt32Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
+		if layout.size() > 0:
+			grid.apply_stone_layout(layout)
 	_apply_ball_snapshot(balls)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
@@ -810,6 +955,12 @@ func host_spawn(peer: int) -> void:
 func host_add_peer(peer: int) -> void:
 	if not is_host:
 		return
+	# DROP-IN, FIRST STEP: tell the newcomer what run this is before anything
+	# else. The bridge is a pure function of (seed, segment count), so this one
+	# message is the entire world -- and everything after it is a diff of what has
+	# moved since. Sending the world itself would be orders of magnitude more.
+	if grid != null:
+		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count())
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.

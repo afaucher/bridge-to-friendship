@@ -37,6 +37,12 @@ var client_mps: Array = []
 var is_ready: bool = false
 var failure: String = ""
 
+# Set BEFORE start() to stand the session up on an assembled run instead of the
+# gym. Both worlds get the same seed, which is the point: a client builds the
+# bridge rather than being sent it.
+var assemble_run: bool = false
+var run_seed: int = 0
+
 var _client_count: int = 0
 var _connected: Array = []
 var _started: bool = false
@@ -105,6 +111,11 @@ func _make_world(under: Node, level_scene_path: String) -> Node3D:
 	world.name = "GameWorld"
 	world.set_script(GameWorldScript)
 	world.level_scene_path = level_scene_path
+	world.assemble_run = assemble_run
+	# Only the HOST is given the seed. A client is told it over the wire, which is
+	# the thing being tested -- handing it to both here would prove nothing.
+	if assemble_run and _world_count == 0:
+		world.run_seed = run_seed
 	world.position = Vector3(float(_world_count) * WORLD_SPACING, 0.0, 0.0)
 	_world_count += 1
 	under.add_child(world)

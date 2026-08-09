@@ -141,6 +141,29 @@ const DRONE_RETURN_SECONDS := 3.0
 const HEART_PICKUP_RADIUS := 1.2
 const HEART_HEAL := 1
 
+# --- The run ------------------------------------------------------------------
+
+# How many segments a run starts with, and how far ahead of the party it keeps
+# building. The bridge is endless; it is simply built lazily.
+const RUN_INITIAL_SEGMENTS := 3
+const RUN_LOOKAHEAD_SEGMENTS := 2
+
+# Progress banks every N segments. A wipe restarts there rather than at the
+# bottom -- the design's "endless climb with banked checkpoints".
+const CHECKPOINT_EVERY_SEGMENTS := 2
+
+# --- The soft leash -----------------------------------------------------------
+#
+# Players separate freely up to SOFT, past which a straggler is helped forward,
+# and past HARD they are simply moved. It guarantees the co-op stays possible,
+# keeps the party in one camera, and is what makes streaming one window around
+# the group instead of one per player.
+const LEASH_SOFT := 40.0
+const LEASH_HARD := 70.0
+# How much of a walk's worth of help a lagging player gets. Deliberately gentle:
+# a leash you can feel dragging you is worse than one you cannot.
+const LEASH_ASSIST := 3.0
+
 # --- Plinko -------------------------------------------------------------------
 # See design_ideas/plinko.md.
 
@@ -219,3 +242,9 @@ const HISTORY_TICKS := 128
 # wasteful; the design doc flags the real rate as open, to be decided against a
 # measurement rather than a guess. Correctness first, bandwidth later.
 const SNAPSHOT_INTERVAL_TICKS := 1
+
+# How often the FULL stone list goes out. In between, only stones that are
+# actually moving are sent -- a run is mostly scenery standing still, and sending
+# all of it every tick measured 4595 bytes, over ENet's 1392-byte MTU. Half a
+# second is the worst a client can hold a stale stone cell for.
+const STONE_RESYNC_TICKS := 30

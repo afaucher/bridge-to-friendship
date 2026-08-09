@@ -35,7 +35,7 @@ class Built:
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
-static func build(seg, z_offset: int = 0) -> Built:
+static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 	var out := Built.new()
 	out.root = Node3D.new()
 	out.root.name = "Segment_%s" % seg.name
@@ -62,9 +62,9 @@ static func build(seg, z_offset: int = 0) -> Built:
 		"water": _material(GridConfig.WATER_COLOUR),
 	}
 
-	_build_deck(seg, z_offset, body, meshes, palette, out)
-	_build_ramps(seg, z_offset, body, meshes, palette)
-	_build_walls(seg, z_offset, body, meshes, palette, out)
+	_build_deck(seg, z_offset, h_offset, body, meshes, palette, out)
+	_build_ramps(seg, z_offset, h_offset, body, meshes, palette)
+	_build_walls(seg, z_offset, h_offset, body, meshes, palette, out)
 	_collect_content(seg, out)
 	return out
 
@@ -76,7 +76,7 @@ static func _material(colour: Color) -> StandardMaterial3D:
 
 # --- Deck ---------------------------------------------------------------------
 
-static func _build_deck(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
+static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary, out: Built) -> void:
 	var width: int = seg.width
 	for z in seg.length:
@@ -86,12 +86,12 @@ static func _build_deck(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
 			if seg.kind_at(x, z) != GridConfig.Kind.DECK and seg.kind_at(x, z) != GridConfig.Kind.WATER:
 				x += 1
 				continue
-			var height: int = seg.height_at(x, z)
+			var height: int = seg.height_at(x, z) + h_offset
 			var kind: int = seg.kind_at(x, z)
 			var run := 1
 			while x + run < width \
 					and seg.kind_at(x + run, z) == kind \
-					and seg.height_at(x + run, z) == height:
+					and seg.height_at(x + run, z) + h_offset == height:
 				run += 1
 
 			var top: float = _surface_y(kind, height)
@@ -110,7 +110,7 @@ static func _build_deck(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
 			var kind2: int = seg.kind_at(cx, z)
 			if kind2 != GridConfig.Kind.DECK and kind2 != GridConfig.Kind.WATER:
 				continue
-			var h: int = seg.height_at(cx, z)
+			var h: int = seg.height_at(cx, z) + h_offset
 			var top2: float = _surface_y(kind2, h)
 			var cell_centre := Vector3(
 				GridConfig.cell_origin_x(cx, width) + GridConfig.CELL_SIZE * 0.5,
@@ -150,7 +150,7 @@ static func _surface_y(kind: int, height: int) -> float:
 #
 # A run merged into a single prism has no internal joins at all, so there is
 # nothing to catch on. It is also far fewer collision shapes.
-static func _build_ramps(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
+static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary) -> void:
 	var width: int = seg.width
 	for x in width:
@@ -169,8 +169,8 @@ static func _build_ramps(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
 			# The run starts at whatever is behind its first cell and finishes at
 			# its last cell's height -- so the slope is the whole climb, and the
 			# per-cell heights in between only ever set how steep it is.
-			var bottom: float = GridConfig.height_to_world(_height_behind(seg, x, first))
-			var top: float = GridConfig.height_to_world(seg.height_at(x, last))
+			var bottom: float = GridConfig.height_to_world(_height_behind(seg, x, first) + h_offset)
+			var top: float = GridConfig.height_to_world(seg.height_at(x, last) + h_offset)
 			var cells: int = last - first + 1
 
 			# The run spans cells [first, last]; cell k occupies world z in
@@ -251,7 +251,7 @@ static func _height_behind(seg, x: int, z: int) -> int:
 
 # --- Walls --------------------------------------------------------------------
 
-static func _build_walls(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
+static func _build_walls(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary, out: Built) -> void:
 	var width: int = seg.width
 	for z in seg.length:
@@ -259,7 +259,7 @@ static func _build_walls(seg, z_offset: int, body: StaticBody3D, meshes: Node3D,
 			for dir in 4:
 				if not seg.has_wall(x, z, dir):
 					continue
-				var height: int = seg.height_at(x, z)
+				var height: int = seg.height_at(x, z) + h_offset
 				var centre: Vector3 = GridConfig.cell_centre(x, z + z_offset, height, width)
 				centre.y = GridConfig.height_to_world(height) + GridConfig.WALL_HEIGHT * 0.5
 
