@@ -13,6 +13,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      difference is the whole reason the shove has a third job.
 #   4. Only the ANGLE varies. Every arc is the same size, which is what gives the
 #      field a rhythm a player can learn.
+#   5. Balls collide with EACH OTHER. Found in playtest passing straight through
+#      one another -- their mask covered world, players and stones and stopped one
+#      bit short of themselves.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
@@ -79,6 +82,7 @@ func _physics_process(_delta: float) -> void:
 		1: _phase_ball_hurts()
 		2: _phase_spent_ball_is_harmless()
 		3: _phase_dash_deflects()
+		4: _phase_balls_collide()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -188,6 +192,45 @@ func _phase_dash_deflects() -> void:
 				% [recorded["ball_z"], ball.position.z])
 		eq(victim.health, SimConfig.MAX_HEALTH, "and takes no damage from it")
 		check(victim.state != PlayerBody.State.TUMBLE, "and is not tumbled by it")
+		_advance(4)
+
+# --- 5. Balls collide with each other -----------------------------------------
+#
+# Balls used to pass straight through one another: layer 8, mask 7 -- world,
+# players, stones, and one bit short of themselves. Half of a plinko field's
+# scatter comes from balls hitting balls, so a field of them was quietly behaving
+# like a field of independent single balls.
+#
+# THE ASSERTION IS ARRANGED SO IT CANNOT PASS BY ACCIDENT. The struck ball starts
+# at rest on a deck pitched 4 degrees, so the ONE thing it does unaided is roll
+# DOWN-bridge, toward +z. The striker is placed down-bridge of it and fired UP the
+# slope, so a real collision drives the target the one direction gravity never
+# will. A version of this that fired down-slope would have passed with the balls
+# ghosting through each other, because the target would have rolled there anyway.
+func _phase_balls_collide() -> void:
+	if phase_frame == 1:
+		_isolate()
+		# Well clear: a ball that clipped the player would be knocking the player
+		# about instead, and the player would absorb the momentum under test.
+		victim.position = world.grid.cell_surface_world(Vector2i(7, 1)) + Vector3(0.0, 1.0, 0.0)
+		return
+	if phase_frame == 20:
+		# Two cells apart in the same clear lane. Both sit on the deck SURFACE at
+		# their own cell -- the bridge is pitched, so placing the second one at the
+		# first one's height would have buried it in the deck.
+		var target: Node = _place_ball(
+			world.grid.cell_surface_world(Vector2i(6, 22)) + Vector3(0.0, 0.6, 0.0), Vector3.ZERO)
+		_place_ball(
+			world.grid.cell_surface_world(Vector2i(6, 20)) + Vector3(0.0, 0.6, 0.0),
+			Vector3(0.0, 0.0, -9.0))
+		recorded["target"] = target
+		recorded["target_z"] = target.position.z
+		return
+	if phase_frame == 80:
+		var target: Node = recorded["target"]
+		var moved: float = float(recorded["target_z"]) - target.position.z
+		check(moved > 0.5,
+			"a ball knocks another ball up-bridge, against the pitch -- so they collide (%.2f m)" % moved)
 		finish()
 
 # --- helpers ------------------------------------------------------------------

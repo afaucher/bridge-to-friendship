@@ -178,7 +178,25 @@ the moment it is written.
 - **Check the collision MASK before debugging the behaviour.** A dash passed
   straight through a pillar for two rounds of diagnosis: stones are on layer 4
   and the player's mask was 3. Nothing errors; the shove simply never contacts
-  anything.
+  anything. **Three separate bugs have now been one wrong bit here** (that dash,
+  a carrier unable to walk under a rider, and balls passing through each other),
+  so the layers are NAMED in `project.godot` — a named bit can be read back.
+  **When a body should collide with its own kind, its mask must include its own
+  layer.** This is the one anybody omits, because every other entry in the mask
+  is about something else and the self-bit does not look like it belongs.
+- **A non-resource file is NOT exported unless `include_filter` names it.**
+  `export_filter="all_resources"` means resources — a plain `.txt` or `.seg` in
+  the project root is skipped in silence, so `FileAccess.file_exists()` is true
+  in the editor and false in the shipped game. This is the worst shape a bug can
+  have: it exists only in the artifact the gate cannot run. `version.txt` was
+  packed only after being added to the filter; `segments/*.seg` is there for the
+  same reason. **After adding any data file, read the `savepack:` list in the
+  export output and find it.**
+- **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
+  through each other for the whole life of the plinko feature while its tests all
+  passed, because every one of them used a SINGLE ball — which is what you reach
+  for when you want a deterministic assertion. If a feature's whole point is that
+  several of a thing share a space, one of them must be tested together.
 - **Enum values are script constants: `instance.Enum.VALUE` raises at runtime**
   and, per the GDScript trap below, ABORTS THE REST OF THE FUNCTION silently. A
   stone push read as "the shove missed". Read enums off a preloaded script

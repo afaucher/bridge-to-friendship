@@ -7,6 +7,7 @@ extends Node3D
 
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
+const BuildVersion = preload("res://scripts/ui/build_version.gd")
 
 # A session plays an assembled RUN, not a fixed map -- see scripts/grid/
 # segment_pool.gd. Every run opens on the same first segment, so nobody is
@@ -31,6 +32,13 @@ func _ready() -> void:
 		elif args[i] == "--run-sim" and i + 1 < args.size():
 			_run_sim(args[i + 1])
 			return
+
+	# A sibling of the menu rather than a child of it, so hiding the menu to start
+	# a game leaves the build stamp on screen. It is added here and not in the
+	# .tscn because every other piece of UI in this project is built in code (see
+	# hud.gd) -- and because a headless run returns above this line, so a test
+	# never builds a Label it will not look at.
+	$CanvasLayer.add_child(BuildVersion.make_label())
 
 	$CanvasLayer/Menu/HostButton.pressed.connect(_on_host_pressed)
 	$CanvasLayer/Menu/JoinButton.pressed.connect(_on_join_pressed)

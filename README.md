@@ -56,7 +56,23 @@ will not launch.
 
 `export_presets.cfg` is committed on purpose. The preset names
 (`Windows Desktop`, `Linux`) are what the build scripts pass to
-`--export-release`, so renaming them breaks the build.
+`--export-release`, so renaming them breaks the build. Its `include_filter` is
+load-bearing: `export_filter="all_resources"` covers *resources*, so a plain
+data file (`segments/*.seg`, `version.txt`) is skipped in silence unless the
+filter names it.
+
+### Build version
+
+Both build scripts stamp a `yyyy-MM-dd.HHmmss` version into `version.txt` before
+exporting, so it is packed into the game, and the running game prints it in the
+**bottom-left corner**. Quote it in any playtest report — it is the only thing
+that identifies which binary was played.
+
+A run from the editor or from source shows `dev (...)` instead. `version.txt` is
+written to the project root and never cleaned up, so an editor run finds the last
+export's stamp sitting there; labelling it `dev` is what stops a stale number
+being reported as the build under test. `version.txt` is gitignored — it is an
+output, not source.
 
 ## Running the game
 

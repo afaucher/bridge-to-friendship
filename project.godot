@@ -86,8 +86,14 @@ system_exit={
 
 [layer_names]
 
+; Named because the masks built from them are the single most error-prone number
+; in this project. Three separate bugs so far -- dashes passing through pillars,
+; a carrier unable to walk under a rider, balls ghosting through each other --
+; were all one wrong bit here. A named layer is a bit you can read back.
 3d_physics/layer_1="world"
 3d_physics/layer_2="players"
+3d_physics/layer_3="stones"
+3d_physics/layer_4="balls"
 
 [physics]
 

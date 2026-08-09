@@ -45,6 +45,19 @@ push it and no rule has to aim it — that pitch exists for this.
 Pillars are cylinders precisely so balls ricochet smoothly off them rather than
 jamming in a corner (see `scenes/stone.tscn`). A stuck ball is a dead ball.
 
+**Balls collide with each other**, which is not a detail. A shooter firing every
+2.5 seconds puts several balls in the arena at once, and if they ignore one
+another the field is just N independent single balls sharing a room — every ball
+runs the arc it would have run alone, and the arena is only as chaotic as one
+shooter. Balls hitting balls is where a field stops being predictable, and it is
+free: the physics server already does it.
+
+*(They did not, until 2026-08-08. Their mask covered world, players and stones
+and stopped one bit short of themselves, so they passed straight through each
+other for the entire life of the feature. Caught by eye in a playtest, not by the
+gate — every plinko assertion up to that point used a single ball, because a
+single ball is what you reach for when you want a deterministic test.)*
+
 ## What a ball does to a player
 
 **A dashing player bats it away.** Dash into a ball and it is deflected along the

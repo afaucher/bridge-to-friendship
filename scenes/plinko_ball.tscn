@@ -25,10 +25,14 @@ friction = 0.45
 bounce = 0.5
 
 [node name="PlinkoBall" type="RigidBody3D"]
-; Layer 8 = balls. Mask 7 = world | players | stones, so a ball bounces off the
-; deck, the parapets, the pillars AND the players.
+; Layer 8 = balls. Mask 15 = world | players | stones | BALLS.
+;
+; The last bit is the one that was missing: at mask 7 balls passed straight
+; through each other, which is a strange thing for a plinko field to do -- balls
+; colliding is half of where the scatter comes from, and the field is meant to be
+; chaotic in a way a single ball's arc cannot be.
 collision_layer = 8
-collision_mask = 7
+collision_mask = 15
 mass = 2.0
 physics_material_override = SubResource("Phys_1")
 script = ExtResource("1_ball")
