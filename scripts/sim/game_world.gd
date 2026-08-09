@@ -299,6 +299,12 @@ func _process_run() -> void:
 # The bridge is endless; it is just built lazily. Keep a couple of segments ahead
 # of whoever is furthest up, and tell clients so they build the same thing.
 func _extend_run() -> void:
+	# Only a world that ASSEMBLED its level may extend it. A world pinned to an
+	# explicit segment list is pinned on purpose -- appending pool segments to it
+	# was caught only by the width guard refusing to join a 15-cell segment to a
+	# 30-cell bridge, which is a guard doing someone else's job.
+	if not assemble_run:
+		return
 	var lead_segment: int = _segment_of(_front_position().z)
 	var wanted: int = lead_segment + 1 + SimConfig.RUN_LOOKAHEAD_SEGMENTS
 	if wanted <= grid.segment_count():

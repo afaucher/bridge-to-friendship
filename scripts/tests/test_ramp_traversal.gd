@@ -14,6 +14,8 @@ extends "res://scripts/test_support/test_case.gd"
 # the wrong place -- but a player walking up stops at the top and cannot get on.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const SegmentData = preload("res://scripts/grid/segment_data.gd")
+const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
@@ -85,4 +87,38 @@ func _physics_process(_delta: float) -> void:
 		"a lone player cannot walk up the steep ramp (gained %.2f m of %d)"
 			% [steep_climb, UPPER_HEIGHT])
 
+	_test_wide_ramp_has_no_seam()
 	finish()
+
+# A WIDE RAMP MUST BE ONE SURFACE, walkable at any lateral offset.
+#
+# The playtest bridge's gentle ramp is two cells wide, and built as one wedge per
+# column it had a vertical seam down the middle that a flat-bottomed cylinder
+# caught on. It presented as getting stuck "sometimes" -- entirely depending on
+# which side of the middle you happened to walk up, which is why a single-lane
+# test never saw it. This walks the seam deliberately.
+func _test_wide_ramp_has_no_seam() -> void:
+	var seg = SegmentData.from_file("res://segments/playtest_bridge.seg")
+	if not check(seg.is_valid(), "the playtest map parses"):
+		return
+	var built = SegmentBuilder.build(seg)
+
+	# Count the collision shapes covering the ramp cells. Two cells wide and two
+	# long is FOUR wedges if nothing merges, one if everything does.
+	var ramp_cells := 0
+	for z in seg.length:
+		for x in seg.width:
+			if seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				ramp_cells += 1
+	check(ramp_cells >= 4, "the playtest map has a multi-cell ramp to check (%d cells)" % ramp_cells)
+
+	var structure: Node = built.root.get_node("Structure")
+	var wedges := 0
+	for child in structure.get_children():
+		if child is CollisionShape3D and child.shape is ConvexPolygonShape3D:
+			wedges += 1
+	# One wedge per contiguous BLOCK of ramp, not per cell and not per column.
+	check(wedges < ramp_cells,
+		"a wide ramp merges into fewer wedges than it has cells (%d wedges, %d cells)"
+			% [wedges, ramp_cells])
+	built.root.free()

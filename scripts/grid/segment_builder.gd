@@ -153,10 +153,11 @@ static func _surface_y(kind: int, height: int) -> float:
 static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary) -> void:
 	var width: int = seg.width
+	var claimed: Dictionary = {}
 	for x in width:
 		var z := 0
 		while z < seg.length:
-			if seg.kind_at(x, z) != GridConfig.Kind.RAMP:
+			if seg.kind_at(x, z) != GridConfig.Kind.RAMP or claimed.has(Vector2i(x, z)):
 				z += 1
 				continue
 
@@ -169,17 +170,37 @@ static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, 
 			# The run starts at whatever is behind its first cell and finishes at
 			# its last cell's height -- so the slope is the whole climb, and the
 			# per-cell heights in between only ever set how steep it is.
-			var bottom: float = GridConfig.height_to_world(_height_behind(seg, x, first) + h_offset)
-			var top: float = GridConfig.height_to_world(seg.height_at(x, last) + h_offset)
+			var bottom_h: int = _height_behind(seg, x, first)
+			var top_h: int = seg.height_at(x, last)
+
+			# ...and then ACROSS the bridge, over every neighbouring column that
+			# is the same ramp. A two-cell-wide ramp built as two wedges has a
+			# vertical seam down its middle, and a flat-bottomed cylinder walking
+			# up the seam catches on it -- which presents as getting stuck
+			# "sometimes", depending entirely on which side of the middle you
+			# happened to be walking. Merging Z alone was half a fix.
+			var columns := 1
+			while x + columns < width \
+					and _same_ramp_column(seg, x + columns, first, last, bottom_h, top_h) \
+					and not claimed.has(Vector2i(x + columns, first)):
+				columns += 1
+
+			for cx in range(x, x + columns):
+				for cz in range(first, last + 1):
+					claimed[Vector2i(cx, cz)] = true
+
+			var bottom: float = GridConfig.height_to_world(bottom_h + h_offset)
+			var top: float = GridConfig.height_to_world(top_h + h_offset)
 			var cells: int = last - first + 1
 
 			# The run spans cells [first, last]; cell k occupies world z in
 			# [-(k+1) * CELL, -k * CELL].
-			var centre_x: float = GridConfig.cell_origin_x(x, width) + GridConfig.CELL_SIZE * 0.5
+			var span: float = float(columns) * GridConfig.CELL_SIZE
+			var centre_x: float = GridConfig.cell_origin_x(x, width) + span * 0.5
 			var centre_z: float = -(float(first + z_offset) + float(last + z_offset) + 1.0) * 0.5 * GridConfig.CELL_SIZE
 			var length: float = float(cells) * GridConfig.CELL_SIZE
 
-			var mesh_res: Mesh = _wedge_mesh(bottom, top, length)
+			var mesh_res: Mesh = _wedge_mesh(bottom, top, length, span)
 			var xform := _wedge_transform(bottom, top, centre_x, centre_z)
 
 			var col := CollisionShape3D.new()
@@ -208,14 +229,29 @@ static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, 
 # vertical, its flat underside sits at the height behind it, and its top edge
 # reaches the cell's height exactly at the cell boundary -- so "the ramp meets
 # the deck" is true by construction rather than by arithmetic.
-static func _wedge_mesh(bottom: float, top: float, length: float) -> Mesh:
+# Is this column the SAME ramp as the one being merged -- same extent up the
+# bridge, same climb, and not part of some other run that happens to touch it?
+static func _same_ramp_column(seg, x: int, first: int, last: int,
+		bottom_h: int, top_h: int) -> bool:
+	for z in range(first, last + 1):
+		if seg.kind_at(x, z) != GridConfig.Kind.RAMP:
+			return false
+	# The run must START and END in the same rows, or the merged wedge would
+	# cover cells that are not ramp at all.
+	if first > 0 and seg.kind_at(x, first - 1) == GridConfig.Kind.RAMP:
+		return false
+	if last + 1 < seg.length and seg.kind_at(x, last + 1) == GridConfig.Kind.RAMP:
+		return false
+	return _height_behind(seg, x, first) == bottom_h and seg.height_at(x, last) == top_h
+
+static func _wedge_mesh(bottom: float, top: float, length: float, span: float) -> Mesh:
 	var rise: float = absf(top - bottom)
 	if rise < 0.001:
 		# A ramp that does not rise is authoring nonsense, but a zero-height
 		# prism is a degenerate mesh -- fall back to a flat slab rather than
 		# emitting geometry with no volume.
 		var flat := BoxMesh.new()
-		flat.size = Vector3(length, GridConfig.DECK_THICKNESS, GridConfig.CELL_SIZE)
+		flat.size = Vector3(length, GridConfig.DECK_THICKNESS, span)
 		return flat
 
 	var prism := PrismMesh.new()
@@ -225,7 +261,7 @@ static func _wedge_mesh(bottom: float, top: float, length: float) -> Mesh:
 	prism.left_to_right = 0.0
 	# Local X is the climb (the transform below turns it into the along-bridge
 	# axis) and local Z is the extrusion, which becomes the width across.
-	prism.size = Vector3(length, rise, GridConfig.CELL_SIZE)
+	prism.size = Vector3(length, rise, span)
 	return prism
 
 static func _wedge_transform(bottom: float, top: float,

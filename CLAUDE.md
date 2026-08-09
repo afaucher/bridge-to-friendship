@@ -157,6 +157,13 @@ the moment it is written.
   removed, so it tells you nothing) and only above a real impact speed.
   **Deliberately NOT fixed for `TUMBLE`** — the per-tick scrub is what makes a
   tumble settle, and it was kept after playtest. See the note in `_step_tumble`.
+- **A seam between two convex shapes catches a flat-bottomed body, and it
+  presents as "sometimes".** Ramps were merged along Z but not across X, so a
+  two-cell-wide ramp was two wedges with a vertical seam down the middle: walking
+  up either half was fine, walking the middle stuck. Anything that depends on
+  lateral position will pass a single-lane test forever. **Merge co-planar
+  geometry into ONE shape**, and when a bug is intermittent, ask what varies
+  between the times it happens.
 - **Check the collision MASK before debugging the behaviour.** A dash passed
   straight through a pillar for two rounds of diagnosis: stones are on layer 4
   and the player's mask was 3. Nothing errors; the shove simply never contacts
