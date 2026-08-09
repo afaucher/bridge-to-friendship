@@ -251,6 +251,52 @@ const PLINKO_DEFLECT_SPEED := 16.0
 # One ball cannot hit the same player twice in a row without leaving first.
 const PLINKO_HIT_COOLDOWN := 0.5
 
+# --- Rushers ------------------------------------------------------------------
+#
+# The first DESTRUCTIBLE hazard: shove deflects it, only a weapon ends it early.
+# See design_ideas/hazards.md. Everything before this was deflectable, which made
+# the ranged specials weak by construction -- a shotgun was a shove from further
+# away, and the shove is free.
+
+const RUSHER_RADIUS := 0.5
+const RUSHER_HEIGHT := 1.4
+
+# Close enough that waking one reads as YOUR mistake, far enough that the rise
+# has time to matter.
+const RUSHER_TRIGGER_RADIUS := 6.0
+
+# THE TELEGRAPH, and the reason this is fair. Same rule as plinko's slow balls:
+# the threat announces itself before it can touch you. Long enough to back off,
+# short enough to be worth reacting to rather than ignoring.
+const RUSHER_RISE_SECONDS := 1.0
+
+# Above WALK_SPEED (6.0), so it cannot be strolled away from -- that is what
+# makes it a decision. A rounding error against SHOVE_SPEED (56), so committing
+# an axis still beats it.
+const RUSHER_SPEED := 8.0
+
+# One dash buys a breath, not an escape.
+const RUSHER_STAGGER_SECONDS := 2.0
+const RUSHER_DEFLECT_SPEED := 14.0
+
+# The floor that stops a weaponless player being ground down: outliving one is
+# desperate but always available. Counted from SPAWN, so the rise is inside it --
+# a second of a ten-second budget, and one clock is easier to reason about than
+# two.
+const RUSHER_LIFETIME := 10.0
+
+# It reaches you, tumbles you, and is spent. Expending itself is what stops a
+# single rusher chain-tumbling someone who is already out of control and has no
+# way to answer.
+const RUSHER_HIT_RADIUS := 1.1
+const RUSHER_DAMAGE := 1
+const RUSHER_KNOCKBACK := SHOVE_TRANSFER_SPEED
+const RUSHER_KNOCKBACK_LIFT := SHOVE_TRANSFER_LIFT
+
+# A cap, for the same reason PLINKO_MAX_BALLS exists: authored density is a
+# content decision, and this is the backstop for getting it wrong.
+const RUSHER_MAX := 12
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

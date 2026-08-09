@@ -112,5 +112,11 @@ static func _check_content_placement(seg, problems: Array) -> void:
 				# A stone on a slope has nowhere legible to be pushed to, and the
 				# one-cell push rule stops meaning anything.
 				problems.append("a pillar at (%d, %d) sits on a ramp" % [x, z])
+			if content == GridConfig.Content.MOUND and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				# A rusher rises straight up out of the deck over a fixed second.
+				# On a slope that animation emerges through the hillside, and the
+				# telegraph -- the entire fairness argument for this hazard -- is
+				# played somewhere the player cannot see it.
+				problems.append("a mound at (%d, %d) sits on a ramp" % [x, z])
 	if spawns > 0 and spawns < 4:
 		problems.append("only %d spawn cells: a full party of 4 needs 4 (or none, to use the default ring)" % spawns)

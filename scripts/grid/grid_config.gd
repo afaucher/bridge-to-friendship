@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -77,6 +77,9 @@ const CONTENT_GLYPHS := {
 	"+": Content.HEART,
 	"*": Content.PICKUP,
 	"S": Content.SPAWN,
+	# A dormant rusher. Lowercase because it is the only content that is not
+	# there yet -- it is a thing that WILL exist, authored where it starts.
+	"m": Content.MOUND,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least

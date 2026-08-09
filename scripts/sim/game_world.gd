@@ -19,6 +19,8 @@ const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 const BallScene = preload("res://scenes/plinko_ball.tscn")
+const RusherScene = preload("res://scenes/rusher.tscn")
+const RusherBody = preload("res://scripts/sim/rusher_body.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
@@ -112,6 +114,15 @@ var _balls_root: Node3D = null
 var _shooter_timers: Dictionary = {}   # shooter cell -> seconds until next shot
 var _next_ball_id: int = 0
 
+# --- rushers ---
+var _rushers: Array = []
+var _rushers_root: Node3D = null
+# HOST-ASSIGNED AND MONOTONIC, never a creation-order index. A rusher is created
+# mid-run by a trigger, so the stone list's "both machines loaded the same
+# segments in the same order" trick does not apply -- two clients that woke
+# different mounds first would disagree about which rusher is which.
+var _next_rusher_id: int = 0
+
 # --- the run ---
 var checkpoint_index: int = 0
 var checkpoint_row: int = 0
@@ -135,6 +146,11 @@ func _ready() -> void:
 	_balls_root = Node3D.new()
 	_balls_root.name = "Balls"
 	add_child(_balls_root)
+	# Rushers too: they walk the deck, so they live in world space and let the
+	# pitch be something they climb rather than something that tilts them.
+	_rushers_root = Node3D.new()
+	_rushers_root.name = "Rushers"
+	add_child(_rushers_root)
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -280,6 +296,10 @@ func _host_tick() -> void:
 
 	_process_run()
 	_process_plinko()
+	# Before the rescue pass: a rusher can tumble someone into a hole, and the
+	# rescue pass is what notices they left the world. Running it after means the
+	# consequence lands on the same tick as the cause rather than the next one.
+	_process_rushers()
 	_process_rescue()
 	_process_hearts()
 
@@ -360,6 +380,14 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(ball):
 			ball.queue_free()
 	_balls.clear()
+	# Rushers go with them. A wipe rewinds the party to a checkpoint, and leaving
+	# the thing that killed them still standing where they respawn is a loop, not
+	# a setback. Mounds stay SPENT, though: the ground the party already fought
+	# over does not reload with it.
+	for rusher in _rushers:
+		if is_instance_valid(rusher):
+			rusher.queue_free()
+	_rushers.clear()
 
 	var lane := 0
 	for peer_key in players.keys():
@@ -517,6 +545,200 @@ func _resolve_ball_hits(ball: Node) -> void:
 
 func ball_count() -> int:
 	return _balls.size()
+
+# --- Rushers ------------------------------------------------------------------
+#
+# The first DESTRUCTIBLE hazard. See design_ideas/hazards.md; the body's own
+# behaviour is in rusher_body.gd. This is the part that only the host may do:
+# deciding when a mound wakes, who each rusher is chasing, and what a contact
+# costs. A client is told the results and invents none of them.
+func _process_rushers() -> void:
+	if not is_host:
+		return
+	_wake_mounds()
+
+	for i in range(_rushers.size() - 1, -1, -1):
+		var rusher: Node = _rushers[i]
+		if not is_instance_valid(rusher):
+			_rushers.remove_at(i)
+			continue
+
+		# Target chosen HERE, per tick, because it is a host decision. Re-picked
+		# rather than locked on: a rusher that kept chasing someone who has since
+		# been carried off by a drone is a rusher chasing a corpse.
+		var target: Node = _nearest_target(rusher)
+		rusher.target_peer = int(target.peer_id) if target != null else 0
+		rusher.step(target.position if target != null else Vector3.ZERO, target != null)
+
+		if rusher.is_spent():
+			_rushers.remove_at(i)
+			rusher.queue_free()
+			continue
+
+		_resolve_rusher_contact(rusher)
+
+# A player within RUSHER_TRIGGER_RADIUS wakes the mound they are standing near.
+# Deliberately proximity and not a collision: the mound has no collider, because
+# a lump you can bump into is a wall, and the trigger has to be able to fire on a
+# player who merely walked PAST rather than onto it.
+func _wake_mounds() -> void:
+	if grid == null:
+		return
+	if _rushers.size() >= SimConfig.RUSHER_MAX:
+		return
+	# A COPY of the keys: take_mound() erases from the dictionary being iterated.
+	for cell in grid.mound_cells():
+		var at: Vector3 = grid.mound_surface_world(cell)
+		for peer_key in players.keys():
+			var body: Node = players[int(peer_key)]
+			# Someone hanging off a lip or already down cannot trip anything --
+			# waking a rusher onto a player who has no verbs left is a punishment
+			# with no decision in it.
+			if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
+				continue
+			if body.position.distance_to(at) > SimConfig.RUSHER_TRIGGER_RADIUS:
+				continue
+			# The same sight test that gates the chase gates the WAKE. Otherwise a
+			# player walking past on the far side of a pillar spends the mound on a
+			# rusher that rises with nobody to run at, stands still for ten seconds
+			# and burrows -- an authored hazard consumed without ever being one.
+			if not _clear_line(to_global(at), body.global_position):
+				continue
+			if grid.take_mound(cell):
+				_spawn_rusher(at)
+				# A mound changes state exactly ONCE in its life, so this is a
+				# discrete event and goes reliably -- unlike the rusher itself,
+				# which rides the unreliable per-tick snapshot. Losing this packet
+				# would leave a client drawing a lump that is not there, forever,
+				# and nothing later would correct it.
+				if networked:
+					_mound_taken.rpc(cell.x, cell.y)
+			break
+
+func _spawn_rusher(at: Vector3) -> Node:
+	var rusher: Node3D = RusherScene.instantiate()
+	_next_rusher_id += 1
+	rusher.rusher_id = _next_rusher_id
+	rusher.name = "Rusher_%d" % _next_rusher_id
+	_rushers_root.add_child(rusher)
+	_rushers.append(rusher)
+	rusher.begin_rise(at)
+	return rusher
+
+# Nearest player who can actually be chased. Someone hanging, downed or in
+# transit is not a target: the rusher would stand over them running on the spot,
+# which looks like a bug and is a hit nobody could have avoided.
+#
+# AND IT MUST BE ABLE TO SEE THEM. Without that, a rusher with no pathfinding
+# walks into the near side of a pillar and grinds there for its whole lifetime --
+# the straight line that makes it cheap also makes it stupid, and a hazard that
+# is visibly stuck stops being threatening. With it, breaking line of sight
+# becomes a real answer, and it is the one that pairs with the burrow timer:
+# get something solid between you and it, and outliving it is a plan rather than
+# a hope.
+#
+# A rusher that can see nobody simply STANDS THERE. It does not wander or guess:
+# guessing needs a search behaviour, which is the pathfinding this design bought
+# its way out of.
+func _nearest_target(rusher: Node) -> Node:
+	var best: Node = null
+	var best_distance := INF
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body.is_awaiting_rescue() or _returning.has(peer):
+			continue
+		var d: float = body.position.distance_to(rusher.position)
+		if d >= best_distance:
+			continue
+		if not _can_see(rusher, body):
+			continue
+		best_distance = d
+		best = body
+	return best
+
+# Deck, parapets and pillars block sight; players do not. Hiding BEHIND A FRIEND
+# would make the friend a shield, which is a mechanic this game has not decided
+# to have -- and the one it does have for that is the shove.
+const SIGHT_BLOCKERS := 1 | 4        # world | stones
+
+func _can_see(rusher: Node, body: Node) -> bool:
+	return _clear_line(rusher.global_position, body.global_position)
+
+# GLOBAL positions, not local. Two GameWorlds in one process share a single
+# physics space (the test harness offsets them by a kilometre precisely because
+# of this), so a ray cast in world-local coordinates would be cast through
+# whichever world happens to sit at the origin.
+func _clear_line(from_global: Vector3, to_global: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var query := PhysicsRayQueryParameters3D.create(from_global, to_global, SIGHT_BLOCKERS)
+	# Neither a player nor a rusher is on a layer this mask covers, so neither can
+	# occlude itself or the other.
+	return space.intersect_ray(query).is_empty()
+
+# What a rusher does when it reaches somebody -- and what a dashing player does
+# to it. Resolved here, by proximity, for the same reason ball hits are: the
+# outcome is a game rule, not a physics response, and it has to be decided in one
+# place and once.
+func _resolve_rusher_contact(rusher: Node) -> void:
+	if not rusher.is_dangerous():
+		return
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
+			continue
+		if body.position.distance_to(rusher.position) > SimConfig.RUSHER_HIT_RADIUS + PlayerBody.HALF_HEIGHT:
+			continue
+
+		# A DASHING PLAYER WINS THE EXCHANGE. Checked before the hit, so the two
+		# can never both happen -- and it is the free answer available to
+		# everyone, which is what keeps a weaponless player from being stranded.
+		if body.state == PlayerBody.State.SHOVE:
+			rusher.deflect(GridConfig.DIR_VECTORS[body.shove_dir])
+			return
+
+		# Otherwise it reaches you: tumble, one hit point, and it is SPENT.
+		# Expending itself is the whole reason a single rusher cannot chain-tumble
+		# someone who is already out of control and has no way to answer.
+		var along := Vector3(rusher.velocity.x, 0.0, rusher.velocity.z)
+		if along.length_squared() < 0.0001:
+			along = (body.position - rusher.position)
+			along.y = 0.0
+		if along.length_squared() < 0.0001:
+			along = Vector3(0.0, 0.0, 1.0)
+		along = along.normalized()
+
+		body.take_damage(SimConfig.RUSHER_DAMAGE)
+		body.begin_tumble(Vector3(
+			along.x * SimConfig.RUSHER_KNOCKBACK,
+			SimConfig.RUSHER_KNOCKBACK_LIFT,
+			along.z * SimConfig.RUSHER_KNOCKBACK))
+		_kill_rusher(rusher)
+		return
+
+func _kill_rusher(rusher: Node) -> void:
+	var index: int = _rushers.find(rusher)
+	if index >= 0:
+		_rushers.remove_at(index)
+	if is_instance_valid(rusher):
+		rusher.queue_free()
+
+func rusher_count() -> int:
+	return _rushers.size()
+
+@rpc("authority", "call_remote", "reliable")
+func _mound_taken(cx: int, cz: int) -> void:
+	if grid != null:
+		grid.take_mound(Vector2i(cx, cz))
+
+# Drop-in: the newcomer built the bridge from the seed, so it has every mound
+# including the ones this run already used up.
+@rpc("authority", "call_remote", "reliable")
+func _sync_spent_mounds(layout: PackedInt32Array) -> void:
+	if grid != null:
+		grid.apply_spent_mounds(layout)
 
 # --- Rescue: one countdown, two states, one drone -----------------------------
 #
@@ -784,7 +1006,7 @@ func _broadcast_snapshot() -> void:
 	var layout: PackedInt32Array = PackedInt32Array()
 	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
 		layout = grid.stone_layout()
-	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout)
+	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout, _rusher_snapshot())
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -833,26 +1055,70 @@ func _ball_by_id(id: int) -> Node:
 			return ball
 	return null
 
+# Rushers ride the per-tick snapshot exactly like balls: host-authoritative,
+# never predicted. No velocity on the wire -- a client does not integrate one, so
+# sending it would be paying MTU for a number nobody reads. See the CLAUDE.md
+# note about the 4595-byte snapshot that would not fit ENet's 1392.
+func _rusher_snapshot() -> Array:
+	var out: Array = []
+	for rusher in _rushers:
+		if is_instance_valid(rusher):
+			out.append(rusher.capture_state())
+	return out
+
+# Self-healing by construction, same as the ball set: a dropped packet costs a
+# frame of staleness rather than an enemy that exists forever on one machine.
+# THIS IS ALSO HOW A CLIENT LEARNS A RUSHER DIED -- it stops being mentioned.
+func _apply_rusher_snapshot(rushers: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in rushers:
+		var id: int = int(entry[0])
+		seen[id] = true
+		var rusher: Node = _rusher_by_id(id)
+		if rusher == null:
+			rusher = RusherScene.instantiate()
+			rusher.rusher_id = id
+			rusher.name = "Rusher_%d" % id
+			_rushers_root.add_child(rusher)
+			_rushers.append(rusher)
+		rusher.apply_state(entry)
+
+	for i in range(_rushers.size() - 1, -1, -1):
+		var existing: Node = _rushers[i]
+		if not is_instance_valid(existing) or not seen.has(existing.rusher_id):
+			_rushers.remove_at(i)
+			if is_instance_valid(existing):
+				existing.queue_free()
+
+func _rusher_by_id(id: int) -> Node:
+	for rusher in _rushers:
+		if is_instance_valid(rusher) and rusher.rusher_id == id:
+			return rusher
+	return null
+
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array, layout: PackedInt32Array) -> void:
+func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
+		layout: PackedInt32Array, rushers: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers])
 		return
-	_consume_snapshot(entries, stones, balls, layout)
+	_consume_snapshot(entries, stones, balls, layout, rushers)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5])
 
-func _consume_snapshot(entries: Array, stones: Array, balls: Array, layout: PackedInt32Array) -> void:
+func _consume_snapshot(entries: Array, stones: Array, balls: Array,
+		layout: PackedInt32Array, rushers: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
 			grid.apply_stone_layout(layout)
 	_apply_ball_snapshot(balls)
+	_apply_rusher_snapshot(rushers)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
@@ -977,6 +1243,10 @@ func host_add_peer(peer: int) -> void:
 	# moved since. Sending the world itself would be orders of magnitude more.
 	if grid != null:
 		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count())
+		# AFTER the run, never before: this names cells that only exist once the
+		# newcomer has built the segments holding them. Both are reliable, so the
+		# order they are sent in is the order they arrive in.
+		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.

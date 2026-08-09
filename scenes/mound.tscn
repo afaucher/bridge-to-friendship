@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3 uid="uid://btfmound1"]
+
+; A dormant rusher: the authored cell where one is waiting.
+;
+; NO COLLISION SHAPE, on purpose and on two counts. A player has to be able to
+; walk over it -- the trigger is proximity, and a mound you bumped into would be
+; a wall that hurts you. And the rusher spawns from this exact spot, so a
+; collider here is a body spawning inside another body, which CLAUDE.md records
+; as the thing that drops two coincident bodies through the floor.
+[sub_resource type="CylinderMesh" id="Mound_1"]
+top_radius = 0.3
+bottom_radius = 0.95
+height = 0.35
+
+; Read as DISTURBED GROUND, not as a hazard. It is the same earth as the deck --
+; darker, redder, unmistakably a lump -- because the design's fairness rule puts
+; the warning in the RISE, not here. A mound that shouted would make the
+; telegraph redundant and the trigger radius meaningless.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.34, 0.2, 0.14, 1)
+roughness = 1.0
+
+[node name="Mound" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mound_1")
+material_override = SubResource("Mat_1")

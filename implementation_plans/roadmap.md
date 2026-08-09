@@ -396,6 +396,38 @@ Exit: A1, A2, A3, C3, C6, E1, E2, E3.
 
 # Post-MVP
 
+## MR — Rushers — **DONE (2026-08-08)**
+
+Built out of order, ahead of M10 and M11, on request. Full design in
+`design_ideas/hazards.md`; it was already settled there, so this was a build and
+not a decision.
+
+The first **destructible** hazard, which is the point of it. Everything hostile
+before this was deflectable — a ball is batted away, a stone is pushed a cell, a
+player is launched — so nothing could be *removed*, and that made the ranged
+specials weak by construction: a shotgun was a shove you could do from further
+away, and the shove is free. **M12 now has a threat the base verbs can only
+postpone**, which is what earns that whole category its slot.
+
+Shipped: mound glyph `m` and its validator rule, `rusher_body.gd` (RISE →
+CHASE → STAGGER), proximity wake with a spent-once mound, line-of-sight gating,
+contact tumble that expends the rusher, dash-deflect, the burrow timer, snapshot
+replication with monotonic host-assigned ids, and eight mounds in the playtest
+map. `test_rusher` covers all seven claims.
+
+**Line of sight was added during the build** and is the one design change: a
+straight-line chaser without it grinds into the near face of a pillar for its
+whole lifetime. See the hazards doc for what it costs and what it buys.
+
+**Still open, and both are playtest questions.** Whether a 56 m/s dash ought to
+kill outright rather than stagger — specified as stagger, to keep the
+destructible/deflectable split clean. And whether eight mounds on one map is too
+many; the density is a guess and the cap (`RUSHER_MAX`) is a backstop, not a
+tuning knob.
+
+**Not built: any way to kill one.** That is M12's job, and until it exists the
+only answers are the dash, the burrow timer, and walking one off a ledge.
+
 ## M11 — Bus mode
 
 Rare and long: roughly one bus stretch every 8–12 foot segments, each running 8

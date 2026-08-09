@@ -1,0 +1,52 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfrusher1"]
+
+[ext_resource type="Script" path="res://scripts/sim/rusher_body.gd" id="1_rusher"]
+
+; A cylinder like the player, for the same reason: it never tips, so a rusher
+; stays something with a predictable footprint. Shorter and slightly fatter than
+; a player (1.4 vs 1.8) so the two read apart instantly at camera distance --
+; across a bridge, silhouette is all you get.
+[sub_resource type="CylinderShape3D" id="Cyl_1"]
+radius = 0.5
+height = 1.4
+
+; The MESH is a cone: wide at the deck, pointed at the top. It is the shape of
+; the thing that just came up through the floor, and it points the way a nose
+; does without needing a separate marker.
+[sub_resource type="CylinderMesh" id="Cone_1"]
+top_radius = 0.05
+bottom_radius = 0.5
+height = 1.4
+
+; Hostile red-orange. The palette is already spoken for -- browns are scenery,
+; blue is the players, cold near-black is a plinko ball -- so the one remaining
+; loud hue belongs to the one thing that is actively coming for you.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.85, 0.24, 0.14, 1)
+roughness = 0.55
+emission_enabled = true
+emission = Color(0.5, 0.08, 0.02, 1)
+emission_energy_multiplier = 0.35
+
+[node name="Rusher" type="CharacterBody3D"]
+; Layer 16 = rushers. Mask 23 = world | players | stones | RUSHERS.
+;
+; The self-bit (16) is the one everybody omits, because every other entry in a
+; mask is about something else. Without it a pack of rushers occupies one point
+; in space and arrives as a single enemy wearing several sprites -- which is the
+; exact bug the plinko balls had.
+;
+; Balls (8) are deliberately NOT in this mask. A CharacterBody3D does not push a
+; RigidBody3D, it is merely blocked by one, so a ball resting in a doorway would
+; park a rusher against it forever. A ball passing through a rusher is a smaller
+; wrong than an enemy stuck on a marble.
+collision_layer = 16
+collision_mask = 23
+script = ExtResource("1_rusher")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Cone_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Cyl_1")

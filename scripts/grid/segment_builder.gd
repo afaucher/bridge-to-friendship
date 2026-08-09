@@ -32,6 +32,9 @@ class Built:
 	# already possible; nothing stands on the cell yet.
 	var shooter_cells: Array = []
 	var heart_cells: Array = []
+	# Dormant rushers. The cell is authored; the enemy does not exist until a
+	# player walks close enough to wake it.
+	var mound_cells: Array = []
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -327,6 +330,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.shooter_cells.append(Vector2i(x, z))
 				GridConfig.Content.HEART:
 					out.heart_cells.append(Vector2i(x, z))
+				GridConfig.Content.MOUND:
+					out.mound_cells.append(Vector2i(x, z))
 
 # --- Helpers ------------------------------------------------------------------
 

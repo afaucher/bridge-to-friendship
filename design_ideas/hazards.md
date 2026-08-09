@@ -104,12 +104,39 @@ it is a grid-model change scoped as one, not a hazard.
 **Decided 2026-08-08.** The first enemy, and deliberately the *cheap* one:
 spiders need pathfinding, patrol states and aggro. A rusher needs a direction.
 
+**Built 2026-08-08.** `scripts/sim/rusher_body.gd`, woken and judged by
+`GameWorld._process_rushers`, gated by `test_rusher`.
+
 **It rises, then it runs at you.** An authored cell holds a dormant mound
 (glyph **`m`**, provisional). A player within `RUSHER_TRIGGER_RADIUS` wakes it;
 it takes `RUSHER_RISE_SECONDS` to emerge, and *that emergence is the telegraph* —
 the same fairness rule as plinko's slow balls. Then it picks the nearest player
 and moves straight at them. No pathfinding: a straight line on the deck, which is
 all "rushes right at you" requires and is the entire reason this is affordable.
+
+**But only at a player it can SEE.** *(Added 2026-08-08, during the build.)* A
+straight-line chaser with no sight test walks into the near face of a pillar and
+grinds there for its whole lifetime — measured at 3.3 m of travel into a pillar
+over 45 ticks, versus 6.1 m down an open lane. That is the cost of being cheap,
+and one raycast buys it back.
+
+It earns more than it costs. **Breaking line of sight becomes a real answer**,
+and it is the one that pairs with the burrow timer: putting something solid
+between you and it turns "outlive it" from a formality into a plan. A rusher that
+can see nobody simply *stands there* — it does not wander or search, because
+searching is the pathfinding this design bought its way out of.
+
+The same test gates the **wake**. Without that, a player passing on the far side
+of a pillar spends the mound on a rusher that rises with nobody to run at, stands
+for ten seconds and burrows — an authored hazard consumed without ever being one.
+
+Deck and pillars block sight; **players do not**. Hiding behind a friend would
+make the friend a shield, which is a mechanic this game has not decided to have —
+and the one it does have for that is the shove.
+
+**It walks into holes.** Also not an oversight. A straight line at a target
+respects nothing in between, so leading one off an edge is the cheapest tool a
+weaponless player has, and it makes the bridge's own geometry a weapon.
 
 **It is faster than a walk and vastly slower than a dash.** You cannot simply
 stroll away from it — that is what makes it a decision rather than an annoyance —
@@ -199,8 +226,12 @@ building one.
    deflect and stagger — so that the destructible/deflectable split stays clean.
    If playtest says a 56 m/s impact obviously ought to kill it, the split needs a
    different carrier and the weapons lose their exclusive job.
-2. **[open]** Do rushers respawn from the same mound, or is a mound spent? Spent
-   is simpler and keeps authored density meaningful.
+2. **ANSWERED 2026-08-08: a mound is spent.** Built that way, for the stated
+   reason — a mound that refilled would make the hazard a function of how long
+   you loiter rather than of where it was authored. The spent set is replicated:
+   a reliable RPC when one wakes, and the whole set once on join, because a
+   client that rebuilt the bridge from the seed has every mound including the
+   used ones.
 3. **[open]** Naming. "Rusher" is descriptive placeholder; `m` for its mound is
    mnemonic but unclaimed glyphs are getting scarce.
 4. **[open]** Does transfusion work on a `DOWNED` teammate, or only to prevent

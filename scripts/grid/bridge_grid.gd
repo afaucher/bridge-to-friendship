@@ -20,6 +20,7 @@ const StoneScene = preload("res://scenes/stone.tscn")
 const StoneBody = preload("res://scripts/sim/stone_body.gd")
 const HeartScene = preload("res://scenes/heart.tscn")
 const ShooterScene = preload("res://scenes/shooter.tscn")
+const MoundScene = preload("res://scenes/mound.tscn")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
@@ -137,6 +138,9 @@ func load_segment(seg) -> void:
 
 	for local_cell in built.heart_cells:
 		_spawn_heart(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.mound_cells:
+		_spawn_mound(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 func next_z() -> int:
 	var total := 0
@@ -333,6 +337,78 @@ func try_take_heart(world_position: Vector3) -> bool:
 			heart.queue_free()
 			return true
 	return false
+
+# --- Mounds -------------------------------------------------------------------
+#
+# A dormant rusher: an authored cell that becomes an enemy when someone walks
+# close enough. Kept on the GRID rather than in GameWorld for the same reason
+# everything else is -- a mound is authored terrain, so it is a property of the
+# bridge, and a client that built the same segments already has every one of them
+# without being told.
+#
+# A MOUND IS SPENT ONCE. Answering the open question in hazards.md the simple
+# way: a mound that refilled would make authored density meaningless, because the
+# hazard would then be a function of how long you loiter rather than of where the
+# level designer put it.
+
+var _mounds: Dictionary = {}     # Vector2i -> the node drawn there
+var _mound_root: Node3D = null
+# Which cells have already been used, so a client that joins mid-run can be told
+# in one message rather than being left drawing lumps that are not there.
+var _spent_mounds: Array = []    # Vector2i
+
+func _spawn_mound(cell: Vector2i) -> void:
+	if _mound_root == null:
+		_mound_root = Node3D.new()
+		_mound_root.name = "Mounds"
+		add_child(_mound_root)
+	var mound: Node3D = MoundScene.instantiate()
+	mound.name = "Mound_%d_%d" % [cell.x, cell.y]
+	# Sitting ON the deck, half its own height proud of it.
+	mound.position = cell_surface(cell) + Vector3(0.0, 0.17, 0.0)
+	_mound_root.add_child(mound)
+	_mounds[cell] = mound
+
+func mound_count() -> int:
+	return _mounds.size()
+
+func mound_cells() -> Array:
+	return _mounds.keys()
+
+# Where a rusher stands once it has finished emerging, in the world's space.
+func mound_surface_world(cell: Vector2i) -> Vector3:
+	return cell_surface_world(cell) + Vector3(0.0, SimConfig.RUSHER_HEIGHT * 0.5, 0.0)
+
+# Wake the mound at `cell`: the lump goes, and it never comes back. Returns false
+# if there was nothing there, so the caller cannot spawn two rushers from one
+# mound by asking twice in a frame.
+func take_mound(cell: Vector2i) -> bool:
+	if not _mounds.has(cell):
+		return false
+	var mound: Node3D = _mounds[cell]
+	_mounds.erase(cell)
+	_spent_mounds.append(cell)
+	if is_instance_valid(mound):
+		mound.queue_free()
+	return true
+
+# The spent set as flat x,z pairs -- the same shape as stone_layout(), and for
+# the same reason: a joining client rebuilds the bridge from the seed, which
+# gives it every mound INCLUDING the ones already used. One compact message
+# reconciles that, and it is sent once on join rather than every tick, because a
+# mound changes state exactly once in its life.
+func spent_mound_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _spent_mounds:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+func apply_spent_mounds(layout: PackedInt32Array) -> void:
+	var i := 0
+	while i + 1 < layout.size():
+		take_mound(Vector2i(layout[i], layout[i + 1]))
+		i += 2
 
 func all_stones() -> Array:
 	var out: Array = _stones.values().duplicate()

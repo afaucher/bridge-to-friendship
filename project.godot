@@ -94,6 +94,7 @@ system_exit={
 3d_physics/layer_2="players"
 3d_physics/layer_3="stones"
 3d_physics/layer_4="balls"
+3d_physics/layer_5="rushers"
 
 [physics]
 
