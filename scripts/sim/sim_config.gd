@@ -100,6 +100,27 @@ const TUMBLE_MAX_SECONDS := 5.0    # ...but you are never stuck rolling forever
 const TUMBLE_RECOVER_SPEED := 3.5  # must have slowed to this to stand up
 const TUMBLE_SPIN_RATE := 9.0      # radians/sec of MESH spin; the collider never tips
 
+# --- Ramp launch: the co-op gate, made to actually work -----------------------
+#
+# A ramp too steep to walk is a WALL as far as the engine is concerned, so a
+# shoved player bounced off it and went nowhere -- measured 0.05 m of climb
+# against the 1.55 m needed. And even riding it perfectly, the shove transfer
+# does not carry enough energy: clearing a 2 m rise wants ~10 m/s of vertical,
+# which is ~14 m/s along a 45-degree slope.
+#
+# So a steep ramp is a LAUNCHER. A body that arrives with momentum is redirected
+# up the slope and thrown, rather than projected onto it (which loses energy to
+# the cosine) or bounced off it (which loses the point).
+#
+# ONLY WHILE TUMBLING, and that restriction IS the co-op gate. A dash is a
+# horizontal run that slams into the ramp face; being THROWN by a teammate is
+# what carries you up it. Let a dash launch you too and a lone player can climb
+# the steep ramp unaided, and every authored "you need each other here" beat
+# stops meaning anything.
+const RAMP_LAUNCH_MIN_SPEED := 6.0     # arrive slower than this and it is just a wall
+const RAMP_LAUNCH_SPEED := 16.0        # what you leave at, along the slope
+const RAMP_LAUNCH_MAX_ANGLE_DEG := 75.0  # steeper than this is a wall, not a ramp
+
 # --- Ledges and rescue --------------------------------------------------------
 # The catch is AUTOMATIC (no input): it fires most often while the player is
 # mid-tumble with no control, so a prompt they could not answer would read as the

@@ -157,6 +157,17 @@ the moment it is written.
   removed, so it tells you nothing) and only above a real impact speed.
   **Deliberately NOT fixed for `TUMBLE`** — the per-tick scrub is what makes a
   tumble settle, and it was kept after playtest. See the note in `_step_tumble`.
+- **ANY judgement about an impact must use the velocity from BEFORE
+  `move_and_slide`.** It has now cost three separate bugs — the ball's bounce,
+  the ramp launch, and the tumble bounce. `move_and_slide` removes the
+  into-surface component, so reading `velocity` back afterwards says the body was
+  barely moving toward the thing it just hit at 11 m/s, and every threshold
+  keyed on it silently never fires. Capture `var approach := velocity` first.
+- **Half a gate is not a gate.** `test_ramp_traversal` asserted a lone player
+  *cannot* climb the steep ramp and nothing asserted a shoved one *can* — and a
+  wall nobody can climb passes that just as well. The shove up a ramp was broken
+  the whole time and fully green. **When a rule has two halves, test the half
+  that says something is POSSIBLE**; that is the one carrying the design.
 - **A seam between two convex shapes catches a flat-bottomed body, and it
   presents as "sometimes".** Ramps were merged along Z but not across X, so a
   two-cell-wide ramp was two wedges with a vertical seam down the middle: walking
