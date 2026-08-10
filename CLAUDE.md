@@ -8,6 +8,17 @@ Godot 4.4.1, GDScript, 3D, headless test workflow. Multiplayer is host-
 authoritative over two interchangeable transports: Steam (GodotSteam) for
 release, ENet for development and for every test.
 
+**The engine is a dependency of the repo, not of the machine.** `godot.manifest`
+pins the version; `godot_env.sh` / `godot_env.ps1` install exactly that build
+into `build/deps/` and refuse anything that reports a different version. Nothing
+outside the repo is read (a Godot on `PATH` is never reused) or written (export
+templates go to `build/deps/godot-data`, reached by pointing `XDG_DATA_HOME` /
+`APPDATA` at it, NOT to the developer's `~/.local/share/godot`). Several people
+build this game on machines set up for other Godot work; that is the constraint
+the whole build system is shaped by. Do not add a code path that falls back to a
+machine-wide install — a build whose engine depends on what else is installed is
+not a build anyone can reproduce.
+
 **Provenance note.** The engine-level traps below marked *(inherited)* were paid
 for in a sibling Godot project and are reproduced here because they are
 properties of Godot and PowerShell, not of that game — they will bite here on
@@ -23,8 +34,10 @@ Tests live in `scripts/tests/*.gd`, one file per test, and are run by name:
 # Via the runner (writes logs to test_logs/, prints a pass/fail line):
 powershell -NoProfile -ExecutionPolicy Bypass -File ./test_runner.ps1 -TestName test_smoke
 
-# Direct (simplest to capture output for grepping):
-./Godot_v4.4.1-stable_win64.exe --path . --headless --fixed-fps 60 --run-test test_smoke
+# Direct (simplest to capture output for grepping). The engine lives under
+# build/deps -- it is a dependency of the REPO, not of the machine:
+./build/deps/godot/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64 \
+    --path . --headless --fixed-fps 60 --run-test test_smoke
 ```
 
 - **Pass marker:** `>>> [TEST PASSED] <name> <<<`. Failures print
@@ -256,8 +269,8 @@ the moment it is written.
   size prove nothing — grep its output for a value you can predict.**
 - **`FileAccess.store_line` buffers** *(inherited)* — a file being written may
   read back as 0 lines until it is flushed or closed.
-- **Kill stragglers** if a run hangs:
-  `taskkill //F //IM Godot_v4.4.1-stable_win64.exe`.
+- **Kill stragglers** if a run hangs: `pkill -f Godot_v` (Linux) or
+  `taskkill //F //IM Godot_v4.4.1-stable_win64.exe` (Windows).
 - **PowerShell's `-Encoding utf8` writes a BOM, and a BOM breaks Godot's text
   formats.** Observed 2026-08-08 rewriting a `.tscn` with `Set-Content -Encoding
   utf8`: every load failed with `Parse Error: Expected '['` at **line 1**, and

@@ -9,30 +9,24 @@ param (
     [string]$TestName = ""
 )
 
-function Normalize-ProcessPath {
-    if ($env:PATH) {
-        $env:Path = $env:PATH
-        [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
-    }
-}
-
+. "$PSScriptRoot\godot_env.ps1"
 Normalize-ProcessPath
 
-$godotPath = "$PSScriptRoot\Godot_v4.4.1-stable_win64.exe"
-if (-not (Test-Path $godotPath)) {
-    Write-Error "Godot executable not found at $godotPath."
-    exit 1
-}
-
-. "$PSScriptRoot\import_check.ps1"
-Import-IfStale -ProjectRoot $PSScriptRoot -GodotPath $godotPath
-
+# Usage check FIRST: listing the tests must not install a 60 MB engine.
 if ($TestName -eq "") {
     Write-Host "Usage: .\test_runner.ps1 -TestName <name>   (a file in scripts\tests\<name>.gd)" -ForegroundColor Yellow
     Write-Host "Available tests:" -ForegroundColor Cyan
     Get-ChildItem -Path "$PSScriptRoot\scripts\tests\*.gd" | ForEach-Object { Write-Host "  $($_.BaseName)" }
     exit 1
 }
+
+# The engine version is pinned in godot.manifest and installed under build\deps
+# on first use -- see godot_env.ps1. build.ps1 resolves it once up front, so the
+# parallel gate finds it already there rather than N runners racing to fetch it.
+$godotPath = (Resolve-GodotEngine).Path
+
+. "$PSScriptRoot\import_check.ps1"
+Import-IfStale -ProjectRoot $PSScriptRoot -GodotPath $godotPath
 
 Write-Host "Running test: $TestName" -ForegroundColor Cyan
 

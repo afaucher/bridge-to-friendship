@@ -11,19 +11,12 @@ set -u
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GODOT_PATH="$SCRIPT_DIR/Godot_v4.4.1-stable_linux.x86_64"
 LOG_DIR="$SCRIPT_DIR/test_logs"
 TEST_TIMEOUT_SEC=600
 
 C_CYAN='\033[36m'; C_GREEN='\033[32m'; C_RED='\033[31m'; C_RESET='\033[0m'
 
-if [[ ! -x "$GODOT_PATH" ]]; then
-    printf "${C_RED}Godot executable not found at %s${C_RESET}\n" "$GODOT_PATH" >&2
-    printf "Download the 4.4.1-stable Linux build and place it there:\n" >&2
-    printf "  https://github.com/godotengine/godot-builds/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip\n" >&2
-    exit 1
-fi
-
+# Usage check FIRST: listing the tests must not install a 60 MB engine.
 TEST_NAME="${1:-}"
 if [[ -z "$TEST_NAME" ]]; then
     printf "Usage: ./test_runner.sh <name>   (a file in scripts/tests/<name>.gd)\n"
@@ -31,6 +24,14 @@ if [[ -z "$TEST_NAME" ]]; then
     find "$SCRIPT_DIR/scripts/tests" -maxdepth 1 -name '*.gd' -printf '  %f\n' | sed 's/\.gd$//' | sort
     exit 1
 fi
+
+# The engine version is pinned in godot.manifest and installed under build/deps
+# on first use -- see godot_env.sh. build.sh resolves it once up front, so the
+# parallel gate finds it already there rather than N runners racing to fetch it.
+# shellcheck source=./godot_env.sh
+source "$SCRIPT_DIR/godot_env.sh"
+godot_require || exit 1
+GODOT_PATH="$GODOT_BIN"
 
 # shellcheck source=./import_check.sh
 source "$SCRIPT_DIR/import_check.sh"

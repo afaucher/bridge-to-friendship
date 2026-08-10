@@ -3,6 +3,10 @@
 #   .\build.ps1              # full gate, then export
 #   .\build.ps1 -Force       # package even if a test failed (never for a release)
 #   .\build.ps1 -SkipTests   # export only -- the build is UNVERIFIED
+#
+# The engine is not assumed to be installed and is not hardcoded here: the
+# version comes from godot.manifest and godot_env.ps1 fetches exactly that build
+# into build\deps\ on first use. See that file.
 param (
     [switch]$Force,
     [switch]$SkipTests
@@ -11,20 +15,13 @@ param (
 $GameName = "BridgeToFriendship"
 $ExportPreset = "Windows Desktop"
 
-function Normalize-ProcessPath {
-    if ($env:PATH) {
-        $env:Path = $env:PATH
-        [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
-    }
-}
-
+. "$PSScriptRoot\godot_env.ps1"
 Normalize-ProcessPath
 
 # The exported game, if still running, holds its own binary open.
 Write-Host "Stopping any running instances of the game..." -ForegroundColor Yellow
 Stop-Process -Name $GameName -ErrorAction SilentlyContinue
 
-$godotPath = "$PSScriptRoot\Godot_v4.4.1-stable_win64.exe"
 $buildDir = "$PSScriptRoot\build"
 $windowsBuildDir = "$buildDir\windows"
 $exportPath = "$windowsBuildDir\$GameName.exe"
@@ -32,10 +29,12 @@ $buildVersion = Get-Date -Format "yyyy-MM-dd.HHmmss"
 
 Write-Host "Build Version: $buildVersion" -ForegroundColor Cyan
 
-if (-not (Test-Path $godotPath)) {
-    Write-Error "Godot executable not found at $godotPath."
-    exit 1
-}
+# Resolved (and installed, first time) BEFORE the parallel test runners below:
+# every test_runner.ps1 in that batch asks for the engine too, and a dozen
+# processes racing to download the same 120 MB is a self-inflicted flake.
+$engine = Resolve-GodotEngine
+$godotPath = $engine.Path
+Write-Host "Engine: Godot $($engine.Tag)  ($godotPath)" -ForegroundColor DarkCyan
 
 # Reimport up front, once, before the parallel test runners below -- each of
 # those self-checks too (test_runner.ps1), but by then this pass will have left
@@ -164,59 +163,13 @@ if ($SkipTests) {
 }
 
 # --- Export templates ---------------------------------------------------------
-$templateDir = "$env:APPDATA\Godot\export_templates\4.4.1.stable"
-if (-not (Test-Path "$templateDir\windows_release_x86_64.exe")) {
-    Write-Host "Export templates for 4.4.1.stable not found. Downloading (~1.2 GB)..." -ForegroundColor Cyan
-
-    # DOWNLOAD AS .zip, NOT .tpz. A .tpz IS an ordinary zip archive -- but
-    # Expand-Archive validates the FILE EXTENSION rather than the contents and
-    # accepts only ".zip", so handing it the upstream ".tpz" name fails with
-    # ".tpz is not a supported archive file format".
-    $tpzPath = "$PSScriptRoot\export_templates.zip"
-    $tempExtract = "$PSScriptRoot\temp_templates"
-
-    # PS 5.1 (the Windows default) does not negotiate TLS 1.2 on every box, and
-    # GitHub requires it -- force it or the download can fail outright.
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-    # -ErrorAction Stop on every step: these cmdlets raise NON-terminating
-    # errors by default, so without it a failure prints red and the script
-    # carries on regardless, straight past "installed successfully" and into an
-    # export that never had a chance. It is also what makes the catch fire.
-    try {
-        # Invoke-WebRequest's progress bar makes a 1.2 GB download roughly an
-        # order of magnitude slower in PS 5.1. Suppress it for the transfer.
-        $oldProgress = $ProgressPreference
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz" -OutFile $tpzPath -ErrorAction Stop
-        $ProgressPreference = $oldProgress
-
-        Write-Host "Extracting templates..." -ForegroundColor Cyan
-        if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
-        Expand-Archive -Path $tpzPath -DestinationPath $tempExtract -Force -ErrorAction Stop
-
-        New-Item -ItemType Directory -Force -Path $templateDir | Out-Null
-        Copy-Item -Path "$tempExtract\templates\*" -Destination $templateDir -Recurse -Force -ErrorAction Stop
-    } catch {
-        Write-Host "BUILD ABORTED: could not install export templates. $_" -ForegroundColor Red
-        Write-Host "Install them manually via the Godot editor (Editor > Manage Export Templates)." -ForegroundColor Yellow
-        exit 1
-    } finally {
-        if (Test-Path $tpzPath) { Remove-Item $tpzPath -Force }
-        if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
-    }
-
-    # Verify rather than assume.
-    if (-not (Test-Path "$templateDir\windows_release_x86_64.exe")) {
-        Write-Host "BUILD ABORTED: export templates did not install to $templateDir." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "Export templates installed successfully." -ForegroundColor Green
-}
+Install-GodotTemplates -Engine $engine -Targets @("windows") | Out-Null
 
 # --- Export -------------------------------------------------------------------
+# NOT a recursive delete of $buildDir -- build\ now also holds deps\, i.e. the
+# engine this script is running from. Only the output directory is cleaned.
 Write-Host "Preparing build directory: $buildDir" -ForegroundColor Cyan
-if (Test-Path $buildDir) { Remove-Item -Path $buildDir -Recurse -Force }
+if (Test-Path $windowsBuildDir) { Remove-Item -Path $windowsBuildDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $windowsBuildDir | Out-Null
 
 Set-Content -Path "$PSScriptRoot\version.txt" -Value $buildVersion
@@ -254,6 +207,12 @@ Write-Host "Export successful!" -ForegroundColor Green
 $zipPath = "$buildDir\${GameName}_Windows_v$buildVersion.zip"
 Write-Host "Packaging build into $zipPath..." -ForegroundColor Cyan
 Set-Content -Path "$windowsBuildDir\version.txt" -Value $buildVersion
+
+# Drop the previous Windows archive. Scoped to this platform's pattern on
+# purpose: build\ is no longer wiped wholesale, and a bare ${GameName}_* sweep
+# would take out a Linux archive built from the same tree.
+Get-ChildItem -Path $buildDir -Filter "${GameName}_Windows_v*.zip" -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 

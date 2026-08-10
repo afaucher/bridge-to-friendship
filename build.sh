@@ -10,6 +10,10 @@
 # right steam_api per platform automatically. So a Windows build produced here
 # is the same construction a Windows host would produce.
 #
+# The engine is not assumed to be installed and is not hardcoded here: the
+# version comes from godot.manifest and godot_env.sh fetches exactly that build
+# into build/deps/ on first use. See that file.
+#
 # Usage:
 #   ./build.sh                      # gate + build BOTH targets
 #   ./build.sh --target linux       # one target only
@@ -22,10 +26,7 @@ set -o pipefail
 
 GAME_NAME="BridgeToFriendship"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GODOT_PATH="$SCRIPT_DIR/Godot_v4.4.1-stable_linux.x86_64"
 BUILD_DIR="$SCRIPT_DIR/build"
-GODOT_VERSION="4.4.1.stable"
-TEMPLATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$GODOT_VERSION"
 BUILD_VERSION="$(date +%Y-%m-%d.%H%M%S)"
 LOG_DIR="$SCRIPT_DIR/test_logs"
 
@@ -53,7 +54,9 @@ while [[ $# -gt 0 ]]; do
         # for a full gate every time. A build made with this flag has had
         # NOTHING verified -- do not ship one.
         --skip-tests) SKIP_TESTS=1; shift ;;
-        -h|--help)    sed -n '2,20p' "$0"; exit 0 ;;
+        # Print the contiguous header comment and stop -- a fixed line range
+        # goes stale the moment the header is edited.
+        -h|--help)    awk 'NR>1 && /^#/ {print; next} NR>1 {exit}' "$0"; exit 0 ;;
         *) die "Unknown argument: $1" ;;
     esac
 done
@@ -61,12 +64,15 @@ done
 say "Build Version: $BUILD_VERSION"
 say "Targets: $TARGETS"
 
-# --- Verification ------------------------------------------------------------
-if [[ ! -x "$GODOT_PATH" ]]; then
-    printf "${C_RED}Godot executable not found at %s${C_RESET}\n" "$GODOT_PATH" >&2
-    printf "  https://github.com/godotengine/godot-builds/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip\n" >&2
-    exit 1
-fi
+# --- Engine -------------------------------------------------------------------
+# Resolved (and installed, first time) BEFORE the parallel test batch below:
+# every test_runner.sh in that batch asks for the engine too, and thirty
+# processes racing to download the same 120 MB is a self-inflicted flake.
+# shellcheck source=./godot_env.sh
+source "$SCRIPT_DIR/godot_env.sh"
+godot_require || exit 1
+GODOT_PATH="$GODOT_BIN"
+say "Engine: Godot $GODOT_TAG  (${GODOT_PATH#$SCRIPT_DIR/})"
 
 pkill -f "$GAME_NAME" 2>/dev/null || true
 
@@ -168,52 +174,17 @@ else
 fi
 
 # --- Export templates --------------------------------------------------------
-needed_templates() {
-    for t in $TARGETS; do
-        case "$t" in
-            linux)   printf '%s\n' "linux_release.x86_64" ;;
-            windows) printf '%s\n' "windows_release_x86_64.exe" ;;
-        esac
-    done
-}
-
-missing=0
-while read -r tpl; do
-    [[ -f "$TEMPLATE_DIR/$tpl" ]] || missing=1
-done < <(needed_templates)
-
-if [[ "$missing" -eq 1 ]]; then
-    say "Export templates for $GODOT_VERSION not found in $TEMPLATE_DIR. Downloading (~1.2 GB)..."
-    TPZ="$SCRIPT_DIR/export_templates.tpz"
-    TMP_EXTRACT="$SCRIPT_DIR/temp_templates"
-    # shellcheck disable=SC2064
-    trap "rm -rf '$TPZ' '$TMP_EXTRACT'" EXIT
-
-    curl -fL --retry 3 -o "$TPZ" \
-        "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz" \
-        || die "BUILD ABORTED: could not download export templates."
-
-    say "Extracting templates..."
-    rm -rf "$TMP_EXTRACT"
-    # A .tpz is an ordinary zip with a top-level templates/ folder -- unzip does
-    # not care about the extension (this is exactly what trips up build.ps1's
-    # Expand-Archive, which validates the extension and not the file).
-    unzip -q -o "$TPZ" -d "$TMP_EXTRACT" || die "BUILD ABORTED: could not extract export templates."
-
-    mkdir -p "$TEMPLATE_DIR"
-    cp -f "$TMP_EXTRACT/templates/"* "$TEMPLATE_DIR/" 2>/dev/null || true
-    rm -rf "$TPZ" "$TMP_EXTRACT"
-    trap - EXIT
-
-    while read -r tpl; do
-        [[ -f "$TEMPLATE_DIR/$tpl" ]] || die "BUILD ABORTED: template $tpl missing from $TEMPLATE_DIR."
-    done < <(needed_templates)
-    say "Export templates installed successfully." "$C_GREEN"
-fi
+# shellcheck disable=SC2086  # word splitting is the point: TARGETS is a list
+godot_require_templates $TARGETS || die "BUILD ABORTED: export templates unavailable."
 
 # --- Export ------------------------------------------------------------------
+# NOT `rm -rf "$BUILD_DIR"` -- build/ now also holds deps/, i.e. the engine this
+# script is running from. Only the output directories are cleaned, and only the
+# ones this run is about to write.
 say "Preparing build directory: $BUILD_DIR"
-rm -rf "$BUILD_DIR"
+for t in $TARGETS; do
+    rm -rf "${BUILD_DIR:?}/$t"
+done
 printf '%s\n' "$BUILD_VERSION" >"$SCRIPT_DIR/version.txt"
 
 # zip(1) is not installed everywhere -- fall back to 7z and then to python3's
@@ -277,11 +248,16 @@ export_target() {
     # with no .exe in it once (2026-08-08). Nothing here has that failure mode --
     # zip/7z/tar all report an unreadable file and every call below is checked --
     # so this stays a plain exit-code check rather than a copy of that machinery.
+    # Drop this platform's previous archive. Scoped to the platform on purpose:
+    # a bare ${GAME_NAME}_* sweep would delete the Linux archive that the same
+    # `./build.sh` (both targets) produced thirty seconds earlier.
     local archive
     if [[ "$target" == "windows" ]]; then
+        rm -f "$BUILD_DIR/${GAME_NAME}_Windows_v"*.zip
         archive="$BUILD_DIR/${GAME_NAME}_Windows_v$BUILD_VERSION.zip"
         make_zip "$out_dir" "$archive" || { say "Packaging failed: no zip, 7z or python3 available." "$C_RED"; return 1; }
     else
+        rm -f "$BUILD_DIR/${GAME_NAME}_Linux_v"*.tar.gz
         # tar.gz for Linux: it is the platform convention and, unlike zip, it
         # preserves the executable bit -- a zipped Linux build extracts
         # non-executable and will not launch.

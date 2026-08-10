@@ -1,6 +1,7 @@
 # Bridge to Friendship
 
-A 3D multiplayer game in Godot 4.4.1, shipping on Steam.
+A 3D multiplayer game in Godot (4.4.1, pinned in `godot.manifest`), shipping on
+Steam.
 
 Right now this is the skeleton: a 3D world with a ground plane, a capsule
 avatar you can walk and jump, a networking layer with two interchangeable
@@ -11,19 +12,40 @@ M1 is waiting on.
 
 ## Requirements
 
-- **Windows:** PowerShell, plus `Godot_v4.4.1-stable_win64.exe` and
-  `Godot_v4.4.1-stable_win64_console.exe` at the project root.
-- **Linux:** bash, plus `Godot_v4.4.1-stable_linux.x86_64` at the project root.
+PowerShell on Windows, bash on Linux. **Nothing else — no Godot install.**
 
-The engine binaries are *not* committed (`.gitignore` excludes `*.exe` and
-`Godot_v*_linux.x86_64` — they are ~130 MB each). Download 4.4.1-stable from
-[godot-builds](https://github.com/godotengine/godot-builds/releases/tag/4.4.1-stable)
-and drop them at the root:
+The engine is a dependency of the repo, not of your machine. `godot.manifest`
+pins the version, and the build scripts, the test runners and the editor
+launcher all download exactly that build into `build/deps/` the first time they
+need it:
+
+```
+build/deps/godot/4.4.1-stable/      the engine  (~120 MB)
+build/deps/godot-data/              its data dir, incl. export templates
+build/linux/  build/windows/        export output
+```
+
+All of `build/` is gitignored, and **nothing outside the repo is read or
+written**. In particular a Godot on your `PATH` is never reused, and export
+templates go into `build/deps` rather than your `~/.local/share/godot` (or
+`%APPDATA%\Godot`) — so this project cannot pick up, or disturb, whatever Godot
+setup you keep for your own work. That is the point: everyone building this game
+builds it with the same engine regardless of what else is on their machine.
+
+### Upgrading Godot
+
+Edit the one line in `godot.manifest` and run a build; the new engine and its
+export templates are fetched on the next run. Any
+[godot-builds](https://github.com/godotengine/godot-builds/releases) tag works,
+pre-releases included. To trial one without editing the file:
 
 ```bash
-curl -LO https://github.com/godotengine/godot-builds/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
-unzip Godot_v4.4.1-stable_linux.x86_64.zip && chmod +x Godot_v4.4.1-stable_linux.x86_64 && rm Godot_v4.4.1-stable_linux.x86_64.zip
+BTF_GODOT_VERSION=4.5-stable ./build.sh --target linux
 ```
+
+Nothing accepts an engine that reports a different version than the pin — a
+build made with the wrong engine is exactly the kind of failure that only shows
+up in the shipped artifact.
 
 Both platforms can build the game; Linux can additionally cross-build the
 Windows release (no wine — Godot appends the project `.pck` to a prebuilt
@@ -40,10 +62,12 @@ Windows template, and GodotSteam ships binaries for every platform).
 ./build.sh --target linux   # or: --target windows
 ```
 
-Either script runs the full test suite first and aborts on any failure
-(`-Force` / `--force` overrides; `-SkipTests` / `--skip-tests` skips the gate
-entirely and produces an unverified build). It downloads the ~1.2 GB export
-templates if they are missing, then exports and packages:
+Either script installs the pinned engine if this checkout does not have it yet,
+runs the full test suite and aborts on any failure (`-Force` / `--force`
+overrides; `-SkipTests` / `--skip-tests` skips the gate entirely and produces an
+unverified build). It then fetches the export templates for the targets being
+built — the upstream archive is ~1.2 GB and only the templates those targets
+need are unpacked — and exports and packages:
 
 | target | binary | archive |
 |---|---|---|
@@ -84,11 +108,23 @@ output, not source.
 ./build/linux/BridgeToFriendship.x86_64
 ```
 
-Or straight from source:
+## Opening the editor
 
 ```powershell
-.\Godot_v4.4.1-stable_win64.exe --path .
+.\editor.ps1
 ```
+
+```bash
+./editor.sh
+```
+
+**Use these rather than double-clicking `project.godot`.** A `.godot` file opens
+in whichever Godot the desktop has associated with it, which on a machine with
+several installs is a coin flip — and opening this project in a newer editor is
+not a harmless mistake: it silently rewrites `project.godot`, the scenes and the
+import cache into its own format, and the pinned engine can no longer load what
+it left behind. The launchers always open the version in `godot.manifest`,
+installing it first if needed.
 
 **SOLO / LOCAL** starts a single-player session with no networking. **HOST** and
 **JOIN** use a Steam lobby and need a running Steam client. `steam_appid.txt`
@@ -115,6 +151,10 @@ have already cost time here.
 ## Layout
 
 ```
+godot.manifest       the pinned engine version -- the only place it is written
+godot_env.sh/.ps1    installs and verifies that engine into build/deps
+editor.sh/.ps1       open the project in it
+build.sh/.ps1        gate + export;  test_runner.sh/.ps1  one test by name
 scenes/              main.tscn (world + menu), player.tscn (avatar)
 scripts/
   main.gd            game root: menu, spawning, headless entry points
@@ -125,5 +165,7 @@ scripts/
   test_support/      shared helpers -- NOT run as tests
 design_ideas/        one short doc per design decision
 implementation_plans/ one plan per milestone
+build/               ALL gitignored: deps/ (engine + templates), linux/,
+                     windows/, and the packaged archives
 tmp/                 throwaway output (gitignored)
 ```

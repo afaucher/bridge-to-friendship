@@ -4,7 +4,9 @@
 !/.godot/global_script_class_cache.cfg
 !/.godot/uid_cache.bin
 
-# Build output
+# Build output AND dependencies. build/deps holds the pinned Godot engine and
+# its export templates (see godot.manifest / godot_env.sh) -- ~200 MB that is
+# downloaded, never committed.
 build/
 *.tmp
 *.bak
@@ -29,6 +31,7 @@ Thumbs.db
 *.exe
 *.zip
 
-# Linux specific (bundled Godot binary is downloaded locally, not committed)
+# Linux specific. The engine now lives under build/deps (already ignored above);
+# these stay so an engine left at the root by an older checkout is still ignored.
 Godot_v*_linux.x86_64
 *.tar.gz
