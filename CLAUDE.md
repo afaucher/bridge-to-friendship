@@ -333,6 +333,22 @@ the moment it is written.
   engine. In a hot path like `_physics_process`, one missing field silently
   kills the whole per-frame update with no crash. Use `d.get("field", default)`
   for anything not guaranteed to be present.
+- **The same is true of a missing PROPERTY, and it can turn the gate green over a
+  test that stopped testing.** Observed 2026-08-10 renaming `shove_dir` to
+  `shove_yaw`: `test_shove` still read the old name, the read raised, the raise
+  aborted the rest of that phase — so the assertion never ran and the suite
+  reported PASS with `SCRIPT ERROR: Invalid access to property` sitting in
+  stderr. **The runner checks the exit code and the marker; a GDScript runtime
+  error changes neither.** After renaming ANY field the tests touch, grep the
+  tests for the old name — the gate will not tell you. Same shape as the
+  `test_ramp_traversal` half-a-gate note above: a test that cannot fail is not a
+  test.
+- **Assigning a freed object to a typed `var x: Node` raises BEFORE
+  `is_instance_valid(x)` can say no.** So the usual guard does not guard: the
+  raise aborts the frame, and if that frame was advancing a state machine the
+  symptom is a TIMEOUT with no failing assertion. Cost 2026-08-08 in
+  `test_rusher`, twice, on a body whose whole job is to die on contact. Hold an
+  **id** and look the node up, or keep the variable untyped.
 - **Adding a `preload` const can create a CLASS CYCLE that HANGS the run, not
   fails it.** *(inherited)* A bare `class_name` reference resolves lazily; a
   `const X = preload(...)` forces the script to resolve earlier and can close a

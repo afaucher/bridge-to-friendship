@@ -33,10 +33,21 @@ where the only tools are shoving each other and roping each other together.
 Free analog movement, walking speed. Ordinary, responsive, unremarkable — it is
 the baseline that makes the committed actions feel committed.
 
+**Movement and facing are independent** *(revised 2026-08-10)*. The left stick or
+WASD moves; the **mouse or the right stick points**. You strafe one way while
+aiming another, which is what makes the dash a thing you aim rather than a thing
+you steer into.
+
+The facing is **assigned, never interpolated** — no turn rate, no smoothing. Both
+devices state a direction outright (the cursor is at a place on the deck; the
+stick is held at an angle), so the answer is read rather than accumulated. On a
+fixed camera the cursor *is* the aim, and anything that eases toward it reads as
+input lag even when the input is arriving perfectly.
+
 ### Shove
-A run locked to one of the four compass directions. The player accelerates to
-dash speed and **cannot steer, slow, or cancel**. It ends when it hits
-something, leaves the deck, or runs out of distance.
+A run in the direction you were **pointing** at the instant of the press. The
+player accelerates to dash speed and **cannot steer, slow, or cancel**. It ends
+when it hits something, leaves the deck, or runs out of distance.
 
 On hitting something, momentum transfers:
 
@@ -48,15 +59,37 @@ On hitting something, momentum transfers:
 | a wall or an unmovable stone | shover stops, small recoil |
 | nothing (edge of deck) | shover leaves the bridge |
 
-The direction lock is what makes this a *compass* and not a dodge: you commit to
-an axis, and everything downrange of that axis is in play. See
-`physics_and_authority.md` for why the transfer rules are hand-written game
-rules rather than emergent rigid-body results.
+The **commitment** is what makes this a dash and not a dodge: you pick a line,
+and everything downrange of it is in play. See `physics_and_authority.md` for why
+the transfer rules are hand-written game rules rather than emergent rigid-body
+results.
 
-**This constrains the camera.** A compass-locked dash is unusable with a
-free-look camera — "north" has to mean the same thing every frame. The camera is
-therefore **fixed-yaw**, looking along the bridge. This is not a small
-consequence and it is not negotiable while the dash is compass-locked.
+### The dash was locked to four axes, and is not any more
+
+*(Revised 2026-08-10.)* It ran along one of N/E/S/W for the whole of M1–MR. That
+existed because **the only pointing device was the movement stick**: the dash had
+to be readable from a direction the player was simultaneously using to walk, and
+snapping to a quarter turn was what made that unambiguous. Given a second stick
+or a mouse, the aim is stated outright and the snap stops helping — it becomes a
+thing that rounds off what the player just said.
+
+What is *unchanged* is the commitment. The dash still takes one direction at the
+instant of the press and holds it: no steering, no slowing, no cancelling. That
+was never the compass's doing, and it is where the comedy lives.
+
+**Cells are still cardinal**, and that is not a leftover. A pushed stone moves
+exactly one cell, and a cell has four neighbours however you were pointing when
+you hit it — so the push snaps at the moment of contact. There is no 20-degree
+cell to push a stone into. The ledge grab keeps a cardinal direction for the same
+reason.
+
+**The camera stays fixed-yaw**, but the reason has changed and is worth stating
+so nobody "restores" free look. It was justified by the compass lock: north had
+to mean the same thing every frame. Now it is justified by *aiming* — with a
+mouse, the cursor's position on screen is only a direction on the deck if the
+deck's orientation is known and stable. A rotating camera would make aiming a
+moving-target problem. It is also still framing a 60 m structure the party has to
+see all of. Two reasons instead of one.
 
 ### Rope
 A real, soft, simulated rope — a chain that drapes when slack, straightens as it

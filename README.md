@@ -131,6 +131,30 @@ installing it first if needed.
 currently holds `480` (Valve's public "Spacewar" test appid) — replace it, and
 `SteamManager.APP_ID`, once the game has its own.
 
+### Controls
+
+Movement and aiming are **independent**: you walk one way while pointing another.
+
+| | keyboard & mouse | gamepad |
+|---|---|---|
+| move | WASD / arrows | left stick |
+| aim | mouse cursor | right stick |
+| dash | Space | A, or right trigger |
+| menu | F5 | Start |
+| add a practice partner | F2 | — |
+| hand control to the next player | F3 | — |
+| quit | Esc | — |
+
+The dash goes **where you are pointing**, at any angle, and cannot be steered
+once it is running. With no aiming device it follows the direction you are
+walking, and with nothing held at all it follows the way you were last facing —
+it never refuses to fire.
+
+Aim follows **whichever device you last moved**, so a pad player is not yanked
+around by a resting mouse and a mouse player is not overridden by a drifting
+stick. Facing is assigned instantly, with no turn rate: see
+`design_ideas/game_concept.md`.
+
 ## Running tests
 
 Tests are headless Godot runs, one process per test, living in

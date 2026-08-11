@@ -115,7 +115,17 @@ func _phase_push_stone() -> void:
 		# only 0.6 m away -- so it has ALREADY connected and ended by now. The
 		# state is checked in test_player_movement, which dashes into open space;
 		# what matters here is the axis it committed to, which outlives the dash.
-		eq(shover.shove_dir, GridConfig.DIR_NORTH, "the dash locked to the compass axis that was held")
+		# `shove_yaw` since the aim revision, and NOT a compass index. This test
+		# supplies no aim, so the dash falls back to the direction of travel --
+		# which for a held "up the bridge" is yaw 0, exactly north. Free aim did
+		# not change what a keyboard-only player gets here; it added a way to
+		# point somewhere else.
+		#
+		# It read `shove_dir` until the revision, and for one gate run afterwards
+		# it still did: reading a property that no longer exists RAISES, and a
+		# raise aborts the rest of the function silently, so the suite went green
+		# with this assertion simply not running. See CLAUDE.md.
+		near(shover.shove_yaw, 0.0, 0.001, "the dash committed to the direction that was held")
 		# Steering input during a dash must do nothing at all.
 		p1_move = Vector2(1.0, 0.0)
 		return

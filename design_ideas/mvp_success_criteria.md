@@ -88,20 +88,25 @@ is nudged forward and, past a hard limit, fast-travelled to the group.
 per-player windows; the 60 m structural width can stay wide without the group
 dissolving; and no player can strand the others.
 
-## D4. Shove is a continuous dash on a grid-aligned axis
+## D4. Shove is a continuous dash along the direction you are pointing
 
-The player accelerates to dash speed along one of four world axes and cannot
-steer, slow, or cancel. It ends **wherever** it hits something — not on a cell
-boundary. **Only pushed stones snap to cells**; the player's own stopping
-position is continuous.
+*(Revised 2026-08-10: was "on a grid-aligned axis". See game_concept.md for why
+the four-way lock existed and why a second aiming device retires it.)*
+
+The player accelerates to dash speed along **the aim at the instant of the
+press** — any angle — and cannot steer, slow, or cancel. It ends **wherever** it
+hits something — not on a cell boundary. **Only pushed stones snap to cells**;
+the player's own stopping position is continuous, and so is the direction.
 
 Starting values *(tunable)*: dash speed **14 m/s**, duration **0.8 s**, so a
 dash covers about **11 m ≈ 5.5 cells** — roughly half the width of a typical
 playable corridor, which means one committed action can cross the play space to
 reach a friend.
 
-**Consequence already banked:** a compass-locked dash requires a **fixed-yaw
-camera**. That is settled by this decision, not open.
+**Consequence already banked:** a **fixed-yaw camera**. Originally because a
+compass-locked dash needs "north" to mean the same thing every frame; now because
+a mouse cursor is only a direction on the deck if the deck's orientation is
+stable. The conclusion outlived the premise that produced it.
 
 ---
 

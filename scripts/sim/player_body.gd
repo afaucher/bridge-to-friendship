@@ -48,11 +48,22 @@ var state_timer: float = 0.0
 # one of every correction.
 var grounded: bool = false
 
-# The compass axis this player last faced. A shove pressed with no movement
-# input goes THIS way -- a dash that refuses to fire because the stick was
-# centred reads as a dropped input.
-var facing: int = GridConfig.DIR_NORTH
-var shove_dir: int = GridConfig.DIR_NORTH
+# Where this player is pointing, as a free yaw in radians (0 = north = up the
+# bridge). A shove pressed with no aim and no movement goes THIS way -- a dash
+# that refuses to fire because nothing was held reads as a dropped input.
+#
+# WAS ONE OF FOUR COMPASS AXES until the aim revision. The four-way lock existed
+# because the only pointing device was the movement stick, so the dash had to be
+# readable from a direction the player was also using to walk; snapping to a
+# quarter turn made that unambiguous. With a mouse or a right stick the aim is
+# stated outright, and the snap becomes a thing that fights the player instead of
+# helping them.
+#
+# Cells are still cardinal. See GridConfig.yaw_to_direction, and the stone push
+# in GameWorld.resolve_shove_contact -- a stone moves one CELL, and a cell has
+# four neighbours however you were pointing when you hit it.
+var facing: float = 0.0
+var shove_yaw: float = 0.0
 var shove_cooldown: float = 0.0
 
 # --- Riding -------------------------------------------------------------------
@@ -114,7 +125,7 @@ func _ready() -> void:
 # delta from the physics frame, so this is only correct when the sim tick and the
 # physics tick are the same duration -- which is what lets a client replay N
 # ticks inside one frame and land where N frames put it.
-func step(move: Vector2, actions: int) -> void:
+func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	var before := position
 	state_timer += SimConfig.TICK_DELTA
 	shove_cooldown = maxf(0.0, shove_cooldown - SimConfig.TICK_DELTA)
@@ -123,7 +134,7 @@ func step(move: Vector2, actions: int) -> void:
 
 	match state:
 		State.WALK:
-			_step_walk(move, actions)
+			_step_walk(move, actions, aim)
 		State.SHOVE:
 			_step_shove()
 		State.TUMBLE:
@@ -140,29 +151,51 @@ func step(move: Vector2, actions: int) -> void:
 	_point_nose()
 	_sync_mesh()
 
-# Turn the facing marker to match the compass axis a dash would take. Driven from
-# `facing`, which is captured state, so it survives a reconciliation replay
-# rather than being animated independently on each machine.
+# Turn the facing marker to where the player is pointing. Driven from `facing`,
+# which is captured state, so it survives a reconciliation replay rather than
+# being animated independently on each machine.
+#
+# ASSIGNED, NEVER INTERPOLATED. The yaw is written straight through with no turn
+# rate and no smoothing -- see aim_source.gd for why: on a fixed camera the
+# cursor IS the aim, so anything that eases toward it reads as input lag.
 func _point_nose() -> void:
 	var nose := get_node_or_null("Facing") as Node3D
 	if nose == null:
 		return
-	# The marker points along -Z at rest, which is DIR_NORTH; the rest follow
-	# clockwise from there.
-	match facing:
-		GridConfig.DIR_NORTH: nose.rotation.y = 0.0
-		GridConfig.DIR_EAST: nose.rotation.y = -PI * 0.5
-		GridConfig.DIR_SOUTH: nose.rotation.y = PI
-		GridConfig.DIR_WEST: nose.rotation.y = PI * 0.5
+	# The marker points along -Z at rest, which is yaw 0, and GridConfig's yaw
+	# convention is Godot's own rotation about +Y -- so this is a direct write
+	# with no correction term.
+	nose.rotation.y = facing
 
-func _step_walk(move: Vector2, actions: int) -> void:
+# Where a dash would go if it were pressed right now.
+#
+# THE ORDER IS THE DESIGN. Aim wins, because a player holding a direction on the
+# mouse or right stick has said where they want to go and nothing should overrule
+# that. Movement is the fallback for a keyboard-only player with no aiming device
+# -- their dash follows their feet, which is exactly what it did before this
+# revision. Facing is the last resort so that a dash pressed with nothing at all
+# held still fires: a verb that silently refuses reads as a dropped input, and
+# this one is on a cooldown that would then be spent for nothing.
+func _aim_yaw(move: Vector2, aim: float) -> float:
+	if is_finite(aim):
+		return aim
+	if move.length_squared() > 0.04:
+		return GridConfig.yaw_of(move)
+	return facing
+
+func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	var dt := SimConfig.TICK_DELTA
 
-	if move.length_squared() > 0.04:
-		facing = GridConfig.nearest_direction(move)
+	# Facing is INDEPENDENT of movement now: you strafe one way while pointing
+	# another. Only fall back to the direction of travel when there is no aiming
+	# device saying otherwise.
+	if is_finite(aim):
+		facing = aim
+	elif move.length_squared() > 0.04:
+		facing = GridConfig.yaw_of(move)
 
 	if (actions & SimConfig.ACTION_SHOVE) != 0 and shove_cooldown <= 0.0:
-		_begin_shove(move)
+		_begin_shove(move, aim)
 		_step_shove()
 		return
 
@@ -189,15 +222,16 @@ func _step_walk(move: Vector2, actions: int) -> void:
 	move_and_slide()
 	grounded = is_on_floor()
 
-func _begin_shove(move: Vector2) -> void:
-	# A shove commits to ONE of four axes. Chosen from the movement input at the
-	# instant of the press, falling back to the way the player was already
-	# facing -- never refused for want of a direction.
-	shove_dir = GridConfig.nearest_direction(move) if move.length_squared() > 0.04 else facing
-	facing = shove_dir
+func _begin_shove(move: Vector2, aim: float) -> void:
+	# A shove commits to the direction you were POINTING at the instant of the
+	# press, and to nothing afterwards. The commitment is the design (see
+	# _step_shove); what changed with free aim is only that the committed
+	# direction is now any angle rather than one of four.
+	shove_yaw = _aim_yaw(move, aim)
+	facing = shove_yaw
 	state = State.SHOVE
 	state_timer = 0.0
-	var axis: Vector3 = GridConfig.DIR_VECTORS[shove_dir]
+	var axis: Vector3 = GridConfig.yaw_vector(shove_yaw)
 	velocity.x = axis.x * SimConfig.SHOVE_SPEED
 	velocity.z = axis.z * SimConfig.SHOVE_SPEED
 
@@ -208,7 +242,7 @@ func _step_shove() -> void:
 	# cancelled. Gravity still applies, so a dash off the deck is a dash off the
 	# deck -- that commitment is where the comedy lives, and it is also why the
 	# client does not predict this state: there is no input to mispredict.
-	var axis: Vector3 = GridConfig.DIR_VECTORS[shove_dir]
+	var axis: Vector3 = GridConfig.yaw_vector(shove_yaw)
 	velocity.x = axis.x * SimConfig.SHOVE_SPEED
 	velocity.z = axis.z * SimConfig.SHOVE_SPEED
 	if grounded:
@@ -228,7 +262,7 @@ func _step_shove() -> void:
 			continue
 		hit_something = true
 		if world != null:
-			world.resolve_shove_contact(self, collision.get_collider(), shove_dir)
+			world.resolve_shove_contact(self, collision.get_collider(), shove_yaw)
 
 	if hit_something or state_timer >= SimConfig.SHOVE_DURATION:
 		end_shove()
@@ -244,10 +278,10 @@ func end_shove() -> void:
 
 # Momentum arriving from someone else's dash. Called by the world, which owns
 # the transfer rules.
-func receive_shove(dir: int) -> void:
+func receive_shove(yaw: float) -> void:
 	if state == State.DOWNED or state == State.LEDGE_HANG:
 		return
-	var axis: Vector3 = GridConfig.DIR_VECTORS[dir]
+	var axis: Vector3 = GridConfig.yaw_vector(yaw)
 	# A dash arrives at 56 m/s. That is not a nudge -- it TUMBLES you, which is
 	# where the comedy lives: the shoved player loses control and goes wherever
 	# the bridge sends them.
@@ -585,7 +619,7 @@ func _find_carrier() -> Node:
 # exactly one machine in the session, and every client shows an empty bar and no
 # error, which looks precisely like a rescue that is not happening.
 func capture_state() -> Array:
-	return [position, velocity, state, state_timer, grounded, shove_dir, shove_cooldown,
+	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress]
 
 func apply_state(s: Array) -> void:
@@ -594,9 +628,9 @@ func apply_state(s: Array) -> void:
 	state = int(s[2])
 	state_timer = float(s[3])
 	grounded = bool(s[4])
-	shove_dir = int(s[5])
+	shove_yaw = float(s[5])
 	shove_cooldown = float(s[6])
-	facing = int(s[7])
+	facing = float(s[7])
 	health = int(s[8])
 	invulnerable = float(s[9])
 	hang_dir = int(s[10])

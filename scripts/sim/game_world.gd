@@ -23,6 +23,7 @@ const RusherScene = preload("res://scenes/rusher.tscn")
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const AimSource = preload("res://scripts/sim/aim_source.gd")
 
 signal player_spawned(peer_id: int)
 signal player_despawned(peer_id: int)
@@ -130,6 +131,10 @@ var wipes: int = 0
 
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
 const PLAYERS_LAYER_BIT := 2
+
+# Where the local human is pointing. Stateful because it remembers which device
+# was last used, and holds the last angle when neither is being moved.
+var _aim: AimSource = AimSource.new()
 
 # --- client-side ---
 var _pending_inputs: Array = []
@@ -291,7 +296,7 @@ func _host_tick() -> void:
 		var restore_mask: int = body.collision_mask
 		if carriers.has(body):
 			body.collision_mask = restore_mask & ~PLAYERS_LAYER_BIT
-		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
+		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
 		body.collision_mask = restore_mask
 
 	_process_run()
@@ -504,7 +509,7 @@ func _resolve_ball_hits(ball: Node) -> void:
 		# the shove a third job and makes the most committed action a defensive
 		# one.
 		if body.state == PlayerBody.State.SHOVE:
-			ball.deflect(GridConfig.DIR_VECTORS[body.shove_dir])
+			ball.deflect(GridConfig.yaw_vector(body.shove_yaw))
 			return
 
 		if body.invulnerable > 0.0:
@@ -696,7 +701,7 @@ func _resolve_rusher_contact(rusher: Node) -> void:
 		# can never both happen -- and it is the free answer available to
 		# everyone, which is what keeps a weaponless player from being stranded.
 		if body.state == PlayerBody.State.SHOVE:
-			rusher.deflect(GridConfig.DIR_VECTORS[body.shove_dir])
+			rusher.deflect(GridConfig.yaw_vector(body.shove_yaw))
 			return
 
 		# Otherwise it reaches you: tumble, one hit point, and it is SPENT.
@@ -910,7 +915,7 @@ func _client_tick() -> void:
 	var body: Node = players.get(local_peer)
 	if body != null:
 		if body.state == PlayerBody.State.WALK:
-			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS])
+			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
 			_predicted.append([tick, body.capture_state()])
 		else:
 			# COMMITTED ACTIONS ARE NOT PREDICTED. In a shove, a tumble or a
@@ -927,7 +932,21 @@ func _client_tick() -> void:
 func _gather_local_input(for_tick: int) -> Array:
 	if input_provider.is_valid():
 		return input_provider.call(for_tick)
-	return PlayerInput.sample(for_tick)
+	return PlayerInput.sample(for_tick, _poll_aim())
+
+# Resolving the aim needs the camera and the local body -- a cursor is a point on
+# the screen and the answer wanted is a direction on the deck. Those live here, so
+# this half happens here and the answer is handed to the static sampler.
+#
+# Only the world a human is looking at has an aim: a headless test world has no
+# camera, no cursor and no pad, and asking would give it a meaningless one.
+func _poll_aim() -> float:
+	if not view_active or camera == null:
+		return PlayerInput.AIM_NONE
+	var body: Node = players.get(local_peer)
+	if body == null:
+		return PlayerInput.AIM_NONE
+	return _aim.poll(camera, body.position)
 
 func _trim_history() -> void:
 	while _pending_inputs.size() > SimConfig.HISTORY_TICKS:
@@ -940,16 +959,30 @@ func _trim_history() -> void:
 # A dashing player hit something. The WORLD owns this rule, not the body: what a
 # shove does to what it hits is a statement about the game, and keeping it in one
 # place is what stops it from being re-derived slightly differently per collider.
-func resolve_shove_contact(shover: Node, other: Node, dir: int) -> void:
+#
+# WHERE THE FREE ANGLE MEETS THE CELL GRID, and the two halves are treated
+# differently on purpose.
+#
+# A PLAYER takes the dash's actual yaw. Bodies move through continuous space, so
+# a friend kicked at 20 degrees off north should go 20 degrees off north -- and
+# aiming a teammate precisely is now a thing a player can do, which is the point
+# of the whole revision.
+#
+# A STONE snaps to the nearest cardinal, because a stone moves exactly ONE CELL
+# and a cell has four neighbours no matter how you were pointing when you hit it.
+# There is no 20-degree cell to push it into. That is not a compromise with the
+# old scheme; it is the grid being the grid, and the same reason the ledge hang
+# keeps a cardinal `hang_dir`.
+func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 	# Host only. A client does not simulate its own shove (see _client_tick), so
 	# this is defence in depth rather than a live branch.
 	if not is_host or other == null or other == shover:
 		return
 	if other.has_method("receive_shove"):
-		other.receive_shove(dir)
+		other.receive_shove(yaw)
 		return
 	if grid != null and other.has_method("slide_to"):
-		grid.try_push(other.cell, dir)
+		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))
 
 # --- Host: consuming client input ---------------------------------------------
 
@@ -1170,7 +1203,7 @@ func _reconcile(body: Node, e: Array) -> void:
 	body.apply_state(authoritative)
 	_predicted.clear()
 	for pending in _pending_inputs:
-		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS])
+		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS], PlayerInput.aim_of(pending))
 		_predicted.append([int(pending[PlayerInput.TICK]), body.capture_state()])
 
 # --- Names --------------------------------------------------------------------

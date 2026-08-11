@@ -5,10 +5,14 @@ extends Camera3D
 #
 # THREE PROPERTIES, EACH LOAD-BEARING:
 #
-#   Fixed yaw. Not a preference. The shove is locked to compass axes, so "north"
-#   has to mean the same direction on every screen and in every frame; a camera
-#   that rotates makes the game's signature verb unusable. See
-#   design_ideas/game_concept.md.
+#   Fixed yaw. Not a preference, and it now has TWO independent reasons -- worth
+#   knowing, because the first one expired. It was originally that the shove was
+#   locked to compass axes, so "north" had to mean the same direction in every
+#   frame. Free aim retired that (2026-08-10) and the requirement survived it:
+#   the player now aims with a MOUSE, and a cursor position is only a direction
+#   on the deck if the deck's orientation is known and stable. A rotating camera
+#   would turn aiming into a moving-target problem.
+#   See design_ideas/game_concept.md.
 #
 #   The whole bridge across. The bridge is 30 cells (60 m) wide and the co-op
 #   depends on seeing what your friends are doing, so the framing is derived from
@@ -16,8 +20,10 @@ extends Camera3D
 #   the camera pulls back to match, automatically.
 #
 #   No sideways tracking. X is pinned to the centre line. A camera that chased a
-#   player sideways would make a 60 m bridge feel like a corridor and would move
-#   the world under a player who is trying to line up an axis-locked dash.
+#   player sideways would make a 60 m bridge feel like a corridor and would slide
+#   the world under a player who is lining up a dash -- which matters MORE with
+#   free aim than it did with four axes, because the aim is now continuous and
+#   any drift under the cursor is a drift in where you are pointing.
 #
 # It follows along the bridge in BOTH Z and Y: the deck is pitched and steps up
 # in layers, so tracking Z alone would let the party climb out of frame.

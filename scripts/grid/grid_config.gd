@@ -111,12 +111,47 @@ const DIR_VECTORS := [
 	Vector3(-1.0, 0.0, 0.0),
 ]
 
-# Nearest compass direction to an arbitrary heading. What turns a stick or a
-# WASD combination into the axis a shove commits to.
+# Nearest compass direction to an arbitrary heading.
+#
+# NO LONGER ON THE MOVEMENT PATH. Facing and the dash are free angles now (see
+# the yaw helpers below); this survives for the things that are genuinely
+# cell-shaped -- a stone is pushed exactly ONE CELL, and a cell has four
+# neighbours no matter how the player was pointing when they hit it.
 static func nearest_direction(heading: Vector2) -> int:
 	if absf(heading.x) >= absf(heading.y):
 		return DIR_EAST if heading.x >= 0.0 else DIR_WEST
 	return DIR_SOUTH if heading.y >= 0.0 else DIR_NORTH
+
+# --- Yaw: the free-angle facing ------------------------------------------------
+#
+# YAW 0 IS NORTH, which is -Z, which is up the bridge -- the same north the four
+# constants above use, so the two systems agree at the four points where they
+# overlap. Increasing yaw turns anticlockwise seen from above, which is Godot's
+# own convention for a rotation about +Y, so a facing angle can be written
+# straight into `Node3D.rotation.y` with no correction.
+#
+# Everything the player points at is an angle now: the dash, the nose marker, the
+# knockback a shove delivers. Cells stay cardinal.
+
+static func yaw_vector(yaw: float) -> Vector3:
+	return Vector3(-sin(yaw), 0.0, -cos(yaw))
+
+# The yaw of an XZ heading, in the same (x, z) packing the input's `move` uses.
+static func yaw_of(heading: Vector2) -> float:
+	return atan2(-heading.x, -heading.y)
+
+static func yaw_of_vector(heading: Vector3) -> float:
+	return atan2(-heading.x, -heading.z)
+
+# For the cell-shaped things. Rounding to a quarter turn rather than reusing
+# nearest_direction() so the conversion happens in ANGLE space and there is one
+# definition of where the boundaries between the quadrants sit.
+static func yaw_to_direction(yaw: float) -> int:
+	# yaw 0 -> NORTH(0), -PI/2 -> EAST(1), PI -> SOUTH(2), +PI/2 -> WEST(3).
+	# Quarter turns ANTICLOCKWISE from north run N, W, S, E, so the quadrant index
+	# counts backwards through DIR_* and posmod puts it back in range.
+	var quarter: int = int(round(yaw / (PI * 0.5)))
+	return posmod(-quarter, 4)
 
 # --- Cells <-> world ----------------------------------------------------------
 #
