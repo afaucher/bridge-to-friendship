@@ -86,6 +86,14 @@ var invulnerable: float = 0.0     # counts down after any hit
 # which is the way a mantle has to go.
 var hang_dir: int = GridConfig.DIR_NORTH
 
+# Counts down after letting go of a lip; no grab is possible while it runs. See
+# SimConfig.LEDGE_REGRAB_COOLDOWN -- without it a released player re-catches the
+# lip they just let go of on the next tick and hangs forever.
+#
+# CAPTURED STATE, because it gates a state transition: a client replaying a
+# correction without it would re-grab on a tick the host did not.
+var ledge_cooldown: float = 0.0
+
 # How long a teammate has been stood next to this body while it waits to be
 # rescued. Shared by LEDGE_HANG and DOWNED, because they are the same machinery.
 var rescue_progress: float = 0.0
@@ -129,6 +137,7 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	var before := position
 	state_timer += SimConfig.TICK_DELTA
 	shove_cooldown = maxf(0.0, shove_cooldown - SimConfig.TICK_DELTA)
+	ledge_cooldown = maxf(0.0, ledge_cooldown - SimConfig.TICK_DELTA)
 
 	invulnerable = maxf(0.0, invulnerable - SimConfig.TICK_DELTA)
 
@@ -181,6 +190,38 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 # ASSIGNED, NEVER INTERPOLATED. The yaw is written straight through with no turn
 # rate and no smoothing -- see aim_source.gd for why: on a fixed camera the
 # cursor IS the aim, so anything that eases toward it reads as input lag.
+# --- The bleed-out counter over a downed player's head ------------------------
+#
+# COSMETIC, AND THEREFORE NOT IN step(). A client steps only its own predicted
+# body; every other player is drawn from applied snapshots. A counter updated in
+# the sim tick would be frozen over precisely the teammate a rescuer is running
+# toward -- the one moment it exists for.
+#
+# `state_timer` rides capture_state(), so a remote body already carries the right
+# number and this only has to read it.
+func _process(_delta: float) -> void:
+	sync_downed_timer()
+
+# Public so a test can drive it on a chosen frame. _process and _physics_process
+# do not run in a guaranteed order relative to each other, so a test that only
+# waited for a frame would be asserting against whichever happened to win.
+func sync_downed_timer() -> void:
+	var label := get_node_or_null("DownedTimer") as Label3D
+	if label == null:
+		return
+	if state != State.DOWNED:
+		label.visible = false
+		return
+	label.visible = true
+	label.text = downed_seconds_left_text()
+
+# WHOLE SECONDS, ROUNDED UP. A rescuer reads this from across a 60 m bridge while
+# running, so it has to be legible at a glance rather than precise -- and ceil
+# means it never shows "0" on somebody who is still savable.
+func downed_seconds_left_text() -> String:
+	var left: float = maxf(0.0, SimConfig.DOWNED_SECONDS - state_timer)
+	return str(int(ceil(left)))
+
 func _point_nose() -> void:
 	var nose := get_node_or_null("Facing") as Node3D
 	if nose == null:
@@ -457,6 +498,8 @@ func _reset_mesh() -> void:
 func _try_catch_ledge() -> bool:
 	if world == null or world.grid == null:
 		return false
+	if ledge_cooldown > 0.0:
+		return false          # just let go of one; a hang is one chance per fall
 	if velocity.y > 0.0 or velocity.length() > SimConfig.LEDGE_CATCH_MAX_SPEED:
 		return false
 
@@ -519,6 +562,10 @@ func release_ledge() -> void:
 	state = State.TUMBLE
 	state_timer = 0.0
 	grounded = false
+	# YOU LET GO; YOU DO NOT GET IT BACK. The body is released 0.9 m under the
+	# lip, which is inside LEDGE_CATCH_REACH, so without this it grabs the same
+	# lip again on the next tick and the countdown starts over -- forever.
+	ledge_cooldown = SimConfig.LEDGE_REGRAB_COOLDOWN
 
 # --- Damage -------------------------------------------------------------------
 
@@ -639,7 +686,7 @@ func _find_carrier() -> Node:
 # error, which looks precisely like a rescue that is not happening.
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
-		facing, health, invulnerable, hang_dir, rescue_progress]
+		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -654,6 +701,7 @@ func apply_state(s: Array) -> void:
 	invulnerable = float(s[9])
 	hang_dir = int(s[10])
 	rescue_progress = float(s[11])
+	ledge_cooldown = float(s[12])
 	# The mesh angle is not on the wire -- it is cosmetic, and derivable. But it
 	# must be derived HERE too: a remote player is shown by applying snapshots,
 	# never by stepping, so without this a client keeps drawing a friend spinning

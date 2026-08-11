@@ -134,6 +134,23 @@ const LEDGE_CATCH_MAX_SPEED := 16.0  # arriving faster than this and you miss
 
 # Both waiting-to-be-rescued states run a countdown and end in the drone.
 const LEDGE_HANG_SECONDS := 8.0
+
+# After letting go, you cannot grab again for this long.
+#
+# WITHOUT IT THE HANG NEVER ENDS. release_ledge drops the body at lip.y minus its
+# own half-height -- 0.9 m below the lip, well inside LEDGE_CATCH_REACH -- so on
+# the very next tick it is still falling slowly beside a solid neighbour and
+# catches the SAME lip again. The timer restarts and the player hangs forever.
+# Found in playtest 2026-08-10; it had never been exercised because the only test
+# of the hang hauls the player up long before the timer runs out.
+#
+# 0.5 s is comfortably more than enough: 0.3 s of fall already puts the body
+# 2.0 m under the lip against a 1.4 m reach. The margin is for a body that
+# released while scraping the wall rather than dropping cleanly.
+#
+# It also, deliberately, stops a released player catching a DIFFERENT lip
+# immediately below. A hang is one chance per fall -- if it runs out, you fall.
+const LEDGE_REGRAB_COOLDOWN := 0.5
 const DOWNED_SECONDS := 15.0
 
 # Revive is by PROXIMITY, not by rope: M5 ships before M4, and a downed player

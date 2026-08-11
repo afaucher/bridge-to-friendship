@@ -870,8 +870,24 @@ func _drone_drop_point(peer: int) -> Vector3:
 		if best == null or candidate.position.z < best.position.z:
 			best = candidate
 	if best != null:
-		# Beside them, never on top: coincident bodies depenetrate through the
-		# floor (see CLAUDE.md).
+		# BESIDE THEM, ON SOLID DECK. It used to be a blind `+1.6 m in x`, which is
+		# beside them but says nothing about what is there -- and 1.6 m sideways
+		# from a teammate standing at the edge of a gap is the gap. The drone would
+		# then return a player directly into the hole they had just fallen down.
+		#
+		# Invisible until the ledge grab started working for self-inflicted falls,
+		# because a player dropped into a hole was in WALK on the way down and
+		# "returned in control" was still technically true. Now they catch the lip
+		# and hang, which is at least honest about where they were put.
+		#
+		# Beside and never ON TOP: coincident bodies depenetrate through the floor
+		# (see CLAUDE.md), which is why this steps a whole cell rather than nudging.
+		if grid != null:
+			var beside: Vector2i = grid.cell_of_world(best.position)
+			for dir in 4:
+				var side: Vector2i = beside + GridConfig.DIR_CELLS[dir]
+				if grid.is_solid(side) and grid.stone_at(side) == null:
+					return grid.cell_surface_world(side) + Vector3(0.0, 1.0, 0.0)
 		return best.position + Vector3(1.6, 1.0, 0.0)
 	if grid != null:
 		return grid.cell_surface_world(grid.entry_spawn_cell(0)) + Vector3(0.0, 1.2, 0.0)

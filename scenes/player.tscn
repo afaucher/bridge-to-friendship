@@ -64,3 +64,32 @@ shape = SubResource("Cyl_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.5)
 mesh = SubResource("Nose_1")
 material_override = SubResource("NoseMat_1")
+
+; The bleed-out countdown, over the head of a DOWNED player.
+;
+; IN THE WORLD, NOT ON THE HUD, and that is the whole point. The HUD already
+; carries a bleed-out bar, but it is in a corner and it says WHO is dying, not
+; WHERE -- and a revive is done by physically standing on someone. The number a
+; rescuer needs is the one attached to the body they have to reach.
+;
+; BILLBOARD, so it faces the fixed camera from anywhere on the deck. NO DEPTH
+; TEST, so a parapet or a pillar cannot hide it: a rescue timer you cannot see
+; from across the bridge is the one thing this must never be. That does mean it
+; draws through geometry -- deliberate, and the reason it is only ever visible
+; for the couple of seconds someone is actually down.
+;
+; Driven by player_body._process, NOT by step(): a client never steps a remote
+; player, so a counter updated in the sim tick would sit frozen over exactly the
+; teammate you are running to save.
+[node name="DownedTimer" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+visible = false
+billboard = 1
+no_depth_test = true
+fixed_size = true
+pixel_size = 0.0025
+font_size = 128
+outline_size = 24
+modulate = Color(1, 0.45, 0.22, 1)
+outline_modulate = Color(0, 0, 0, 0.7)
+text = ""

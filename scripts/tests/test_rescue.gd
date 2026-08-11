@@ -53,7 +53,8 @@ func _physics_process(_delta: float) -> void:
 		2: _phase_ledge_catch()
 		3: _phase_launched_clear()
 		4: _phase_own_fall_catches()
-		5: _phase_drone_return()
+		5: _phase_release_actually_falls()
+		6: _phase_drone_return()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -90,6 +91,17 @@ func _phase_downed_and_revive() -> void:
 		check(a.take_damage(1), "the last hit point can be taken")
 		eq(a.state, PlayerBody.State.DOWNED, "zero health puts the player DOWNED")
 		recorded["down_at"] = a.position
+
+		# THE COUNTDOWN OVER THEIR HEAD. It is in the world and not on the HUD
+		# because a revive is done by physically standing on someone: the number a
+		# rescuer needs is attached to the body they have to reach.
+		a.sync_downed_timer()
+		var timer := a.get_node_or_null("DownedTimer") as Label3D
+		if check(timer != null, "a player carries a downed counter"):
+			check(timer.visible, "which appears the moment they go down")
+			recorded["first_count"] = timer.text
+			check(timer.text.is_valid_int() and timer.text.to_int() > 0,
+				"showing seconds left, never zero on someone still savable (%s)" % timer.text)
 		return
 
 	if phase_frame == 30:
@@ -104,6 +116,18 @@ func _phase_downed_and_revive() -> void:
 		check(phase_frame < 30 + int(SimConfig.REVIVE_SECONDS * 60.0) + 20,
 			"a teammate standing with them revives them, and promptly")
 		eq(a.health, SimConfig.REVIVE_HEALTH, "revived at minimum health")
+
+		var timer := a.get_node_or_null("DownedTimer") as Label3D
+		if timer != null:
+			# It really COUNTED DOWN rather than sitting on its first value. A
+			# frozen number is the failure mode a single reading cannot see, and
+			# it is exactly what a counter driven from step() would do over a
+			# remote player -- which is why this one is driven from _process.
+			check(timer.text.to_int() < String(recorded["first_count"]).to_int(),
+				"the counter ran down while they were out (%s -> %s)"
+					% [recorded["first_count"], timer.text])
+			a.sync_downed_timer()
+			check(not timer.visible, "and disappears the moment they are back up")
 		_advance(2)
 		return
 
@@ -211,10 +235,59 @@ func _phase_own_fall_catches() -> void:
 			"having never been tumbled -- the grab is not kick-only")
 		_advance(5)
 
+# --- 4c. Letting go means FALLING, not grabbing the same lip again ------------
+#
+# Playtest: "when the hang counter expires it just starts over again -- they never
+# fall." release_ledge drops the body 0.9 m under the lip, and LEDGE_CATCH_REACH
+# is 1.4 m, so the next tick re-caught the lip it had just let go of and the
+# countdown restarted. Forever.
+#
+# It had never been exercised: the only other test of the hang brings a teammate
+# at frame 150 and the timer does not expire until frame 480, so the release path
+# had no coverage at all. This is the whole reason the hang is not a soft landing.
+func _phase_release_actually_falls() -> void:
+	if phase_frame == 1:
+		_park(b, Vector2i(13, 8))
+		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.health = SimConfig.MAX_HEALTH
+		a.state = PlayerBody.State.WALK
+		a.grounded = false
+		a.velocity = Vector3(0.0, -1.0, -1.0)
+		return
+	if phase_frame == 30:
+		if not check(a.state == PlayerBody.State.LEDGE_HANG,
+				"the player is hanging before the release is tested"):
+			finish()
+			return
+		recorded["hang_y"] = a.position.y
+		# Skip to the end of the 8 s timer rather than waiting it out -- the
+		# release is what is under test, not the countdown, and the countdown is
+		# already asserted in phase 3.
+		a.state_timer = SimConfig.LEDGE_HANG_SECONDS
+		return
+	if phase_frame == 90:
+		# A full second later. Under the bug the state is LEDGE_HANG again with a
+		# freshly reset timer, and the body has not moved at all.
+		check(a.state != PlayerBody.State.LEDGE_HANG,
+			"a player whose hang timer runs out lets go -- and does not re-grab")
+		check(a.position.y < float(recorded["hang_y"]) - 2.0,
+			"they are genuinely falling (%.2f m below where they hung)"
+				% (float(recorded["hang_y"]) - a.position.y))
+		_advance(6)
+
 # --- 5. Falling is a setback: the drone brings you back next to a friend ------
 
 func _phase_drone_return() -> void:
 	if phase_frame == 1:
+		# CLEAN SLATE FIRST. The phase above deliberately leaves a player falling,
+		# and a fall that reaches the kill plane queues a drone return -- which
+		# then fires three seconds into THIS phase and overwrites everything it
+		# set up. Cost two confusing failures ("the mesh never span", "returned
+		# them hanging") that were both this leftover and neither about the drone.
+		world._returning.clear()
+		a.visible = true
+		a.ledge_cooldown = 0.0
+
 		_park(b, Vector2i(7, 12))
 		# A REAL tumble first, not a state assignment: the mesh spin has to be
 		# produced by the game's own mechanism for the "comes back upright"
@@ -236,10 +309,22 @@ func _phase_drone_return() -> void:
 		return
 	if phase_frame == int(SimConfig.DRONE_RETURN_SECONDS * 60.0) + 40:
 		check(not world._returning.has(1), "and the drone finishes the job")
-		eq(a.state, PlayerBody.State.WALK, "returning them in control")
+		check(a.state == PlayerBody.State.WALK,
+			"returning them in control (state %d at cell %s, %s, teammate at cell %s)" % [
+				a.state, world.grid.cell_of_world(a.position),
+				"grounded" if a.grounded else "airborne",
+				world.grid.cell_of_world(b.position)])
 		check(a.position.distance_to(b.position) < 6.0,
 			"dropped next to a teammate (%.1f m away), not alone behind the party"
 				% a.position.distance_to(b.position))
+		# ON SOLID DECK. "Next to a teammate" is not enough on a bridge full of
+		# holes: the drop used to be a blind 1.6 m sideways, which beside someone
+		# standing at a lip is the gap itself. Caught only because the ledge grab
+		# started working -- before that, a player dropped into a hole was falling
+		# in WALK and still counted as "returned in control".
+		var landed: Vector2i = world.grid.cell_of_world(a.position)
+		check(world.grid.is_solid(landed),
+			"and onto SOLID DECK (cell %s), not into the hole beside them" % landed)
 		check(a.health >= SimConfig.REVIVE_HEALTH, "and able to carry on")
 
 		# Reported from playtest: "if you get knocked off into space, when you
