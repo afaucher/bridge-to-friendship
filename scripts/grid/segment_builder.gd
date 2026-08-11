@@ -35,6 +35,8 @@ class Built:
 	# Dormant rushers. The cell is authored; the enemy does not exist until a
 	# player walks close enough to wake it.
 	var mound_cells: Array = []
+	# Loose hats, waiting on the deck for somebody to walk over them.
+	var hat_cells: Array = []
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -332,6 +334,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.heart_cells.append(Vector2i(x, z))
 				GridConfig.Content.MOUND:
 					out.mound_cells.append(Vector2i(x, z))
+				GridConfig.Content.HAT:
+					out.hat_cells.append(Vector2i(x, z))
 
 # --- Helpers ------------------------------------------------------------------
 

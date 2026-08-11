@@ -284,6 +284,45 @@ move in playtest.
 
 ---
 
+## Follow-up: hats that actually look like different hats
+
+*(Requested 2026-08-10, after the core. Not in the first pass — the first pass
+proves pickup, stack and dislodge, and a hat is a coloured box until it does.)*
+
+The catalogue should be **generated from a handful of shape knobs** rather than
+authored one hat at a time, and randomised so a run turns up a tiny pillbox and
+an enormous floppy thing in the same segment:
+
+| knob | what it does |
+|---|---|
+| base width | the crown where it meets the head |
+| top width | equal to base is a cylinder, narrower is a cone, wider is a bucket |
+| rim width | how far the brim sticks out past the crown |
+| height | pillbox to stovepipe |
+| curl | the brim's edge lifting up or drooping down |
+| colour | **from a palette, not fully random** — random RGB produces mud and clashes with the deck browns and the player blue |
+
+**THE SHAPE MUST BE A PURE FUNCTION OF `style_id`, NOT ROLLED AT SPAWN.** This is
+the constraint that decides whether it works at all, and it is why it is written
+down before the code exists.
+
+`style_id` already travels with a hat forever, deliberately: *you keep wearing the
+hat you stole*, and "that is MY hat on your head" is the sentence the whole
+feature exists to produce. If the knobs are rolled with `randf()` when a hat
+spawns, then the same hat is a different shape on every machine, and a stolen hat
+silently becomes a different hat. Randomise the ID; derive the hat from it with a
+hash, the way `segment_pool.plan()` already derives a run from a seed without
+touching the global RNG.
+
+That also makes it free to replicate — the wire already carries `style_id`, and
+nothing else needs to travel — and free to test, because a given id has one
+correct answer on every machine and in every run.
+
+**Palette**, for the same reason the deck is two browns and the player is blue: a
+hat has to read as *not scenery* from across a 60 m bridge, and against browns
+and one blue that is a narrow window. A short hand-picked list, indexed by the
+same hash.
+
 ## Open questions
 
 1. **[open, deferred by decision] What is a score, exactly?** Recorded as an
@@ -298,17 +337,36 @@ move in playtest.
    answer turns out to be. The triangular payout above is a **placeholder with a
    stated reason**, not a decision — it exists so item 7 has something concrete
    to test against the day it is built.
-2. **[open] What does "cosmetic selectable" select?** Two readings.
-   *(a)* You choose the hat you start the run wearing, from a catalogue — so
-   `style_id` is your identity until someone steals it. *(b)* Selection is a skin
-   applied to whatever you happen to be carrying, so hats have no individual
-   identity. **Suggested: (a)**, because it is the version where "that is *my*
-   hat on your head" is a sentence a player says out loud, and that sentence is
-   the whole feature.
-3. **[open] Does a hat survive a drone return?** Currently specified as no —
-   worn hats are lost with the player. Softening this is the obvious first
-   playtest adjustment if losing a five-stack to one bad plinko ball reads as
-   punishing rather than funny.
+2. **ANSWERED 2026-08-10: (a), and PERSISTED TO DISK.** `style_id` is your
+   identity, and it now survives between launches rather than lasting a run.
+
+   - First ever launch: you are given a **random** hat, and it is saved.
+   - You start every session wearing whatever hat you saved.
+   - **Lose it and you start bare next time.** The save follows what you are
+     actually wearing, so a fall that destroys your hats is felt the next time
+     you open the game, not just for the rest of the run.
+
+   This is a stronger version of (a) than was proposed, and it is what makes the
+   feature's own premise pay off: "that is *my* hat on your head" only means
+   something if the hat was mine yesterday too. It also gives the game its first
+   piece of state that outlives a session, so the file format is worth getting
+   boring and forward-compatible now rather than later.
+
+   **Consequence worth naming:** a stolen hat is kept. Your saved hat is whatever
+   you are wearing at the bottom of your stack when the session ends, so losing
+   yours and taking someone else's is a complete story rather than a dead end.
+3. **ANSWERED 2026-08-10: no. If you fall, you lose them.** Confirmed rather than
+   softened, so it is now a rule rather than a placeholder. Worn hats die with a
+   player who leaves the world — fell, drone-returned, disconnected. They are
+   **destroyed, not dropped at the last deck position**: dropping them would be a
+   rescue for the one failure the design deliberately does not rescue, and it
+   would put a free pile of hats at the exact spot that just killed somebody.
+
+   Note this is a *different* rule from the tumble dislodge, and both are wanted.
+   Tumbling scatters your hats onto the deck where anyone — including you — can
+   pick them up again. Falling out of the world destroys them outright. The
+   asymmetry is the same one D2 already draws: how badly it went decides what it
+   costs you.
 4. **[open] Can you shove a hat?** A dash into a loose hat currently does nothing
    (no collision). Making the dash *punt* hats down the deck is nearly free and
    turns hats into a thing you can deny a teammate. Probably good; deliberately

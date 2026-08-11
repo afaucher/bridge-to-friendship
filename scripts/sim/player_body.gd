@@ -550,6 +550,23 @@ func begin_tumble(launch: Vector3) -> void:
 	state_timer = 0.0
 	velocity = launch
 	grounded = false
+	_pop_hats()
+
+# THE WHOLE STACK GOES, not the top hat.
+#
+# Popping one would make hats a slowly-eroding counter. Popping the stack makes
+# carrying five a running, escalating, visible bet -- the only version that
+# produces the moment this milestone exists for. It also means the reward curve
+# and the risk curve are the same curve, so there is no second balancing lever.
+#
+# It inherits an asymmetry the design already has rather than inventing one: HOW
+# HARD YOU GOT HIT DECIDES WHAT IT COSTS YOU. A shove that launches you but leaves
+# you in WALK keeps your hats; a hit solid enough to tumble you does not. Same
+# legibility rule as D2's ledge-grab-versus-launched, so a player who has learned
+# one has learned the other.
+func _pop_hats() -> void:
+	if world != null and world.has_method("dislodge_hats"):
+		world.dislodge_hats(self)
 
 func _end_tumble() -> void:
 	state = State.WALK
@@ -635,6 +652,7 @@ func _begin_hang(lip: Vector3, dir: int) -> void:
 	velocity = Vector3.ZERO
 	grounded = false
 	hang_dir = dir
+	_pop_hats()
 	# Hanging just off the edge on the hole side, head about level with the deck.
 	var outward: Vector3 = GridConfig.DIR_VECTORS[dir]
 	position = lip - outward * (GridConfig.CELL_SIZE * 0.5 + 0.35) - Vector3(0.0, HALF_HEIGHT, 0.0)

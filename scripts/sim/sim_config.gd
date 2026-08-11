@@ -314,6 +314,41 @@ const RUSHER_KNOCKBACK_LIFT := SHOVE_TRANSFER_LIFT
 # content decision, and this is the backstop for getting it wrong.
 const RUSHER_MAX := 12
 
+# --- Hats ---------------------------------------------------------------------
+#
+# The first thing in the game that rewards taking a risk you did not have to
+# take. See implementation_plans/m8_5_hats.md. Every number here is a starting
+# value with a stated reason and every one is expected to move in playtest.
+
+# A little wider than the 0.4 m body radius, so walking NEAR a hat gets it and
+# nobody has to aim at one.
+const HAT_PICKUP_RADIUS := 0.7
+
+# Tall enough to read as absurd from across a 60 m bridge, short enough that the
+# top hat is still on screen.
+const HAT_MAX_STACK := 5
+const HAT_HEIGHT := 0.35
+
+# How long after a hat lands before it can be picked up again.
+#
+# THE WHOLE POINT IS THAT A DISLODGE AND A RE-COLLECT ARE NOT THE SAME EVENT. A
+# tumbling player rolls through their own scattered hats; without this they would
+# scoop them back up on the way past and the tumble would cost nothing.
+const HAT_SETTLE_GRACE := 0.5
+
+# Below this a hat is considered to have stopped, and the settle grace starts.
+const HAT_SETTLE_SPEED := 0.8
+
+# What a dislodged stack scatters at. Spreads over roughly two cells, so a stack
+# lands as a spread you have to walk to rather than a pile you re-collect in one
+# step.
+const HAT_SCATTER_SPEED := 4.0
+const HAT_SCATTER_LIFT := 4.5
+
+# A segment's worth of debris. An endless run scattering hats leaks bodies
+# forever, so the oldest loose hat is culled when this is exceeded.
+const HAT_MAX_LOOSE := 24
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

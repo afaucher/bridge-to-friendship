@@ -105,6 +105,18 @@ material_override = SubResource("NoseMat_1")
 ;
 ; NO DEPTH TEST, so a parapet or a pillar cannot hide it -- a marker you cannot
 ; see from across the bridge is the one thing this must never be.
+; Where worn hats hang. A bare attach point, and that is the whole trick: hats
+; are reparented under here when picked up, so they follow the head for free and
+; nothing has to reposition them per tick.
+;
+; THE COLLIDER NEVER LEARNS THEY EXIST. player.tscn's cylinder is what M3's riding
+; rules, _find_carrier and FOOT_PROBE are all denominated in, so a stack that grew
+; the collider would silently change how players stand on each other -- mid-run,
+; per hat. A worn hat also has its own collision shape disabled: a hat you can
+; stand on is a ladder, and five of them are a staircase past an authored
+; ascender gate.
+[node name="Hats" type="Node3D" parent="."]
+
 [node name="StatusBar" type="Sprite3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, 0)
 visible = false

@@ -21,6 +21,9 @@ const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 const BallScene = preload("res://scenes/plinko_ball.tscn")
 const RusherScene = preload("res://scenes/rusher.tscn")
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
+const HatPool = preload("res://scripts/sim/hat_pool.gd")
+const HatBody = preload("res://scripts/sim/hat_body.gd")
+const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const AimSource = preload("res://scripts/sim/aim_source.gd")
@@ -115,6 +118,17 @@ var _balls_root: Node3D = null
 var _shooter_timers: Dictionary = {}   # shooter cell -> seconds until next shot
 var _next_ball_id: int = 0
 
+# --- hats ---
+#
+# The carried-item channel. Deliberately NOT in PlayerBody.capture_state(): that
+# array is the reconciliation blob, captured every tick and replayed through
+# step(), so a worn-hat list there would be broadcast sixty times a second to
+# report a change that happens twice a minute -- and would become part of the
+# replay path, where a client would have to re-derive pickups it has no authority
+# to decide. Hats are never predicted, for the same reason a shove is not.
+var _hats: HatPool = HatPool.new()
+var _hats_root: Node3D = null
+
 # --- rushers ---
 var _rushers: Array = []
 var _rushers_root: Node3D = null
@@ -156,6 +170,17 @@ func _ready() -> void:
 	_rushers_root = Node3D.new()
 	_rushers_root.name = "Rushers"
 	add_child(_rushers_root)
+	# Loose hats live in world space like the balls. A WORN hat is reparented onto
+	# its wearer's head and comes back here when it is knocked off.
+	_hats_root = Node3D.new()
+	_hats_root.name = "Hats"
+	add_child(_hats_root)
+	_hats.attach(_hats_root)
+	# Read once, before anything can overwrite it. Deliberately not in start():
+	# _remembered_hat must hold what is ON DISK from the first moment, or the
+	# first pickup would look like a change and rewrite an identical file.
+	if view_active:
+		_remembered_hat = HatConfig.load_style()
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -307,6 +332,12 @@ func _host_tick() -> void:
 	_process_rushers()
 	_process_rescue()
 	_process_hearts()
+	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
+	# _carry_order() sorts by who is standing on whom, so the order players step in
+	# changes with the stack -- and deciding hat contests inside it would mean a
+	# carried player systematically winning or losing races depending on whose head
+	# they were on. See HatPool.resolve_pickups.
+	_process_hats()
 
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
@@ -414,6 +445,9 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(rusher):
 			rusher.queue_free()
 	_rushers.clear()
+	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
+	# across ground the party no longer occupies are debris nobody can reach.
+	_hats.clear()
 
 	var lane := 0
 	for peer_key in players.keys():
@@ -754,6 +788,178 @@ func _kill_rusher(rusher: Node) -> void:
 func rusher_count() -> int:
 	return _rushers.size()
 
+# --- Hats ---------------------------------------------------------------------
+
+# Write the local player's hat to disk, when and only when it has changed.
+#
+# ONLY IN A WORLD SOMEBODY IS LOOKING AT. A headless test world writing to
+# user:// would rewrite the developer's own saved hat every time the gate ran --
+# a test that quietly mutates real user state is one nobody can trust twice.
+# view_active is the same gate _poll_aim uses for the same reason.
+func _remember_hat(style: int) -> void:
+	if not view_active or style == _remembered_hat:
+		return
+	_remembered_hat = style
+	HatConfig.save_style(style)
+
+# What is on disk, so a pickup that changes nothing does not rewrite the file --
+# a dash through five hats is five acquisitions in one tick.
+var _remembered_hat: int = HatConfig.NONE
+
+func hat_count() -> int:
+	return _hats.count()
+
+func hats_worn_by(peer: int) -> Array:
+	return _hats.worn_by(peer)
+
+func _process_hats() -> void:
+	if not is_host:
+		return
+
+	# Authored hats from any segment that has loaded since the last tick. Drained
+	# rather than read, so a segment streamed in mid-run contributes its hats once
+	# and the initial load and a later extension go down the same path.
+	if grid != null:
+		for cell in grid.take_authored_hat_cells():
+			_hats.spawn_loose(grid.cell_surface_world(cell) + Vector3(0.0, 0.3, 0.0))
+
+	_hats.step(_trailing_edge_z())
+
+	# WHICH STATES MAY CARRY. Allowed in WALK and SHOVE -- a dash down a line of
+	# loose hats collecting all of them is one of the better moments available
+	# here and costs nothing to allow. Refused in TUMBLE, LEDGE_HANG, DOWNED and
+	# the bus states: a tumbling player scooping their own hats back up as they
+	# roll through them removes the entire cost of the tumble.
+	var can_carry := func(peer: int, body: Node) -> bool:
+		if _returning.has(peer):
+			return false
+		return body.state == PlayerBody.State.WALK or body.state == PlayerBody.State.SHOVE
+	var worn_count := func(peer: int) -> int:
+		return _hats.worn_by(peer).size()
+
+	for claim in _hats.resolve_pickups(players, can_carry, worn_count):
+		var hat: Node = claim[0]
+		var peer: int = int(claim[1])
+		var index: int = int(claim[2])
+		_wear_hat(hat.hat_id, peer, index)
+		# OWNERSHIP CHANGES GO RELIABLY. A lost pickup that silently never applies
+		# is a client wearing a hat the host says is on the deck -- a divergence
+		# that never self-corrects, because nothing re-sends it. Loose positions
+		# ride the unreliable snapshot; who owns what does not.
+		if networked:
+			_wear_hat.rpc(hat.hat_id, peer, index)
+
+# Behind the rearmost living player is behind the streaming window. +Z is
+# down-bridge, so a larger z is further back.
+func _trailing_edge_z() -> float:
+	var back: float = -INF
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		back = maxf(back, body.position.z)
+	if back == -INF:
+		return INF
+	return back + SimConfig.LEASH_HARD
+
+@rpc("authority", "call_remote", "reliable")
+func _wear_hat(id: int, peer: int, index: int) -> void:
+	var hat: Node = _hats.by_id(id)
+	var body: Node = players.get(peer)
+	if hat == null or body == null:
+		return
+	hat.wear(peer, index)
+	# ACQUIRING A HAT MAKES IT YOURS, TOMORROW TOO. Steal one and you keep it.
+	if peer == local_peer:
+		_remember_hat(hat.style_id)
+	var attach := body.get_node_or_null("Hats") as Node3D
+	if attach != null:
+		# REPARENTED, not tracked. Sitting under the head means it follows for
+		# free -- no per-tick transform copy to get one frame late.
+		if hat.get_parent() != attach:
+			hat.get_parent().remove_child(hat)
+			attach.add_child(hat)
+		hat.position = Vector3(0.0, PlayerBody.HALF_HEIGHT + SimConfig.HAT_HEIGHT * (float(index) + 0.5), 0.0)
+		hat.rotation = Vector3.ZERO
+
+# The whole stack, fanned. Called by PlayerBody on entering TUMBLE or LEDGE_HANG.
+#
+# A DETERMINISTIC FAN, never a random direction. Two reasons and both matter: a
+# host-authoritative sim does not need randomness a test then has to tolerate,
+# and a fan guarantees no two hats leave from the same point -- which is the
+# coincident-bodies trap in CLAUDE.md, where two bodies at one position
+# depenetrate straight through the floor.
+func dislodge_hats(body: Node) -> void:
+	if not is_host:
+		return
+	var worn: Array = _hats.worn_by(int(body.peer_id))
+	if worn.is_empty():
+		return
+	var ids: Array = []
+	for i in worn.size():
+		var hat: Node = worn[i]
+		var angle: float = TAU * float(i) / float(maxi(worn.size(), 1))
+		var fan := Vector3(cos(angle), 0.0, sin(angle)) * SimConfig.HAT_SCATTER_SPEED
+		var from: Vector3 = body.position + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0) + fan.normalized() * 0.3
+		_release_hat(hat, from, body.velocity + fan + Vector3(0.0, SimConfig.HAT_SCATTER_LIFT, 0.0))
+		ids.append(hat.hat_id)
+	_forget_hat_if_bare(int(body.peer_id))
+	if networked:
+		_hats_released.rpc(ids)
+
+# LOSE YOUR HAT AND IT IS GONE NEXT TIME. Called after anything that removes
+# hats: the save follows what you are actually WEARING, so a tumble that leaves
+# you bare is felt the next time you open the game and not merely for the rest of
+# the run.
+#
+# Only when the stack is empty. Losing four of five leaves you wearing one, and
+# that one is still yours.
+func _forget_hat_if_bare(peer: int) -> void:
+	if peer != local_peer:
+		return
+	var worn: Array = _hats.worn_by(peer)
+	if worn.is_empty():
+		_remember_hat(HatConfig.NONE)
+	else:
+		_remember_hat(int(worn[worn.size() - 1].style_id))
+
+# DESTROYED, not dropped. A player who leaves the world -- fell, drone-returned,
+# disconnected -- takes their hats with them.
+#
+# Dropping them at the last deck position would be a rescue for the one failure
+# the design deliberately does not rescue, and it would leave a free pile of hats
+# at the exact spot that just killed somebody. Confirmed in playtest 2026-08-10:
+# if you fall, you lose them.
+func destroy_worn_hats(peer: int) -> void:
+	if not is_host:
+		return
+	var ids: Array = []
+	for hat in _hats.worn_by(peer):
+		ids.append(hat.hat_id)
+		_hats.destroy(hat)
+	_forget_hat_if_bare(peer)
+	if networked and ids.size() > 0:
+		_hats_destroyed.rpc(ids)
+
+func _release_hat(hat: Node, from: Vector3, velocity: Vector3) -> void:
+	if hat.get_parent() != _hats_root:
+		hat.get_parent().remove_child(hat)
+		_hats_root.add_child(hat)
+	hat.owner_peer = 0
+	hat.launch(from, velocity)
+
+@rpc("authority", "call_remote", "reliable")
+func _hats_released(ids: Array) -> void:
+	for id in ids:
+		var hat: Node = _hats.by_id(int(id))
+		if hat != null:
+			_release_hat(hat, hat.global_position, Vector3.ZERO)
+
+@rpc("authority", "call_remote", "reliable")
+func _hats_destroyed(ids: Array) -> void:
+	for id in ids:
+		var hat: Node = _hats.by_id(int(id))
+		if hat != null:
+			_hats.destroy(hat)
+
 @rpc("authority", "call_remote", "reliable")
 func _mound_taken(cx: int, cz: int) -> void:
 	if grid != null:
@@ -837,6 +1043,10 @@ func _tick_revive(peer: int, body: Node) -> void:
 func _begin_drone_return(peer: int) -> void:
 	if _returning.has(peer):
 		return
+	# IF YOU FALL, YOU LOSE THEM. Not dropped where you went over -- destroyed.
+	# See destroy_worn_hats: dropping them would rescue the one failure the design
+	# does not rescue, and would leave a free pile at the spot that killed you.
+	destroy_worn_hats(peer)
 	_returning[peer] = SimConfig.DRONE_RETURN_SECONDS
 	var body: Node = players.get(peer)
 	if body != null:
@@ -1076,7 +1286,8 @@ func _broadcast_snapshot() -> void:
 	var layout: PackedInt32Array = PackedInt32Array()
 	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
 		layout = grid.stone_layout()
-	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout, _rusher_snapshot())
+	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout, _rusher_snapshot(),
+		_hat_snapshot())
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -1166,29 +1377,85 @@ func _rusher_by_id(id: int) -> Node:
 			return rusher
 	return null
 
+# LOOSE AND FLYING HATS ONLY. Who is WEARING what travels reliably instead -- see
+# _wear_hat. This is the split the plan calls the expensive mistake available
+# here: a position that changes every tick belongs on the unreliable per-tick
+# wire, and an ownership change that happens twice a minute does not.
+#
+# style_id rides along because it is what a hat LOOKS like, and it is how a
+# client that has never seen this hat before draws the right one.
+func _hat_snapshot() -> Array:
+	var out: Array = []
+	for hat in _hats.all():
+		if is_instance_valid(hat) and hat.mode != HatBody.Mode.WORN:
+			out.append([hat.hat_id, hat.style_id, hat.mode, hat.position])
+	return out
+
+# Self-healing by construction, like the ball set: a dropped packet costs a frame
+# of staleness rather than a hat that exists forever on one machine. A hat the
+# host stops mentioning has been picked up, culled or destroyed -- and a WORN hat
+# is not in this list, so it is removed here and re-created by the reliable
+# _wear_hat that put it on a head.
+func _apply_hat_snapshot(hats: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in hats:
+		var id: int = int(entry[0])
+		seen[id] = true
+		var hat: Node = _hats.by_id(id)
+		if hat == null:
+			hat = _hats.adopt(id, int(entry[1]))
+		hat.apply_remote(int(entry[2]), entry[3])
+
+	for hat in _hats.all().duplicate():
+		if not is_instance_valid(hat):
+			continue
+		# A worn hat is legitimately absent from the snapshot; anything else that
+		# is missing has gone.
+		if hat.mode != HatBody.Mode.WORN and not seen.has(hat.hat_id):
+			_hats.destroy(hat)
+
+# Drop-in: a newcomer built the bridge from the seed, which gives it the AUTHORED
+# hats -- but not who is wearing what, and not any hat that has moved since. The
+# loose ones arrive on the next snapshot; the worn ones need telling.
+@rpc("authority", "call_remote", "reliable")
+func _sync_worn_hats(entries: Array) -> void:
+	for entry in entries:
+		var id: int = int(entry[0])
+		if _hats.by_id(id) == null:
+			_hats.adopt(id, int(entry[1]))
+		_wear_hat(id, int(entry[2]), int(entry[3]))
+
+func _worn_hat_dump() -> Array:
+	var out: Array = []
+	for hat in _hats.all():
+		if is_instance_valid(hat) and hat.mode == HatBody.Mode.WORN:
+			out.append([hat.hat_id, hat.style_id, hat.owner_peer, hat.stack_index])
+	return out
+
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array) -> void:
+		layout: PackedInt32Array, rushers: Array, hats: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array) -> void:
+		layout: PackedInt32Array, rushers: Array, hats: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
 			grid.apply_stone_layout(layout)
 	_apply_ball_snapshot(balls)
 	_apply_rusher_snapshot(rushers)
+	_apply_hat_snapshot(hats)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
@@ -1303,6 +1570,28 @@ func host_spawn(peer: int) -> void:
 		_spawn_player.rpc(peer, index)
 	else:
 		_spawn_player(peer, index)
+	_give_saved_hat(peer)
+
+# YOU START WEARING WHAT YOU SAVED, and bare if you lost it.
+#
+# Host-side, and only for a peer whose saved hat this machine actually knows --
+# which today is the local player. A remote client's saved hat would have to be
+# announced to the host the way its display name already is (_submit_name); the
+# hook belongs there and is deliberately not invented here, because a client
+# telling the host "spawn me wearing X" is a trust decision, not a plumbing one.
+func _give_saved_hat(peer: int) -> void:
+	if not is_host or not view_active or peer != local_peer:
+		return
+	var style: int = _remembered_hat
+	if style == HatConfig.NONE:
+		return
+	var body: Node = players.get(peer)
+	if body == null:
+		return
+	var hat: Node = _hats.spawn_loose(body.position, style)
+	_wear_hat(hat.hat_id, peer, 0)
+	if networked:
+		_wear_hat.rpc(hat.hat_id, peer, 0)
 
 func host_add_peer(peer: int) -> void:
 	if not is_host:
@@ -1317,6 +1606,9 @@ func host_add_peer(peer: int) -> void:
 		# newcomer has built the segments holding them. Both are reliable, so the
 		# order they are sent in is the order they arrive in.
 		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
+	# Who is wearing what. The loose hats arrive on the next snapshot; a worn hat
+	# is not in that list by design, so it has to be told.
+	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.

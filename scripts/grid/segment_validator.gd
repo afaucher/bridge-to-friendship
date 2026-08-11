@@ -112,6 +112,12 @@ static func _check_content_placement(seg, problems: Array) -> void:
 				# A stone on a slope has nowhere legible to be pushed to, and the
 				# one-cell push rule stops meaning anything.
 				problems.append("a pillar at (%d, %d) sits on a ramp" % [x, z])
+			if content == GridConfig.Content.HAT and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				# A hat is a rigid body that lands and settles. On a slope it
+				# simply rolls off, so an authored one there is a hat placed
+				# somewhere else -- and where it ends up depends on the slope
+				# rather than on the author.
+				problems.append("a hat at (%d, %d) sits on a ramp and would roll off" % [x, z])
 			if content == GridConfig.Content.MOUND and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
 				# A rusher rises straight up out of the deck over a fixed second.
 				# On a slope that animation emerges through the hillside, and the

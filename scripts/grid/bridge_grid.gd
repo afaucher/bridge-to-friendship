@@ -81,6 +81,18 @@ var _stone_list: Array = []
 # so M6 only has to build the thing that stands on them.
 var shooter_cells: Array = []
 
+# Where the author put loose hats, in bridge coordinates. Reported rather than
+# spawned: the hat pool owns hat bodies, and it drains this list as segments load
+# so a hat authored in a segment streamed in later still appears.
+var authored_hat_cells: Array = []
+
+# Take the authored hat cells nobody has spawned yet. Emptied by the caller, so a
+# segment loaded mid-run contributes its hats exactly once.
+func take_authored_hat_cells() -> Array:
+	var out: Array = authored_hat_cells.duplicate()
+	authored_hat_cells.clear()
+	return out
+
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
@@ -141,6 +153,13 @@ func load_segment(seg) -> void:
 
 	for local_cell in built.mound_cells:
 		_spawn_mound(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	# Authored hats are recorded, not spawned here. A hat is a free sim body owned
+	# by the world's hat pool, not grid-resident data like a stone or a heart --
+	# it lands wherever it lands once somebody knocks it off a head, and a cell
+	# record would mean two representations of one object.
+	for local_cell in built.hat_cells:
+		authored_hat_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 func next_z() -> int:
 	var total := 0

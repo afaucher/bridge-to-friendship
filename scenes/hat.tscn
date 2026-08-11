@@ -1,0 +1,65 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfhat1"]
+
+[ext_resource type="Script" path="res://scripts/sim/hat_body.gd" id="1_hat"]
+
+; A PLACEHOLDER SHAPE, and knowingly so. The first pass of hats proves pickup,
+; stack and dislodge; a hat is a crown and a brim until the generated shapes land
+; (see the follow-up section in implementation_plans/m8_5_hats.md -- base/top/rim
+; width, height, curl and a palette colour, all derived from style_id so a stolen
+; hat is the same hat on every screen).
+;
+; Built from two cylinders rather than one mesh precisely because those are the
+; knobs the generated version needs: the crown is already a base radius, a top
+; radius and a height, and the brim is already a radius and a curl waiting to be
+; a cone.
+[sub_resource type="CylinderMesh" id="Crown_1"]
+top_radius = 0.22
+bottom_radius = 0.26
+height = 0.3
+
+[sub_resource type="CylinderMesh" id="Brim_1"]
+top_radius = 0.42
+bottom_radius = 0.4
+height = 0.04
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.85, 0.75, 0.3, 1)
+roughness = 0.8
+
+; The collision shape is the CROWN only, not the brim. A hat is meant to land and
+; settle, not to balance on its edge -- and a wide thin collider catches on deck
+; seams, which is exactly the "sometimes" bug CLAUDE.md warns about.
+[sub_resource type="CylinderShape3D" id="Shape_1"]
+radius = 0.26
+height = 0.3
+
+[node name="Hat" type="RigidBody3D"]
+; Layer 32 = hats. Mask 1 = WORLD ONLY, and that is load-bearing rather than
+; tidy. A hat collides with deck, walls and ramps so it lands and slides, and
+; with nothing else:
+;
+;   1. A hat you can stand on is a ladder, and a stack of hats is a staircase
+;      past an authored ascender gate.
+;   2. Every extra body in the contact graph is another chance for two machines
+;      to order contacts differently -- for an object whose purpose is decorative.
+;   3. Two hats dislodged from one head would spawn coincident and hit the
+;      fall-through-the-floor trap in CLAUDE.md.
+;
+; Pickup is therefore a host-side RADIUS TEST, never a collision callback.
+collision_layer = 32
+collision_mask = 1
+mass = 0.5
+script = ExtResource("1_hat")
+
+[node name="Crown" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+mesh = SubResource("Crown_1")
+material_override = SubResource("Mat_1")
+
+[node name="Brim" type="MeshInstance3D" parent="."]
+mesh = SubResource("Brim_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+shape = SubResource("Shape_1")

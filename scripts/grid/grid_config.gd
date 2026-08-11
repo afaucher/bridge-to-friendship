@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -80,6 +80,10 @@ const CONTENT_GLYPHS := {
 	# A dormant rusher. Lowercase because it is the only content that is not
 	# there yet -- it is a thing that WILL exist, authored where it starts.
 	"m": Content.MOUND,
+	# A loose hat, waiting to be picked up. Authorable ANYWHERE, not just at
+	# checkpoints: the interesting place for one is PAST a hazard, not beside the
+	# safe spot. Checkpoint segments get them by convention, never by rule.
+	"^": Content.HAT,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least
