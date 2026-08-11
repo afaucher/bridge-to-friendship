@@ -92,16 +92,32 @@ func _phase_downed_and_revive() -> void:
 		eq(a.state, PlayerBody.State.DOWNED, "zero health puts the player DOWNED")
 		recorded["down_at"] = a.position
 
-		# THE COUNTDOWN OVER THEIR HEAD. It is in the world and not on the HUD
-		# because a revive is done by physically standing on someone: the number a
-		# rescuer needs is attached to the body they have to reach.
+		# THE RESCUE BAR OVER THEIR HEAD. In the world and not on the HUD because
+		# both rescues are performed by standing next to someone: what a rescuer
+		# needs is attached to the body they have to reach.
 		a.sync_downed_timer()
-		var timer := a.get_node_or_null("DownedTimer") as Label3D
-		if check(timer != null, "a player carries a downed counter"):
-			check(timer.visible, "which appears the moment they go down")
-			recorded["first_count"] = timer.text
-			check(timer.text.is_valid_int() and timer.text.to_int() > 0,
-				"showing seconds left, never zero on someone still savable (%s)" % timer.text)
+		var bar := a.get_node_or_null("RescueBar") as Node3D
+		if check(bar != null, "a player carries a rescue bar"):
+			check(bar.visible, "which appears the moment they go down")
+			near(a.rescue_fraction(), 1.0, 0.05, "starting full")
+			recorded["first_fill"] = a.rescue_fraction()
+
+			# A SANITY BAND, NOT A LEGIBILITY CLAIM, and the difference matters.
+			# An earlier version of this required the readout to be at least half a
+			# player tall, on the theory that anything smaller was unreadable at
+			# camera distance. That theory was never confirmed and playtest landed
+			# well under it -- a guess wearing the clothes of a measurement. What
+			# survives guards only the failures actually OBSERVED: shrinking to
+			# nothing, and growing bigger than the player it belongs to.
+			var back := bar.get_node_or_null("Back") as MeshInstance3D
+			if check(back != null, "with a background to read the fill against"):
+				var width: float = back.mesh.size.x
+				check(width > 0.25, "of a real width (%.2f m)" % width)
+				check(width <= PlayerBody.HALF_HEIGHT * 2.0,
+					"and no larger than the player (%.2f m vs %.2f m)"
+						% [width, PlayerBody.HALF_HEIGHT * 2.0])
+			check(bar.position.y > PlayerBody.HALF_HEIGHT,
+				"and sitting above the head rather than through the body")
 		return
 
 	if phase_frame == 30:
@@ -112,22 +128,27 @@ func _phase_downed_and_revive() -> void:
 		b.position = a.position + Vector3(1.5, 0.0, 0.0)
 		return
 
+	# Sampled every frame they are down, so the drain is read from the last moment
+	# it was meaningful. Reading it after the revive would only ever see -1.
+	if a.state == PlayerBody.State.DOWNED:
+		recorded["last_fill"] = a.rescue_fraction()
+
 	if phase_frame > 30 and a.state == PlayerBody.State.WALK:
 		check(phase_frame < 30 + int(SimConfig.REVIVE_SECONDS * 60.0) + 20,
 			"a teammate standing with them revives them, and promptly")
 		eq(a.health, SimConfig.REVIVE_HEALTH, "revived at minimum health")
 
-		var timer := a.get_node_or_null("DownedTimer") as Label3D
-		if timer != null:
-			# It really COUNTED DOWN rather than sitting on its first value. A
-			# frozen number is the failure mode a single reading cannot see, and
-			# it is exactly what a counter driven from step() would do over a
-			# remote player -- which is why this one is driven from _process.
-			check(timer.text.to_int() < String(recorded["first_count"]).to_int(),
-				"the counter ran down while they were out (%s -> %s)"
-					% [recorded["first_count"], timer.text])
+		var bar := a.get_node_or_null("RescueBar") as Node3D
+		if bar != null:
+			# It really DRAINED rather than sitting at its first value. A frozen
+			# bar is the failure mode a single reading cannot see, and it is
+			# exactly what a bar driven from step() would do over a remote player
+			# -- which is why this one is driven from _process.
+			check(float(recorded["last_fill"]) < float(recorded["first_fill"]),
+				"the bar drained while they were out (%.2f -> %.2f)"
+					% [recorded["first_fill"], recorded["last_fill"]])
 			a.sync_downed_timer()
-			check(not timer.visible, "and disappears the moment they are back up")
+			check(not bar.visible, "and disappears the moment they are back up")
 		_advance(2)
 		return
 
@@ -155,6 +176,27 @@ func _phase_ledge_catch() -> void:
 			"a player who topples into a gap catches the lip automatically")
 		check(a.position.y > SimConfig.FALL_KILL_Y, "and is still in the world")
 		recorded["hang_y"] = a.position.y
+		return
+	if phase_frame == 120:
+		# THE COUNTER IS ON A HANGING PLAYER TOO. It covered only DOWNED at first,
+		# which made it a feature almost nobody would see: going down takes five
+		# separate hits and falling deals no damage, so in a real playtest you hang
+		# or you fall. This is the reachable half, and it went three builds without
+		# anyone being able to confirm the counter existed.
+		a.sync_downed_timer()
+		var hang_bar := a.get_node_or_null("RescueBar") as Node3D
+		if check(hang_bar != null, "a hanging player carries a bar as well"):
+			check(hang_bar.visible, "and it is showing while they hang")
+			var fill: float = a.rescue_fraction()
+			check(fill > 0.0 and fill <= 1.0, "with a real fill (%.2f)" % fill)
+
+			# AGAINST THE HANG CLOCK, NOT THE BLEED-OUT ONE. Two seconds into an
+			# 8 s hang the bar should read about 3/4 full; measured against the
+			# 15 s downed clock it would read about 7/8, and a bar that drains at
+			# the wrong rate is wrong in a way "is it visible" never catches.
+			var expected: float = 1.0 - (a.state_timer / SimConfig.LEDGE_HANG_SECONDS)
+			near(fill, expected, 0.05,
+				"draining on the HANG clock (%.2f, expected %.2f)" % [fill, expected])
 		return
 	if phase_frame == 150:
 		# ALONE, THERE IS NO WAY OUT. Not a missing button -- the entire point of

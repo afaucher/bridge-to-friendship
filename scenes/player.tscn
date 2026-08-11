@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://btfplayer1"]
+[gd_scene load_steps=11 format=3 uid="uid://btfplayer1"]
 
 [ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
 
@@ -36,6 +36,31 @@ size = Vector3(0.3, 0.3, 0.5)
 albedo_color = Color(0.95, 0.85, 0.25, 1)
 roughness = 0.6
 
+; The rescue bar: 1.2 m across, 0.18 m tall. Two thirds of a player's width, so
+; it reads as belonging to them without covering them.
+[sub_resource type="QuadMesh" id="BarBack_1"]
+size = Vector2(1.2, 0.18)
+
+[sub_resource type="QuadMesh" id="BarFill_1"]
+size = Vector2(1.2, 0.18)
+
+; UNSHADED, both of them. A status readout must look the same under the bridge's
+; own lighting as it does in shadow -- a rescue marker that dims because its owner
+; fell somewhere dark is worse than useless. cull_mode 2 is CULL_DISABLED, so the
+; bar survives if anything ever puts the camera on the other side of it.
+[sub_resource type="StandardMaterial3D" id="BarBackMat_1"]
+shading_mode = 0
+albedo_color = Color(0.08, 0.08, 0.1, 0.85)
+transparency = 1
+cull_mode = 2
+no_depth_test = true
+
+[sub_resource type="StandardMaterial3D" id="BarFillMat_1"]
+shading_mode = 0
+albedo_color = Color(1, 0.27, 0.16, 1)
+cull_mode = 2
+no_depth_test = true
+
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 ; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
@@ -65,31 +90,50 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.5)
 mesh = SubResource("Nose_1")
 material_override = SubResource("NoseMat_1")
 
-; The bleed-out countdown, over the head of a DOWNED player.
+; The rescue countdown, over the head of a player who is hanging or downed.
 ;
-; IN THE WORLD, NOT ON THE HUD, and that is the whole point. The HUD already
-; carries a bleed-out bar, but it is in a corner and it says WHO is dying, not
-; WHERE -- and a revive is done by physically standing on someone. The number a
-; rescuer needs is the one attached to the body they have to reach.
+; A BAR, NOT A NUMBER, and the reason is performance rather than taste. It was a
+; Label3D, and the text was assigned every frame; Label3D.text rebuilds the text
+; mesh and re-rasterises its glyphs on every assignment, whether or not the value
+; changed. That made the game crawl for the whole time anybody was hanging --
+; walk off an edge from a cold start and it stalled. A bar is two static quads
+; whose fill is a SCALE, so a frame costs a transform update and nothing else,
+; and there is no per-frame raster to accidentally reintroduce.
 ;
-; BILLBOARD, so it faces the fixed camera from anywhere on the deck. NO DEPTH
-; TEST, so a parapet or a pillar cannot hide it: a rescue timer you cannot see
-; from across the bridge is the one thing this must never be. That does mean it
-; draws through geometry -- deliberate, and the reason it is only ever visible
-; for the couple of seconds someone is actually down.
+; It also reads better at distance. The exact seconds never mattered; "how much
+; time is left" is a length, and a length is legible from across a 60 m bridge in
+; a way two-digit text is not.
 ;
-; Driven by player_body._process, NOT by step(): a client never steps a remote
-; player, so a counter updated in the sim tick would sit frozen over exactly the
-; teammate you are running to save.
-[node name="DownedTimer" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+; IN THE WORLD, NOT ON THE HUD. The HUD already carries a bleed-out bar, but it
+; is in a corner and says WHO needs help, not WHERE -- and both rescues are
+; performed by physically standing next to someone. The thing a rescuer needs is
+; attached to the body they have to reach.
+;
+; NO DEPTH TEST, so a parapet or a pillar cannot hide it. It draws through
+; geometry, which is the trade, and is why it only appears while someone is
+; actually waiting for help.
+;
+; FIXED 45-DEGREE TILT rather than a billboard, because the camera genuinely
+; never rotates -- fixed yaw and a fixed 45-degree pitch, load-bearing twice over
+; (see bridge_camera.gd). Facing it is therefore a constant, and a constant beats
+; a billboard whose interaction with a scaled child is one more thing to get
+; wrong. If the camera ever gains free look, this needs billboard_keep_scale.
+[node name="RescueBar" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 1.35, 0)
 visible = false
-billboard = 1
-no_depth_test = true
-fixed_size = true
-pixel_size = 0.0025
-font_size = 128
-outline_size = 24
-modulate = Color(1, 0.45, 0.22, 1)
-outline_modulate = Color(0, 0, 0, 0.7)
-text = ""
+
+[node name="Back" type="MeshInstance3D" parent="RescueBar"]
+mesh = SubResource("BarBack_1")
+material_override = SubResource("BarBackMat_1")
+
+; The fill hangs off a pivot at the bar's LEFT EDGE, so scaling the pivot's x
+; drains it right-to-left from a fixed end. Scaling the quad itself would shrink
+; it toward its own centre and drain from both sides at once, which reads as the
+; bar moving rather than emptying.
+[node name="FillPivot" type="Node3D" parent="RescueBar"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6, 0, 0.01)
+
+[node name="Fill" type="MeshInstance3D" parent="RescueBar/FillPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 0, 0)
+mesh = SubResource("BarFill_1")
+material_override = SubResource("BarFillMat_1")

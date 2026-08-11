@@ -205,22 +205,73 @@ func _process(_delta: float) -> void:
 # Public so a test can drive it on a chosen frame. _process and _physics_process
 # do not run in a guaranteed order relative to each other, so a test that only
 # waited for a frame would be asserting against whichever happened to win.
+# Drive the rescue bar over this body's head.
+#
+# A SCALE, NOT TEXT. This was a Label3D whose text was assigned every frame, and
+# Label3D.text rebuilds the text mesh and re-rasterises its glyphs on every
+# assignment -- changed or not. The game crawled for the whole time anybody was
+# hanging: walk off an edge from a cold start and it stalled. Setting a scale
+# costs a transform update and cannot regress into a per-frame raster.
+#
+# The simulation was never the problem, and measuring it said so before anything
+# was changed: about 400 us a frame against a 16666 us budget, with the hang, the
+# balls and the rushers all live. A headless gate does not rasterise glyphs, so
+# the only instrument that could see this was somebody playing the game.
 func sync_downed_timer() -> void:
-	var label := get_node_or_null("DownedTimer") as Label3D
-	if label == null:
+	var bar := get_node_or_null("RescueBar") as Node3D
+	if bar == null:
 		return
-	if state != State.DOWNED:
-		label.visible = false
+	var fraction: float = rescue_fraction()
+	if fraction < 0.0:
+		bar.visible = false
 		return
-	label.visible = true
-	label.text = downed_seconds_left_text()
+	bar.visible = true
+	var pivot := bar.get_node_or_null("FillPivot") as Node3D
+	if pivot != null:
+		# Never exactly zero: a zero-scaled basis is degenerate and Godot
+		# complains about it every frame it is drawn.
+		pivot.scale.x = maxf(fraction, 0.001)
+
+# How much of the rescue window is LEFT, 1.0 down to 0.0, or -1 when this body is
+# not waiting on anybody. Both states, each against its own clock -- 8 s hanging,
+# 15 s downed -- so a full bar means the same thing in either.
+func rescue_fraction() -> float:
+	var left: float = rescue_seconds_left()
+	if left < 0.0:
+		return -1.0
+	match state:
+		State.DOWNED:
+			return clampf(left / SimConfig.DOWNED_SECONDS, 0.0, 1.0)
+		State.LEDGE_HANG:
+			return clampf(left / SimConfig.LEDGE_HANG_SECONDS, 0.0, 1.0)
+	return -1.0
+
+# Seconds until the drone comes for this body, or -1 when it is not waiting for
+# anybody.
+#
+# BOTH RESCUE STATES, not just DOWNED. It covered only DOWNED at first, and that
+# made it a feature almost nobody would ever see: going down takes FIVE separate
+# hits (MAX_HEALTH 5, one damage each) from the only two things that deal damage,
+# with a grace window between them -- and falling does none at all. In a real
+# playtest you hang off a lip or you fall; you very rarely bleed out. Reported as
+# "I still can't see it", twice, after two fixes to how it was DRAWN.
+#
+# GameWorld already treats these as one situation wearing two hats -- same
+# countdown, same teammate-can-end-it-early, same drone at the end. The thing
+# over your head should not be the one place they are different.
+func rescue_seconds_left() -> float:
+	match state:
+		State.DOWNED:
+			return maxf(0.0, SimConfig.DOWNED_SECONDS - state_timer)
+		State.LEDGE_HANG:
+			return maxf(0.0, SimConfig.LEDGE_HANG_SECONDS - state_timer)
+	return -1.0
 
 # WHOLE SECONDS, ROUNDED UP. A rescuer reads this from across a 60 m bridge while
 # running, so it has to be legible at a glance rather than precise -- and ceil
 # means it never shows "0" on somebody who is still savable.
-func downed_seconds_left_text() -> String:
-	var left: float = maxf(0.0, SimConfig.DOWNED_SECONDS - state_timer)
-	return str(int(ceil(left)))
+func rescue_seconds_left_text() -> String:
+	return str(int(ceil(maxf(0.0, rescue_seconds_left()))))
 
 func _point_nose() -> void:
 	var nose := get_node_or_null("Facing") as Node3D

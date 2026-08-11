@@ -67,6 +67,8 @@ func _unhandled_input(_event: InputEvent) -> void:
 		_set_status("Practice partner %d added (F3 to switch)" % world.debug_add_practice_player())
 	elif Input.is_action_just_pressed("debug_switch_player"):
 		_set_status("Controlling player %d" % world.debug_cycle_control())
+	elif Input.is_action_just_pressed("debug_hurt"):
+		_set_status(world.debug_hurt_controlled())
 
 # --- Menu --------------------------------------------------------------------
 
