@@ -72,11 +72,54 @@ func _phase_damage_and_grace() -> void:
 	if phase_frame != 1:
 		return
 	_park(a, Vector2i(7, 1))
+
+	# SILENCE IS A STATE. A player at full health shows nothing at all -- four
+	# permanent bars on a 60 m bridge are furniture, and furniture is not read, so
+	# a bar appearing has to mean somebody needs something.
+	a.sync_downed_timer()
+	var bar := a.get_node_or_null("StatusBar") as Node3D
+	if check(bar != null, "a player carries a status bar"):
+		check(not bar.visible, "which a HEALTHY player does not show at all")
+
 	check(a.take_damage(1), "a hit lands")
 	eq(a.health, SimConfig.MAX_HEALTH - 1, "and costs a hit point")
+
+	# Injured: it appears, green over red, and reads the health rather than a
+	# countdown.
+	a.sync_downed_timer()
+	if bar != null:
+		check(bar.visible, "an INJURED player shows one")
+		near(a.health_fraction(), 0.8, 0.001, "filled to the health that is left")
+		eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL, "green for health you still have")
+		eq(_back_colour(a), PlayerBody.BAR_HEALTH_BACK, "over red for health you lost")
+
 	check(not a.take_damage(1), "a second hit inside the grace window is refused")
 	eq(a.health, SimConfig.MAX_HEALTH - 1, "so the bar does not drain in one go")
+
+	# ONE PLAYER'S BAR MUST NOT FOLLOW ANOTHER'S. Free now that the halves are
+	# ColorRect nodes -- each avatar owns its own -- but it was not free when they
+	# were meshes sharing .tscn sub-resource materials, and the symptom then was
+	# bars looking wrong at random rather than obviously shared. Kept because the
+	# guarantee is what matters, not how it is currently obtained.
+	b.health = SimConfig.MAX_HEALTH
+	b.state = PlayerBody.State.LEDGE_HANG
+	b.state_timer = 0.0
+	b.sync_downed_timer()
+	eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL,
+		"and one player's bar colour does not follow another's")
+	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL, "each body owning its own")
+	b.state = PlayerBody.State.WALK
+
 	_advance(1)
+
+func _fill_rect(body: CharacterBody3D) -> ColorRect:
+	return body.get_node_or_null("StatusBar/SubViewport/Fill") as ColorRect
+
+func _fill_colour(body: CharacterBody3D) -> Color:
+	return _fill_rect(body).color
+
+func _back_colour(body: CharacterBody3D) -> Color:
+	return (body.get_node_or_null("StatusBar/SubViewport/Back") as ColorRect).color
 
 # --- 2. Zero health downs you where you fell; a teammate revives you -----------
 
@@ -96,11 +139,18 @@ func _phase_downed_and_revive() -> void:
 		# both rescues are performed by standing next to someone: what a rescuer
 		# needs is attached to the body they have to reach.
 		a.sync_downed_timer()
-		var bar := a.get_node_or_null("RescueBar") as Node3D
-		if check(bar != null, "a player carries a rescue bar"):
+		var bar := a.get_node_or_null("StatusBar") as Node3D
+		if check(bar != null, "a player carries a status bar"):
 			check(bar.visible, "which appears the moment they go down")
 			near(a.rescue_fraction(), 1.0, 0.05, "starting full")
 			recorded["first_fill"] = a.rescue_fraction()
+
+			# AND SWITCHES WHAT IT MEANS. Down is not a worse injury, it is a
+			# different question -- "how long have I got" rather than "how hurt am
+			# I" -- so the colours change with it and cannot be confused at a
+			# glance from across the bridge.
+			eq(_fill_colour(a), PlayerBody.BAR_RESCUE_FILL, "now red for the time left")
+			eq(_back_colour(a), PlayerBody.BAR_RESCUE_BACK, "over black for the time gone")
 
 			# A SANITY BAND, NOT A LEGIBILITY CLAIM, and the difference matters.
 			# An earlier version of this required the readout to be at least half a
@@ -109,15 +159,39 @@ func _phase_downed_and_revive() -> void:
 			# well under it -- a guess wearing the clothes of a measurement. What
 			# survives guards only the failures actually OBSERVED: shrinking to
 			# nothing, and growing bigger than the player it belongs to.
-			var back := bar.get_node_or_null("Back") as MeshInstance3D
-			if check(back != null, "with a background to read the fill against"):
-				var width: float = back.mesh.size.x
-				check(width > 0.25, "of a real width (%.2f m)" % width)
-				check(width <= PlayerBody.HALF_HEIGHT * 2.0,
-					"and no larger than the player (%.2f m vs %.2f m)"
-						% [width, PlayerBody.HALF_HEIGHT * 2.0])
+			var sprite := bar as Sprite3D
+			var width: float = PlayerBody.BAR_PIXELS.x * sprite.pixel_size
+			check(width > 0.25, "of a real width (%.2f m)" % width)
+			check(width <= PlayerBody.HALF_HEIGHT * 2.0,
+				"and no larger than the player (%.2f m vs %.2f m)"
+					% [width, PlayerBody.HALF_HEIGHT * 2.0])
 			check(bar.position.y > PlayerBody.HALF_HEIGHT,
 				"and sitting above the head rather than through the body")
+
+			# THE FILL'S WIDTH IS THE VALUE, in viewport pixels.
+			#
+			# It was two 3D quads before, and that could not be asserted usefully:
+			# no_depth_test puts a material in the alpha pass whatever its alpha,
+			# that pass sorts by DISTANCE using each object's origin, and the
+			# fill's origin slid sideways as it drained -- so partway down it went
+			# behind the back quad and the back painted over it. Solid black for
+			# the rest of the hang with the fraction perfectly correct underneath.
+			#
+			# Composed in a SubViewport, overlap is tree order and nothing else.
+			# There is no sort to lose, so the width IS what is drawn.
+			var fill_rect := _fill_rect(a)
+			if check(fill_rect != null, "with a fill to read"):
+				near(fill_rect.size.x, PlayerBody.BAR_PIXELS.x, 1.0,
+					"full at the moment they go down (%.0f of %.0f px)"
+						% [fill_rect.size.x, PlayerBody.BAR_PIXELS.x])
+
+			# And the viewport only renders while the bar is up -- four healthy
+			# players must not be four render targets redrawn every frame.
+			var vp := bar.get_node_or_null("SubViewport") as SubViewport
+			if check(vp != null, "drawn through a SubViewport"):
+				eq(vp.render_target_update_mode, SubViewport.UPDATE_ALWAYS,
+					"which is live while somebody needs help")
+			check(sprite.no_depth_test, "and ignores depth, so a parapet cannot hide it")
 		return
 
 	if phase_frame == 30:
@@ -138,7 +212,7 @@ func _phase_downed_and_revive() -> void:
 			"a teammate standing with them revives them, and promptly")
 		eq(a.health, SimConfig.REVIVE_HEALTH, "revived at minimum health")
 
-		var bar := a.get_node_or_null("RescueBar") as Node3D
+		var bar := a.get_node_or_null("StatusBar") as Node3D
 		if bar != null:
 			# It really DRAINED rather than sitting at its first value. A frozen
 			# bar is the failure mode a single reading cannot see, and it is
@@ -147,8 +221,23 @@ func _phase_downed_and_revive() -> void:
 			check(float(recorded["last_fill"]) < float(recorded["first_fill"]),
 				"the bar drained while they were out (%.2f -> %.2f)"
 					% [recorded["first_fill"], recorded["last_fill"]])
+
+			# BACK UP IS NOT THE SAME AS WELL. A revive returns you on
+			# REVIVE_HEALTH, so the bar does not vanish -- it switches question,
+			# from "how long have I got" to "how hurt am I", and the colours say
+			# which one it is answering.
 			a.sync_downed_timer()
-			check(not bar.visible, "and disappears the moment they are back up")
+			check(bar.visible, "and stays up, because a revive returns you hurt")
+			eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL,
+				"having switched back to green-over-red health")
+			near(a.health_fraction(),
+				float(SimConfig.REVIVE_HEALTH) / float(SimConfig.MAX_HEALTH), 0.001,
+				"reading the health they were revived on")
+
+			# Only a player at FULL health shows nothing.
+			a.health = SimConfig.MAX_HEALTH
+			a.sync_downed_timer()
+			check(not bar.visible, "and goes away entirely once they are patched up")
 		_advance(2)
 		return
 
@@ -184,7 +273,7 @@ func _phase_ledge_catch() -> void:
 		# or you fall. This is the reachable half, and it went three builds without
 		# anyone being able to confirm the counter existed.
 		a.sync_downed_timer()
-		var hang_bar := a.get_node_or_null("RescueBar") as Node3D
+		var hang_bar := a.get_node_or_null("StatusBar") as Node3D
 		if check(hang_bar != null, "a hanging player carries a bar as well"):
 			check(hang_bar.visible, "and it is showing while they hang")
 			var fill: float = a.rescue_fraction()

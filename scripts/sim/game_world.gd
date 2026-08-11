@@ -1424,28 +1424,6 @@ func debug_add_practice_player() -> int:
 
 # Hand local input to the next player in the world, and move the camera with it.
 # What makes a practice partner useful: dash A into B, switch, and dash B back.
-# Hurt the player you are controlling, one hit point, ignoring the grace window
-# so repeated presses actually land.
-#
-# THE STATES WORTH LOOKING AT ARE THE HARDEST TO REACH. Going DOWNED takes five
-# separate hits from the only two things in the game that deal damage, and
-# falling deals none -- so checking anything about the downed state meant standing
-# in a plinko field for a minute and hoping. The bleed-out counter shipped three
-# times before anyone could confirm it was on screen, which is a verification
-# problem and not a rendering one.
-#
-# Goes through take_damage(), not straight to begin_downed(), so what it exercises
-# is the path the game uses -- including the last hit tipping into DOWNED.
-func debug_hurt_controlled() -> String:
-	var body: Node = players.get(local_peer)
-	if body == null:
-		return "No player to hurt."
-	body.invulnerable = 0.0
-	body.take_damage(1)
-	if body.state == PlayerBody.State.DOWNED:
-		return "Player %d is DOWNED (%s s)" % [local_peer, body.rescue_seconds_left_text()]
-	return "Player %d hurt: %d/%d" % [local_peer, body.health, SimConfig.MAX_HEALTH]
-
 func debug_cycle_control() -> int:
 	if networked or players.is_empty():
 		return local_peer

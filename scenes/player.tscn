@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://btfplayer1"]
+[gd_scene load_steps=7 format=3 uid="uid://btfplayer1"]
 
 [ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
 
@@ -36,31 +36,6 @@ size = Vector3(0.3, 0.3, 0.5)
 albedo_color = Color(0.95, 0.85, 0.25, 1)
 roughness = 0.6
 
-; The rescue bar: 1.2 m across, 0.18 m tall. Two thirds of a player's width, so
-; it reads as belonging to them without covering them.
-[sub_resource type="QuadMesh" id="BarBack_1"]
-size = Vector2(1.2, 0.18)
-
-[sub_resource type="QuadMesh" id="BarFill_1"]
-size = Vector2(1.2, 0.18)
-
-; UNSHADED, both of them. A status readout must look the same under the bridge's
-; own lighting as it does in shadow -- a rescue marker that dims because its owner
-; fell somewhere dark is worse than useless. cull_mode 2 is CULL_DISABLED, so the
-; bar survives if anything ever puts the camera on the other side of it.
-[sub_resource type="StandardMaterial3D" id="BarBackMat_1"]
-shading_mode = 0
-albedo_color = Color(0.08, 0.08, 0.1, 0.85)
-transparency = 1
-cull_mode = 2
-no_depth_test = true
-
-[sub_resource type="StandardMaterial3D" id="BarFillMat_1"]
-shading_mode = 0
-albedo_color = Color(1, 0.27, 0.16, 1)
-cull_mode = 2
-no_depth_test = true
-
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 ; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
@@ -90,50 +65,66 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.5)
 mesh = SubResource("Nose_1")
 material_override = SubResource("NoseMat_1")
 
-; The rescue countdown, over the head of a player who is hanging or downed.
+; The status bar, over the head of a player who is not in perfect shape.
 ;
-; A BAR, NOT A NUMBER, and the reason is performance rather than taste. It was a
-; Label3D, and the text was assigned every frame; Label3D.text rebuilds the text
-; mesh and re-rasterises its glyphs on every assignment, whether or not the value
-; changed. That made the game crawl for the whole time anybody was hanging --
-; walk off an edge from a cold start and it stalled. A bar is two static quads
-; whose fill is a SCALE, so a frame costs a transform update and nothing else,
-; and there is no per-frame raster to accidentally reintroduce.
+; THREE STATES, AND SILENCE IS ONE OF THEM:
+;   healthy            nothing at all
+;   injured            green over red -- health you have over health you lost
+;   hanging or downed  red over black -- time left over time gone
 ;
-; It also reads better at distance. The exact seconds never mattered; "how much
-; time is left" is a length, and a length is legible from across a 60 m bridge in
-; a way two-digit text is not.
+; A healthy player showing no bar is the load-bearing part. Four permanent bars
+; on a 60 m bridge is furniture, and furniture is not read. A bar appearing at all
+; means somebody needs something, and red-on-black means they need it NOW.
 ;
-; IN THE WORLD, NOT ON THE HUD. The HUD already carries a bleed-out bar, but it
-; is in a corner and says WHO needs help, not WHERE -- and both rescues are
-; performed by physically standing next to someone. The thing a rescuer needs is
-; attached to the body they have to reach.
+; A SUBVIEWPORT DRAWN ONTO A SPRITE3D -- the way Godot does world-space UI, and
+; adopted after two self-inflicted bugs that this shape cannot have:
 ;
-; NO DEPTH TEST, so a parapet or a pillar cannot hide it. It draws through
-; geometry, which is the trade, and is why it only appears while someone is
-; actually waiting for help.
+;   * It was a Label3D whose text was assigned every frame, which rebuilds the
+;     text mesh and re-rasterises glyphs on every assignment. The game crawled for
+;     as long as anybody hung.
+;   * It was then two quads, back and fill. no_depth_test puts a material in the
+;     ALPHA PASS whatever its alpha, and that pass sorts BY DISTANCE using each
+;     object's ORIGIN -- and the fill's origin SLID sideways as it drained, so
+;     partway down it crossed behind the back quad and the back painted over it.
+;     Solid black for the rest of the hang, with the fraction underneath perfectly
+;     correct the whole time.
 ;
-; FIXED 45-DEGREE TILT rather than a billboard, because the camera genuinely
-; never rotates -- fixed yaw and a fixed 45-degree pitch, load-bearing twice over
-; (see bridge_camera.gd). Facing it is therefore a constant, and a constant beats
-; a billboard whose interaction with a scaled child is one more thing to get
-; wrong. If the camera ever gains free look, this needs billboard_keep_scale.
-[node name="RescueBar" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 1.35, 0)
+; ONE NODE CANNOT SORT AGAINST ITSELF, which retires that entire class. The bar is
+; composed in 2D, where overlap is settled by tree order and nothing else.
+;
+; The contents are ColorRects rather than a ProgressBar for the reason hud.gd
+; already gives: a ProgressBar's fill colour in Godot 4 lives in a theme StyleBox,
+; not in a tint property, and this is not worth a theme resource. They are also
+; NODES, so each avatar owns its own -- the previous version had to duplicate
+; shared materials per body or one player's bar would re-tint the whole party's.
+;
+; The viewport is 200x30 px at pixel_size 0.006, which is 1.2 m x 0.18 m -- two
+; thirds of a player's width, so it reads as belonging to them without covering
+; them. Its update mode is driven from player_body: DISABLED while hidden, so an
+; unhurt party costs nothing at all, and ALWAYS only while somebody needs help.
+;
+; NO DEPTH TEST, so a parapet or a pillar cannot hide it -- a marker you cannot
+; see from across the bridge is the one thing this must never be.
+[node name="StatusBar" type="Sprite3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, 0)
 visible = false
+billboard = 1
+no_depth_test = true
+pixel_size = 0.006
 
-[node name="Back" type="MeshInstance3D" parent="RescueBar"]
-mesh = SubResource("BarBack_1")
-material_override = SubResource("BarBackMat_1")
+[node name="SubViewport" type="SubViewport" parent="StatusBar"]
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(200, 30)
+render_target_update_mode = 0
 
-; The fill hangs off a pivot at the bar's LEFT EDGE, so scaling the pivot's x
-; drains it right-to-left from a fixed end. Scaling the quad itself would shrink
-; it toward its own centre and drain from both sides at once, which reads as the
-; bar moving rather than emptying.
-[node name="FillPivot" type="Node3D" parent="RescueBar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6, 0, 0.01)
+[node name="Back" type="ColorRect" parent="StatusBar/SubViewport"]
+offset_right = 200.0
+offset_bottom = 30.0
+color = Color(0.03, 0.03, 0.04, 1)
 
-[node name="Fill" type="MeshInstance3D" parent="RescueBar/FillPivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 0, 0)
-mesh = SubResource("BarFill_1")
-material_override = SubResource("BarFillMat_1")
+; Drawn after Back, so tree order alone puts it on top. Its WIDTH is the value.
+[node name="Fill" type="ColorRect" parent="StatusBar/SubViewport"]
+offset_right = 200.0
+offset_bottom = 30.0
+color = Color(1, 0.27, 0.16, 1)

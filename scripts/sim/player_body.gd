@@ -127,6 +127,21 @@ func _ready() -> void:
 	# What it does NOT solve is the carrier being blocked by its own rider --
 	# that is still handled in GameWorld's step loop.
 
+	# The status bar draws a SubViewport onto a Sprite3D, which is how Godot does
+	# world-space UI. The texture has to be wired up in code: a ViewportTexture
+	# pointing at a node's own child cannot be set from the scene file.
+	#
+	# No material duplication needed any more, and that is one of the reasons for
+	# the shape. The bar's two halves are ColorRect NODES now, so every avatar
+	# owns its own; the previous mesh version shared its materials across every
+	# instance of player.tscn and had to clone them per body or one player's bar
+	# re-tinted the whole party's.
+	var bar := get_node_or_null("StatusBar") as Sprite3D
+	if bar != null:
+		var vp := bar.get_node_or_null("SubViewport") as SubViewport
+		if vp != null:
+			bar.texture = vp.get_texture()
+
 # --- Simulation ---------------------------------------------------------------
 
 # Advance exactly one tick. Takes no delta on purpose: move_and_slide() reads the
@@ -217,20 +232,61 @@ func _process(_delta: float) -> void:
 # was changed: about 400 us a frame against a 16666 us budget, with the hang, the
 # balls and the rushers all live. A headless gate does not rasterise glyphs, so
 # the only instrument that could see this was somebody playing the game.
+# What the bar says, in priority order. SILENCE IS A STATE: a healthy player
+# shows nothing at all, because four permanent bars on a 60 m bridge become
+# furniture and furniture does not get read. A bar appearing means somebody needs
+# something.
+const BAR_HEALTH_FILL := Color(0.30, 0.85, 0.35)   # health you still have
+const BAR_HEALTH_BACK := Color(0.75, 0.15, 0.12)   # health you have lost
+const BAR_RESCUE_FILL := Color(1.00, 0.27, 0.16)   # time left to reach them
+const BAR_RESCUE_BACK := Color(0.03, 0.03, 0.04)   # time already gone
+
+# The bar's viewport, in pixels. The world size is this times the Sprite3D's
+# pixel_size -- 200 x 30 at 0.006 is 1.2 m x 0.18 m.
+const BAR_PIXELS := Vector2(200.0, 30.0)
+
 func sync_downed_timer() -> void:
-	var bar := get_node_or_null("RescueBar") as Node3D
+	var bar := get_node_or_null("StatusBar") as Sprite3D
 	if bar == null:
 		return
+	var vp := bar.get_node_or_null("SubViewport") as SubViewport
+
+	# Rescue outranks injury: a hanging player's health is not the thing anybody
+	# needs to know, and they are on zero anyway once they are down.
 	var fraction: float = rescue_fraction()
+	var fill := BAR_RESCUE_FILL
+	var back := BAR_RESCUE_BACK
 	if fraction < 0.0:
-		bar.visible = false
-		return
+		fraction = health_fraction()
+		fill = BAR_HEALTH_FILL
+		back = BAR_HEALTH_BACK
+		if fraction >= 1.0:
+			# Unhurt and in no trouble: say nothing, and STOP RENDERING. A
+			# viewport left updating for a party of four healthy players is four
+			# render targets redrawn every frame to show something nobody is
+			# looking at.
+			bar.visible = false
+			if vp != null:
+				vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+			return
+
 	bar.visible = true
-	var pivot := bar.get_node_or_null("FillPivot") as Node3D
-	if pivot != null:
-		# Never exactly zero: a zero-scaled basis is degenerate and Godot
-		# complains about it every frame it is drawn.
-		pivot.scale.x = maxf(fraction, 0.001)
+	if vp != null:
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+	var back_rect := bar.get_node_or_null("SubViewport/Back") as ColorRect
+	if back_rect != null:
+		back_rect.color = back
+	var fill_rect := bar.get_node_or_null("SubViewport/Fill") as ColorRect
+	if fill_rect != null:
+		fill_rect.color = fill
+		# THE WIDTH IS THE VALUE. Two ColorRects in a 2D viewport, so overlap is
+		# settled by tree order and nothing else -- no depth, no distance sort, no
+		# origin that moves as it drains.
+		fill_rect.size = Vector2(BAR_PIXELS.x * clampf(fraction, 0.0, 1.0), BAR_PIXELS.y)
+
+func health_fraction() -> float:
+	return clampf(float(health) / float(SimConfig.MAX_HEALTH), 0.0, 1.0)
 
 # How much of the rescue window is LEFT, 1.0 down to 0.0, or -1 when this body is
 # not waiting on anybody. Both states, each against its own clock -- 8 s hanging,
