@@ -146,6 +146,29 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 		_:
 			_step_inert()
 
+	# THE LEDGE CATCH IS A PROPERTY OF THE FALL, NOT OF HOW IT STARTED.
+	#
+	# It lived inside _step_tumble until 2026-08-10, so it was reachable ONLY by
+	# being kicked, shot or rushed -- dash across a gap, fall short, and you
+	# dropped past a lip you were touching with no grab, because your own dash
+	# ends in WALK and WALK never asked. Reported from playtest as "is grabbing
+	# specific to kicks?", and it was.
+	#
+	# Nothing in D2 says that. It defines the rescue by TRAJECTORY -- over an edge
+	# but still near the deck catches; launched clear of it does not -- and
+	# _try_catch_ledge already tests exactly that: not rising, under
+	# LEDGE_CATCH_MAX_SPEED, over a hole with solid deck within reach below. Those
+	# gates do the whole job. The state check on top of them only made two
+	# identical-looking falls behave differently for a reason no player can see,
+	# which is the same thing the glancing/solid split was thrown out for.
+	#
+	# SHOVE is deliberately not in this list. A dash is 56 m/s, so the speed gate
+	# refuses it anyway -- but stating it here means lowering SHOVE_SPEED later
+	# cannot quietly make dashes catchable and delete "a dash off the deck is a
+	# dash off the deck".
+	if not grounded and (state == State.WALK or state == State.TUMBLE):
+		_try_catch_ledge()
+
 	motion_delta = position - before
 	carrier = _find_carrier()
 	_point_nose()
@@ -335,10 +358,6 @@ func _step_tumble() -> void:
 			break
 		if velocity.dot(normal) < 0.0:
 			velocity = velocity.bounce(normal) * SimConfig.TUMBLE_BOUNCE
-
-	# Falling past a lip is the rescue window: catching it is automatic.
-	if not grounded and _try_catch_ledge():
-		return
 
 	var slow_enough: bool = velocity.length() < SimConfig.TUMBLE_RECOVER_SPEED
 	if state_timer >= SimConfig.TUMBLE_MAX_SECONDS \

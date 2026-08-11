@@ -42,10 +42,20 @@ This replaces the earlier "zero health means downed" proposal outright.
   from danger)*. If there is nobody to drop next to, they are dropped at the
   party's forward-most safe cell.
 
+**The catch is decided by the FALL, never by what caused it.** *(Clarified
+2026-08-10 after playtest: "when you dash across a gap but fall short you don't
+seem to be able to grab — is grabbing specific to kicks?" It was, and only
+because the check sat inside the tumble step.)* Dropping past a lip, slowly, near
+the deck catches it — whether a friend put you there, a ball did, or you
+misjudged your own dash. Two falls that look identical must end identically; a
+rescue that depended on invisible state would be the same unreadable threshold
+the plinko glancing/solid split was cut for.
+
 The consequence worth naming: **whether your friends can save you is decided by
 how you got hit, not by how fast they react.** A shove along the deck leaves you
 grabbing a ledge; a plinko ball to the chest launches you and nobody can do
-anything. That is a texture the design wants — it makes positioning near edges a
+anything. That distinction is about *trajectory* — speed and height at the lip —
+and those are the only two things the rule tests. That is a texture the design wants — it makes positioning near edges a
 real, legible risk, and it means the rope rescue is a moment that has to be
 earned rather than a routine.
 

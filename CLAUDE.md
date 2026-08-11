@@ -205,6 +205,11 @@ the moment it is written.
   packed only after being added to the filter; `segments/*.seg` is there for the
   same reason. **After adding any data file, read the `savepack:` list in the
   export output and find it.**
+  It cuts the other way too: `all_resources` sweeps in ANY resource under
+  `res://`, and the engine now lives under `build/deps/` — so its own
+  `editor_settings-4.4.tres` was being packed into the shipped game until
+  `exclude_filter="build/*"` was added (2026-08-10). Read that list for things
+  that should NOT be there as well as things that should.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

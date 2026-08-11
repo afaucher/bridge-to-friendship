@@ -29,7 +29,18 @@ func setup(main) -> void:
 	world.name = "CameraWorld"
 	world.set_script(GameWorldScript)
 	main.add_child(world)
-	world.segment_paths = ["res://segments/playtest_bridge.seg"]
+	# A TEST FIXTURE, not the playtest map. This walked playtest_bridge until
+	# 2026-08-10 and the route it took ended in a hole at z7 -- which had always
+	# been a fall, but a fall takes ~1.3 s to reach the kill plane, so the wipe
+	# that followed landed AFTER this test's last assertion and nobody noticed.
+	# Making the ledge grab work for self-inflicted falls turned that fall into an
+	# instant catch, a solo hang is a wipe by definition, and the restart yanked
+	# the camera back to the checkpoint mid-measurement.
+	#
+	# The failure was real and the route was always wrong; only the timing had
+	# been hiding it. Tuning a map for feel must not be able to do this, which is
+	# why the fixtures exist and why the playtest map is not one.
+	world.segment_paths = ["res://segments/test_flat.seg"]
 	# The world a human would be looking at, which is what gates the camera
 	# taking the viewport and the lighting being built at all.
 	world.view_active = true
@@ -56,12 +67,14 @@ func setup(main) -> void:
 
 	world._spawn_player(1, 0)
 	player = world.player_body(1)
-	# Lane 9 is clear of every authored gap for the stretch this test walks, and
-	# well away from the rows where the parapet is suppressed. The first version
-	# walked diagonally off the exposed run and then failed the frustum check
-	# from halfway down a fall, which is a confusing way to be told the test rig
-	# picked a bad route.
-	player.position = world.grid.cell_surface_world(Vector2i(9, 1)) + Vector3(0.0, 1.2, 0.0)
+	# COLUMN 22, WALKING EAST TO ~25, which is clear of every hole in test_flat for
+	# the whole length: the gaps sit at x 9-12 and x 18-21 on rows 2-3, and x 4-21
+	# on row 6. Anything at x >= 22 threads all of them.
+	#
+	# The route has to survive the SIDEWAYS leg too -- an earlier version named a
+	# clear start lane and then walked three cells east out of it, which is how it
+	# ended up over a hole. State what is clear AFTER the movement, not before.
+	player.position = world.grid.cell_surface_world(Vector2i(22, 1)) + Vector3(0.0, 1.2, 0.0)
 
 	# Drive through the world's own input hook, NOT by calling player.step() from
 	# here. The world runs its own host tick, so stepping the body as well moves

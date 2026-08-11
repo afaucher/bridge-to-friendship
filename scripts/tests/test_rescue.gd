@@ -52,7 +52,8 @@ func _physics_process(_delta: float) -> void:
 		1: _phase_downed_and_revive()
 		2: _phase_ledge_catch()
 		3: _phase_launched_clear()
-		4: _phase_drone_return()
+		4: _phase_own_fall_catches()
+		5: _phase_drone_return()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -172,6 +173,43 @@ func _phase_launched_clear() -> void:
 		check(not bool(recorded["caught_fast"]),
 			"a player arriving at a lip too fast catches nothing -- launched clear is launched clear")
 		_advance(4)
+
+# --- 4b. A fall you caused YOURSELF catches the same lip ----------------------
+#
+# Reported from playtest: "when you dash across a gap but fall short you don't
+# seem to be able to grab -- is grabbing specific to kicks?" It was. The catch
+# lived inside _step_tumble, so it was reachable only by being kicked, shot or
+# rushed; your own dash ends in WALK, and WALK never asked.
+#
+# Same lip, same spot, same slow arrival as phase 3 -- the ONLY difference is
+# that nothing put the player there. If the outcome differs, the rule is keyed on
+# invisible state rather than on the fall, which is what D2 says it is not.
+func _phase_own_fall_catches() -> void:
+	if phase_frame == 1:
+		_park(b, Vector2i(13, 8))
+		# Airborne over the authored gap, in WALK. This is the shape a dash that
+		# fell short leaves you in: end_shove zeroes the horizontal velocity and
+		# hands you back to WALK, dropping.
+		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.velocity = Vector3(0.0, -1.0, -1.0)
+		a.state = PlayerBody.State.WALK
+		a.grounded = false
+		a.health = SimConfig.MAX_HEALTH
+		recorded["ever_tumbled"] = false
+		return
+	if phase_frame < 60:
+		if a.state == PlayerBody.State.TUMBLE:
+			recorded["ever_tumbled"] = true
+		return
+	if phase_frame == 60:
+		eq(a.state, PlayerBody.State.LEDGE_HANG,
+			"a player who falls under their OWN steam catches the lip too")
+		# And got there directly. Without this the phase would also pass if
+		# something had quietly tumbled the player first, which would leave the
+		# original bug in place and the test green over it.
+		check(not bool(recorded["ever_tumbled"]),
+			"having never been tumbled -- the grab is not kick-only")
+		_advance(5)
 
 # --- 5. Falling is a setback: the drone brings you back next to a friend ------
 
