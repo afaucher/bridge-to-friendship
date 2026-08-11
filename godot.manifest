@@ -21,4 +21,4 @@
 # bash has a parser for neither, and a format both shells read in four lines
 # beats one that needs a tool installed on every machine that builds this game.
 
-version = 4.4.1-stable
+version = 4.7-stable

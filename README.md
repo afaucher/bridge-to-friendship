@@ -1,6 +1,6 @@
 # Bridge to Friendship
 
-A 3D multiplayer game in Godot (4.4.1, pinned in `godot.manifest`), shipping on
+A 3D multiplayer game in Godot (4.7, pinned in `godot.manifest`), shipping on
 Steam.
 
 Right now this is the skeleton: a 3D world with a ground plane, a capsule
@@ -20,7 +20,7 @@ launcher all download exactly that build into `build/deps/` the first time they
 need it:
 
 ```
-build/deps/godot/4.4.1-stable/      the engine  (~120 MB)
+build/deps/godot/4.7-stable/        the engine  (~120 MB)
 build/deps/godot-data/              its data dir, incl. export templates
 build/linux/  build/windows/        export output
 ```

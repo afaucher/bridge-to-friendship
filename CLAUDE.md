@@ -4,7 +4,7 @@ Operational guide for working on this repo with Claude Code. This is the
 *how-to-work-here* companion to the design docs (`design_ideas/`) and the
 milestone plans (`implementation_plans/`). See `README.md` for build/run.
 
-Godot 4.4.1, GDScript, 3D, headless test workflow. Multiplayer is host-
+Godot 4.7, GDScript, 3D, headless test workflow. Multiplayer is host-
 authoritative over two interchangeable transports: Steam (GodotSteam) for
 release, ENet for development and for every test.
 
@@ -36,7 +36,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./test_runner.ps1 -TestName 
 
 # Direct (simplest to capture output for grepping). The engine lives under
 # build/deps -- it is a dependency of the REPO, not of the machine:
-./build/deps/godot/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64 \
+./build/deps/godot/4.7-stable/Godot_v4.7-stable_linux.x86_64 \
     --path . --headless --fixed-fps 60 --run-test test_smoke
 ```
 
@@ -210,6 +210,17 @@ the moment it is written.
   `editor_settings-4.4.tres` was being packed into the shipped game until
   `exclude_filter="build/*"` was added (2026-08-10). Read that list for things
   that should NOT be there as well as things that should.
+  **And it is not merely untidy — on 4.7 it ABORTS THE EXPORT.** Godot loads
+  that stray EditorSettings while packing and then dies in `is_cmdline_mode`
+  with `Parameter "singleton" is null`, *after* `savepack` has printed DONE, so
+  the log looks like a completed pack followed by an unrelated crash. 4.4.1
+  packed the same file and carried on: the identical tree exported fine on one
+  engine and died on the next, which is what an engine upgrade is for finding.
+  The build scripts now also drop a `.gdignore` into `build/` (godot_env.sh),
+  and THAT is the real fix — it removes the directory from EditorFileSystem
+  entirely, so nothing under it is scanned, imported or exported. The
+  `exclude_filter` is the committed backstop. **Anything the build writes inside
+  `res://` is a candidate for the shipped `.pck`.**
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach
@@ -275,7 +286,7 @@ the moment it is written.
 - **`FileAccess.store_line` buffers** *(inherited)* — a file being written may
   read back as 0 lines until it is flushed or closed.
 - **Kill stragglers** if a run hangs: `pkill -f Godot_v` (Linux) or
-  `taskkill //F //IM Godot_v4.4.1-stable_win64.exe` (Windows).
+  `taskkill //F //IM Godot_v4.7-stable_win64.exe` (Windows).
 - **PowerShell's `-Encoding utf8` writes a BOM, and a BOM breaks Godot's text
   formats.** Observed 2026-08-08 rewriting a `.tscn` with `Set-Content -Encoding
   utf8`: every load failed with `Parse Error: Expected '['` at **line 1**, and

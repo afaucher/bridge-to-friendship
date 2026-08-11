@@ -96,6 +96,19 @@ godot_export_env() {
     mkdir -p "$GODOT_DATA_DIR" || return 1
     export XDG_DATA_HOME="$GODOT_DATA_DIR"
     export XDG_CONFIG_HOME="$GODOT_DATA_DIR/config"
+
+    # build/ IS INSIDE res://, so everything above lands in the project's own
+    # resource tree -- and `export_filter="all_resources"` then sweeps it into
+    # the shipped .pck. Observed 2026-08-10: the engine's own
+    # editor_settings-4.4.tres was packed into the game, absolute developer path
+    # and all. A .gdignore takes the directory out of EditorFileSystem entirely,
+    # so nothing under build/ is scanned, imported or exported.
+    #
+    # It cannot be committed: build/ is gitignored, and git will not honour a
+    # negation for a path inside an excluded directory -- so it is written here,
+    # before any engine run. export_presets.cfg carries an exclude_filter for
+    # the same paths as a committed backstop.
+    [[ -f "$GODOT_ENV_ROOT/build/.gdignore" ]] || : >"$GODOT_ENV_ROOT/build/.gdignore"
     return 0
 }
 

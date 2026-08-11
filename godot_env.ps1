@@ -51,6 +51,20 @@ $GodotMirror = if ($env:BTF_GODOT_MIRROR) { $env:BTF_GODOT_MIRROR } else {
 function Set-GodotDataDir {
     New-Item -ItemType Directory -Force -Path $GodotDataDir | Out-Null
     $env:APPDATA = $GodotDataDir
+
+    # build\ IS INSIDE res://, so everything above lands in the project's own
+    # resource tree -- and `export_filter="all_resources"` then sweeps it into
+    # the shipped .pck. Observed 2026-08-10: the engine's own
+    # editor_settings-4.4.tres was packed into the game, absolute developer path
+    # and all. A .gdignore takes the directory out of EditorFileSystem entirely,
+    # so nothing under build\ is scanned, imported or exported.
+    #
+    # It cannot be committed: build\ is gitignored, and git will not honour a
+    # negation for a path inside an excluded directory -- so it is written here,
+    # before any engine run. export_presets.cfg carries an exclude_filter for
+    # the same paths as a committed backstop.
+    $gdignore = Join-Path $GodotEnvRoot "build\.gdignore"
+    if (-not (Test-Path -LiteralPath $gdignore)) { New-Item -ItemType File -Path $gdignore -Force | Out-Null }
 }
 
 # A PATH inherited as a User+Machine pair can leave the process copy stale in
