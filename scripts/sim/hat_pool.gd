@@ -58,6 +58,65 @@ func worn_by(peer: int) -> Array:
 	out.sort_custom(func(a, b): return a.stack_index < b.stack_index)
 	return out
 
+# --- Everyone: where a worn stack sits ----------------------------------------
+
+# Last tick's velocity per wearer, so a lean can be driven by what CHANGED. Not
+# read from the body, because a body does not keep one.
+var _prev_velocity: Dictionary = {}
+
+# Pose every worn stack for this frame.
+#
+# ON EVERY MACHINE, FOR EVERY PLAYER, HOST OR CLIENT -- unlike almost everything
+# else in this file, which is host-only. A lean is a local drawing decision with
+# no authority attached: there is nothing to disagree about, because the answer
+# is never read back by anything. That is also why it is safe to run against a
+# remote player's interpolated body.
+func pose_worn(players: Dictionary, mount_y: float, dt: float) -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if not is_instance_valid(body):
+			continue
+		pose_stack(peer, body, mount_y, dt)
+		_prev_velocity[peer] = body.velocity
+
+# One player's tower. Each hat leans against the one BELOW it and the frames
+# compose, so hat 4 sits at four hats' worth of lean and is displaced sideways by
+# every one of them -- a curve, not a tilted rod.
+func pose_stack(peer: int, body: Node, mount_y: float, dt: float) -> void:
+	var worn: Array = worn_by(peer)
+	if worn.is_empty():
+		return
+
+	# THE HAT STAYS PUT AND THE HEAD MOVES OUT FROM UNDER IT, so the tilt opposes
+	# the change in velocity. An impulse rather than an acceleration -- see
+	# SimConfig.HAT_LEAN_KICK, which is where that matters.
+	var kick := Vector2.ZERO
+	if dt > 0.0:
+		var prev: Vector3 = _prev_velocity.get(peer, body.velocity)
+		var dv: Vector3 = body.velocity - prev
+		kick = Vector2(dv.x, dv.z) * -SimConfig.HAT_LEAN_KICK
+
+	var frame := Basis()
+	var base := Vector3(0.0, mount_y, 0.0)
+	for hat in worn:
+		if not is_instance_valid(hat):
+			continue
+		# The kick is in world XZ and is applied in each hat's own frame without
+		# re-projecting. At the 25 degrees a full stack can reach, the error is
+		# under five percent of a lean nobody is measuring.
+		hat.lean_step(kick, dt)
+		frame = frame * hat.lean_basis()
+		var up: Vector3 = frame.y
+		hat.transform = Transform3D(frame, base + up * (SimConfig.HAT_HEIGHT * 0.5))
+		base += up * SimConfig.HAT_HEIGHT
+
+# A wearer who is gone stops being tracked. Without this the dictionary is a slow
+# leak keyed by peer -- small, but it also means a peer id reused by a later
+# session would inherit a stale velocity and kick the stack once on arrival.
+func forget_wearer(peer: int) -> void:
+	_prev_velocity.erase(peer)
+
 # --- Host: creating and destroying --------------------------------------------
 
 # RANDOM STYLE, DETERMINISTIC SHAPE, and the two are not in tension.
@@ -105,6 +164,7 @@ func clear() -> void:
 		if is_instance_valid(hat):
 			hat.queue_free()
 	_hats.clear()
+	_prev_velocity.clear()
 
 # --- Host: the per-tick pass --------------------------------------------------
 

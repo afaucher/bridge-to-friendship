@@ -349,6 +349,47 @@ const HAT_SCATTER_LIFT := 4.5
 # forever, so the oldest loose hat is culled when this is exceeded.
 const HAT_MAX_LOOSE := 24
 
+# --- How a stack leans --------------------------------------------------------
+#
+# A stack of hats is not a rod. Each hat leans a LITTLE against the one below it
+# and the lean ACCUMULATES up the tower, so a five-stack tips five times as far
+# at the top as at the bottom -- which is the whole reason to have a tall stack
+# on screen at all. It is cosmetic to the last decimal: nothing here is in
+# capture_state(), nothing is on the wire, and no lean angle has ever decided
+# anything.
+
+# PER HAT, RELATIVE TO THE ONE BELOW IT. Five of these compose to 25 degrees at
+# the top of a full stack -- obvious in motion, and still nowhere near a topple.
+#
+# In degrees, like MAX_WALK_ANGLE_DEG and for the same two reasons: it is the
+# unit the number was chosen in, and a `const` may not call deg_to_rad().
+const HAT_LEAN_MAX_DEG := 5.0
+
+# A SECOND-ORDER SPRING, deliberately underdamped. Critically damped, a stack
+# eases back upright like a menu animation; at roughly half of critical it
+# overshoots once or twice and reads as a wobble, which is the joke.
+#
+# Stiffness is omega squared: 90 is about 1.5 Hz, roughly what a tall soft thing
+# does. Damping 9 puts it near zeta 0.47.
+const HAT_LEAN_STIFFNESS := 90.0
+const HAT_LEAN_DAMPING := 9.0
+
+# THE DRIVE IS AN IMPULSE PER UNIT OF VELOCITY CHANGE, NOT A FORCE PER UNIT OF
+# ACCELERATION, and that is not a stylistic choice.
+#
+# A hat leans because the head under it changed speed and the hat did not. On the
+# host that change arrives one tick at a time; on a CLIENT a remote player's
+# velocity is a step function -- it only moves when a snapshot lands, every
+# SNAPSHOT_INTERVAL_TICKS. Dividing by dt to get an acceleration would therefore
+# make the same 6 m/s change produce a lean several times larger on a client than
+# on the host, for no reason a player could ever understand. An impulse is the
+# integral, so it does not care whether the change arrived in one tick or eight.
+#
+# 0.08 rad/s per m/s: a standing start (6 m/s over ~6 ticks) peaks near three
+# degrees, and a 56 m/s dash pegs the clamp -- which is exactly the ranking those
+# two events should have.
+const HAT_LEAN_KICK := 0.08
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

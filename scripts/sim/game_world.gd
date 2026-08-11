@@ -265,6 +265,12 @@ func _physics_process(_delta: float) -> void:
 		_host_tick()
 	else:
 		_client_tick()
+	# AFTER THE TICK, AND ON BOTH SIDES. A worn stack leans against the head under
+	# it, so it has to be posed once every body has finished moving -- and it is a
+	# drawing decision with no authority attached, so a client does it for itself
+	# rather than being told. Nothing reads a lean back: not capture_state, not the
+	# snapshot, not a pickup radius.
+	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
 
 func _host_tick() -> void:
 	tick += 1
@@ -877,8 +883,11 @@ func _wear_hat(id: int, peer: int, index: int) -> void:
 		if hat.get_parent() != attach:
 			hat.get_parent().remove_child(hat)
 			attach.add_child(hat)
-		hat.position = Vector3(0.0, PlayerBody.HALF_HEIGHT + SimConfig.HAT_HEIGHT * (float(index) + 0.5), 0.0)
-		hat.rotation = Vector3.ZERO
+		# Posed through the same function the per-tick lean uses, with dt = 0 for
+		# "upright, now". Two formulas for where a hat sits would drift apart, and
+		# the one that drifted would be this one -- it runs once per pickup, so a
+		# mistake here shows up as a single wrong frame nobody catches.
+		_hats.pose_stack(peer, body, PlayerBody.HALF_HEIGHT, 0.0)
 
 # The whole stack, fanned. Called by PlayerBody on entering TUMBLE or LEDGE_HANG.
 #
@@ -1659,6 +1668,7 @@ func _despawn_player(peer: int) -> void:
 	_highest_queued.erase(peer)
 	_spawn_index.erase(peer)
 	player_names.erase(peer)
+	_hats.forget_wearer(peer)
 	player_despawned.emit(peer)
 
 func spawn_point(index: int) -> Vector3:

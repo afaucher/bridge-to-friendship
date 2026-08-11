@@ -113,6 +113,37 @@ denominated in it. A hat stack that grew the collider would silently change how
 players stand on each other, mid-run, per hat. Hats are worn on a visual
 attachment node and the physics body never learns they exist.
 
+**And the stack leans** (added after playtest). Each hat tilts up to
+`HAT_LEAN_MAX_DEG` (5°) against the one *below* it and the frames compose, so a
+five-stack curves to 25° at the top and the top hat swings out past the head. A
+stack that tilted as one rigid piece would be a rod on a hinge, which is what it
+already looked like; the accumulation is the whole effect.
+
+The lean is a **second-order spring per hat, driven by an impulse** proportional
+to the wearer's change in velocity — not a joint, and not a force proportional to
+acceleration. Both of those are deliberate:
+
+- **Not a joint.** `ConeTwistJoint3D` gives a *limit*, not a lean; how far a hat
+  tips inside its swing span falls out of masses and softness rather than being
+  the number that was asked for. It would also un-freeze five bodies per player
+  and put them back in the contact graph — which is exactly what the collider
+  rule above exists to prevent — and it would anchor a solver chain to a
+  `CharacterBody3D` that teleports up to 0.9 m per tick during a dash. Nothing is
+  lost by faking it: a worn hat has never collided with anything, so there is no
+  physics here to be right about.
+- **An impulse, not an acceleration.** On the host a wearer's velocity changes one
+  tick at a time; on a client a *remote* wearer's velocity is a step function that
+  only moves when a snapshot lands. Dividing by `dt` would make the same 6 m/s
+  change lean several times further on a client than on the host. An impulse is
+  the integral, so it does not care how the change was delivered.
+
+Purely cosmetic, to the last decimal: no lean angle is in `capture_state()`, on
+the wire, or read by anything. That is why it is the one part of the hat system
+that runs on every machine for every player rather than host-only.
+
+Measured: a standing start peaks at 1.4° per hat (5.4° at the top of a four-stack,
+6.6 cm of sideways swing); a 56 m/s dash pegs the clamp. `test_hat_lean`.
+
 ### Dislodging
 
 **The whole stack pops on entering `TUMBLE` or `LEDGE_HANG`.** Not the top hat —
@@ -261,6 +292,7 @@ without it. Item 9's score readout goes with it.
 | `test_hat_scoring` | *(ships with item 7, deferred)* a checkpoint with n hats pays the agreed value; crossing two checkpoints pays twice; zero hats pays zero; a wipe reverts to the banked figure |
 | `test_hat_replication` | over ENet (**port 28781** — add to `CLAUDE.md`'s allocation list when this lands): host and client agree on who wears what and where every loose hat is, after a scripted pickup-then-tumble |
 | `test_hat_lifecycle` | a hat knocked into a hole is destroyed and the live count is right; the cull removes hats behind the window; no leak over a long run |
+| `test_hat_lean` | a standing player's stack is dead upright; changing speed tips it *against* the change; **the top of the tower leans further than the bottom** (the only claim here that fails if the lean is deleted); no hat passes `HAT_LEAN_MAX_DEG` against the one below it, *and a dash actually reaches it*; it settles upright again |
 
 `test_hat_exclusive` is the one most likely to fail first, and it is the reason
 the pickup pass is specified as separate from the step loop.
@@ -281,6 +313,10 @@ move in playtest.
 | `HAT_SCATTER_SPEED` | 4.0 m/s | scatters over ~2 cells, so a stack lands as a spread you have to walk to rather than a pile you re-collect in one step |
 | `HAT_BASE_POINTS` | 100 | round number; the curve matters, the unit does not |
 | `HAT_MAX_LOOSE` | 24 | a segment's worth of debris |
+| `HAT_LEAN_MAX_DEG` | 5° | *per hat*, so a full stack curves to 25° at the top — obvious in motion, nowhere near a topple |
+| `HAT_LEAN_STIFFNESS` | 90 | ω² — about 1.5 Hz, roughly what a tall soft thing does |
+| `HAT_LEAN_DAMPING` | 9 | ζ ≈ 0.47, deliberately *under*damped: critically damped it eases back like a menu animation instead of wobbling |
+| `HAT_LEAN_KICK` | 0.08 rad/s per m/s | a standing start peaks near 3°, a dash pegs the clamp — which is the ranking those two events should have |
 
 ---
 

@@ -54,6 +54,16 @@ var stack_index: int = 0
 # Counts down once the hat has stopped moving. Only at zero is it collectable.
 var settle_grace: float = 0.0
 
+# HOW FAR THIS HAT LEANS AGAINST THE ONE BELOW IT, in radians, as a tilt toward
+# world +X (x) and toward world +Z (y). Only meaningful while WORN.
+#
+# PURELY COSMETIC, and that is a design position rather than an admission. The
+# obvious implementation is a real joint -- a ConeTwistJoint3D per pair, five
+# simulated bodies chained off a head. That was considered and refused: see
+# lean_step() for why.
+var lean: Vector2 = Vector2.ZERO
+var lean_vel: Vector2 = Vector2.ZERO
+
 func _ready() -> void:
 	gravity_scale = SimConfig.GRAVITY / 9.8
 	continuous_cd = true
@@ -90,6 +100,59 @@ func step() -> void:
 	settle_grace = maxf(0.0, settle_grace - SimConfig.TICK_DELTA)
 	if settle_grace <= 0.0:
 		mode = Mode.LOOSE
+
+# One tick of the lean spring. `kick` is an impulse straight onto the angular
+# velocity, in radians per second, already pointed the way this hat should tip.
+# dt <= 0 means "settle upright NOW" -- what a hat just placed on a head wants.
+#
+# WHY A SPRING AND NOT A JOINT, which is the first thing anybody reaches for:
+#
+#   * A JOINT GIVES YOU A LIMIT, NOT A LEAN. ConeTwistJoint3D's swing span is the
+#     angle past which the solver pushes BACK; how far a hat actually tips inside
+#     that span is whatever the masses and the softness happen to produce. "Five
+#     degrees" is the number that was asked for, and here it is the number.
+#   * IT WOULD PUT WORN HATS BACK IN THE PHYSICS WORLD. A worn hat is frozen with
+#     its shape disabled for a stated reason -- a hat you can stand on is a
+#     ladder, and five are a staircase past an authored ascender gate. Un-freezing
+#     five bodies per player to drive a cosmetic wobble reopens that, and every
+#     body in the contact graph is another chance for two machines to order
+#     contacts differently.
+#   * THE ANCHOR IS A CHARACTER BODY THAT TELEPORTS. A CharacterBody3D is moved by
+#     move_and_slide, not by the solver, and it can cover 0.9 m in one tick during
+#     a dash. A jointed chain hanging off it is the classic way to make a solver
+#     either jitter or explode.
+#
+# Nothing is lost by faking it: no hat has ever collided with anything while worn,
+# so there is no physics here to be right about.
+func lean_step(kick: Vector2, dt: float) -> void:
+	if dt <= 0.0:
+		lean = Vector2.ZERO
+		lean_vel = Vector2.ZERO
+		return
+	lean_vel += kick
+	lean_vel += (-SimConfig.HAT_LEAN_STIFFNESS * lean - SimConfig.HAT_LEAN_DAMPING * lean_vel) * dt
+	lean += lean_vel * dt
+
+	var reach: float = lean.length()
+	var limit: float = deg_to_rad(SimConfig.HAT_LEAN_MAX_DEG)
+	if reach > limit:
+		var out: Vector2 = lean / reach
+		lean = out * limit
+		# THE OUTWARD VELOCITY GOES WITH IT. Clamping the angle alone leaves the
+		# spring still travelling outward into a wall it cannot pass, so a dash
+		# would peg the stack at the limit and hold it there for as long as that
+		# velocity took to bleed off -- a stack that leans over and STAYS there,
+		# which is the one thing a wobble must not do.
+		var outward: float = lean_vel.dot(out)
+		if outward > 0.0:
+			lean_vel -= out * outward
+
+# This hat's tilt, in the frame of the hat below it. Composing these up the stack
+# is what makes the tower lean rather than five hats all tipping the same way.
+func lean_basis() -> Basis:
+	# Rotating about +Z tips the local up-axis toward -X, hence the sign; about +X
+	# it tips toward +Z, which is already the direction wanted.
+	return Basis(Vector3(0.0, 0.0, 1.0), -lean.x) * Basis(Vector3(1.0, 0.0, 0.0), lean.y)
 
 func is_collectable() -> bool:
 	return mode == Mode.LOOSE
@@ -130,6 +193,9 @@ func wear(peer: int, index: int) -> void:
 	owner_peer = peer
 	stack_index = index
 	settle_grace = 0.0
+	# A hat arrives on a head UPRIGHT, whatever the last stack it was on was doing.
+	lean = Vector2.ZERO
+	lean_vel = Vector2.ZERO
 	_set_simulated(false)
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
