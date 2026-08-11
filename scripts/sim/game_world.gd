@@ -368,13 +368,34 @@ func _bank_checkpoint() -> void:
 # Nothing else can end a run: the drone always brings people back, so "everyone
 # is out simultaneously" is the only moment where the party has actually lost
 # ground rather than lost a player.
+# A WIPE IS WHEN NOBODY HAS A CHANCE LEFT, not when nobody is standing.
+#
+# It used to count `is_awaiting_rescue()` -- which includes LEDGE_HANG -- so it
+# fired at the exact moment rescue became POSSIBLE rather than when it became
+# impossible. Playtest found the sharp end of that: catch a lip as the last
+# player up, and the run restarts on the same tick you grabbed it. Solo it was
+# every failure, so a lone player could never reach the 8 s hang timer or see a
+# drone at all.
+#
+# Only `_returning` counts now: a player waiting on the drone has already spent
+# their hang or their bleed-out and nobody can reach them. Everyone in that state
+# means the party really has lost ground, and the checkpoint restart is a kinder
+# outcome than drones dribbling four people back to the bridge entry one at a
+# time -- which is the only thing this rule is really for.
+#
+# It costs a fully-downed party the full 15 s before the restart. Accepted
+# deliberately: the alternative denies a hanging player the window their state
+# exists to give them, and that window is the whole co-op rescue.
+#
+# NO SPECIAL CASE FOR A PARTY OF ONE. A solo hang runs its timer, drops, and then
+# wipes, exactly like any other -- the grab delays the restart instead of causing
+# it. A lone player still has no way out of a hang, which is by design: hanging
+# is a co-op state and solo is a practice mode.
 func _check_wipe() -> void:
 	if players.is_empty():
 		return
 	for peer_key in players.keys():
-		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		if not body.is_awaiting_rescue() and not _returning.has(peer):
+		if not _returning.has(int(peer_key)):
 			return
 	_restart_at_checkpoint()
 

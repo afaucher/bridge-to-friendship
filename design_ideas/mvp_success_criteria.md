@@ -20,6 +20,31 @@ difficulty, not laid out as one fixed hand-built level. Difficulty rises with
 distance. Progress banks at a checkpoint every **5 segments** *(tunable)*; a
 party wipe restarts at the last checkpoint rather than at the bottom.
 
+**A WIPE IS WHEN NOBODY HAS A CHANCE LEFT, NOT WHEN NOBODY IS STANDING.**
+*(Decided 2026-08-10; the trigger had never been written down, and the
+implementation had picked the other one.)* It fires when **every player is
+waiting on the drone** — each has already spent their hang or their bleed-out and
+nobody can reach them. A hanging or downed player still has a countdown and a
+teammate, so a party with one of those in it has not wiped.
+
+Counting "everyone is out" instead fired at the exact moment rescue became
+*possible*: catch a lip as the last player up and the run restarted on the tick
+you grabbed it. Solo it was every failure, so a lone player could never reach the
+8 s hang timer or see a drone at all.
+
+The cost is accepted knowingly: a fully-downed party waits the full bleed-out
+before the restart, watching an outcome that is already decided. The alternative
+denies a hanging player the window their state exists to give them, and that
+window is the entire co-op rescue.
+
+**No exception for a party of one.** A solo hang runs its timer, drops, and then
+wipes like any other — the grab delays the restart instead of causing it. A rule
+with a player-count special case in it is one nobody can predict from outside.
+
+What the rule is *for*: without it, everyone being out just means drones dribble
+the party back to the bridge entry one at a time. The wipe replaces that with a
+checkpoint restart, which is kinder and legible.
+
 **Obliges us to build:** a segment pool with tags and a difficulty rating; an
 assembler that picks the next segment; checkpoint state in the world snapshot;
 a distance/progress readout. **Rules out** hand-authoring one continuous level,

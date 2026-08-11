@@ -33,6 +33,7 @@ func setup(main) -> void:
 	_test_plan_is_deterministic()
 	_test_segments_stack()
 	_test_checkpoint_and_wipe(main)
+	_test_solo_hang_is_not_a_wipe(main)
 
 	# Drop-in: a host that has already been running, and a client that arrives
 	# later and has to end up with the same bridge.
@@ -111,20 +112,69 @@ func _test_checkpoint_and_wipe(main) -> void:
 	var banked: int = world.checkpoint_row
 	check(banked > 0, "and the banked row is up the bridge, not the start")
 
-	# Now put everyone out at once. Nothing else can end a run -- the drone always
-	# brings people back -- so "everyone out simultaneously" is the only moment
-	# the party has actually lost ground.
+	# EVERYONE DOWN IS NOT YET A WIPE. A downed player still has a bleed-out and a
+	# drone; the run has not lost ground until nobody can come back on their own.
+	# This used to fire here, which meant a hanging player's rescue window closed
+	# the instant they were the last one up -- see _check_wipe.
 	a.begin_downed()
 	b.begin_downed()
 	world._process_run()
+	eq(world.wipes, 0, "everyone DOWN is not yet a wipe -- they still have a countdown")
 
-	eq(world.wipes, 1, "everyone down at once is a wipe")
+	# A HANGING player is the case that broke: catching a lip must never be the
+	# thing that ends the run.
+	a.revive()
+	b.revive()
+	a._begin_hang(world.grid.cell_surface_world(Vector2i(7, deep_row)), GridConfig.DIR_NORTH)
+	b._begin_hang(world.grid.cell_surface_world(Vector2i(9, deep_row)), GridConfig.DIR_NORTH)
+	world._process_run()
+	eq(world.wipes, 0, "and a party hanging off a lip is not a wipe either")
+
+	# Past rescue: waiting on the drone, nobody able to reach them. NOW it is one.
+	world._begin_drone_return(1)
+	world._begin_drone_return(2)
+	world._process_run()
+
+	eq(world.wipes, 1, "everyone waiting on the drone at once IS a wipe")
 	eq(a.state, PlayerBody.State.WALK, "which puts the party back on their feet")
 	eq(a.health, SimConfig.MAX_HEALTH, "at full health")
 	var restored: Vector2i = world.grid.cell_of_world(a.position)
 	check(absi(restored.y - banked) <= 3,
 		"AT THE BANKED CHECKPOINT (row %d, banked %d) -- not at the bottom" % [restored.y, banked])
 	check(a.position.distance_to(b.position) > 0.5, "and not stacked on each other")
+
+	world.stop()
+	world.queue_free()
+
+# --- A lone player's hang is not a wipe ---------------------------------------
+#
+# The reported bug at its sharpest. Solo, "everyone is out" is just you, so
+# catching a lip restarted the run on the tick you grabbed it -- and a lone player
+# could never reach the hang timer or the drone at all.
+#
+# There is deliberately NO special case for a party of one. The rule "a wipe is
+# when everyone is past rescue" produces the right answer here on its own, and a
+# rule with a player-count exception in it is one nobody can predict from the
+# outside.
+func _test_solo_hang_is_not_a_wipe(parent) -> void:
+	var world := _solo_world(parent)
+	world.assemble_run = true
+	world.run_seed = RUN_SEED
+	world.start(true, 1, false)
+	world._spawn_player(1, 0)
+	var a: Node = world.player_body(1)
+
+	a._begin_hang(world.grid.cell_surface_world(Vector2i(7, 4)), GridConfig.DIR_NORTH)
+	var hung_at: Vector3 = a.position
+
+	# Long enough that an instant wipe could not be missed by sampling once.
+	for _i in 30:
+		world._process_run()
+
+	eq(world.wipes, 0, "a lone player hanging off a lip does not wipe the run")
+	eq(a.state, PlayerBody.State.LEDGE_HANG, "they are left hanging, with their timer running")
+	near(a.position.distance_to(hung_at), 0.0, 0.01,
+		"and are still where they caught -- not teleported back to a checkpoint")
 
 	world.stop()
 	world.queue_free()
