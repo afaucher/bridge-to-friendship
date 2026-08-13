@@ -37,6 +37,9 @@ class Built:
 	var mound_cells: Array = []
 	# Loose hats, waiting on the deck for somebody to walk over them.
 	var hat_cells: Array = []
+	# Specials -- the `*` glyph, declared in GridConfig since the grid was written
+	# and unbuilt until M12 filled it.
+	var special_cells: Array = []
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -221,6 +224,26 @@ static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, 
 			mesh.transform = xform
 			meshes.add_child(mesh)
 
+			# THE SKIRT, and it is not decoration -- it is the floor of the ramp.
+			#
+			# A wedge tapers to NOTHING at its lower end, and a ramp cell gets no
+			# deck slab of its own (_build_deck emits boxes for DECK and WATER
+			# only). So the first few centimetres of every ramp were a PAPER EDGE
+			# over a DECK_THICKNESS-deep void with no floor under it. Measured
+			# 2026-08-13 on the playtest bridge: the deck behind the ramp is 1.002 m
+			# of solid, and 5 cm onto the ramp it is 0.053 m -- with its underside at
+			# the deck's TOP, not its bottom. Step on that, sink a few millimetres,
+			# and you are inside a metre-deep hole that has no bottom.
+			#
+			# The skirt is the same box the deck would have had. It closes the void,
+			# makes the leading edge as thick as the deck it butts against, and turns
+			# the seam into a solid-to-solid joint.
+			var skirt_low: float = minf(bottom, top)
+			var skirt_centre := Vector3(centre_x, skirt_low - GridConfig.DECK_THICKNESS * 0.5, centre_z)
+			var skirt_size := Vector3(span, GridConfig.DECK_THICKNESS, length)
+			_add_collision_box(body, skirt_centre, skirt_size)
+			_add_mesh_box(meshes, skirt_centre, skirt_size, palette["ramp"])
+
 # A ramp is a WEDGE, not a tilted slab.
 #
 # The tilted slab it used to be was wrong in a way that was invisible in the
@@ -336,6 +359,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.mound_cells.append(Vector2i(x, z))
 				GridConfig.Content.HAT:
 					out.hat_cells.append(Vector2i(x, z))
+				GridConfig.Content.PICKUP:
+					out.special_cells.append(Vector2i(x, z))
 
 # --- Helpers ------------------------------------------------------------------
 

@@ -22,6 +22,9 @@ const BallScene = preload("res://scenes/plinko_ball.tscn")
 const RusherScene = preload("res://scenes/rusher.tscn")
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
 const HatPool = preload("res://scripts/sim/hat_pool.gd")
+const SpecialPool = preload("res://scripts/sim/special_pool.gd")
+const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const BulletScene = preload("res://scenes/bullet.tscn")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -129,6 +132,26 @@ var _next_ball_id: int = 0
 var _hats: HatPool = HatPool.new()
 var _hats_root: Node3D = null
 
+# --- specials ---
+#
+# THE SAME CHANNEL'S SECOND CLIENT, which is what M8.5 said it was building it
+# for. Nothing here is in capture_state() either, and for a stronger reason than
+# hats: a hat does nothing, whereas a special deliberately does nothing THAT
+# AFFECTS STEPPING. Firing does not move you -- there is no recoil, on purpose --
+# so no part of a weapon is on the reconciliation path. See
+# implementation_plans/m12_machine_gun.md.
+var _specials: SpecialPool = SpecialPool.new()
+var _specials_root: Node3D = null
+
+# --- rounds in flight ---
+#
+# Not a pool: a round has no ownership, no pickup and no cull policy -- it exists
+# for at most MG_BULLET_LIFETIME and then it does not. A plain list is the whole
+# data structure, exactly as _balls is.
+var _bullets: Array = []
+var _bullets_root: Node3D = null
+var _next_bullet_id: int = 0
+
 # --- rushers ---
 var _rushers: Array = []
 var _rushers_root: Node3D = null
@@ -176,6 +199,16 @@ func _ready() -> void:
 	_hats_root.name = "Hats"
 	add_child(_hats_root)
 	_hats.attach(_hats_root)
+	# And loose specials, for the same reason. A HELD one is reparented onto its
+	# holder's Facing pivot -- which is what makes it point where they aim with no
+	# per-tick transform work at all -- and comes back here when it is dropped.
+	_specials_root = Node3D.new()
+	_specials_root.name = "Specials"
+	add_child(_specials_root)
+	_specials.attach(_specials_root)
+	_bullets_root = Node3D.new()
+	_bullets_root.name = "Bullets"
+	add_child(_bullets_root)
 	# Read once, before anything can overwrite it. Deliberately not in start():
 	# _remembered_hat must hold what is ON DISK from the first moment, or the
 	# first pickup would look like a change and rewrite an identical file.
@@ -271,6 +304,7 @@ func _physics_process(_delta: float) -> void:
 	# rather than being told. Nothing reads a lean back: not capture_state, not the
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
+	_pose_held_specials()
 
 func _host_tick() -> void:
 	tick += 1
@@ -344,6 +378,16 @@ func _host_tick() -> void:
 	# carried player systematically winning or losing races depending on whose head
 	# they were on. See HatPool.resolve_pickups.
 	_process_hats()
+	# After hats, and last of all. A pickup pass wants every body settled, and the
+	# fire loop wants this tick's inputs -- which _process_rushers and the rescue
+	# pass may have invalidated by tumbling somebody.
+	_process_specials()
+	# AFTER the trigger, so a round fired this tick moves on the tick it was fired
+	# rather than hanging at the muzzle for one frame. And after every body has
+	# stepped, so the sweep tests against where people ACTUALLY are -- a round
+	# resolved against last tick's positions would miss a walking player by the
+	# distance they cover in a frame, forever.
+	_process_bullets()
 
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
@@ -454,6 +498,15 @@ func _restart_at_checkpoint() -> void:
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
 	# across ground the party no longer occupies are debris nobody can reach.
 	_hats.clear()
+	# And specials, held ones included. A weapon carried backwards through a wipe
+	# would make the checkpoint a place to stockpile: fail, keep the gun, come back
+	# with it. The authored pickup respawns with the segment; what you were holding
+	# does not.
+	_specials.clear()
+	for bullet in _bullets:
+		if is_instance_valid(bullet):
+			bullet.queue_free()
+	_bullets.clear()
 
 	var lane := 0
 	for peer_key in players.keys():
@@ -531,9 +584,9 @@ func _initial_shooter_delay(cell: Vector2i) -> float:
 	var spread: float = float((cell.x * 7 + cell.y * 3) % 10) / 10.0
 	return SimConfig.PLINKO_FIRE_INTERVAL * (0.2 + spread * 0.8)
 
-func _launch_ball(cell: Vector2i) -> void:
+func _launch_ball(cell: Vector2i) -> Node:
 	if _balls.size() >= SimConfig.PLINKO_MAX_BALLS:
-		return
+		return null
 	var ball: Node3D = BallScene.instantiate()
 	_next_ball_id += 1
 	ball.ball_id = _next_ball_id
@@ -542,6 +595,10 @@ func _launch_ball(cell: Vector2i) -> void:
 	_balls.append(ball)
 	ball.set_simulated(true)
 	ball.launch(grid.shooter_muzzle(cell), _launch_direction())
+	# Returned so a caller can place one deliberately. _fire_shooters ignores it;
+	# a test that wants a ball in a known spot has no other way to get one, and
+	# reaching into _balls after the fact is worse.
+	return ball
 
 # THE ONLY RANDOMISATION: the angle. Straight up, tilted by up to
 # PLINKO_CONE_DEG, in any direction. Speed is fixed, so every arc is the same
@@ -969,6 +1026,361 @@ func _hats_destroyed(ids: Array) -> void:
 		if hat != null:
 			_hats.destroy(hat)
 
+# --- Specials -----------------------------------------------------------------
+#
+# The machine gun, and the slot every later special arrives in. See
+# implementation_plans/m12_machine_gun.md.
+
+func special_count() -> int:
+	return _specials.count()
+
+func special_held_by(peer: int) -> Node:
+	return _specials.held_by(peer)
+
+func _process_specials() -> void:
+	if not is_host:
+		return
+
+	if grid != null:
+		for cell in grid.take_authored_special_cells():
+			_specials.spawn_loose(grid.cell_surface_world(cell) + Vector3(0.0, 0.4, 0.0))
+
+	_specials.step(_trailing_edge_z())
+
+	# WHICH STATES MAY PICK ONE UP. The same set hats use, and the same reason:
+	# collecting something mid-tumble removes the cost of the tumble. A dash may,
+	# because a dash across a contested pickup is exactly the moment this rule is
+	# for.
+	var can_carry := func(peer: int, body: Node) -> bool:
+		if _returning.has(peer):
+			return false
+		return body.state == PlayerBody.State.WALK or body.state == PlayerBody.State.SHOVE
+
+	for claim in _specials.resolve_pickups(players, can_carry):
+		var taken: Node = claim[0]
+		var peer: int = int(claim[1])
+		var replaced: Node = claim[2]
+		# ONE SLOT: the old one leaves the hand before the new one enters it, with
+		# whatever ammo it had. Dropped a step in FRONT of the holder rather than
+		# underneath them -- two bodies at identical coordinates depenetrate into a
+		# degenerate normal and fall through the floor.
+		if replaced != null and is_instance_valid(replaced):
+			_drop_special(replaced, _specials.drop_offset(players[peer]))
+			if networked:
+				_special_dropped.rpc(replaced.special_id, replaced.position)
+		_take_special(taken.special_id, peer)
+		# OWNERSHIP GOES RELIABLY, positions ride the unreliable snapshot. Same
+		# split as hats: a lost pickup that never applies is a client holding a
+		# weapon the host says is on the deck, and nothing re-sends it.
+		if networked:
+			_take_special.rpc(taken.special_id, peer)
+
+	_fire_specials()
+
+# One tick of everybody's trigger.
+#
+# HOST ONLY, AND NEVER PREDICTED. A client has no authority to decide that a round
+# hit somebody, and there is nothing to gain by guessing -- unlike walking, which
+# is predicted precisely because the delay is felt. See physics_and_authority.md:
+# committed actions play from host state.
+func _fire_specials() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		var weapon: Node = _specials.held_by(peer)
+		if weapon == null:
+			continue
+
+		weapon.fire_timer = maxf(0.0, weapon.fire_timer - SimConfig.TICK_DELTA)
+
+		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
+		var held: bool = (int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_SPECIAL_HELD) != 0
+		if not held or not _can_fire(peer, body):
+			continue
+		if weapon.fire_timer > 0.0:
+			continue
+
+		weapon.fire_timer = SimConfig.MG_FIRE_INTERVAL
+		weapon.ammo -= 1
+		_fire_round(body, weapon)
+
+		# SPENT MEANS GONE, at the moment the last round leaves. An empty weapon you
+		# keep carrying is the worst possible occupant of a one-slot rule: it does
+		# nothing and it stops you picking up the thing that would.
+		if weapon.is_spent():
+			var id: int = weapon.special_id
+			_specials.destroy(weapon)
+			if networked:
+				_special_destroyed.rpc(id)
+
+# A player has to be in control of themselves to fire. Same set that may pick one
+# up, for the same reason: shooting while tumbling would make a tumble free.
+func _can_fire(peer: int, body: Node) -> bool:
+	if _returning.has(peer):
+		return false
+	return body.state == PlayerBody.State.WALK or body.state == PlayerBody.State.SHOVE
+
+# A ROUND IS AN OBJECT IN FLIGHT, spawned at the muzzle. It was a hitscan ray
+# first; playtest asked for balls, and the argument that made a ray right -- ten
+# rounds a second per player is too many objects -- stopped applying when the rate
+# came down to 2.5. See scripts/sim/bullet.gd for what a round actually is (not a
+# rigid body either).
+#
+# IT LEAVES THE BARREL, NOT THE NOSE. Asked for in playtest, and it is not
+# cosmetic: the muzzle is about a metre in front of the body and 45 cm to its
+# right, so a round now starts on the correct side of anything the shooter is
+# standing beside. The weapon hangs off the Facing pivot, which player_body
+# already rotates to match `facing`, so the barrel's global transform IS the
+# answer and nothing here has to re-derive where anyone is pointing.
+func _fire_round(shooter: Node, weapon: Node) -> void:
+	var from: Vector3 = _muzzle_of(weapon, shooter)
+
+	# CONVERGED ON THE AIM RAY, not fired parallel to it, and this is the part
+	# moving the muzzle off the nose actually costs.
+	#
+	# The barrel is held to one side of the body. A round sent straight down
+	# `facing` from there travels on a line offset by that much FOREVER -- so
+	# somebody standing directly in front of you, dead centre, is missed by a
+	# couple of hand-widths at every range. Which reads as the gun being broken.
+	#
+	# Aiming at a point on the body's own aim ray fixes it the way a real weapon is
+	# zeroed: exact at MG_RANGE, and off by less than the muzzle offset everywhere
+	# nearer -- which is well inside a 0.4 m body.
+	var zero: Vector3 = shooter.global_position \
+		+ GridConfig.yaw_vector(shooter.facing) * SimConfig.MG_RANGE
+	var direction: Vector3 = _spread((zero - from).normalized())
+
+	var bullet: Node3D = BulletScene.instantiate()
+	_next_bullet_id += 1
+	bullet.bullet_id = _next_bullet_id
+	bullet.name = "Bullet_%d" % _next_bullet_id
+	_bullets_root.add_child(bullet)
+	_bullets.append(bullet)
+	bullet.launch(to_local(from), direction, int(shooter.peer_id), shooter.get_rid())
+
+# The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
+# somehow not been posed yet -- a round from slightly the wrong place beats a
+# round from the origin of the world.
+func _muzzle_of(weapon: Node, shooter: Node) -> Vector3:
+	var barrel := weapon.get_node_or_null("Barrel") as Node3D
+	if barrel != null and barrel.is_inside_tree():
+		# HALF ITS OWN LENGTH ALONG ITS LOCAL +Y, which is the tip. A cylinder's
+		# axis is Y in Godot, and special.tscn rotates the barrel so that Y lies
+		# along the gun's -Z -- so the obvious `Vector3(0, 0, -0.3)` points at the
+		# ground rather than down the bore. Worth the sentence: it fired
+		# convincingly and put every round 30 cm under the muzzle.
+		return barrel.global_transform * Vector3(0.0, 0.25, 0.0)
+	# MUZZLE HEIGHT IS A HITBOX DECISION, not a cosmetic one. The body's origin is
+	# its centre, 0.9 m above the deck; +0.25 is 1.15 m, comfortably inside a 1.8 m
+	# player AND inside a 1.4 m rusher. Firing from shoulder height looked better
+	# and shot straight over the top of every rusher on the bridge.
+	return shooter.global_position + Vector3(0.0, 0.25, 0.0)
+
+# AN ELLIPTICAL CONE: wide across, narrow up and down. Asked for in playtest, in
+# two goes -- "a little weapon spread", then 10 degrees, then 2 degrees of
+# vertical.
+#
+# Yaw and pitch are rolled SEPARATELY rather than as one tilt-and-azimuth, which
+# is what makes two numbers possible at all. A round cone has a single width by
+# construction, and the width it had was throwing rounds two metres over people's
+# heads at thirty: the bridge is a narrow strip and everything worth shooting
+# stands on it, so horizontal scatter reads as spraying and vertical scatter reads
+# as broken.
+#
+# Random on the HOST ONLY, which is what makes randf_range acceptable here: nobody
+# else re-derives it, the same licence plinko's launch angle takes. It is the only
+# randomness in the whole weapon.
+func _spread(base: Vector3) -> Vector3:
+	var yaw_off: float = deg_to_rad(
+		randf_range(-SimConfig.MG_SPREAD_DEG, SimConfig.MG_SPREAD_DEG))
+	var pitch_off: float = deg_to_rad(
+		randf_range(-SimConfig.MG_SPREAD_VERTICAL_DEG, SimConfig.MG_SPREAD_VERTICAL_DEG))
+
+	# Yaw about world up, so "horizontal" means horizontal on the bridge rather
+	# than horizontal relative to a barrel that may be pointing slightly downhill.
+	var out: Vector3 = base.rotated(Vector3.UP, yaw_off)
+	# Then pitch about the axis across the NEW heading.
+	var across: Vector3 = out.cross(Vector3.UP)
+	if across.length_squared() < 0.0001:
+		return out.normalized()      # aimed straight up or down; nothing to pitch about
+	return out.rotated(across.normalized(), pitch_off).normalized()
+
+# Every round in flight, one tick.
+#
+# THE SWEEP IS THE HIT TEST. Each round reports where it came from, and a single
+# ray along the segment it just covered answers everything at once: terrain,
+# cover, players, rushers. Exact at any speed -- a round cannot pass through a
+# player between two frames, which is the failure a fast rigid body has and the
+# reason this is not one.
+func _process_bullets() -> void:
+	if not is_host:
+		return
+	var space := get_world_3d().direct_space_state
+	for i in range(_bullets.size() - 1, -1, -1):
+		var bullet: Node = _bullets[i]
+		if not is_instance_valid(bullet):
+			_bullets.remove_at(i)
+			continue
+
+		var from_local: Vector3 = bullet.step()
+		var struck: bool = false
+		if space != null:
+			# world | players | stones | BALLS | rushers.
+			#
+			# Balls were deliberately absent, on the argument that a ball stopping a
+			# round makes the plinko field cover. Playtest asked for rounds to push
+			# them, and that IS the trade: the field is now partial cover, and it is
+			# also something you can shoot at somebody. Hats stay out -- knocking a
+			# friend's hat off with gunfire is a joke nobody asked for, and it would
+			# put the whole M8.5 reward curve at the mercy of a stray round.
+			var query := PhysicsRayQueryParameters3D.create(
+				to_global(from_local), to_global(bullet.position), 1 | 2 | 4 | 8 | 16)
+			query.exclude = [bullet.shooter_rid]
+			var hit := space.intersect_ray(query)
+			if not hit.is_empty():
+				struck = true
+				_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized())
+
+		if struck or bullet.is_spent():
+			_bullets.remove_at(i)
+			bullet.queue_free()
+
+func bullet_count() -> int:
+	return _bullets.size()
+
+func _resolve_round_hit(target, direction: Vector3) -> void:
+	if target == null:
+		return
+
+	# A BALL IS SHOVED. Asked for in playtest, and the one hit here that is not
+	# about hurting anybody: a round adds momentum to something already in motion.
+	# apply_central_impulse rather than setting a velocity, unlike the dash's
+	# deflect -- a dash decides where that ball goes; a round only argues with it.
+	if target.has_method("deflect") and "ball_id" in target:
+		target.apply_central_impulse(direction.normalized() * SimConfig.MG_BALL_PUSH)
+		return
+
+	# A RUSHER DIES. This is the claim the whole weapon category rests on --
+	# hazards.md: everything before rushers was deflectable, so a ranged special
+	# was only a shove you could do from further away. Only being shot ends a
+	# destructible.
+	if target.has_method("begin_rise") and "rusher_id" in target:
+		target.kill()
+		return
+
+	if not ("peer_id" in target):
+		return                     # deck, parapet, pillar: cover works
+	var body: Node = target
+	if body.is_awaiting_rescue() or _returning.has(int(body.peer_id)):
+		return
+
+	# DAMAGE AND KNOCKBACK TOGETHER, both gated by HIT_GRACE.
+	#
+	# take_damage returns false inside the grace window, and the knockback rides on
+	# that answer rather than being applied per round. At ten rounds a second
+	# against a 0.75 s grace, tumbling on every round would be a permanent tumble
+	# lock -- which is not a fight, it is a player being switched off. Gated, a
+	# sustained burst downs somebody in about four seconds.
+	if not body.take_damage(SimConfig.MG_DAMAGE):
+		return
+	var along := Vector3(direction.x, 0.0, direction.z)
+	if along.length_squared() < 0.01:
+		along = Vector3(0.0, 0.0, 1.0)
+	along = along.normalized()
+	body.begin_tumble(Vector3(
+		along.x * SimConfig.MG_KNOCKBACK,
+		SimConfig.MG_KNOCKBACK_LIFT,
+		along.z * SimConfig.MG_KNOCKBACK))
+
+# Under the holder's Facing pivot, which player_body already rotates to match
+# `facing` -- so the barrel points where they are aiming and nothing here has to
+# know what aiming is.
+func _pose_held_special(weapon: Node, body: Node) -> void:
+	var attach := body.get_node_or_null("Facing") as Node3D
+	if attach == null:
+		return
+	if weapon.get_parent() != attach:
+		weapon.get_parent().remove_child(weapon)
+		attach.add_child(weapon)
+	# HELD CLOSE TO THE CENTRELINE. It looked better further out on the hip, and
+	# every centimetre of that is error the convergence in _fire_round has to
+	# correct for at close range -- so it is carried in front rather than beside.
+	# 0.25 m up puts the barrel at 1.15 m, inside a 1.8 m player and inside a 1.4 m
+	# rusher; firing from shoulder height shot over the top of every rusher on the
+	# bridge.
+	weapon.position = Vector3(0.22, 0.25, -0.35)
+	weapon.rotation = Vector3.ZERO
+
+func _drop_special(weapon: Node, at: Vector3) -> void:
+	if weapon.get_parent() != _specials_root:
+		weapon.get_parent().remove_child(weapon)
+		_specials_root.add_child(weapon)
+	weapon.owner_peer = 0
+	weapon.drop(at, Vector3.ZERO)
+
+# DROPPED when its holder goes down or over an edge. Called by PlayerBody on
+# entering LEDGE_HANG or DOWNED -- see _drop_special there for why those two and
+# not TUMBLE.
+#
+# Dropped rather than destroyed: a downed player is rescuable, and the weapon
+# lying beside them is a reason for somebody to come. It is also contestable while
+# they are out of the game, which is the good version of this.
+func drop_special_of(body: Node) -> void:
+	if not is_host:
+		return
+	var weapon: Node = _specials.held_by(int(body.peer_id))
+	if weapon == null:
+		return
+	var at: Vector3 = _specials.drop_offset(body)
+	_drop_special(weapon, at)
+	if networked:
+		_special_dropped.rpc(weapon.special_id, at)
+
+# DESTROYED, not dropped, when a player leaves the world -- the same rule hats
+# follow and the same reason: a free weapon at the spot that just killed somebody
+# rescues the one failure the design does not rescue.
+func destroy_held_special(peer: int) -> void:
+	if not is_host:
+		return
+	var weapon: Node = _specials.held_by(peer)
+	if weapon == null:
+		return
+	var id: int = weapon.special_id
+	_specials.destroy(weapon)
+	if networked:
+		_special_destroyed.rpc(id)
+
+# Every held special, every tick, on host and client alike. Cosmetic -- the
+# parent pivot does the aiming -- so a client poses its own rather than being
+# told, exactly like the hat lean.
+func _pose_held_specials() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var weapon: Node = _specials.held_by(peer)
+		if weapon != null and is_instance_valid(players[peer]):
+			_pose_held_special(weapon, players[peer])
+
+@rpc("authority", "call_remote", "reliable")
+func _take_special(id: int, peer: int) -> void:
+	var weapon: Node = _specials.by_id(id)
+	var body: Node = players.get(peer)
+	if weapon == null or body == null:
+		return
+	weapon.hold(peer)
+	_pose_held_special(weapon, body)
+
+@rpc("authority", "call_remote", "reliable")
+func _special_dropped(id: int, at: Vector3) -> void:
+	var weapon: Node = _specials.by_id(id)
+	if weapon != null:
+		_drop_special(weapon, at)
+
+@rpc("authority", "call_remote", "reliable")
+func _special_destroyed(id: int) -> void:
+	var weapon: Node = _specials.by_id(id)
+	if weapon != null:
+		_specials.destroy(weapon)
+
 @rpc("authority", "call_remote", "reliable")
 func _mound_taken(cx: int, cz: int) -> void:
 	if grid != null:
@@ -1056,6 +1468,7 @@ func _begin_drone_return(peer: int) -> void:
 	# See destroy_worn_hats: dropping them would rescue the one failure the design
 	# does not rescue, and would leave a free pile at the spot that killed you.
 	destroy_worn_hats(peer)
+	destroy_held_special(peer)
 	_returning[peer] = SimConfig.DRONE_RETURN_SECONDS
 	var body: Node = players.get(peer)
 	if body != null:
@@ -1296,7 +1709,7 @@ func _broadcast_snapshot() -> void:
 	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
 		layout = grid.stone_layout()
 	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout, _rusher_snapshot(),
-		_hat_snapshot())
+		_hat_snapshot(), _special_snapshot(), _bullet_snapshot())
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -1434,6 +1847,23 @@ func _sync_worn_hats(entries: Array) -> void:
 			_hats.adopt(id, int(entry[1]))
 		_wear_hat(id, int(entry[2]), int(entry[3]))
 
+@rpc("authority", "call_remote", "reliable")
+func _sync_held_specials(entries: Array) -> void:
+	for entry in entries:
+		var id: int = int(entry[0])
+		var s: Node = _specials.by_id(id)
+		if s == null:
+			s = _specials.adopt(id, int(entry[1]))
+		s.ammo = int(entry[3])
+		_take_special(id, int(entry[2]))
+
+func _held_special_dump() -> Array:
+	var out: Array = []
+	for s in _specials.all():
+		if is_instance_valid(s) and s.mode == SpecialBody.Mode.HELD:
+			out.append([s.special_id, s.kind, s.owner_peer, s.ammo])
+	return out
+
 func _worn_hat_dump() -> Array:
 	var out: Array = []
 	for hat in _hats.all():
@@ -1441,23 +1871,98 @@ func _worn_hat_dump() -> Array:
 			out.append([hat.hat_id, hat.style_id, hat.owner_peer, hat.stack_index])
 	return out
 
+# LOOSE AND FLYING SPECIALS ONLY, exactly as with hats: who is HOLDING what
+# travels reliably through _take_special. `kind` rides along so a client that has
+# never seen this one draws the right thing; `ammo` rides along because the HUD
+# shows a friend's remaining rounds and a stale count is worse than none.
+func _special_snapshot() -> Array:
+	var out: Array = []
+	for s in _specials.all():
+		if is_instance_valid(s) and s.mode != SpecialBody.Mode.HELD:
+			out.append([s.special_id, s.kind, s.mode, s.position, s.ammo])
+	return out
+
+# Self-healing by construction, like the ball and hat sets: a dropped packet costs
+# a frame of staleness rather than a weapon that exists forever on one machine.
+func _apply_special_snapshot(specials: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in specials:
+		var id: int = int(entry[0])
+		seen[id] = true
+		var s: Node = _specials.by_id(id)
+		if s == null:
+			s = _specials.adopt(id, int(entry[1]))
+		s.apply_remote(int(entry[2]), entry[3], int(entry[4]))
+
+	for s in _specials.all().duplicate():
+		if not is_instance_valid(s):
+			continue
+		# A held special is legitimately absent from the snapshot; anything else
+		# that is missing has been taken, spent or destroyed.
+		if s.mode != SpecialBody.Mode.HELD and not seen.has(s.special_id):
+			_specials.destroy(s)
+
+# POSITIONS ONLY, and no velocity. A client draws rounds and simulates none of
+# them, so the only thing it needs is where each one is right now -- and at
+# SNAPSHOT_INTERVAL_TICKS of 1 that is every tick, which is as smooth as the host's
+# own copy. The moment that interval rises, this is one of the things that will
+# want interpolating.
+func _bullet_snapshot() -> Array:
+	var out: Array = []
+	for bullet in _bullets:
+		if is_instance_valid(bullet):
+			out.append([bullet.bullet_id, bullet.position])
+	return out
+
+# Self-healing like the ball set: a round the host stops mentioning has hit
+# something, expired or left the world, and the client removes it without needing
+# to be told which.
+func _apply_bullet_snapshot(bullets: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in bullets:
+		var id: int = int(entry[0])
+		seen[id] = true
+		var bullet: Node = _bullet_by_id(id)
+		if bullet == null:
+			bullet = BulletScene.instantiate()
+			bullet.bullet_id = id
+			bullet.name = "Bullet_%d" % id
+			_bullets_root.add_child(bullet)
+			_bullets.append(bullet)
+		bullet.apply_remote(entry[1])
+
+	for i in range(_bullets.size() - 1, -1, -1):
+		var bullet: Node = _bullets[i]
+		if not is_instance_valid(bullet) or not seen.has(bullet.bullet_id):
+			_bullets.remove_at(i)
+			if is_instance_valid(bullet):
+				bullet.queue_free()
+
+func _bullet_by_id(id: int) -> Node:
+	for bullet in _bullets:
+		if is_instance_valid(bullet) and bullet.bullet_id == id:
+			return bullet
+	return null
+
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array, hats: Array) -> void:
+		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
+		bullets: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array, hats: Array) -> void:
+		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
+		bullets: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
@@ -1465,6 +1970,8 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 	_apply_ball_snapshot(balls)
 	_apply_rusher_snapshot(rushers)
 	_apply_hat_snapshot(hats)
+	_apply_special_snapshot(specials)
+	_apply_bullet_snapshot(bullets)
 	for e in entries:
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
@@ -1618,6 +2125,9 @@ func host_add_peer(peer: int) -> void:
 	# Who is wearing what. The loose hats arrive on the next snapshot; a worn hat
 	# is not in that list by design, so it has to be told.
 	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())
+	# And who is holding what, for the identical reason: a HELD special is absent
+	# from the snapshot by design, so a newcomer would see an unarmed party.
+	_sync_held_specials.rpc_id(peer, _held_special_dump())
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.

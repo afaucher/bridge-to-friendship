@@ -1,0 +1,68 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfbullet1"]
+
+[ext_resource type="Script" path="res://scripts/sim/bullet.gd" id="1_bullet"]
+
+[sub_resource type="SphereMesh" id="Sphere_1"]
+radius = 0.14
+height = 0.28
+radial_segments = 8
+rings = 4
+
+; The tail: a cone tapering to a point BEHIND the ball. Six radial segments on
+; purpose -- asked for as a "little white polygon tail", and at bridge distance a
+; faceted cone reads as a shape somebody drew rather than as a smudge.
+;
+; A cone rather than a ribbon of past positions. A ribbon is the usual answer and
+; it is the wrong one here: it needs per-frame history on an object that lives for
+; a second, it has to be rebuilt every tick, and a round flies in a near-straight
+; line anyway, so all that work reproduces a cone.
+[sub_resource type="CylinderMesh" id="Tail_1"]
+top_radius = 0.0
+bottom_radius = 0.13
+height = 0.9
+radial_segments = 6
+rings = 0
+
+; DARK GREY, asked for in playtest -- it was a hot yellow first. The readability
+; job moved to the white tail below, and the split is better than either half was:
+; a pale streak says WHERE A ROUND HAS BEEN, and a dark head says where it IS. A
+; bright ball on a bright trail was one bright smear.
+;
+; The same near-black the plinko ball and the shooter's barrel use, so everything
+; that gets fired at you on this bridge is the same colour.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+shading_mode = 0
+albedo_color = Color(0.18, 0.19, 0.22, 1)
+
+; WHITE, and now carrying the whole readability job -- the round itself went dark
+; grey on playtest. Against a dark head this is the contrast that was missing when
+; both were bright: the tail says where a round has BEEN, the head says where it
+; IS. Transparent enough not to black out whatever it crosses.
+[sub_resource type="StandardMaterial3D" id="TailMat_1"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.55)
+no_depth_test = false
+
+; A PLAIN Node3D, NOT a physics body, and that is the whole design of it -- see
+; scripts/sim/bullet.gd. It moves itself and the world sweeps a ray along the
+; segment it covered, so it hits exactly, never tunnels, and is not in the contact
+; graph at all.
+[node name="Bullet" type="Node3D"]
+script = ExtResource("1_bullet")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Sphere_1")
+material_override = SubResource("Mat_1")
+
+; Laid down +Z, which is BEHIND: forward is -Z, the project's convention
+; everywhere. bullet.gd turns the whole node to face its velocity each tick, so
+; the tail follows for free and nothing here has to know which way anything is
+; going.
+;
+; A cylinder's axis is its local Y, so the basis maps Y onto +Z. The wide end sits
+; at the ball and the point is 0.9 m behind it.
+[node name="Tail" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0.45)
+mesh = SubResource("Tail_1")
+material_override = SubResource("TailMat_1")

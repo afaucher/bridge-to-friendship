@@ -54,7 +54,7 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		"grace": _fraction(float(body.invulnerable), SimConfig.HIT_GRACE),
 		"bleed_out": bleed_out_fraction(body),
 		"rescue": rescue_fraction(body),
-		"slots": _slots(body),
+		"slots": _slots(world, peer, body),
 	}
 
 static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
@@ -86,9 +86,20 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"rescue": rescue_fraction(other),
 			"distance": to.length(),
 			"bearing": bearing_to(to),
-			"special": "",
+			# What they are holding, as a short label -- D5's "each friend's name,
+			# health and special". Empty means empty-handed, which is exactly the
+			# thing worth knowing when a rusher is up: who can end it.
+			"special": _friend_special(world, other_peer),
 		})
 	return out
+
+static func _friend_special(world: Node, peer: int) -> String:
+	if world == null or not world.has_method("special_held_by"):
+		return ""
+	var weapon: Node = world.special_held_by(peer)
+	if weapon == null or not is_instance_valid(weapon):
+		return ""
+	return "%s %d" % [weapon.kind_name(), int(weapon.ammo)]
 
 # --- Countdowns ---------------------------------------------------------------
 
@@ -128,11 +139,15 @@ static func _fraction(value: float, total: float) -> float:
 
 # --- Slots --------------------------------------------------------------------
 
-# Three action slots, per D5. Two of them are empty until M4 and M12 fill them,
-# and `filled` is what tells the view to draw "deliberately empty" rather than
-# "broken" -- an unexplained blank box reads as a bug in a build someone is
-# playtesting.
-static func _slots(body: Node) -> Array:
+# Three action slots, per D5. Rope is empty until M4, and `filled` is what tells
+# the view to draw "deliberately empty" rather than "broken" -- an unexplained
+# blank box reads as a bug in a build someone is playtesting.
+#
+# THE SPECIAL SLOT IS NOW SOMETIMES FILLED, which is the shape M9 predicted: a new
+# field on a dictionary rather than new layout code. It is the first slot whose
+# `filled` genuinely varies at runtime, so it is also the first real test of that
+# empty-versus-broken distinction.
+static func _slots(world: Node, peer: int, body: Node) -> Array:
 	return [
 		{
 			"id": "push",
@@ -142,8 +157,28 @@ static func _slots(body: Node) -> Array:
 			"cooldown": _fraction(float(body.shove_cooldown), SimConfig.SHOVE_COOLDOWN),
 		},
 		{"id": "rope", "label": "ROPE", "filled": false, "ready": false, "cooldown": 0.0},
-		{"id": "special", "label": "SPECIAL", "filled": false, "ready": false, "cooldown": 0.0},
+		_special_slot(world, peer),
 	]
+
+# The one slot, read off the world rather than off the player. Nothing about a
+# carried item lives on PlayerBody -- see special_pool.held_by, which is what
+# keeps items out of capture_state() by construction rather than by discipline.
+static func _special_slot(world: Node, peer: int) -> Dictionary:
+	var slot := {"id": "special", "label": "SPECIAL", "filled": false, "ready": false,
+		"cooldown": 0.0, "ammo": 0}
+	if world == null or not world.has_method("special_held_by"):
+		return slot
+	var weapon: Node = world.special_held_by(peer)
+	if weapon == null or not is_instance_valid(weapon):
+		return slot
+	slot["label"] = str(weapon.kind_name())
+	slot["filled"] = true
+	slot["ready"] = float(weapon.fire_timer) <= 0.0
+	slot["cooldown"] = _fraction(float(weapon.fire_timer), SimConfig.MG_FIRE_INTERVAL)
+	# THE NUMBER THAT MATTERS. Fixed uses is the model every special shares, so
+	# "how many left" is the only question the slot really has to answer.
+	slot["ammo"] = int(weapon.ammo)
+	return slot
 
 # --- Where is everyone --------------------------------------------------------
 

@@ -140,6 +140,7 @@ Movement and aiming are **independent**: you walk one way while pointing another
 | move | WASD / arrows | left stick |
 | aim | mouse cursor | right stick |
 | dash | Space | A, or right trigger |
+| fire your special | left mouse (**hold**) | left trigger (**hold**) |
 | menu | F5 | Start |
 | add a practice partner | F2 | — |
 | hand control to the next player | F3 | — |
@@ -149,6 +150,16 @@ The dash goes **where you are pointing**, at any angle, and cannot be steered
 once it is running. With no aiming device it follows the direction you are
 walking, and with nothing held at all it follows the way you were last facing —
 it never refuses to fire.
+
+**Specials** are pickups lying on the deck, marked `*` by an author. You carry
+**one**, and walking over a second swaps them — the old one drops where you stand
+with whatever it had left. The first one built is a **machine gun**: 20 rounds at
+two and a half a second, held down rather than tapped, aimed the same way the dash
+is. Rounds are slow enough to watch cross the gap and scatter in a cone that is
+wide across and narrow up and down, so distance costs you accuracy. A hit damages
+*and* shoves a player, one round kills a rusher, a round shoves a plinko ball, and
+a pillar stops them dead. Run it dry and it is gone; hang off a ledge or go down
+and you drop it; fall off the bridge and it goes with you.
 
 Aim follows **whichever device you last moved**, so a pad player is not yanked
 around by a resting mouse and a mouse player is not overridden by a drifting

@@ -142,10 +142,23 @@ func deflect(direction: Vector3) -> void:
 func is_dangerous() -> bool:
 	return state == State.CHASE or state == State.STAGGER
 
+# SHOT. The only thing that ENDS a rusher rather than postponing it, and the
+# reason the weapon-special category earns a slot at all -- see hazards.md: a
+# dash deflects, a timer outlasts, a round removes.
+#
+# A flag rather than an immediate free: the pool walks its list once per tick and
+# removes what is spent, so a rusher that vanished mid-iteration would be a freed
+# object still in an array being read. CLAUDE.md's note on assigning a freed
+# object to a typed var is the same hazard one step further along.
+var killed: bool = false
+
+func kill() -> void:
+	killed = true
+
 # Burrows back down. The floor under a weaponless player -- outliving one is
 # desperate, but it is always available and it is why no player is ever stranded.
 func is_spent() -> bool:
-	return age > SimConfig.RUSHER_LIFETIME or position.y < SimConfig.FALL_KILL_Y
+	return killed or age > SimConfig.RUSHER_LIFETIME or position.y < SimConfig.FALL_KILL_Y
 
 # Clients are TOLD where a rusher is; they never simulate one. Same as a ball.
 func capture_state() -> Array:

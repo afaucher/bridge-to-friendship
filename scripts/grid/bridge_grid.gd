@@ -93,6 +93,16 @@ func take_authored_hat_cells() -> Array:
 	authored_hat_cells.clear()
 	return out
 
+# Where the author put specials. Same arrangement as hats and for the same
+# reason: the special pool owns the bodies, and it drains this list as segments
+# load so a weapon authored in a segment streamed in later still appears.
+var authored_special_cells: Array = []
+
+func take_authored_special_cells() -> Array:
+	var out: Array = authored_special_cells.duplicate()
+	authored_special_cells.clear()
+	return out
+
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
@@ -160,6 +170,9 @@ func load_segment(seg) -> void:
 	# record would mean two representations of one object.
 	for local_cell in built.hat_cells:
 		authored_hat_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.special_cells:
+		authored_special_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 func next_z() -> int:
 	var total := 0

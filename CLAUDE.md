@@ -181,6 +181,26 @@ the moment it is written.
   wall nobody can climb passes that just as well. The shove up a ramp was broken
   the whole time and fully green. **When a rule has two halves, test the half
   that says something is POSSIBLE**; that is the one carrying the design.
+- **A TAPERED SHAPE IS PAPER-THIN WHERE IT TAPERS, and a walkable surface with
+  nothing under it is a hole.** Observed 2026-08-13 from a playtest report of
+  "falling through a gap near the bottom of a ramp". A ramp is a wedge, and
+  `_build_deck` emits slabs for DECK and WATER only — so a ramp cell had no floor
+  of its own and the first centimetres of every ramp in the game were a knife
+  edge over a `DECK_THICKNESS`-deep void. Measured: 1.002 m of solid on the deck
+  behind, **0.053 m five centimetres onto the ramp**, with its underside at the
+  deck's *top*. Fixed with a skirt — the box the deck would have had.
+  **`test_ramp_traversal` walked a body up that ramp on every run and passed the
+  whole time:** a body at `WALK_SPEED` crosses two centimetres of paper in a third
+  of a tick and never sinks into it. The bug needed a body that ARRIVES rather
+  than crosses. **A gate can walk over a hole for months** — so when the symptom
+  is "sometimes I fall through", measure the STRUCTURE, do not re-run the walk.
+- **Measure on a fixture with nothing else moving in it.** The first pass of that
+  investigation ran on `playtest_bridge.seg`, where live shooters and rushers were
+  tumbling the probe body — and every one of those reads as "the ramp threw me
+  off". Two rounds were spent on rig artefacts: that, and a flat-bottomed cylinder
+  placed centre-on-surface, whose UPHILL RIM is `radius * tan(slope)` — 0.2 m on a
+  26.6° ramp — buried in the slope, which the solver then ejects. **Before
+  believing a rig, check what it does on a case that must be clean.**
 - **A seam between two convex shapes catches a flat-bottomed body, and it
   presents as "sometimes".** Ramps were merged along Z but not across X, so a
   two-cell-wide ramp was two wedges with a vertical seam down the middle: walking

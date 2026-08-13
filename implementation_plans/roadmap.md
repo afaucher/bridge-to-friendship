@@ -440,12 +440,34 @@ authoritative sim, and the seat-rotation `switch` that tells nobody it happened.
 
 ## M12 — Specials
 
-Shotguns, swords, thrown bombs, anchoring shields, **legs**. Fixed uses, dropped
-when spent, replacing one leaves the spent one behind. One slot. The HUD slot
-exists from M9; the carried-item channel exists from M8.5.
+**Partly shipped 2026-08-13: the MACHINE GUN, and the slot itself.** See
+`implementation_plans/m12_machine_gun.md`. Asked for in playtest by name; it is a
+new roster entry between the shotgun and the rifle, defined by cadence rather
+than reach.
 
-**Build legs first**, even though it reads as the simplest, because it is the one
-that decides the shape of the whole system.
+Shipped with it, and shared by everything that follows: `special_body.gd` /
+`special_pool.gd` (the carried-item channel's second client), the one-slot rule
+with swap-and-drop, the already-declared `*` glyph wired up at last with a
+validator rule, `ACTION_SPECIAL_HELD`, M9's reserved HUD slot filled with kind and
+ammo for self and friends, host-assigned monotonic ids, reliable ownership over an
+unreliable position snapshot, and drop-in sync of who is holding what.
+`test_special_pickup` and `test_machine_gun` cover nine claims between them; the
+three load-bearing ones were each checked by reverting the fix.
+
+**Two findings worth carrying forward.** `ACTION_SPECIAL_HELD` is a *separate*
+level-triggered bit rather than a change to `ACTION_SPECIAL`, so the
+edge-triggered invariant legs still need was not quietly spent on a weapon. And
+`test_special_pickup`'s fall assertion passed without the fall rule until a second
+player was stood safely on the deck — a solo player leaving the world is a wipe,
+and a wipe clears every special anyway. Identical to the trap `test_hat_tumble`
+hit; it is now two for two, so assume it for the third.
+
+Still to build: shotguns, swords, thrown bombs, anchoring shields, **legs**.
+
+**Build legs first of what remains**, even though it reads as the simplest,
+because it is the one that decides the shape of the whole system. The machine gun
+deliberately did not answer its question: nothing about a gun affects stepping, so
+`capture_state()` is untouched and the legs decision is exactly as open as it was.
 
 The other four are committed actions: press, and the host resolves what happened.
 They need no prediction, for exactly the reason a shove needs none — the player

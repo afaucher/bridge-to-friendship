@@ -120,6 +120,7 @@ special is not carrying any other.
 
 | special | what it is |
 |---|---|
+| **machine gun** | **the first one built** *(2026-08-13)*. 20 rounds at 2.5/sec, held not tapped, in a 10°-by-2° cone. Rounds are slow visible balls you watch cross the gap, not instant lines. Damage **and** knockback, gated by `HIT_GRACE`; kills a rusher outright, shoves a plinko ball, dropped when you hang or go down. Defined by **cadence**, not reach — continuous pressure is the one thing neither the shove nor any other special applies |
 | shotgun | ranged shove, several uses; **kills** what is destructible |
 | rifle | precise and long — a shove aimed at one thing 30 m away |
 | sword | melee, arcs, hits more than one thing |

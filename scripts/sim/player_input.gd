@@ -59,6 +59,11 @@ static func sample(tick: int, aim: float = AIM_NONE) -> Array:
 	# re-fire the dash on every replayed tick.
 	if Input.is_action_just_pressed("shove"):
 		actions |= SimConfig.ACTION_SHOVE
+	# LEVEL-TRIGGERED, and the only bit here that is. A machine gun is held down;
+	# see SimConfig.ACTION_SPECIAL_HELD for why that is safe for a weapon and would
+	# not be for legs.
+	if Input.is_action_pressed("special"):
+		actions |= SimConfig.ACTION_SPECIAL_HELD
 	return [tick, move, actions, aim]
 
 # Older inputs on the wire, and every test that builds a 3-element array by hand,

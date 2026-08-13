@@ -181,6 +181,7 @@ segments" trick does not apply. This is the same trap written up for hats.
 
 | special | answers | note |
 |---|---|---|
+| **machine gun** *(built 2026-08-13)* | rushers, and a friend standing somewhere you would rather they were not | **the first special built**, and the first thing in the game that REMOVES a threat instead of postponing one. Its property is cadence: 2.5 rounds a second, held down, in a 10°-by-2° cone -- wide across, narrow up, because the bridge is a narrow strip and everything worth shooting stands on it. Rounds are **slow visible balls** — 22 m/s, a beat and a half to cross the full range — so at distance a moving target can be out from under one. Damage and knockback both gated by `HIT_GRACE`, so a burst downs somebody in about four seconds rather than half of one. A round also SHOVES a plinko ball, which cuts both ways: the field is partial cover now, and it is also something you can shoot at somebody. A pillar stops a round outright, which is the counter-play. Hanging or downed, you drop it |
 | shotgun | rushers, crowds, close range | kills what is destructible |
 | **rifle** | rushers and friends at distance | precision, not reach — the first tool that *helps* someone 30 m away without a rope, and equally the first that betrays them |
 | sword | rushers, spiders, anything that comes to you | arcs, multi-target |

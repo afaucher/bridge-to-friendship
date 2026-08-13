@@ -1,0 +1,66 @@
+[gd_scene load_steps=6 format=3 uid="uid://btfspecial1"]
+
+[ext_resource type="Script" path="res://scripts/sim/special_body.gd" id="1_special"]
+
+; A PLACEHOLDER SHAPE, and knowingly so -- see implementation_plans/m12_machine_gun.md.
+;
+; What it has to do at bridge scale is be READ AS A WEAPON FROM 30 M and not be
+; mistaken for a hat, which is the only other thing lying loose on the deck. So it
+; is a long horizontal box with a darker barrel: a silhouette that points, against
+; a hat's silhouette that stacks.
+;
+; The colour is the same near-black metal as a shooter's barrel, deliberately.
+; That pillar is where balls come out of, and this is the player's version of the
+; same idea -- one visual language for "this end is the business end".
+[sub_resource type="BoxMesh" id="Body_1"]
+size = Vector3(0.18, 0.18, 0.7)
+
+[sub_resource type="CylinderMesh" id="Barrel_1"]
+top_radius = 0.05
+bottom_radius = 0.06
+height = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.2, 0.2, 0.23, 1)
+metallic = 0.5
+roughness = 0.4
+
+; Brighter than the body, so a special lying on brown deck is the thing your eye
+; goes to. A weapon nobody notices is a weapon nobody contests, and contest is the
+; entire reason the slot is one.
+[sub_resource type="StandardMaterial3D" id="Mat_2"]
+albedo_color = Color(0.95, 0.6, 0.15, 1)
+roughness = 0.5
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(0.3, 0.25, 0.7)
+
+[node name="Special" type="RigidBody3D"]
+; Layer 64 = specials. Mask 1 = WORLD ONLY, copied from hat.tscn along with its
+; reasoning: it collides with deck, walls and ramps so it lands and slides, and
+; with nothing else. A pickup you can stand on is a step, every extra body in the
+; contact graph is another chance for two machines to order contacts differently,
+; and two dropped at once would spawn coincident and hit the fall-through-the-floor
+; trap in CLAUDE.md.
+;
+; Pickup is therefore a host-side RADIUS TEST, never a collision callback.
+collision_layer = 64
+collision_mask = 1
+mass = 1.0
+script = ExtResource("1_special")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = SubResource("Body_1")
+material_override = SubResource("Mat_2")
+
+; Forward is -Z, the same convention everything else in this project uses (see
+; GridConfig.yaw_vector). The barrel is laid down that axis so a HELD special
+; parented under the player's Facing pivot points where they are aiming, with no
+; per-tick maths at all.
+[node name="Barrel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0.02, -0.5)
+mesh = SubResource("Barrel_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_1")

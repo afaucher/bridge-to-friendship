@@ -108,6 +108,32 @@ func _phase_damage_and_grace() -> void:
 	eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL,
 		"and one player's bar colour does not follow another's")
 	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL, "each body owning its own")
+
+	# --- BEING HELPED IS ITS OWN COLOUR, and it outranks the countdown ---------
+	#
+	# Red is a clock running out; blue is a hold filling up. Once somebody is
+	# crouched over you, the countdown stops being what a third player needs to
+	# read -- what they need is whether to come as well or go and deal with the
+	# rusher. So the moment progress exists, the bar changes meaning.
+	b.rescue_progress = SimConfig.LEDGE_HAUL_SECONDS * 0.5
+	b.sync_downed_timer()
+	eq(_fill_colour(b), PlayerBody.BAR_HAUL_FILL,
+		"a hanging player being hauled shows BLUE, not the red countdown")
+	eq(_back_colour(b), PlayerBody.BAR_HAUL_BACK, "on black")
+	near(_fill_rect(b).size.x / PlayerBody.BAR_PIXELS.x, 0.5, 0.02,
+		"and the width is how much of the HOLD is done, not how much time is left")
+
+	# THE CASE THAT WOULD MAKE IT FLICKER. GameWorld._tick_revive resets progress
+	# to zero the instant the helper steps outside REVIVE_RADIUS -- deliberately,
+	# so wandering off and back cannot bank credit. If zero counted as "being
+	# helped", an empty blue bar would appear and vanish every time somebody walked
+	# past a downed friend.
+	b.rescue_progress = 0.0
+	b.sync_downed_timer()
+	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL,
+		"and it goes back to the red countdown the moment the helper leaves")
+
+	b.rescue_progress = 0.0
 	b.state = PlayerBody.State.WALK
 
 	_advance(1)

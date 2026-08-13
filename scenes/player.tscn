@@ -67,10 +67,16 @@ material_override = SubResource("NoseMat_1")
 
 ; The status bar, over the head of a player who is not in perfect shape.
 ;
-; THREE STATES, AND SILENCE IS ONE OF THEM:
+; FOUR STATES, AND SILENCE IS ONE OF THEM:
 ;   healthy            nothing at all
-;   injured            green over red -- health you have over health you lost
-;   hanging or downed  red over black -- time left over time gone
+;   injured            green over red  -- health you have over health you lost
+;   hanging or downed  red over black  -- time left over time gone
+;   being helped       blue over black -- how much of the hold is done
+;
+; Blue outranks red, and means the opposite of it: red is a clock running out,
+; blue is a job being finished. Once somebody is crouched over you the countdown
+; stops being what a third player needs to read -- what they need is whether to
+; come as well or go and deal with the rusher.
 ;
 ; A healthy player showing no bar is the load-bearing part. Four permanent bars
 ; on a 60 m bridge is furniture, and furniture is not read. A bar appearing at all

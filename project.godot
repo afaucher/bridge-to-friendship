@@ -75,6 +75,20 @@ menu_start={
 , Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":6,"pressure":0.0,"pressed":false,"script":null)
 ]
 }
+; FIRE THE SPECIAL. Left mouse and the LEFT trigger -- the two things a hand is
+; already resting on while the other half of the same hand aims. Shove has the
+; right trigger, so the two committed actions sit under one finger each and can
+; be used together.
+;
+; READ WITH is_action_PRESSED, not just_pressed: a machine gun is held down. See
+; SimConfig.ACTION_SPECIAL_HELD for why a level-triggered bit is safe for a weapon
+; and would not be for legs.
+special={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":false,"double_click":false,"script":null)
+, Object(InputEventJoypadMotion,"resource_local_to_scene":false,"resource_name":"","device":-1,"axis":4,"axis_value":1.0,"script":null)
+]
+}
 ; The RIGHT STICK aims. Its own actions rather than being folded into the move_*
 ; set, because facing and movement are independent now -- you strafe one way
 ; while pointing another, and a single stick cannot express that.
@@ -130,6 +144,7 @@ system_exit={
 3d_physics/layer_4="balls"
 3d_physics/layer_5="rushers"
 3d_physics/layer_6="hats"
+3d_physics/layer_7="specials"
 
 [physics]
 

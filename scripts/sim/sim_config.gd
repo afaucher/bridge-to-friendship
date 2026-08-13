@@ -390,6 +390,125 @@ const HAT_LEAN_DAMPING := 9.0
 # two events should have.
 const HAT_LEAN_KICK := 0.08
 
+# --- Specials -----------------------------------------------------------------
+#
+# A pickup with a fixed number of uses, ONE SLOT, dropped when spent. See
+# game_concept.md §Special for the model and implementation_plans/m12_machine_gun.md
+# for the first one built.
+
+# A little wider than a hat's 0.7 m. You should not miss the only weapon on the
+# bridge by 10 cm, and unlike a hat there is never a second one to catch instead.
+const SPECIAL_PICKUP_RADIUS := 0.9
+
+# A dropped special is not collectable until it has stopped and waited. Same rule
+# and same reason as hats: a swap must not be a way to pick your own weapon
+# straight back up.
+const SPECIAL_SETTLE_SPEED := 0.8
+const SPECIAL_SETTLE_GRACE := 0.5
+
+# A third of HAT_MAX_LOOSE. Specials are rarer by design -- "contested and
+# unevenly distributed" is the property the whole one-slot rule rests on.
+const SPECIAL_MAX_LOOSE := 8
+
+# --- The machine gun ----------------------------------------------------------
+#
+# THE CADENCE IS THE WEAPON. A round is one plinko ball; what neither the shove
+# nor anything else in the game can do is apply pressure CONTINUOUSLY.
+
+# Eight seconds of held trigger. Long enough to settle one fight, short enough
+# that it is not also the answer to the next one.
+#
+# Cut from 60 as the rate came down, twice, so the magazine stays about the same
+# length of trigger-holding rather than becoming three times as long.
+const MG_AMMO := 20
+
+# 2.5 rounds a second, 24 ticks apart.
+#
+# SLOWED TWICE AFTER PLAYTEST, from 10/sec and then from 4/sec. At the original
+# rate the individual round did not exist -- it was a beam, and everything
+# downstream of "you can see a round coming" stopped being true with it. This is
+# far enough apart that each one is a thing somebody fired, which is also what
+# makes the spread below mean anything: dispersion you cannot resolve into
+# separate rounds is only a lower hit rate.
+#
+# It has stopped being a machine gun in the literal sense and that is fine. What
+# was asked for was continuous pressure, and pressure at a rate you can read is
+# the version that plays.
+const MG_FIRE_INTERVAL := 0.4
+
+# HOW WIDE THE CONE IS, in degrees off the aim.
+#
+# WIDENED FROM 4 ON PLAYTEST, which changes what the weapon is rather than just
+# how accurate it is. At 4 degrees everything inside about eight metres was a
+# guaranteed hit and the cone only mattered at range. At 10 it is 0.35 m of
+# scatter at two metres, 0.7 at four, and over five metres at thirty -- so a
+# body-width target is a certainty at point blank, a coin flip across a lane, and
+# suppression at the far end of the bridge.
+#
+# Range therefore costs accuracy with NO falloff curve, no accuracy stat and no
+# second number to defend: the geometry does all of it.
+#
+# HORIZONTAL ONLY. See MG_SPREAD_VERTICAL_DEG.
+const MG_SPREAD_DEG := 10.0
+
+# The cone is an ELLIPSE, not a circle: wide across, narrow up and down.
+#
+# It was a round 10 degree cone, which meant a round could go two metres over
+# somebody's head at thirty. That is the wrong axis to be inaccurate on -- the
+# bridge is a narrow strip and everything worth shooting stands on it, so
+# horizontal scatter reads as a weapon that sprays and vertical scatter reads as a
+# weapon that is broken. Five to one is enough to be visible without ever throwing
+# a round somewhere silly: 2 degrees is 20 cm at 6 m, inside a body's height.
+const MG_SPREAD_VERTICAL_DEG := 2.0
+
+# --- What a round is ----------------------------------------------------------
+
+# 22 m/s, slowed from 45 after playtest. Under four times a walking player and
+# well under half a dash, which is the point: a round is now something you WATCH
+# cross the gap, and at long range something a moving target can be out from under
+# by the time it arrives. That is the whole reason these are balls and not lines.
+#
+# It crosses the 30 m range in about 1.4 s.
+const MG_BULLET_SPEED := 22.0
+
+# A fraction of gravity. Flat rounds read as a laser, and every other arc in this
+# game -- a plinko ball, a shoved player, a dislodged hat -- is an arc.
+#
+# SMALL, and it had to shrink when the speed did: drop goes with the SQUARE of
+# flight time, so the same fraction that gave 20 cm at 45 m/s gives five metres at
+# 22. This is about a metre over the full range -- a visible lob at distance, and
+# eight centimetres at the four-metre range where fights actually happen.
+const MG_BULLET_DROP := 0.05
+
+# Comfortably longer than range / speed, so the RANGE is what stops a round and
+# this is only the backstop for one fired off the side of the bridge.
+const MG_BULLET_LIFETIME := 1.6
+
+# WHAT A ROUND DOES TO A PLINKO BALL. Asked for in playtest.
+#
+# An impulse rather than a set velocity, unlike the dash's deflect: a dash is a
+# player deciding where that ball goes, and a round is a nudge that ADDS to
+# whatever the ball was already doing. Against a 2 kg ball this is about 5 m/s,
+# a third of PLINKO_DEFLECT_SPEED -- shooting a ball moves it, batting it away
+# with your body still does more.
+const MG_BALL_PUSH := 10.0
+
+# The rifle's range from hazards.md, deliberately. This is not the long-range
+# special, so it must not out-reach the one that is.
+const MG_RANGE := 30.0
+
+const MG_DAMAGE := 1
+
+# Below SHOVE_TRANSFER_SPEED (11) and just under its lift (2.5): being shot
+# pushes you around, being dashed into still throws you further. A weapon that
+# out-displaced the game's signature verb would replace it rather than complement
+# it, which game_concept.md's "specials never replace shove and rope" forbids.
+const MG_KNOCKBACK := 8.0
+const MG_KNOCKBACK_LIFT := 2.0
+
+# (There was an MG_TRACER_SECONDS here. Rounds are real objects now, so the line
+# that stood in for one is gone -- see scripts/sim/bullet.gd.)
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what
@@ -398,6 +517,17 @@ const ACTION_SHOVE := 1 << 0
 const ACTION_ROPE := 1 << 1
 const ACTION_SPECIAL := 1 << 2
 const ACTION_SWITCH := 1 << 3
+
+# HELD, not pressed -- set for every tick the trigger is down.
+#
+# A SEPARATE BIT FROM ACTION_SPECIAL, and the separation is the point. The
+# roadmap requires ACTION_SPECIAL to stay edge-triggered for exactly one tick or
+# a reconciliation replay re-fires it and burns charges -- that warning is about
+# LEGS, which are predicted. A gun is not: firing is resolved by the host and
+# never replayed, so a level-triggered bit costs nothing here. Making
+# ACTION_SPECIAL itself level-triggered would have quietly spent the invariant
+# legs still need.
+const ACTION_SPECIAL_HELD := 1 << 4
 
 # --- Networking ---------------------------------------------------------------
 # How far the client's prediction may drift from the host's authoritative frame

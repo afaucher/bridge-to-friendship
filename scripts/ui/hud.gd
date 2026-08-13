@@ -127,6 +127,11 @@ func _sync_slots(slots: Array) -> void:
 		var slot: ColorRect = _own_slots.get_child(i)
 		var caption: Label = slot.get_child(0)
 		caption.text = str(data.get("label", ""))
+		# AMMO UNDER THE NAME. Fixed uses is the model every special shares, so the
+		# count is not decoration -- running dry is how you lose the slot, and it is
+		# the only number on this panel that only ever goes down.
+		if data.has("ammo") and bool(data.get("filled", false)):
+			caption.text = "%s\n%d" % [caption.text, int(data["ammo"])]
 		if not bool(data.get("filled", false)):
 			# DELIBERATELY EMPTY, not broken. Rope arrives in M4 and special in
 			# M12; an unexplained blank box in a playtest build reads as a bug and

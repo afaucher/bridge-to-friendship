@@ -118,6 +118,13 @@ static func _check_content_placement(seg, problems: Array) -> void:
 				# somewhere else -- and where it ends up depends on the slope
 				# rather than on the author.
 				problems.append("a hat at (%d, %d) sits on a ramp and would roll off" % [x, z])
+			if content == GridConfig.Content.PICKUP and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				# Identical to the hat rule, and worth stating separately rather
+				# than folding the two together: a special is a rigid body that
+				# lands and settles, so on a slope it slides off and the author has
+				# placed it wherever the slope decided. It matters more here --
+				# there is one weapon, not a scattering of hats.
+				problems.append("a special at (%d, %d) sits on a ramp and would slide off" % [x, z])
 			if content == GridConfig.Content.MOUND and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
 				# A rusher rises straight up out of the deck over a fixed second.
 				# On a slope that animation emerges through the hillside, and the

@@ -240,6 +240,13 @@ const BAR_HEALTH_FILL := Color(0.30, 0.85, 0.35)   # health you still have
 const BAR_HEALTH_BACK := Color(0.75, 0.15, 0.12)   # health you have lost
 const BAR_RESCUE_FILL := Color(1.00, 0.27, 0.16)   # time left to reach them
 const BAR_RESCUE_BACK := Color(0.03, 0.03, 0.04)   # time already gone
+# SOMEBODY IS ON IT. Blue is the only colour on this bar that is not a warning,
+# and it means the opposite of the other two: the red bar is a clock running out,
+# and this one is a job being finished. A rescuer arriving has to be able to see
+# from across the bridge that the person already crouched there is helping and not
+# just standing.
+const BAR_HAUL_FILL := Color(0.25, 0.60, 1.00)     # how much of the hold is done
+const BAR_HAUL_BACK := Color(0.03, 0.03, 0.04)     # how much is still to go
 
 # The bar's viewport, in pixels. The world size is this times the Sprite3D's
 # pixel_size -- 200 x 30 at 0.006 is 1.2 m x 0.18 m.
@@ -251,11 +258,28 @@ func sync_downed_timer() -> void:
 		return
 	var vp := bar.get_node_or_null("SubViewport") as SubViewport
 
-	# Rescue outranks injury: a hanging player's health is not the thing anybody
-	# needs to know, and they are on zero anyway once they are down.
-	var fraction: float = rescue_fraction()
-	var fill := BAR_RESCUE_FILL
-	var back := BAR_RESCUE_BACK
+	# THREE STATES, IN PRIORITY ORDER, and the priority is the design:
+	#
+	#   being helped   BLUE over black -- a hold filling up
+	#   in trouble     RED over black  -- a clock running down
+	#   injured        GREEN over red  -- health kept over health lost
+	#   healthy        nothing at all
+	#
+	# BEING HELPED OUTRANKS BEING IN TROUBLE. Once somebody is crouched over you
+	# the countdown is no longer the thing anybody watching needs to know -- what
+	# they need to know is whether to come as well or go and deal with the rusher.
+	# The two bars also read as opposites at a glance, which is the point: red is
+	# draining, blue is filling.
+	#
+	# And rescue outranks injury: a hanging player's health is not the thing
+	# anybody needs, and they are on zero anyway once they are down.
+	var fraction: float = haul_fraction()
+	var fill := BAR_HAUL_FILL
+	var back := BAR_HAUL_BACK
+	if fraction < 0.0:
+		fraction = rescue_fraction()
+		fill = BAR_RESCUE_FILL
+		back = BAR_RESCUE_BACK
 	if fraction < 0.0:
 		fraction = health_fraction()
 		fill = BAR_HEALTH_FILL
@@ -287,6 +311,25 @@ func sync_downed_timer() -> void:
 
 func health_fraction() -> float:
 	return clampf(float(health) / float(SimConfig.MAX_HEALTH), 0.0, 1.0)
+
+# How far through the HOLD a rescuer is, 0.0 up to 1.0, or -1 when nobody is
+# holding. Each state against its own hold -- 0.8 s to haul someone off a lip,
+# 1.5 s to get a downed player back on their feet -- so a full bar means the same
+# thing in either.
+#
+# ZERO PROGRESS IS NOT "BEING HELPED". The hold RESETS the instant the helper
+# steps outside REVIVE_RADIUS (see GameWorld._tick_revive: wandering off and back
+# must not bank credit), so an empty blue bar would appear and vanish every time
+# somebody walked past. Below one tick's worth, this says nobody is on it.
+func haul_fraction() -> float:
+	if rescue_progress <= SimConfig.TICK_DELTA:
+		return -1.0
+	match state:
+		State.DOWNED:
+			return clampf(rescue_progress / SimConfig.REVIVE_SECONDS, 0.0, 1.0)
+		State.LEDGE_HANG:
+			return clampf(rescue_progress / SimConfig.LEDGE_HAUL_SECONDS, 0.0, 1.0)
+	return -1.0
 
 # How much of the rescue window is LEFT, 1.0 down to 0.0, or -1 when this body is
 # not waiting on anybody. Both states, each against its own clock -- 8 s hanging,
@@ -568,6 +611,20 @@ func _pop_hats() -> void:
 	if world != null and world.has_method("dislodge_hats"):
 		world.dislodge_hats(self)
 
+# YOU LET GO OF YOUR WEAPON WHEN YOU NEED BOTH HANDS. Asked for in playtest.
+#
+# Called from LEDGE_HANG and DOWNED and deliberately NOT from TUMBLE, which is the
+# line the whole rule sits on: a tumble is being knocked about, and a tool that
+# leaves your hand every time a plinko ball connects is never in your hand during
+# the only fight it is for. Hanging and downed are different -- you are out of the
+# game until somebody comes for you, and holding the only weapon on the bridge
+# hostage while they do is the worst version of that.
+#
+# Hats pop in all three, because hats ARE the bet.
+func _drop_special() -> void:
+	if world != null and world.has_method("drop_special_of"):
+		world.drop_special_of(self)
+
 func _end_tumble() -> void:
 	state = State.WALK
 	state_timer = 0.0
@@ -653,6 +710,10 @@ func _begin_hang(lip: Vector3, dir: int) -> void:
 	grounded = false
 	hang_dir = dir
 	_pop_hats()
+	# BEFORE the position is moved below, so it lands on the deck it was standing
+	# on rather than in the hole the player is now dangling into. Not a rescue --
+	# a hanging player still cannot reach it -- but a teammate can.
+	_drop_special()
 	# Hanging just off the edge on the hole side, head about level with the deck.
 	var outward: Vector3 = GridConfig.DIR_VECTORS[dir]
 	position = lip - outward * (GridConfig.CELL_SIZE * 0.5 + 0.35) - Vector3(0.0, HALF_HEIGHT, 0.0)
@@ -719,6 +780,10 @@ func begin_downed() -> void:
 	rescue_progress = 0.0
 	health = 0
 	velocity = Vector3.ZERO
+	# The special only. Hats keep the rule M8.5 gave them -- they pop on TUMBLE and
+	# LEDGE_HANG -- and DOWNED is almost always reached through a tumble that has
+	# already taken them. Changing that is a separate decision from this one.
+	_drop_special()
 
 func revive() -> void:
 	state = State.WALK
