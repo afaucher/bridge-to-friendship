@@ -233,6 +233,18 @@ func _phase_dash_deflects() -> void:
 		_isolate()
 		_park(Vector2i(6, 22))
 		return
+	if phase_frame == 10:
+		# A HAT STACK, because the playtest report was about hats. Health is a
+		# number in a struct; a spilled stack is the thing a player actually
+		# notices losing, and it is dropped by entering TUMBLE rather than by
+		# taking damage -- so it is a second, independent witness to the same
+		# event and it fails even if the damage rule ever changes.
+		for i in 3:
+			var hat: Node = world._hats.spawn_loose(victim.position)
+			world._wear_hat(hat.hat_id, 1, i)
+		recorded["hats"] = world.hats_worn_by(1).size()
+		check(int(recorded["hats"]) == 3, "the player is wearing a stack to lose")
+		return
 	if phase_frame == 20:
 		# Two cells UP-bridge (grid +z is world -z), which is the way a
 		# move of (0, -1) dashes -- so the player runs straight into it.
@@ -245,6 +257,21 @@ func _phase_dash_deflects() -> void:
 	if phase_frame == 21:
 		recorded["actions"] = 0                    # a press is one tick wide
 		return
+
+	# LET GO ONCE THE PLAYER HAS WALKED PAST IT. The dash carries them through the
+	# rusher and the stick is still held, so the frames either side of 60 are the
+	# ones that matter: the player is on foot, out of dash cooldown, and passing
+	# within a metre of the thing they just deflected. That is precisely where the
+	# old behaviour tumbled them.
+	#
+	# Releasing here is not tidiness -- holding forward for the full two seconds
+	# walks the player sixteen metres off the end of the deck into a LEDGE_HANG,
+	# which drops the hat stack for reasons that have nothing to do with a rusher
+	# and reads as this assertion failing. CLAUDE.md: measure on a fixture with
+	# nothing else moving in it.
+	if phase_frame == 70:
+		recorded["move"] = Vector2.ZERO
+		return
 	if phase_frame == 30:
 		var rusher: Node = _tracked()
 		check(is_instance_valid(rusher) and world.rusher_count() == 1,
@@ -256,6 +283,48 @@ func _phase_dash_deflects() -> void:
 					% [recorded["rusher_z"], rusher.position.z])
 		eq(victim.health, SimConfig.MAX_HEALTH, "and the dashing player takes nothing")
 		check(victim.state != PlayerBody.State.TUMBLE, "and is not tumbled")
+		return
+
+	# THE STAGGER IS A BREATHER, AND THE ASSERTION ABOVE COULD NOT SEE IT.
+	#
+	# Everything up to frame 30 was already true when a deflected rusher was still
+	# lethal: the dash is six ticks and the tumble landed on frame 37, so this
+	# phase sampled seven frames early and passed for the whole life of the bug.
+	# The player kept walking into the thing they had just deflected, could not
+	# dash again (SHOVE_COOLDOWN outlasts the contact), and was tumbled by it.
+	#
+	# So hold the stick down and stay until the stagger ENDS. This is CLAUDE.md's
+	# "test the half that says something is POSSIBLE": the half saying a dash
+	# cannot kill was gated, the half saying a dash SAVES YOU was not.
+	#
+	# THE WINDOW IS READ OFF THE RUSHER, NOT COUNTED IN FRAMES. A dash re-deflects
+	# on every one of its six ticks and each one resets state_timer, so the stagger
+	# ends at some frame this phase does not know. A hard-coded count either stops
+	# early (and tests nothing) or runs past the end into a rusher that has
+	# legitimately got back up and re-acquired -- which is the design working, and
+	# would read as this assertion failing.
+	if phase_frame > 30:
+		var rusher: Node = _tracked()
+		var still_staggered: bool = rusher != null \
+			and int(rusher.state) == RusherBody.State.STAGGER
+
+		# Checked EVERY tick, not once at the end: a tumble is transient
+		# (TUMBLE_MIN_SECONDS, then back to WALK), so a single late sample would
+		# miss it entirely and report a clean run over a player who was floored.
+		if victim.state == PlayerBody.State.TUMBLE:
+			check(false,
+				"a deflected rusher tumbled the player who deflected it, %d frames in"
+					% [phase_frame - 30])
+			_advance(5)
+			return
+
+		if still_staggered and phase_frame < 400:
+			return
+
+		eq(victim.health, SimConfig.MAX_HEALTH,
+			"and costs no health for the whole stagger it bought")
+		eq(world.hats_worn_by(1).size(), int(recorded["hats"]),
+			"and the hat stack survives the exchange")
 		_advance(5)
 
 # --- 7. It burrows, so a weaponless player is never stranded -------------------

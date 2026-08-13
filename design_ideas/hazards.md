@@ -147,6 +147,13 @@ but it is nowhere near a dash, so committing an axis still beats it.
 1. **Shoot it.** It dies. Clean, and the reason to be carrying a weapon.
 2. **Dash it.** Deflected and staggered, buying `RUSHER_STAGGER_SECONDS`. It gets
    back up. Scrappy, free, available to everyone.
+   **A staggered rusher is harmless — that is what "buying" means.** It stayed
+   dangerous through its whole stagger until 2026-08-13, so the dash was a
+   counter that lost: six ticks of dash bought a hundred and twenty ticks of a
+   thing that could still tumble you, and `SHOVE_COOLDOWN` meant you could not
+   answer it a second time. It is still *deflectable* while staggered — a dash
+   re-deflects on each of its ticks, which is what carries it clear — just not
+   lethal.
 3. **Outlive it.** It burrows back down after `RUSHER_LIFETIME`. Desperate, but
    it is the floor that stops a weaponless solo player from being ground down —
    the "never the only answer" rule above, made concrete.

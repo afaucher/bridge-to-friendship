@@ -806,7 +806,7 @@ func _clear_line(from_global: Vector3, to_global: Vector3) -> bool:
 # outcome is a game rule, not a physics response, and it has to be decided in one
 # place and once.
 func _resolve_rusher_contact(rusher: Node) -> void:
-	if not rusher.is_dangerous():
+	if not rusher.is_in_play():
 		return
 	for peer_key in players.keys():
 		var body: Node = players[int(peer_key)]
@@ -821,6 +821,17 @@ func _resolve_rusher_contact(rusher: Node) -> void:
 		if body.state == PlayerBody.State.SHOVE:
 			rusher.deflect(GridConfig.yaw_vector(body.shove_yaw))
 			return
+
+		# ALREADY DEFLECTED, SO IT CANNOT COLLECT ON THE COUNTER IT LOST. `continue`
+		# rather than `return`: this rusher is harmless to THIS player, but another
+		# player may still be mid-dash and entitled to bat it further.
+		#
+		# Without this the dash was a counter that lost. See rusher_body's
+		# is_dangerous(): the dash is six ticks, the stagger it buys is a hundred
+		# and twenty, and the player spent the counter, walked into the thing they
+		# had just deflected, and was tumbled by it with the cooldown still running.
+		if not rusher.is_dangerous():
+			continue
 
 		# Otherwise it reaches you: tumble, one hit point, and it is SPENT.
 		# Expending itself is the whole reason a single rusher cannot chain-tumble

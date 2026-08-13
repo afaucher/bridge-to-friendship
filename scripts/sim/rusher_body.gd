@@ -137,10 +137,37 @@ func deflect(direction: Vector3) -> void:
 	state_timer = 0.0
 	grounded = false
 
-# Can it touch you? A rising rusher cannot: the telegraph would be a lie if the
-# thing could hit you while it was still announcing itself.
-func is_dangerous() -> bool:
+# Is it in play at all -- can it be touched, in either direction? A RISING rusher
+# cannot: the telegraph would be a lie if the thing could hit you, OR be batted
+# away, while it was still announcing itself.
+#
+# SEPARATE FROM is_dangerous() ON PURPOSE, and folding the two back together
+# would reintroduce a bug. A staggered rusher is still deflectable -- a dash lasts
+# six ticks and re-deflects it on each one, which is what carries it clear -- but
+# it can no longer hurt anyone. One predicate cannot answer both questions, and
+# when it tried, making it safe also made it unbattable and the player simply
+# bulldozed it around with their body instead.
+func is_in_play() -> bool:
 	return state == State.CHASE or state == State.STAGGER
+
+# Can it HURT you? Only while it is CHASING.
+#
+# A STAGGERED one cannot, and it USED TO -- which made the dash a counter
+# that lost. Measured 2026-08-13 from a playtest report of "winning the dash
+# still tumbles you and drops your hats", and the numbers are the whole argument:
+# a dash is SHOVE_DURATION (0.1 s, six ticks) and the stagger it buys is
+# RUSHER_STAGGER_SECONDS (2.0 s, a hundred and twenty). So the player deflected
+# it, left SHOVE six ticks later, and then walked into a thing that was still
+# lethal -- and could not deflect it again, because SHOVE_COOLDOWN (0.35 s)
+# expires long after the contact. That is a 1.65 s window in which the counter
+# had been spent, could not be repeated, and the deflected rusher tumbled you
+# anyway, took a hit point, spilled your hat stack and expended itself.
+#
+# hazards.md sells the dash as "deflected and staggered, buying
+# RUSHER_STAGGER_SECONDS". It was buying 0.1 s. A stagger is now the breather it
+# was always described as.
+func is_dangerous() -> bool:
+	return state == State.CHASE
 
 # SHOT. The only thing that ENDS a rusher rather than postponing it, and the
 # reason the weapon-special category earns a slot at all -- see hazards.md: a

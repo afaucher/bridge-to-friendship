@@ -181,6 +181,28 @@ the moment it is written.
   wall nobody can climb passes that just as well. The shove up a ramp was broken
   the whole time and fully green. **When a rule has two halves, test the half
   that says something is POSSIBLE**; that is the one carrying the design.
+- **A COUNTER MUST OUTLAST THE STATE IT CREATES, or it is a counter that loses.**
+  Observed 2026-08-13 from a playtest report of "winning the dash still tumbles
+  you". A dash deflected a rusher into a 2 s stagger and the stagger stayed
+  *dangerous*, while the dash itself lasted 0.1 s and its cooldown 0.35 s — so the
+  player spent the answer, could not repeat it, and was tumbled by the very thing
+  they had just beaten. **Compare the duration of a verb against the duration of
+  the state it produces**; when the second is twenty times the first, the window
+  in between belongs to the enemy. Two further lessons came out of the same fix.
+  **One predicate cannot answer two questions:** `is_dangerous()` gated both "can
+  it hurt you" and "can you bat it", so making it safe also made it unbattable and
+  the player bulldozed it around with their body instead — it needed splitting
+  into `is_in_play()` and `is_dangerous()`. And **a phase that samples ONE frame
+  cannot see a bug seven frames later**: `test_rusher` checked the deflect at
+  frame 30 and the tumble landed at 37, so it was green for the whole life of the
+  bug. Where a claim is "X is safe FOR A DURATION", assert it on **every tick of
+  that duration**, and read the duration off the object rather than counting
+  frames — a re-deflect resets the clock, so the frame number was never knowable.
+- **A rig that holds a movement input for two seconds walks the player off the
+  map.** The same fix's first test failure was a hat stack dropped by a
+  `LEDGE_HANG` sixteen metres away, with nothing to do with the hazard under test.
+  Twin of the "measure on a fixture with nothing else moving in it" note below:
+  **release the stick once the moment you are testing has passed.**
 - **A TAPERED SHAPE IS PAPER-THIN WHERE IT TAPERS, and a walkable surface with
   nothing under it is a hole.** Observed 2026-08-13 from a playtest report of
   "falling through a gap near the bottom of a ramp". A ramp is a wedge, and
