@@ -47,6 +47,23 @@ func _physics_process(_delta: float) -> void:
 	if a == null or world.tick == 0:
 		return
 	phase_frame += 1
+
+	# EVERY PHASE STARTS WITH NOBODY IN THE DRONE'S HANDS.
+	#
+	# Phase 4 deliberately launches a player clear of the world, which queues a
+	# drone return that outlives the phase -- and A BODY THE DRONE HAS IS NOT
+	# STEPPED, so the next phase repositions it and then watches it do nothing at
+	# all. Three failures between them and not one named what it was about:
+	# "catches the lip too", "hanging before the release is tested", and "the mesh
+	# never span".
+	#
+	# It has to be HERE and not in _advance. The world ticks once between the end
+	# of one phase and the setup of the next, sees a body still under the kill
+	# plane, and queues it straight back up -- so the clear has to sit immediately
+	# before the setup that moves it.
+	if phase_frame == 1:
+		world._returning.clear()
+
 	match phase:
 		0: _phase_damage_and_grace()
 		1: _phase_downed_and_revive()
@@ -463,7 +480,26 @@ func _phase_drone_return() -> void:
 		return
 	if phase_frame == 40:
 		check(world._returning.has(1), "a player who falls out of the world is picked up")
+		recorded["taken_at"] = a.position
 		return
+
+	# A BODY THE DRONE HAS IS NOT SIMULATED, and it used to be.
+	#
+	# The step loop had no _returning check and there is no terminal velocity
+	# anywhere, so an invisible out-of-play body kept falling for the full three
+	# seconds. Measured 2026-08-13: y = -124 m at 67 m/s and still accelerating,
+	# with THE CAMERA GLUED TO IT the whole way -- which is what a player sees as
+	# the world lurching away underneath them when they go over the edge.
+	if phase_frame > 60 and world._returning.has(1):
+		var drift: float = a.position.distance_to(recorded["taken_at"])
+		if drift > 0.01 or a.velocity.length() > 0.01:
+			check(false, "a body the drone has holds still (drifted %.2f m, speed %.1f)"
+				% [drift, a.velocity.length()])
+			recorded["taken_at"] = a.position    # report once, not sixty times
+		# AND THE CAMERA LETS GO. One still framing a body under the bridge dives
+		# below the deck and stares at nothing for three seconds.
+		if world.camera != null and not world.camera.focus_held:
+			check(false, "and the camera stops following them while they are gone")
 	if phase_frame == int(SimConfig.DRONE_RETURN_SECONDS * 60.0) + 40:
 		check(not world._returning.has(1), "and the drone finishes the job")
 		check(a.state == PlayerBody.State.WALK,

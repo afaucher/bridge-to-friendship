@@ -98,10 +98,24 @@ func desired_position() -> Vector3:
 	# X is dropped on purpose: the camera rides the bridge's centre line.
 	return Vector3(0.0, focus.y, focus.z) + _offset
 
+# WHILE THIS IS TRUE THE CAMERA STOPS FOLLOWING and holds where it was. Set by
+# GameWorld while the local player is being carried back by the drone.
+#
+# The player is invisible and out of the world for those three seconds, and their
+# body is wherever it stopped -- which is under the bridge. A camera that keeps
+# framing it dives under the deck and stares at nothing, and what a player wants
+# to look at while they wait is the place they fell from.
+var focus_held: bool = false
+
+var _last_focus: Vector3 = Vector3.ZERO
+
 func focus_position() -> Vector3:
-	if focus_target != null and is_instance_valid(focus_target):
-		return focus_target.position
-	return Vector3.ZERO
+	if not focus_held and focus_target != null and is_instance_valid(focus_target):
+		_last_focus = focus_target.position
+	# HOLDING, not recentring. Returning Vector3.ZERO with no target -- which is
+	# what this used to do -- flies the camera to the middle of the first segment
+	# from wherever the party actually is.
+	return _last_focus
 
 # Half the width the camera can see at the focus plane. What "the whole bridge
 # fits" is checked against.

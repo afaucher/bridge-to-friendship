@@ -305,6 +305,9 @@ func _physics_process(_delta: float) -> void:
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
 	_pose_held_specials()
+	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
+	if camera != null:
+		camera.focus_held = _returning.has(local_peer)
 
 func _host_tick() -> void:
 	tick += 1
@@ -356,6 +359,18 @@ func _host_tick() -> void:
 		# carrier probe is still needed here for the mask exclusion below, and
 		# the carrier-before-rider order is kept because it is what the explicit
 		# ride() path would need if we swap back.
+		# A BODY THE DRONE HAS IS NOT IN THE WORLD, so it is not simulated.
+		#
+		# It used to keep stepping for the whole DRONE_RETURN_SECONDS: invisible,
+		# out of play, with gravity still on it and no terminal velocity anywhere.
+		# Measured 2026-08-13 -- three seconds after going over the edge a body was
+		# at y = -124 m doing 67 m/s, still accelerating, and THE CAMERA WAS GLUED
+		# TO IT, because the camera frames the local player and nothing said this
+		# one had stopped being somewhere. Every tick of that is work done on a
+		# position nobody will ever use.
+		if _returning.has(peer):
+			continue
+
 		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
 
 		var restore_mask: int = body.collision_mask
@@ -1484,6 +1499,13 @@ func _begin_drone_return(peer: int) -> void:
 	var body: Node = players.get(peer)
 	if body != null:
 		body.visible = false
+		# STOPPED DEAD, not left falling. The step loop skips it from here, so
+		# without this it would keep whatever velocity it went over the edge with
+		# for three seconds and respawn_at would be the first thing to clear it --
+		# and anything reading the body in between (the camera, the HUD's distance
+		# and bearing, the leash) would be reading a body still travelling at
+		# 40 m/s into nothing.
+		body.velocity = Vector3.ZERO
 		body.velocity = Vector3.ZERO
 
 func _tick_drone_returns() -> void:
