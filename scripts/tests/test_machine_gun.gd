@@ -323,6 +323,32 @@ func _phase_rounds_are_objects() -> void:
 			"rather than inside the player who fired it (%.2f m out)"
 				% muzzle.distance_to(a.global_position))
 
+		# THE TAIL POINTS BACKWARDS, WIDE END AGAINST THE BALL.
+		#
+		# It shipped the other way round, and the cause is worth a test rather than
+		# a comment: Godot's nine-float Basis is ROW-major, so the Y axis of
+		# Transform3D(1,0,0, 0,0,1, 0,-1,0, ...) is the middle COLUMN, (0,0,-1), and
+		# not the middle row. Reading it as a row put the cone's point in FRONT of
+		# the ball -- a comet flying backwards. SECOND sign error out of those same
+		# nine numbers; the muzzle offset was the first. A comment cannot catch that
+		# twice, so this measures it.
+		var any: Node3D = world._bullets[0] if world.bullet_count() > 0 else null
+		if any != null:
+			var tail := any.get_node("Tail") as MeshInstance3D
+			var cone := tail.mesh as CylinderMesh
+			var half: float = cone.height * 0.5
+			# Whichever end of the mesh is the WIDE one, expressed in the bullet's
+			# own frame -- so this is asking about the shape on screen, not about
+			# which property happens to be called "top".
+			var wide_y: float = half if cone.top_radius > cone.bottom_radius else -half
+			var wide: Vector3 = tail.transform * Vector3(0.0, wide_y, 0.0)
+			var tip: Vector3 = tail.transform * Vector3(0.0, -wide_y, 0.0)
+			near(wide.length(), 0.0, 0.05, "the tail's WIDE end sits on the ball")
+			# Forward is -Z, so behind is +Z. The point trails.
+			check(tip.z > wide.z + 0.5,
+				"and it tapers to a point BEHIND it (tip z %.2f vs wide z %.2f)"
+					% [tip.z, wide.z])
+
 		# SPREAD. Two rounds on exactly the same line is what a weapon with no
 		# dispersion does, so the claim is that the SET of directions is not a
 		# single direction.
