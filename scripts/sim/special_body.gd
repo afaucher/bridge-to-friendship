@@ -30,7 +30,7 @@ enum Mode { HELD, FLYING, LOOSE }
 # WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
 # a new special is a different resolve function rather than a different object --
 # what differs between them is what the BUTTON means, and that lives in the world.
-enum Kind { MACHINE_GUN, GRENADE }
+enum Kind { MACHINE_GUN, GRENADE, MINE }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -92,6 +92,8 @@ func kind_name() -> String:
 			return "MG"
 		Kind.GRENADE:
 			return "NADE"
+		Kind.MINE:
+			return "MINE"
 	return "?"
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per

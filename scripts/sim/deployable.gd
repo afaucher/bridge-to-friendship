@@ -63,26 +63,50 @@ func _ready() -> void:
 	linear_damp = 0.0
 
 func throw_from(at: Vector3, velocity: Vector3, peer: int) -> void:
-	kind = Kind.GRENADE
 	thrower = peer
 	timer = SimConfig.GRENADE_FUSE
 	position = at
 	linear_velocity = velocity
 
+func place_at(at: Vector3, peer: int) -> void:
+	thrower = peer
+	timer = SimConfig.MINE_ARM_SECONDS
+	position = at
+	linear_velocity = Vector3.ZERO
+
+# ARMED MEANS THE COUNTDOWN IS DONE. For a grenade that is the same instant it
+# goes off; for a mine it is the instant it starts being able to.
+func is_armed() -> bool:
+	return timer <= 0.0
+
 # One sim tick of the countdown. Returns true on the tick it should go off; the
 # world owns the blast itself, because a blast reaches other pools and this object
 # has no business knowing about them.
-func step() -> bool:
+#
+# `target_near` is asked and answered by the world for the same reason: "is
+# anything standing here" is a question about pools. What that MEANS is the only
+# part that belongs to the object, and it is the one branch below.
+func step(target_near: bool) -> bool:
 	if detonated:
 		return false
 	timer = maxf(0.0, timer - SimConfig.TICK_DELTA)
-	if not _should_detonate():
+	if not _should_detonate(target_near):
 		return false
 	detonated = true
 	return true
 
-func _should_detonate() -> bool:
-	return timer <= 0.0
+func _should_detonate(target_near: bool) -> bool:
+	match kind:
+		Kind.MINE:
+			return is_armed() and target_near
+		_:
+			return timer <= 0.0
+
+# Only a mine needs the world to look around for it; asking on behalf of a
+# grenade would be a physics query per grenade per tick to answer a question
+# whose answer is always ignored.
+func wants_proximity_check() -> bool:
+	return kind == Kind.MINE and is_armed()
 
 func blast_radius() -> float:
 	return SimConfig.BLAST_RADIUS
@@ -94,7 +118,7 @@ func is_gone() -> bool:
 # consequence for one button, and the fuse already gives a second grenade its own
 # moment. It is debris like everything else.
 func receive_hit(hit) -> bool:
-	if hit.kind != Hit.Kind.EXPLOSIVE:
+	if detonated or hit.kind != Hit.Kind.EXPLOSIVE:
 		return false
 	apply_central_impulse(hit.launch_for(position))
 	return true

@@ -1,0 +1,54 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfmine1"]
+
+[ext_resource type="Script" path="res://scripts/sim/deployable.gd" id="1_deploy"]
+
+; FLAT AND DARK, and the silhouette is the safety rule. A grenade is a bright
+; sphere you are meant to spot in the air; a mine is a disc on the deck that
+; someone else has to NOTICE, and the whole point of the thing is that they
+; sometimes do not. Hazard red rather than hazard yellow: everything explosive on
+; this bridge is warm, and the two are told apart by shape and shade rather than
+; by reading a label at 20 m.
+;
+; SHORTER THAN A STEP, so it never reads as cover and nothing walks into its side.
+[sub_resource type="CylinderShape3D" id="Shape_1"]
+radius = 0.32
+height = 0.14
+
+[sub_resource type="CylinderMesh" id="Mesh_1"]
+top_radius = 0.26
+bottom_radius = 0.34
+height = 0.14
+radial_segments = 12
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.42, 0.09, 0.09, 1)
+metallic = 0.3
+roughness = 0.6
+
+; The eye. It sits proud of the plate so the mine reads as a DEVICE from above --
+; which is the angle this game is played from.
+[sub_resource type="StandardMaterial3D" id="Mat_2"]
+albedo_color = Color(1, 0.35, 0.2, 1)
+emission_enabled = true
+emission = Color(1, 0.3, 0.1, 1)
+emission_energy_multiplier = 1.4
+
+[node name="Deployable" type="RigidBody3D"]
+; Layer 7 = specials, same as a grenade and a dropped weapon: a round passes
+; through it, deliberately. Shooting a mine from range would make it a puzzle with
+; a free solution.
+collision_layer = 64
+collision_mask = 1
+script = ExtResource("1_deploy")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_1")
+material_override = SubResource("Mat_1")
+
+[node name="Eye" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.34, 0, 0, 0, 0.34, 0, 0, 0, 0.34, 0, 0.09, 0)
+mesh = SubResource("Mesh_1")
+material_override = SubResource("Mat_2")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_1")

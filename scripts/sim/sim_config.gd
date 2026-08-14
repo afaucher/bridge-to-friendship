@@ -626,6 +626,26 @@ const GRENADE_RELEASE_HEIGHT := 1.2
 # vocabulary of answers.
 const GRENADE_FUSE := 1.4
 
+# --- Land mines ---------------------------------------------------------------
+#
+# THE VERB IS PLACING SOMETHING IN ADVANCE. A grenade asks how far; a mine asks
+# WHEN -- it is the only thing in the game a player can spend now to be paid back
+# later, and the arming delay is the entire reason that is a skill rather than a
+# melee attack with extra steps.
+
+const MINE_AMMO := 3
+
+# HARMLESS FOR A SECOND. Asked for by name, and it is what stops a mine being a
+# reach-out-and-touch weapon: place one under something and you have merely put an
+# object on the deck. It also means the player is standing on their own live mine
+# for a full second, which is the joke and the risk in one.
+const MINE_ARM_SECONDS := 1.0
+
+# Tight -- half the blast it sets off. A mine you can trip from outside its own
+# damage would be a thing that goes off "near" you, and near is not a word this
+# game's threat model can use.
+const MINE_TRIGGER_RADIUS := 1.6
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

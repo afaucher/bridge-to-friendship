@@ -31,7 +31,9 @@ const Hit = preload("res://scripts/sim/hit.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
 const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 const TurretScene = preload("res://scenes/turret.tscn")
-const DeployableScene = preload("res://scenes/deployable.tscn")
+const GrenadeScene = preload("res://scenes/grenade.tscn")
+const MineScene = preload("res://scenes/mine.tscn")
+const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -1284,6 +1286,8 @@ func _fire_specials() -> void:
 				spent_a_use = _step_machine_gun(body, weapon, held)
 			SpecialBody.Kind.GRENADE:
 				spent_a_use = _step_grenade(peer, body, weapon, held)
+			SpecialBody.Kind.MINE:
+				spent_a_use = _step_mine(peer, body, weapon, held)
 		weapon.was_held = held
 
 		# SPENT MEANS GONE, at the moment the last use leaves. An empty special you
@@ -1354,15 +1358,30 @@ func _throw_grenade(peer: int, body: Node, fraction: float) -> void:
 		body.global_position.x + forward.x * SimConfig.GRENADE_THROW_FORWARD,
 		feet + SimConfig.GRENADE_RELEASE_HEIGHT,
 		body.global_position.z + forward.z * SimConfig.GRENADE_THROW_FORWARD)
-	_spawn_deployable(release, velocity, peer)
+	var d: Node = _spawn_deployable(Deployable.Kind.GRENADE)
+	d.throw_from(release, velocity, peer)
 
-func _spawn_deployable(at: Vector3, velocity: Vector3, peer: int) -> Node:
-	var d: Node3D = DeployableScene.instantiate()
+# PLACED AT YOUR FEET, on the button going DOWN. A mine is the one special whose
+# whole verb is spending something now to be paid back later, so there is nothing
+# to hold and nothing to aim -- the decision is WHERE you were standing and WHEN.
+func _step_mine(peer: int, body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.was_held:
+		return false
+	weapon.ammo -= 1
+	var at := Vector3(body.global_position.x,
+		body.global_position.y - PlayerBody.HALF_HEIGHT + 0.1,
+		body.global_position.z)
+	_spawn_deployable(Deployable.Kind.MINE).place_at(at, peer)
+	return true
+
+func _spawn_deployable(kind: int) -> Node:
+	var scene: PackedScene = MineScene if kind == Deployable.Kind.MINE else GrenadeScene
+	var d: Node3D = scene.instantiate()
 	_next_deployable_id += 1
 	d.deployable_id = _next_deployable_id
+	d.kind = kind
 	d.name = "Deployable_%d" % d.deployable_id
 	_deployables_root.add_child(d)
-	d.throw_from(at, velocity, peer)
 	_deployables.append(d)
 	return d
 
@@ -1381,7 +1400,10 @@ func _process_deployables() -> void:
 			_deployables.remove_at(i)
 			d.queue_free()
 			continue
-		if not d.step():
+		# ONLY A MINE ASKS. A grenade's answer is always ignored, and this is a
+		# distance check against every walking body on the bridge.
+		var near: bool = d.wants_proximity_check() 			and _anything_walking_within(d.position, SimConfig.MINE_TRIGGER_RADIUS)
+		if not d.step(near):
 			continue
 		blast_at(d.position, d.blast_radius())
 		_deployables.remove_at(i)
@@ -1403,11 +1425,12 @@ func _apply_deployable_snapshot(section: Array) -> void:
 		var id: int = int(entry[0])
 		var d: Node = _deployable_by_id(id)
 		if d == null:
-			d = DeployableScene.instantiate()
+			# THE KIND PICKS THE SCENE, exactly as it does on the host. A client
+			# that built every deployable from one scene would show a mine as a
+			# grenade -- and the two are told apart by shape on purpose.
+			d = _spawn_deployable(int(entry[1]))
 			d.deployable_id = id
 			d.name = "Deployable_%d" % id
-			_deployables_root.add_child(d)
-			_deployables.append(d)
 		d.apply_state(entry)
 	for i in range(_deployables.size() - 1, -1, -1):
 		var existing: Node = _deployables[i]
@@ -1588,6 +1611,24 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) ->
 			affected += 1
 	return affected
 
+# ANYTHING ON LEGS, standing here. Players, rushers and gunners -- the things a
+# mine is for. Deliberately NOT balls: a plinko ball rolling over a mine would
+# spend it on nobody, and the arena is full of them.
+#
+# Assembled from the pools rather than from a physics query, for the same reason
+# _blast_targets is: these are the objects that can answer for themselves, and a
+# shapecast would be filtering the world by shape when the question is about kind.
+func _anything_walking_within(centre: Vector3, radius: float) -> bool:
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if is_instance_valid(body) and not body.is_awaiting_rescue() 				and body.position.distance_to(centre) <= radius:
+			return true
+	for group in [_rushers, _gunners]:
+		for node in group:
+			if is_instance_valid(node) and node.position.distance_to(centre) <= radius:
+				return true
+	return false
+
 # Everything within reach that can answer for itself. Deliberately assembled from
 # the pools rather than from a physics query: a blast reaches through cover by
 # design (that is what distinguishes it), so a shapecast would be filtering by the
@@ -1598,7 +1639,7 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and body.position.distance_to(centre) <= radius:
 			out.append(body)
-	for group in [_rushers, _gunners, _balls, _hats.all(), _specials.all()]:
+	for group in [_rushers, _gunners, _balls, _hats.all(), _specials.all(), _deployables]:
 		for node in group:
 			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
 				out.append(node)

@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -88,11 +88,15 @@ const CONTENT_GLYPHS := {
 	# checkpoints: the interesting place for one is PAST a hazard, not beside the
 	# safe spot. Checkpoint segments get them by convention, never by rule.
 	"^": Content.HAT,
-	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
-	# the one bolted down -- the same convention `m` already set for a mound.
 	# Grenades. Lowercase, like the other things that are picked up rather than
 	# fought.
 	"g": Content.PICKUP_GRENADE,
+	# Mines. `x` because that is what a mine is on a map, and because `m` was
+	# already a mound -- two lowercase letters one apart would be a typo nobody
+	# ever spots in a grid of them.
+	"x": Content.PICKUP_MINE,
+	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
+	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,
 	"T": Content.TURRET,
 }

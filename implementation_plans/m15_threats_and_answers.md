@@ -99,11 +99,26 @@ down the deck's 4° pitch during its own fuse, which moved every throw out of th
 place the player picked. A grenade is **placed**, not bowled: locked rotation, full
 friction, and zero linear damping so the solved arc stays true.
 
-### Land mine — one second, then armed
+### Land mine — one second, then armed ✅ *built 2026-08-14*
 Placed at your feet, harmless for `MINE_ARM_SECONDS`, then triggers on proximity.
 
 - The arming delay is what stops it being a melee attack, and it is what makes
   placing one *in advance* the skill.
+- **The owner is not exempt.** Standing on your own armed mine is fatal, so
+  stepping away is part of the verb rather than a courtesy. The player is on top
+  of a live mine for the whole arming second, which is the risk and the joke in
+  one.
+- **It triggers on anything on legs** — players, rushers, gunners — and
+  deliberately not on plinko balls, which would spend it on nobody in an arena
+  full of them. The proximity question is asked by the world, because "is anything
+  standing here" is a question about pools; the deployable only decides what the
+  answer *means*.
+- **The button is edge-derived**, like the grenade's release: a level bit with no
+  edge would lay a mine every tick and empty the pouch in three frames.
+- Shares `deployable.gd` with the grenade — a considered position, not the default
+  one, taken the same day the turret was split *out* of that shape. The test
+  applied: does the second kind need state the first has no use for? It does not;
+  both are a body with a countdown, disagreeing only about what starts it.
 - **It is the shield's counter**, per the damage model: a blast beneath you is not
   in the arc.
 - Triggered by enemies as well as players, or it is a trap that only ever catches
