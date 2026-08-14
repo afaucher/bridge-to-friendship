@@ -148,6 +148,13 @@ Plus a 320 B stone layout every 30 ticks.
 "Busy" here is not a worst case invented to look bad — it is the caps the config
 already permits (`PLINKO_MAX_BALLS` 24, `HAT_MAX_LOOSE` 24, `RUSHER_MAX` 12).
 
+**But read it as a ceiling, not a typical frame.** Measured afterwards over 900
+ticks of a party walking the playtest bridge, the field carries **7.6 live balls
+on average, not 24** — so an ordinary busy moment is nearer **1800 B / 105 KB/s**.
+Still 1.3× the MTU and still fragmenting, so the conclusion below stands; but
+"a busy snapshot is 205 KB/s" was the worst the config permits and this document
+originally failed to say so.
+
 Two consequences, and the second is the expensive one:
 
 - **1.6 Mbit/s downstream per client** is a lot for a co-op game with four
