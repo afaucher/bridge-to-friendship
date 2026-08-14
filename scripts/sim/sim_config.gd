@@ -646,6 +646,22 @@ const MINE_ARM_SECONDS := 1.0
 # game's threat model can use.
 const MINE_TRIGGER_RADIUS := 1.6
 
+# DROPPED AT YOUR FEET, JUST IN FRONT. Far enough forward to clear the player's own
+# 0.4 m radius so you can see what you just put down, close enough that it is
+# still "here" rather than thrown.
+const MINE_DROP_FORWARD := 0.9
+
+# How far below the feet to look for something to rest it on. A mine is PLACED --
+# it sits on the deck exactly where it was put and does not fall, roll or settle,
+# because "roughly where I pressed the button" is not good enough for the one
+# object whose whole value is being in a spot the player chose.
+const MINE_GROUND_PROBE := 1.5
+
+# HELD, LIKE THE MACHINE GUN, and on the same button. A tap lays one; holding lays
+# them on a cadence. Slow enough that emptying the pouch is a decision you can feel
+# yourself making rather than something that happens in three frames.
+const MINE_PLACE_INTERVAL := 0.6
+
 # --- The shield ---------------------------------------------------------------
 #
 # THE ONLY SPECIAL THAT TAKES SOMETHING AWAY FROM YOU. It anchors you where you

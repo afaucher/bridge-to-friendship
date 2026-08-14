@@ -1348,7 +1348,15 @@ func _throw_grenade(peer: int, body: Node, fraction: float) -> void:
 	var distance: float = lerpf(SimConfig.GRENADE_MIN_RANGE, SimConfig.GRENADE_MAX_RANGE,
 		fraction)
 	var angle: float = deg_to_rad(SimConfig.GRENADE_THROW_ANGLE_DEG)
-	var forward := Vector3(sin(body.facing), 0.0, cos(body.facing)).normalized()
+	# THROUGH GridConfig, NOT sin/cos BY HAND. Written out longhand this was
+	# Vector3(sin(f), 0, cos(f)) -- the exact NEGATION of yaw_vector -- so every
+	# grenade in the game was lobbed over the thrower's shoulder. Measured
+	# 2026-08-14: facing north, the grenade travelled +2.94 m in Z when forward is
+	# -Z. The same expression lives in SpecialPool.drop_offset, where it is
+	# correctly called `away`; copying it and renaming it `forward` is the whole
+	# bug. Nothing caught it because test_grenade measured DISTANCE, which is a
+	# magnitude and has no opinion about which way anything went.
+	var forward: Vector3 = GridConfig.yaw_vector(body.facing)
 
 	# SOLVED FROM THE RELEASE POINT, NOT FROM LEVEL GROUND. The hand is 1.2 m up
 	# and 0.7 m forward, and a grenade launched from a height flies further than
@@ -1375,14 +1383,44 @@ func _throw_grenade(peer: int, body: Node, fraction: float) -> void:
 # whole verb is spending something now to be paid back later, so there is nothing
 # to hold and nothing to aim -- the decision is WHERE you were standing and WHEN.
 func _step_mine(peer: int, body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.was_held:
+	# THE SAME TRIGGER THE MACHINE GUN USES, down to the timer field: held lays
+	# them on a cadence, a tap lays one. It was one-per-press, which made the same
+	# button behave differently depending on what was in your hands.
+	if not held or weapon.fire_timer > 0.0:
 		return false
+	weapon.fire_timer = SimConfig.MINE_PLACE_INTERVAL
 	weapon.ammo -= 1
-	var at := Vector3(body.global_position.x,
-		body.global_position.y - PlayerBody.HALF_HEIGHT + 0.1,
-		body.global_position.z)
-	_spawn_deployable(Deployable.Kind.MINE).place_at(at, peer)
+	var spot: Array = _mine_drop_point(body)
+	_spawn_deployable(Deployable.Kind.MINE).place_at(spot[0], peer, bool(spot[1]))
 	return true
+
+# WHERE A MINE GOES: at your feet, one step in front, sitting ON the deck.
+#
+# Returns [point, found_ground]. The downward probe is what makes it sit rather
+# than drop -- placing at the feet and letting gravity do the rest puts the mine
+# wherever the fall ends, which on a ramp or a moving player is not where the
+# button was pressed.
+func _mine_drop_point(body: Node) -> Array:
+	var forward: Vector3 = GridConfig.yaw_vector(body.facing)
+	var feet: float = body.global_position.y - PlayerBody.HALF_HEIGHT
+	var ahead := Vector3(
+		body.global_position.x + forward.x * SimConfig.MINE_DROP_FORWARD,
+		feet,
+		body.global_position.z + forward.z * SimConfig.MINE_DROP_FORWARD)
+
+	var space := get_world_3d().direct_space_state
+	if space != null:
+		var from: Vector3 = ahead + Vector3(0.0, 0.5, 0.0)
+		var query := PhysicsRayQueryParameters3D.create(from,
+			from - Vector3(0.0, SimConfig.MINE_GROUND_PROBE + 0.5, 0.0), 1)
+		var hit: Dictionary = space.intersect_ray(query)
+		if not hit.is_empty():
+			# Its own half-height above the surface, so it rests ON the deck rather
+			# than half inside it.
+			return [Vector3(ahead.x, float(hit["position"].y) + 0.07, ahead.z), true]
+	# Nothing under it -- placed over a hole. Left live so it falls away, which
+	# costs the use and is the right answer.
+	return [ahead, false]
 
 func _spawn_deployable(kind: int) -> Node:
 	var scene: PackedScene = MineScene if kind == Deployable.Kind.MINE else GrenadeScene

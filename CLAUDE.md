@@ -230,6 +230,19 @@ the moment it is written.
   lateral position will pass a single-lane test forever. **Merge co-planar
   geometry into ONE shape**, and when a bug is intermittent, ask what varies
   between the times it happens.
+- **A DISTANCE ASSERTION HAS NO OPINION ABOUT DIRECTION, and this project has now
+  shipped three sign errors.** Observed 2026-08-14: the grenade throw built its
+  own forward vector as `Vector3(sin(f), 0, cos(f))`, which is the exact NEGATION
+  of `GridConfig.yaw_vector`, so every grenade was lobbed over the thrower's
+  shoulder — and it reached a playtest. `test_grenade` had four claims about the
+  throw and all four were about **how far**: a tap lands near, a full hold lands
+  far, the near throw is inside your own blast. A magnitude is true whichever way
+  the thing went. The same expression already existed in `SpecialPool.drop_offset`
+  where it is correctly named `away`; copying it and calling it `forward` is the
+  whole bug. **Build direction vectors through `GridConfig.yaw_vector`, never from
+  sin/cos by hand**, and when a test measures how far, ask what measures which way.
+  (The earlier two were both Godot's row-major `Basis` — a bullet tail and a muzzle
+  offset, from the same nine numbers.)
 - **Check the collision MASK before debugging the behaviour.** A dash passed
   straight through a pillar for two rounds of diagnosis: stones are on layer 4
   and the player's mask was 3. Nothing errors; the shove simply never contacts

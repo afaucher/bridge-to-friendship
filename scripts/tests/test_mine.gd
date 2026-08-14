@@ -3,8 +3,12 @@ extends "res://scripts/test_support/test_case.gd"
 # M15c. The land mine: one second, then armed.
 #
 # The claims:
-#   1. A PRESS PLACES ONE AT YOUR FEET, and costs exactly one use. No hold, no
-#      aim -- the decision is where you were standing and when.
+#   1. A PRESS PLACES ONE AT YOUR FEET, JUST IN FRONT, RESTING ON THE DECK, and
+#      costs exactly one use. It must not fall to get there: the whole value of a
+#      mine is being in the spot the player chose.
+#   1b. IT IS THE SAME TRIGGER THE MACHINE GUN USES -- held, it lays them on a
+#      cadence. One button behaving differently depending on what is in your hands
+#      is the thing this rules out.
 #   2. IT DOES NOTHING FOR A SECOND, asserted on EVERY tick of that second and not
 #      merely at the end of it. The arming delay is the entire reason a mine is a
 #      thing you place in advance rather than a melee attack with extra steps, so
@@ -86,16 +90,42 @@ func _phase_a_press_places_one() -> void:
 			var m: Node = world._deployables[0]
 			var flat: float = Vector2(m.position.x - layer.position.x,
 				m.position.z - layer.position.z).length()
-			check(flat < 0.5, "at your feet (%.2f m away)" % flat)
+			check(flat > 0.4 and flat < 1.6,
+				"just in front of you, clear of your own body (%.2f m)" % flat)
+			# IN FRONT, AND THE SIGN IS THE ASSERTION. The player is parked facing
+			# north, which is -Z. Its twin in the grenade throw was written by hand
+			# as +sin/+cos -- the negation of GridConfig.yaw_vector -- and lobbed
+			# every grenade over the thrower's shoulder for a day, because the only
+			# thing asserted about a throw was its DISTANCE, and a magnitude has no
+			# opinion about direction.
+			check(m.position.z < layer.position.z - 0.3,
+				"in FRONT and not behind (dz %+.2f, forward is -Z)"
+					% (m.position.z - layer.position.z))
+			recorded["placed_y"] = m.position.y
+			var above: float = m.position.y - (layer.position.y - 0.9)
+			check(absf(above) < 0.25,
+				"and resting on the deck rather than in the air (%+.2f m above the feet)"
+					% above)
 		var s: Node = _held()
 		if s != null:
 			eq(s.ammo, SimConfig.MINE_AMMO - 1, "and it cost exactly one use")
 		return
-	if phase_frame == 30:
-		# HELD DOWN AND STILL ONE. A level bit with no edge detection would lay a
-		# mine every tick and empty the pouch in three frames.
-		eq(world._deployables.size(), 1,
-			"and holding the button does not lay a second one")
+	if phase_frame == 20:
+		# IT DID NOT FALL TO GET THERE. A placed mine is frozen, so its height 17
+		# ticks later is the height it was placed at -- not wherever gravity left it.
+		if world._deployables.size() > 0:
+			var m: Node = world._deployables[0]
+			check(absf(m.position.y - float(recorded.get("placed_y", 0.0))) < 0.02,
+				"and it has not moved since (%+.3f m)"
+					% (m.position.y - float(recorded.get("placed_y", 0.0))))
+		return
+	if phase_frame == 60:
+		# HELD DOWN, AND THE SAME BUTTON BEHAVES THE SAME WAY IT DOES ON A GUN:
+		# more come out, on a cadence. 57 ticks is nearly a second, so at
+		# MINE_PLACE_INTERVAL there has been time for at least one more.
+		check(world._deployables.size() > 1,
+			"holding lays more, exactly as holding the machine gun fires more (%d down)"
+				% world._deployables.size())
 		_advance(1)
 
 # --- 2. Harmless for a second, then not ---------------------------------------
@@ -169,6 +199,11 @@ func _arm_with_mines() -> void:
 		world._specials.destroy(s)
 	var m: Node = world._specials.spawn_loose(layer.position, SpecialBody.Kind.MINE)
 	m.hold(1)
+	# PAST THE PICKUP LOCKOUT. hold() resets the trigger timer so that walking over
+	# a fresh special does not fire a free shot from a timer that ran down on the
+	# floor -- a real rule, and now a mine's rule too since it shares the trigger.
+	# Zeroing it here keeps this test about placement rather than about pickup.
+	m.fire_timer = 0.0
 
 func _held() -> Node:
 	return world._specials.held_by(1)

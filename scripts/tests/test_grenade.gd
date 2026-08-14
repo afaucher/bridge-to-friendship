@@ -100,6 +100,22 @@ func _phase_throws_on_release() -> void:
 		eq(world._deployables.size(), 1, "and exactly one grenade leaves on release")
 		check(_held().ammo == SimConfig.GRENADE_AMMO - 1,
 			"and it cost exactly one use (%d of %d)" % [_held().ammo, SimConfig.GRENADE_AMMO])
+		return
+	if phase_frame == 45:
+		# IT GOES WHERE YOU ARE POINTING, and this is asserted because its absence
+		# shipped. The thrower is parked facing north, which is -Z. The throw built
+		# its forward vector by hand as Vector3(sin(f), 0, cos(f)) -- the exact
+		# NEGATION of GridConfig.yaw_vector -- so every grenade in the game was
+		# lobbed over the thrower's shoulder, and it reached a playtest.
+		#
+		# Nothing here caught it because every other claim in this file is about
+		# DISTANCE, and a magnitude has no opinion about direction. When a test
+		# measures how far, ask whether anything measures which way.
+		if world._deployables.size() > 0:
+			var g: Node = world._deployables[0]
+			var dz: float = g.position.z - thrower.position.z
+			check(dz < -1.0,
+				"and it goes FORWARD, not over your shoulder (dz %+.2f, forward is -Z)" % dz)
 		_advance(1)
 
 # --- 2. Hold longer, throw further --------------------------------------------

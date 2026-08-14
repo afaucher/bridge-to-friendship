@@ -68,11 +68,20 @@ func throw_from(at: Vector3, velocity: Vector3, peer: int) -> void:
 	position = at
 	linear_velocity = velocity
 
-func place_at(at: Vector3, peer: int) -> void:
+# `resting` is true when the world found deck under it. A placed mine is FROZEN:
+# it does not fall, roll or settle, because the whole value of a mine is being in
+# the spot the player chose and a rigid body is a thing that ends up nearby.
+# Placed over a hole there is nothing to rest on, so it is left live and falls
+# away -- a wasted use, which is the correct outcome.
+func place_at(at: Vector3, peer: int, resting: bool) -> void:
 	thrower = peer
 	timer = SimConfig.MINE_ARM_SECONDS
 	position = at
 	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	if resting:
+		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		freeze = true
 
 # ARMED MEANS THE COUNTDOWN IS DONE. For a grenade that is the same instant it
 # goes off; for a mine it is the instant it starts being able to.
@@ -118,7 +127,10 @@ func is_gone() -> bool:
 # consequence for one button, and the fuse already gives a second grenade its own
 # moment. It is debris like everything else.
 func receive_hit(hit) -> bool:
-	if detonated or hit.kind != Hit.Kind.EXPLOSIVE:
+	# A PLACED MINE STAYS PLACED. A grenade in flight is debris and can be thrown
+	# about; a mine that a blast could shunt across the deck would stop being a
+	# thing anyone can rely on having put somewhere.
+	if detonated or kind == Kind.MINE or hit.kind != Hit.Kind.EXPLOSIVE:
 		return false
 	apply_central_impulse(hit.launch_for(position))
 	return true
