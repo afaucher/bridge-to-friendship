@@ -120,11 +120,13 @@ Placed at your feet, harmless for `MINE_ARM_SECONDS`, then triggers on proximity
   applied: does the second kind need state the first has no use for? It does not;
   both are a body with a countdown, disagreeing only about what starts it.
 - **It is the shield's counter**, per the damage model: a blast beneath you is not
-  in the arc.
+  in the arc. Built as `SHIELD_MIN_BLOCK_DISTANCE` — anything originating closer
+  than a metre is unblockable whatever the angle, because a blast under your feet
+  has no direction to be in.
 - Triggered by enemies as well as players, or it is a trap that only ever catches
   friends.
 
-### Shield — anchor and an arc
+### Shield — anchor and an arc ✅ *built 2026-08-14*
 A modifier rather than a hit. Blocks damage **and** knockback arriving within an
 arc of its facing; you cannot walk while it is planted; the facing is chosen when
 it is planted and cannot be turned.
@@ -133,6 +135,29 @@ it is planted and cannot be turned.
   co-op answer.
 - It is the first special whose value is **positional** rather than aimed, which
   is a different shape of decision from everything in the slot so far.
+- **The only special that takes something away from you.** In a game whose threat
+  model is displacement, refusing to be displaced is the strongest thing a player
+  can do, so it costs the one resource this game actually spends: being somewhere
+  else in a moment.
+- **No timer.** One press, one use, held as long as you like — standing still IS
+  the timer on a bridge that has to be crossed, with things arriving from behind.
+- **The anchoring is decided inside `PlayerBody._step_walk`, not in the world**,
+  and that is what keeps a shield from reading as lag. A client REPLAYS that
+  function with stored inputs during reconciliation; a shield applied from outside
+  would be missing on every replayed tick and the correction would look exactly
+  like the thing this milestone's netcode work was trying to remove. `shielding`
+  and `shield_yaw` are therefore in `capture_state()`, per CLAUDE.md's rule that
+  anything affecting stepping is in the blob or replays diverge.
+
+**What it cost.** A shield spends its charge as it RISES, so the ordinary "spent
+means gone" rule deleted the *last* deployment in the same tick it was raised — a
+third shield that protected nobody, and a bug that only appears on the final
+charge. The destroy check now runs every tick and refuses while a shield is up.
+
+**And a test that could not fail.** The anchoring assertion passed with the
+velocity zeroing deleted, because a shield raised from a standstill is anchored by
+the early return alone. Found by A/B; the fix was to raise it **mid-stride**,
+which is the only case where that zeroing does anything.
 
 ---
 

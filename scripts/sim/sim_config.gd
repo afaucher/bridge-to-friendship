@@ -646,6 +646,31 @@ const MINE_ARM_SECONDS := 1.0
 # game's threat model can use.
 const MINE_TRIGGER_RADIUS := 1.6
 
+# --- The shield ---------------------------------------------------------------
+#
+# THE ONLY SPECIAL THAT TAKES SOMETHING AWAY FROM YOU. It anchors you where you
+# stand and refuses everything arriving from the direction you chose. In a game
+# whose threat model is DISPLACEMENT, refusing to be displaced is the strongest
+# thing a player can do -- so it has to cost the one resource this game actually
+# spends, which is being somewhere else in a moment.
+
+# Deployments, not seconds. One press, one use, held as long as you like: there is
+# no timer because standing still IS the timer. A bridge that has to be crossed,
+# with hazards arriving from behind as well, prices a long hold all by itself.
+const SHIELD_AMMO := 3
+
+# WIDE ENOUGH TO BE A DECISION, NARROW ENOUGH TO BE FLANKED. Roughly the front
+# quadrant: two players back to back cover each other, one player alone does not
+# cover themselves.
+const SHIELD_ARC_DEG := 110.0
+
+# A SHIELD STOPS WHAT IS COMING AT YOU, NOT WHAT IS ALREADY UNDER YOU. Anything
+# originating closer than this is unblockable, whatever the angle -- which is
+# exactly the counter the damage model names: a blast beneath your feet has no
+# direction to be in, and a mine is how you answer somebody who has decided to
+# stop moving.
+const SHIELD_MIN_BLOCK_DISTANCE := 1.0
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

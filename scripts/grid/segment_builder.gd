@@ -369,6 +369,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.special_cells.append([Vector2i(x, z), 1])
 				GridConfig.Content.PICKUP_MINE:
 					out.special_cells.append([Vector2i(x, z), 2])
+				GridConfig.Content.PICKUP_SHIELD:
+					out.special_cells.append([Vector2i(x, z), 3])
 				GridConfig.Content.SKIRMISHER:
 					out.gunner_cells.append([Vector2i(x, z), 0])
 				GridConfig.Content.TURRET:

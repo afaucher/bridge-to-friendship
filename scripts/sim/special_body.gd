@@ -30,7 +30,7 @@ enum Mode { HELD, FLYING, LOOSE }
 # WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
 # a new special is a different resolve function rather than a different object --
 # what differs between them is what the BUTTON means, and that lives in the world.
-enum Kind { MACHINE_GUN, GRENADE, MINE }
+enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -94,7 +94,43 @@ func kind_name() -> String:
 			return "NADE"
 		Kind.MINE:
 			return "MINE"
+		Kind.SHIELD:
+			return "SHLD"
 	return "?"
+
+# WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
+# collision and the held-pivot geometry are identical -- so without this a shield
+# lying on the ground is a machine gun lying on the ground, and the one-slot rule
+# turns into a lottery.
+#
+# WARM MEANS IT HURTS SOMETHING, COOL MEANS IT PROTECTS YOU. Every hazard, every
+# muzzle and every explosive on this bridge is warm; the shield is the only cool
+# object in the game, which is a whole line of communication for free.
+#
+# The material is DUPLICATED first. Sub-resources are shared between instances of
+# a scene, so tinting one in place would repaint every special in the world --
+# including the ones already in somebody's hands.
+func apply_kind_look() -> void:
+	var body := get_node_or_null("Body") as MeshInstance3D
+	if body != null and body.material_override != null:
+		var mat: StandardMaterial3D = body.material_override.duplicate()
+		mat.albedo_color = _kind_colour()
+		body.material_override = mat
+	# The barrel is the machine gun's tell and nobody else's: a thrown, placed or
+	# raised thing does not point.
+	var barrel := get_node_or_null("Barrel") as MeshInstance3D
+	if barrel != null:
+		barrel.visible = kind == Kind.MACHINE_GUN
+
+func _kind_colour() -> Color:
+	match kind:
+		Kind.GRENADE:
+			return Color(0.95, 0.75, 0.15)   # the same hazard yellow it throws
+		Kind.MINE:
+			return Color(0.85, 0.22, 0.15)
+		Kind.SHIELD:
+			return Color(0.25, 0.52, 0.88)
+	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per
 # sim tick by the pool.

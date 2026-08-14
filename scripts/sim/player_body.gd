@@ -155,6 +155,34 @@ func _ready() -> void:
 # delta from the physics frame, so this is only correct when the sim tick and the
 # physics tick are the same duration -- which is what lets a client replay N
 # ticks inside one frame and land where N frames put it.
+# --- The shield ----------------------------------------------------------------
+#
+# SHIELD STATE LIVES ON THE BODY, and it has to: it changes how the body STEPS,
+# and CLAUDE.md's rule is that anything affecting stepping is in capture_state()
+# or replays diverge. `shield_yaw` in particular persists across ticks -- it is
+# captured once when the shield goes up -- so deriving it per tick was never an
+# option.
+#
+# `has_shield` is the exception and is NOT state: it is an input, like `move`,
+# answering "is the thing in your hands a shield". The world sets it each tick
+# from the special slot, because the slot is not the body's business.
+var has_shield: bool = false
+var shielding: bool = false
+var shield_yaw: float = 0.0
+
+# Is this hit refused? `hit.from` is a POINT for exactly this reason -- a shield
+# gates by where something CAME FROM, which no direction-only hit could answer.
+func shield_blocks(hit) -> bool:
+	if not shielding:
+		return false
+	var flat := Vector2(position.x - hit.from.x, position.z - hit.from.z)
+	if flat.length() < SimConfig.SHIELD_MIN_BLOCK_DISTANCE:
+		return false
+	# The yaw pointing FROM the player TOWARD the source, against the yaw the
+	# shield was raised at.
+	var toward: float = GridConfig.yaw_of_vector(Vector3(-flat.x, 0.0, -flat.y))
+	return absf(wrapf(toward - shield_yaw, -PI, PI)) <= deg_to_rad(SimConfig.SHIELD_ARC_DEG) * 0.5
+
 func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	var before := position
 	state_timer += SimConfig.TICK_DELTA
@@ -406,6 +434,29 @@ func _aim_yaw(move: Vector2, aim: float) -> float:
 
 func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	var dt := SimConfig.TICK_DELTA
+
+	# ANCHORED. Raised on the tick the trigger goes down and dropped when it comes
+	# up; while it is up the body does not move and does not turn, so the direction
+	# chosen at the moment of raising is the direction committed to.
+	#
+	# Decided here rather than in the world because a client REPLAYS this function
+	# with stored inputs during reconciliation -- a shield applied from outside
+	# would be missing on every replayed tick, and the correction it caused would
+	# look exactly like lag.
+	var wants_shield: bool = has_shield 		and (actions & SimConfig.ACTION_SPECIAL_HELD) != 0
+	if wants_shield and not shielding:
+		shielding = true
+		shield_yaw = aim if is_finite(aim) else facing
+	elif not wants_shield:
+		shielding = false
+	if shielding:
+		facing = shield_yaw
+		velocity.x = 0.0
+		velocity.z = 0.0
+		velocity.y = -SimConfig.FLOOR_STICK if grounded else velocity.y - SimConfig.GRAVITY * dt
+		move_and_slide()
+		grounded = is_on_floor()
+		return
 
 	# Facing is INDEPENDENT of movement now: you strafe one way while pointing
 	# another. Only fall back to the direction of travel when there is no aiming
@@ -775,6 +826,11 @@ func release_ledge() -> void:
 func receive_hit(hit) -> bool:
 	if is_awaiting_rescue():
 		return false
+	# REFUSED ENTIRELY -- no damage and no knockback. A shield that stopped the
+	# damage but not the shove would be worthless in a game whose threat model is
+	# being moved somewhere you did not choose.
+	if shield_blocks(hit):
+		return false
 	if not take_damage(hit.amount):
 		return false
 	if hit.push > 0.0 or hit.lift > 0.0:
@@ -900,7 +956,8 @@ func _find_carrier() -> Node:
 # error, which looks precisely like a rescue that is not happening.
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
-		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown]
+		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
+		shielding, shield_yaw]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -916,6 +973,11 @@ func apply_state(s: Array) -> void:
 	hang_dir = int(s[10])
 	rescue_progress = float(s[11])
 	ledge_cooldown = float(s[12])
+	# Tolerated short, so a blob from before the shield existed still applies
+	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 14:
+		shielding = bool(s[13])
+		shield_yaw = float(s[14])
 	# The mesh angle is not on the wire -- it is cosmetic, and derivable. But it
 	# must be derived HERE too: a remote player is shown by applying snapshots,
 	# never by stepping, so without this a client keeps drawing a friend spinning

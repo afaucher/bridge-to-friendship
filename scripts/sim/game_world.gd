@@ -412,6 +412,7 @@ func _host_tick() -> void:
 			continue
 
 		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
+		_refresh_shield_flag(peer, body)
 
 		var restore_mask: int = body.collision_mask
 		if carriers.has(body):
@@ -1276,10 +1277,11 @@ func _fire_specials() -> void:
 			weapon.was_held = false
 			continue
 
-		# ONE BUTTON, THREE MEANINGS. The machine gun fires while it is DOWN, a
-		# grenade throws when it comes UP. Which one a special is, is the whole
-		# difference between them -- the slot, the pickup, the drop and the HUD box
-		# are shared, so this match is where a new special actually lands.
+		# ONE BUTTON, FOUR MEANINGS. The machine gun fires while it is DOWN; a
+		# grenade throws when it comes UP; a mine is laid on the way down; a shield
+		# is simply UP for as long as the button is. Which one a special is, is the
+		# whole difference between them -- the slot, the pickup, the drop and the
+		# HUD box are shared, so this match is where a new special actually lands.
 		var spent_a_use: bool = false
 		match weapon.kind:
 			SpecialBody.Kind.MACHINE_GUN:
@@ -1288,12 +1290,20 @@ func _fire_specials() -> void:
 				spent_a_use = _step_grenade(peer, body, weapon, held)
 			SpecialBody.Kind.MINE:
 				spent_a_use = _step_mine(peer, body, weapon, held)
+			SpecialBody.Kind.SHIELD:
+				spent_a_use = _step_shield(peer, body, weapon, held)
 		weapon.was_held = held
 
-		# SPENT MEANS GONE, at the moment the last use leaves. An empty special you
-		# keep carrying is the worst possible occupant of a one-slot rule: it does
-		# nothing and it stops you picking up the thing that would.
-		if spent_a_use and weapon.is_spent():
+		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
+		# occupant of a one-slot rule: it does nothing and it stops you picking up
+		# the thing that would.
+		#
+		# CHECKED EVERY TICK RATHER THAN ONLY WHEN A USE WAS SPENT, and NOT while a
+		# shield is still up. A shield spends its use the moment it RISES, so
+		# destroying on the spend would have deleted the last one in the same tick
+		# it was raised -- a third deployment that protected nobody from anything,
+		# and the kind of bug that only shows up on the last charge.
+		if weapon.is_spent() and not (int(weapon.kind) == SpecialBody.Kind.SHIELD 				and body.shielding):
 			var id: int = weapon.special_id
 			_specials.destroy(weapon)
 			if networked:
@@ -1444,6 +1454,27 @@ func _deployable_by_id(id: int) -> Node:
 		if is_instance_valid(d) and d.deployable_id == id:
 			return d
 	return null
+
+# IS THE THING IN YOUR HANDS A SHIELD? An INPUT to the body, not state on it: the
+# body decides whether it is anchored, and it needs to know what it is holding to
+# do that, but the slot itself is the pool's business and never the body's.
+#
+# Refreshed on both machines, from the same lookup, because the client predicts
+# its own anchoring -- see the note at the call site in _client_tick.
+func _refresh_shield_flag(peer: int, body: Node) -> void:
+	var weapon: Node = _specials.held_by(peer)
+	body.has_shield = weapon != null and int(weapon.kind) == SpecialBody.Kind.SHIELD
+
+# ONE USE PER DEPLOYMENT, spent when it goes up. There is no timer on the shield:
+# standing still IS the timer, on a bridge that has to be crossed and with things
+# arriving from behind. The anchoring itself is decided in PlayerBody._step_walk,
+# because a client replays that function and a shield applied from out here would
+# be missing on every replayed tick.
+func _step_shield(_peer: int, _body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.was_held:
+		return false
+	weapon.ammo -= 1
+	return true
 
 # A player has to be in control of themselves to fire. Same set that may pick one
 # up, for the same reason: shooting while tumbling would make a tumble free.
@@ -1960,6 +1991,12 @@ func _client_tick() -> void:
 
 	var body: Node = players.get(local_peer)
 	if body != null:
+		# BEFORE THE PREDICTION, and this is the line that keeps a shield from
+		# reading as lag. The client decides for itself that it is anchored,
+		# because it knows its own trigger and it has been told what it is
+		# holding -- so its prediction agrees with the host instead of guessing
+		# that it walked and being dragged back every tick.
+		_refresh_shield_flag(local_peer, body)
 		if _is_predicted(body.state):
 			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
 			_predicted.append([tick, body.capture_state()])

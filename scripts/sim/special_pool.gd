@@ -68,6 +68,7 @@ func spawn_loose(at: Vector3, kind: int = SpecialBody.Kind.MACHINE_GUN,
 	s.name = "Special_%d" % s.special_id
 	_root.add_child(s)
 	_specials.append(s)
+	s.apply_kind_look()
 	s.place_loose(at)
 	return s
 
@@ -80,6 +81,7 @@ func adopt(id: int, kind: int) -> Node:
 	s.name = "Special_%d" % id
 	_root.add_child(s)
 	_specials.append(s)
+	s.apply_kind_look()
 	return s
 
 static func _full_ammo(kind: int) -> int:
@@ -90,6 +92,8 @@ static func _full_ammo(kind: int) -> int:
 			return SimConfig.GRENADE_AMMO
 		SpecialBody.Kind.MINE:
 			return SimConfig.MINE_AMMO
+		SpecialBody.Kind.SHIELD:
+			return SimConfig.SHIELD_AMMO
 	return 0
 
 func destroy(s: Node) -> void:
