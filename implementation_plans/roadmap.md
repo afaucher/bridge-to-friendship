@@ -501,6 +501,43 @@ reconciliation replay re-fires the jump and burns the charges — the trap
 deciding what it does to the ascender grades. That decision is now made and
 recorded; update the comment to point at it when this milestone lands.
 
+## M13 — Netcode: make a distant client playable
+
+**Added 2026-08-13** from the first coast-to-coast playtest, which was reported
+as "the client's experience was pretty poor". Audit in
+`design_ideas/netcode_assessment.md`, plan in `implementation_plans/m13_netcode.md`.
+
+The authority model is right and does not change. What is missing is the layer it
+assumed: **no interpolation anywhere**, the client never reads the host tick the
+snapshot already carries, `SHOVE` is unpredicted so the signature verb has a full
+round trip of dead air, a busy snapshot is **2.5× ENet's MTU at 60 Hz** (measured:
+3484 B, 204 KB/s per client), and the host's input queue can only grow.
+
+Ordered so the two a player would notice come first: an interpolation buffer,
+then predicting the start of a shove, then the bandwidth work — halve the
+cadence, stop sending fields nobody reads (~30% by deletion alone), pack the wire
+(4.7× smaller, and under one MTU, which ends fragmentation).
+
+**The harness comes first and is the real prerequisite.** Every item is
+unfalsifiable without a rig that delays, jitters, drops and reorders *both*
+directions and asserts what a client SEES.
+
+## M14 — The debug console
+
+**Added 2026-08-13**, asked for in the same playtest:
+`implementation_plans/m14_debug_console.md`.
+
+A big replicated config any player can tweak and everyone sees. `DebugSettings`
+is already the right shape and its own comment predicted this — a registry a menu
+can build itself from, with a note to promote it to replicated state the day a
+knob has to be correct across a session. Three changes: numeric kinds in the
+registry, host-owned replication (any peer requests, host decides, broadcast to
+all), and a menu with **no per-knob UI code**. First entry is `show_hitboxes`.
+
+Listed after M13 and arguably worth doing before it: every other line in the
+playtest report is a number somebody wants to try, and hitbox visualisation
+answers the pillar and plinko items directly.
+
 ## Later
 
 Real Steam appid and store presence. Audio. More than four players. Progression
