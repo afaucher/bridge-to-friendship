@@ -30,6 +30,12 @@ at least 8 bytes: an int is 8, a float is 8, **a bool is 8**, a `Vector3` is 16.
 
 A quiet frame is 664 B / 39 KB/s. The cap case is what fragments.
 
+**Read that table as a ceiling, not a typical frame.** Measured over 900 ticks of
+a party walking the playtest bridge, the field carries **7.6 live balls on
+average, not 24** — so a normal busy moment is nearer 1800 B / 105 KB/s. Still
+1.3× the MTU, still fragmenting, but the 204 figure is the worst the config
+permits rather than the steady state.
+
 ### Why it is that big — three separate reasons, in order of size
 
 **1. Cadence.** `SNAPSHOT_INTERVAL_TICKS = 1`. Everything, to everyone, sixty
@@ -171,7 +177,41 @@ between, only the entries that have changed since that keyframe.** Then:
 A keyframe every 30 ticks bounds the worst case at half a second for an entry
 that moved and was missed. Tune N against the harness.
 
-### 7. Bound the input queue
+### 7. Idle the plinko emitters nobody is near
+
+Suggested during the review, and it is the only item here that attacks the
+**source** rather than the encoding — worth having because balls are 99 % of the
+churn in the table above.
+
+`_fire_shooters` walks every shooter cell the run has streamed in and fires each
+one every `PLINKO_FIRE_INTERVAL`, forever, wherever the party is. Measured over
+900 ticks with a party walking up the bridge: **60.9 % of shooter-ticks were more
+than 40 m from any player.** Idling those is a straight ~60 % cut in balls
+created, which is bandwidth, host physics and contact-graph pressure at once.
+
+**But the radius cannot be guessed, and 40 m is the wrong number.** The same run
+found that **no ball was ever within 20 m of a player**, 8.5 % were within 30 m
+and 57 % within 40 m — because a ball's whole job is to be fired up-bridge and
+*roll down* into the party. A shooter that only wakes when somebody is already
+close produces balls that arrive after the moment they were for, and
+`plinko.md`'s "balls come back down the bridge without anything aiming them" stops
+being true.
+
+So the gate is **asymmetric**: a shooter matters to players *below* it (its balls
+roll to them) and to players approaching from below with enough lead time to
+matter. Pick the up-bridge margin from how far a ball actually travels before it
+first comes within threat distance of anybody — which is a measurement this rig
+already knows how to take, not a constant to invent.
+
+**And it is a gameplay change, not only an optimisation.** A field that spins up
+as you approach is a different rhythm from one already in motion when you arrive,
+and `plinko.md` argues the rhythm is the point. Worth a playtest on its own.
+
+**Balls are NOT accumulating behind the party** — 0 % were past the trailing edge
+where hats and specials get culled, so there is no missing-cull bug here. It was
+worth checking; it was the obvious guess and it was wrong.
+
+### 8. Bound the input queue
 
 `_consume_remote_input` pops exactly one per tick; `_submit_input` appends
 everything that arrives; there is no cap, no catch-up and no clock sync. Queue
@@ -181,7 +221,7 @@ permanent 16.7 ms of added input latency**.
 Cap it, drop oldest, or consume two when deep. A few lines, and it removes a
 latency creep that gets worse the longer a session runs.
 
-### 8. Measure RTT and show it
+### 9. Measure RTT and show it
 
 Nothing in the codebase measures round-trip time — the audit had to reason from
 first principles about what an 80 ms link does. The next playtest report should
