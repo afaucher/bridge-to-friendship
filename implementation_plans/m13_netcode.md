@@ -135,7 +135,7 @@ sufficiency at today's caps, not a design argument, and it does not survive the
 numbers.
 
 Of everything in a snapshot, how much actually changed since the last one — at
-the 1 cm resolution item 5 packs to, over 600 ticks of steady state:
+1 cm resolution, over 600 ticks of steady state:
 
 | type | entry-ticks | changed |
 |---|---|---|
@@ -144,38 +144,107 @@ the 1 cm resolution item 5 packs to, over 600 ticks of steady state:
 | specials | 3005 | **0.2 %** |
 | players | 2404 | 4.2 % |
 | **balls** | 14281 | **90.9 %** |
-| total | 35070 | 37.4 % |
 
-**Almost nothing moves.** Hats, rushers and specials are within a rounding error
-of perfectly still, and even four players are 4 % — a walking body crosses 1 cm
-in well under a tick, but three of the four were standing.
+**Almost nothing moves.** Balls are 99 % of the churn and are deliberately set
+aside (item 7); everything else is within a rounding error of perfectly still.
 
-**Balls are the whole cost**: 99 % of every change in the table, because a plinko
-ball is a `RigidBody3D` on a deck pitched 4° by design. It rolls downhill until
-its 25 s lifetime culls it and never comes to rest. That is the plinko design
-working, not a bug — but it means the bandwidth is dominated by one object type
-whose entire purpose is to be in motion.
+#### The schema
 
-Even so: **~277 B/frame, 16.3 KB/s — 2.6× better than packing alone, and 12.5×
-smaller than today's 204 KB/s.**
+Three candidates measured on the same real snapshots, balls excluded, 900 ticks:
 
-**The keyframe variant is what makes this cheap.** Classic delta encoding needs
-per-client acked baselines, because a delta against a snapshot the client never
-received decodes into silent, permanent corruption — the worst failure shape
-there is. That would mean acks on a channel that has none, per-client state on
-the host, and per-client packet construction instead of one broadcast.
+| scheme | raw | + compression |
+|---|---|---|
+| A — full Variant (today) | 2091 B / 122.5 KB/s | 645 B / 37.8 KB/s |
+| B — + quantised to 1 cm | 2090 B / 122.5 KB/s | 622 B / 36.5 KB/s |
+| **C — + id manifest, changed only** | **907 B / 53.1 KB/s** | **256 B / 15.0 KB/s** |
 
-None of that is necessary here. **Send a full snapshot every N ticks and, in
-between, only the entries that have changed since that keyframe.** Then:
+**Scheme B is the surprise: quantisation on its own saves nothing.** A quantised
+float is still an 8-byte Variant float. Its value is making a resting body
+produce a *byte-identical entry* so the comparison in C is stable. Quantisation
+is a prerequisite for the delta, not a saving in itself — the earlier draft filed
+it under the wrong heading.
 
-- it is still **one packet broadcast to everyone** — no per-client state;
-- a lost packet costs staleness until the next keyframe rather than corruption,
-  which is the **same self-healing-by-construction** property every snapshot
-  applier in this codebase already relies on;
-- and it composes with item 1, which is already rendering ~100 ms in the past.
+**Scheme C is the recommendation**, and it is deliberately the least clever thing
+that works. Per section, send:
 
-A keyframe every 30 ticks bounds the worst case at half a second for an entry
-that moved and was missed. Tune N against the harness.
+```
+[ PackedInt32Array ids,      # every id present this tick
+  Array changed ]            # only entries differing from what was last sent
+```
+
+#### The manifest is the whole design
+
+Every applier in this codebase is **self-healing by construction**: it builds a
+seen-set from the entries, creates unknown ids, applies, and **destroys anything
+not mentioned**. There are seven, all identical in shape, with the id at element
+zero.
+
+That property is an asset and a trap. Omit unchanged entries naively and every
+applier **deletes everything that did not move**. The manifest keeps the destroy
+semantics exactly as they are while letting the payload shrink: the seen-set
+comes from the id list instead of from the entries, and nothing else changes.
+
+#### What it costs to implement
+
+One helper host-side —
+
+```gdscript
+static func encode(entries: Array, last: Dictionary, keyframe: bool) -> Array:
+    var ids := PackedInt32Array()
+    var changed: Array = []
+    for e in entries:
+        var id: int = int(e[0])
+        ids.append(id)
+        if keyframe or last.get(id, null) != e:
+            changed.append(e)
+            last[id] = e
+    return [ids, changed]
+```
+
+— and **two lines per applier**: take the seen-set from the manifest, iterate the
+changed list instead of every entry. Seven appliers, all the same shape.
+
+#### Why it stays robust as the game grows
+
+- **A new body type** is a new section and one more encode() call. Water (M7), the
+  bus (M11) and every remaining special land the same way.
+- **A new field on an entry** needs nothing — the comparison is whole-entry.
+- **A field that changes every tick** needs nothing; it is simply always sent.
+- **Getting it wrong sends too much rather than too little**, which is the correct
+  direction for a mistake to fail in.
+
+Three rules are the entire contract: **element zero is the id** (already true
+everywhere), **entries are built deterministically** (quantise floats), and **a
+keyframe every 30 ticks**.
+
+That keyframe is also what avoids the expensive version. Classic delta encoding
+needs per-client acked baselines — a delta against a snapshot the client never
+received decodes into silent, permanent corruption — meaning acks on a channel
+that has none, per-client state on the host, and per-client packet construction
+instead of one broadcast. **Keyframes buy the same safety with a counter** and
+keep it a single broadcast packet, bounding the worst case at half a second of
+staleness on one entry.
+
+Applies to the **unreliable snapshot only**. Ownership already travels reliably
+and must not be deltaed.
+
+#### About compression — measured, not proposed
+
+The compressed column is zstd on the payload, used as a **measure of how
+redundant the encoding is**: 3.2× on scheme A, because Variant packs everything
+into mostly-zero 8-byte fields.
+
+**It is not a proposal, and it is probably not free money.** Godot's
+ENetMultiplayerPeer appears to enable COMPRESS_RANGE_CODER by default, so some of
+that redundancy may already be squeezed on the wire, and range coder is weaker
+than zstd. **Verify what the link is actually doing before claiming any of it** —
+one source found while researching this says exactly that: always profile before
+claiming compression savings.
+
+What the numbers do establish is that compression and the delta **compose**:
+under the same compressor, scheme C is 256 B against scheme A's 645 B. The delta
+win holds whether or not compression is already on, which is the reason to build
+the schema rather than hope the transport saves you.
 
 ### 7. Idle the plinko emitters nobody is near
 
