@@ -11,10 +11,16 @@ extends CharacterBody3D
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 enum Mode { SETTLED, SLIDING, FALLING }
 
 var cell: Vector2i = Vector2i.ZERO
+
+# The grid that owns this stone. Set at spawn, because A STONE CANNOT PUSH
+# ITSELF: where it may go is the grid's decision (see slide_to), so the matrix
+# entry for a stone has to be able to ask.
+var grid: Node = null
 var mode: int = Mode.SETTLED
 
 # Where a slide is heading, in local space. Only meaningful while SLIDING.
@@ -22,6 +28,22 @@ var target: Vector3 = Vector3.ZERO
 
 # How far this body moved during its own last step -- what a rider inherits.
 var motion_delta: Vector3 = Vector3.ZERO
+
+# MOVED BY A BODY OR A BLAST; UNTOUCHED BY A ROUND.
+#
+# Shooting a pillar does nothing -- it is scenery with mass, and a game where
+# bullets rearranged the terrain would make cover unreliable in the one way cover
+# must not be. A dash moves it one cell, which is a rule the game already has; a
+# blast does the same, because that is the version bridge_grid.md's "no
+# destructible deck" leaves available. A stone that could be DESTROYED is a hole
+# created at runtime, which that document rules out for drop-in reasons.
+func receive_hit(hit) -> bool:
+	if hit.kind == Hit.Kind.BULLET or grid == null:
+		return false
+	if mode != Mode.SETTLED:
+		return false          # already moving; a second shove does not stack
+	return grid.try_push(cell, GridConfig.yaw_to_direction(
+		GridConfig.yaw_of_vector(hit.direction_to(position)))) != 0
 
 func step() -> void:
 	var before := position

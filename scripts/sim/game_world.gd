@@ -27,6 +27,7 @@ const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
 const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
 const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -876,11 +877,8 @@ func _resolve_rusher_contact(rusher: Node) -> void:
 			along = Vector3(0.0, 0.0, 1.0)
 		along = along.normalized()
 
-		body.take_damage(SimConfig.RUSHER_DAMAGE)
-		body.begin_tumble(Vector3(
-			along.x * SimConfig.RUSHER_KNOCKBACK,
-			SimConfig.RUSHER_KNOCKBACK_LIFT,
-			along.z * SimConfig.RUSHER_KNOCKBACK))
+		body.receive_hit(Hit.make(Hit.Kind.IMPACT, SimConfig.RUSHER_DAMAGE,
+			rusher.position, SimConfig.RUSHER_KNOCKBACK, SimConfig.RUSHER_KNOCKBACK_LIFT))
 		_kill_rusher(rusher)
 		return
 
@@ -1282,7 +1280,8 @@ func _process_bullets() -> void:
 			var hit := space.intersect_ray(query)
 			if not hit.is_empty():
 				struck = true
-				_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized())
+				_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
+					to_local(hit["position"]))
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -1291,49 +1290,62 @@ func _process_bullets() -> void:
 func bullet_count() -> int:
 	return _bullets.size()
 
-func _resolve_round_hit(target, direction: Vector3) -> void:
+# ONE EXPLOSION, resolved through the matrix. Every EXPLOSIVE source will call
+# this -- grenades and mines both -- and it exists now because a mound is
+# reachable by nothing else.
+#
+# THE ORDER MATTERS: mounds first, because they are grid DATA rather than bodies
+# and would otherwise be invisible to a pass that walks nodes. That is also the
+# whole reason a grenade can pre-empt a rusher before it wakes.
+#
+# Returns how many things it affected, so a caller can tell whether the charge
+# was worth spending.
+func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) -> int:
+	if not is_host:
+		return 0
+	var affected := 0
+	if kind == Hit.Kind.EXPLOSIVE and grid != null:
+		affected += grid.blast_mounds(centre, radius)
+
+	for target in _blast_targets(centre, radius):
+		var hit: RefCounted = Hit.make(kind, SimConfig.BLAST_DAMAGE, centre,
+			SimConfig.BLAST_PUSH, SimConfig.BLAST_LIFT)
+		if target.receive_hit(hit):
+			affected += 1
+	return affected
+
+# Everything within reach that can answer for itself. Deliberately assembled from
+# the pools rather than from a physics query: a blast reaches through cover by
+# design (that is what distinguishes it), so a shapecast would be filtering by the
+# wrong rule.
+func _blast_targets(centre: Vector3, radius: float) -> Array:
+	var out: Array = []
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if is_instance_valid(body) and body.position.distance_to(centre) <= radius:
+			out.append(body)
+	for group in [_rushers, _balls, _hats.all(), _specials.all()]:
+		for node in group:
+			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
+				out.append(node)
+	if grid != null:
+		for stone in grid._stone_list:
+			if is_instance_valid(stone) and stone.position.distance_to(centre) <= radius:
+				out.append(stone)
+	return out
+
+func _resolve_round_hit(target, direction: Vector3, at: Vector3) -> void:
 	if target == null:
 		return
-
-	# A BALL IS SHOVED. Asked for in playtest, and the one hit here that is not
-	# about hurting anybody: a round adds momentum to something already in motion.
-	# apply_central_impulse rather than setting a velocity, unlike the dash's
-	# deflect -- a dash decides where that ball goes; a round only argues with it.
-	if target.has_method("deflect") and "ball_id" in target:
-		target.apply_central_impulse(direction.normalized() * SimConfig.MG_BALL_PUSH)
-		return
-
-	# A RUSHER DIES. This is the claim the whole weapon category rests on --
-	# hazards.md: everything before rushers was deflectable, so a ranged special
-	# was only a shove you could do from further away. Only being shot ends a
-	# destructible.
-	if target.has_method("begin_rise") and "rusher_id" in target:
-		target.kill()
-		return
-
-	if not ("peer_id" in target):
-		return                     # deck, parapet, pillar: cover works
-	var body: Node = target
-	if body.is_awaiting_rescue() or _returning.has(int(body.peer_id)):
-		return
-
-	# DAMAGE AND KNOCKBACK TOGETHER, both gated by HIT_GRACE.
-	#
-	# take_damage returns false inside the grace window, and the knockback rides on
-	# that answer rather than being applied per round. At ten rounds a second
-	# against a 0.75 s grace, tumbling on every round would be a permanent tumble
-	# lock -- which is not a fight, it is a player being switched off. Gated, a
-	# sustained burst downs somebody in about four seconds.
-	if not body.take_damage(SimConfig.MG_DAMAGE):
-		return
-	var along := Vector3(direction.x, 0.0, direction.z)
-	if along.length_squared() < 0.01:
-		along = Vector3(0.0, 0.0, 1.0)
-	along = along.normalized()
-	body.begin_tumble(Vector3(
-		along.x * SimConfig.MG_KNOCKBACK,
-		SimConfig.MG_KNOCKBACK_LIFT,
-		along.z * SimConfig.MG_KNOCKBACK))
+	# THE CHAIN OF "WHAT ARE YOU?" QUESTIONS IS GONE. This used to ask
+	# has_method("deflect") and "ball_id" in target, then has_method("begin_rise"),
+	# then "peer_id" in target -- the machine gun deciding, in its own code, what
+	# every other object in the game was and what it deserved. Each of those
+	# answers now lives on the thing being hit, next to the reason for it.
+	if not target.has_method("receive_hit"):
+		return                    # deck, parapet, a shooter's pillar: cover works
+	target.receive_hit(Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, at,
+		SimConfig.MG_KNOCKBACK, SimConfig.MG_KNOCKBACK_LIFT))
 
 # Under the holder's Facing pivot, which player_body already rotates to match
 # `facing` -- so the barrel points where they are aiming and nothing here has to

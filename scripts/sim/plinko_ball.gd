@@ -21,6 +21,7 @@ extends RigidBody3D
 # friction and had nothing to do with friction.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 var ball_id: int = 0
 var age: float = 0.0
@@ -52,6 +53,20 @@ func deflect(direction: Vector3) -> void:
 	linear_velocity = direction * SimConfig.PLINKO_DEFLECT_SPEED
 	linear_velocity.y = maxf(linear_velocity.y, 2.0)
 	hit_cooldown = SimConfig.PLINKO_HIT_COOLDOWN
+
+# A BALL IS MOVED BY EVERYTHING AND DESTROYED BY NOTHING. It is the archetypal
+# deflectable threat -- hazards.md's whole "deflectable versus destructible" split
+# starts here -- so no kind of hit removes one; they only argue with it.
+#
+# IMPACT sets a velocity, because a dash is a player DECIDING where that ball
+# goes. Everything else adds an impulse, because a round or a blast only pushes
+# whatever it was already doing.
+func receive_hit(hit) -> bool:
+	if hit.kind == Hit.Kind.IMPACT:
+		deflect(hit.direction_to(position))
+		return true
+	apply_central_impulse(hit.direction_to(position) * hit.push)
+	return true
 
 func is_spent() -> bool:
 	return age > SimConfig.PLINKO_BALL_LIFETIME or position.y < SimConfig.FALL_KILL_Y

@@ -22,6 +22,7 @@ extends CharacterBody3D
 # the other side of that line.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 enum State {
 	RISE,       # emerging. The telegraph. Cannot touch you, cannot be hurt by you
@@ -195,6 +196,21 @@ var killed: bool = false
 
 func kill() -> void:
 	killed = true
+
+# DEFLECTED BY A BODY, ENDED BY A WEAPON. This is the split hazards.md calls the
+# most consequential line in the document: everything before rushers was
+# deflectable, so a ranged special was only a shove you could do from further
+# away. A dash buys time; a round buys the problem being over.
+func receive_hit(hit) -> bool:
+	match hit.kind:
+		Hit.Kind.BULLET, Hit.Kind.EXPLOSIVE:
+			kill()
+			return true
+		_:
+			# A dash. Deflect along the way the hit was travelling, which for a
+			# contact is away from the body that arrived.
+			deflect(hit.direction_to(position))
+			return true
 
 # Burrows back down. The floor under a weaponless player -- outliving one is
 # desperate, but it is always available and it is why no player is ever stranded.

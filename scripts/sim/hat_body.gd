@@ -19,6 +19,7 @@ extends RigidBody3D
 # plinko_ball.gd, which argues this at length.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 
 enum Mode { WORN, FLYING, LOOSE }
@@ -153,6 +154,18 @@ func lean_basis() -> Basis:
 	# Rotating about +Z tips the local up-axis toward -X, hence the sign; about +X
 	# it tips toward +Z, which is already the direction wanted.
 	return Basis(Vector3(0.0, 0.0, 1.0), -lean.x) * Basis(Vector3(1.0, 0.0, 0.0), lean.y)
+
+# SCATTERED BY A BLAST, AND BY NOTHING ELSE. Gunfire deliberately cannot strip a
+# friend's hat stack or knock the gun out of their hands -- that would put the
+# whole M8.5 reward curve at the mercy of a stray round -- but debris thrown by an
+# explosion is free and looks right.
+#
+# A HELD or WORN one is untouched: it is not in the world to be thrown.
+func receive_hit(hit) -> bool:
+	if hit.kind != Hit.Kind.EXPLOSIVE or mode == Mode.WORN:
+		return false
+	launch(position, hit.launch_for(position))
+	return true
 
 func is_collectable() -> bool:
 	return mode == Mode.LOOSE

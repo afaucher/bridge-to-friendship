@@ -524,6 +524,24 @@ const MG_KNOCKBACK_LIFT := 2.0
 # (There was an MG_TRACER_SECONDS here. Rounds are real objects now, so the line
 # that stood in for one is gone -- see scripts/sim/bullet.gd.)
 
+# --- Explosions ---------------------------------------------------------------
+#
+# Shared by every EXPLOSIVE source -- grenades and mines when they land. The
+# damage model says what a blast DOES to each thing; these are what it does it
+# with.
+
+# Two hit points, against a five-point bar. A blast is the biggest single thing
+# in the game and still not half a life, because HIT_GRACE means a player caught
+# by two in quick succession only pays for one.
+const BLAST_DAMAGE := 2
+
+# HARDER THAN ANYTHING ELSE, and that is the point of an explosion in a game whose
+# threat model is displacement: above SHOVE_TRANSFER_SPEED (11) so a blast throws
+# you further than a teammate's dash, with more lift so it reads as being picked
+# up rather than shoved along.
+const BLAST_PUSH := 15.0
+const BLAST_LIFT := 5.0
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

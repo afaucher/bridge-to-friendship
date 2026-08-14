@@ -23,6 +23,7 @@ extends RigidBody3D
 # and legs are not this.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 enum Mode { HELD, FLYING, LOOSE }
 
@@ -86,6 +87,18 @@ func step() -> void:
 	settle_grace = maxf(0.0, settle_grace - SimConfig.TICK_DELTA)
 	if settle_grace <= 0.0:
 		mode = Mode.LOOSE
+
+# SCATTERED BY A BLAST, AND BY NOTHING ELSE. Gunfire deliberately cannot strip a
+# friend's hat stack or knock the gun out of their hands -- that would put the
+# whole M8.5 reward curve at the mercy of a stray round -- but debris thrown by an
+# explosion is free and looks right.
+#
+# A HELD or WORN one is untouched: it is not in the world to be thrown.
+func receive_hit(hit) -> bool:
+	if hit.kind != Hit.Kind.EXPLOSIVE or mode == Mode.HELD:
+		return false
+	drop(position, hit.launch_for(position))
+	return true
 
 func is_collectable() -> bool:
 	return mode == Mode.LOOSE and ammo > 0

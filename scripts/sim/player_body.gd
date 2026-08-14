@@ -15,6 +15,7 @@ extends CharacterBody3D
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 enum State {
 	WALK,        # full control
@@ -763,6 +764,23 @@ func release_ledge() -> void:
 
 # Returns true if the hit landed. The grace window is the reason it might not:
 # without it one tumble through a pillar field costs the whole bar.
+# EVERY KIND HURTS THE SAME, and that is deliberate rather than unfinished. The
+# punishment vocabulary in hazards.md is four verbs wide on purpose, and a player
+# who has to learn that bullets hurt differently from blasts is learning a table
+# instead of a game. What differs is the PUSH, which the source chooses.
+#
+# The grace window is the gate, and it is the whole reason the tumble rides on
+# take_damage's answer: without that, a burst from the machine gun would tumble
+# somebody sixty times a second while dealing damage once.
+func receive_hit(hit) -> bool:
+	if is_awaiting_rescue():
+		return false
+	if not take_damage(hit.amount):
+		return false
+	if hit.push > 0.0 or hit.lift > 0.0:
+		begin_tumble(hit.launch_for(position))
+	return true
+
 func take_damage(amount: int) -> bool:
 	if amount <= 0 or invulnerable > 0.0:
 		return false

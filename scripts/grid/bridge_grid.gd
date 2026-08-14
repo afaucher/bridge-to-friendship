@@ -251,6 +251,7 @@ func _spawn_stone(cell: Vector2i) -> void:
 	var stone: Node3D = StoneScene.instantiate()
 	stone.name = "Stone_%d_%d" % [cell.x, cell.y]
 	stone.cell = cell
+	stone.grid = self
 	stone.position = _stone_rest_position(cell)
 	_stone_root.add_child(stone)
 	_stones[cell] = stone
@@ -414,6 +415,25 @@ func mound_surface_world(cell: Vector2i) -> Vector3:
 # Wake the mound at `cell`: the lump goes, and it never comes back. Returns false
 # if there was nothing there, so the caller cannot spawn two rushers from one
 # mound by asking twice in a frame.
+# A MOUND IS IMMUNE TO BULLETS AND KILLED BY A BLAST, and the rule lives here
+# because the grid is what owns mounds -- they are authored cells, not bodies.
+#
+# It is dormant and flush with the deck: there is nothing above ground to shoot,
+# so a round passes over it. A blast reaches down, which turns a grenade into the
+# way to PRE-EMPT a hazard before it wakes -- spend a charge and the rusher never
+# rises. That is a genuinely new decision built entirely out of parts that already
+# existed, and it is the best thing to come out of the damage model.
+#
+# Returns how many it removed, so a caller can tell whether the charge was worth
+# spending.
+func blast_mounds(centre: Vector3, radius: float) -> int:
+	var removed := 0
+	for cell in mound_cells():
+		if mound_surface_world(cell).distance_to(centre) <= radius:
+			if take_mound(cell):
+				removed += 1
+	return removed
+
 func take_mound(cell: Vector2i) -> bool:
 	if not _mounds.has(cell):
 		return false
