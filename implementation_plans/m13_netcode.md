@@ -64,7 +64,8 @@ packet instead of two and a half.**
 ## The work, in the order it should land
 
 Each item stands alone and each is separately playtestable. **1 and 2 are the two
-that a player would notice**; 3–5 are why the link can carry them.
+a player would notice**; 3–6 are why the link can carry them, and they compound:
+204 KB/s today, ~43 packed, ~16 packed-and-delta'd, ~8 at half cadence.
 
 ### 1. An interpolation buffer for remote bodies
 
@@ -120,7 +121,57 @@ A `PackedByteArray` codec: `uint16` ids, 1 cm-quantised `int16` positions,
 one MTU, which ends fragmentation — and fragmentation is what turns 1% link loss
 into 3% snapshot loss exactly when the screen is busiest.
 
-### 6. Bound the input queue
+### 6. Delta against a keyframe
+
+**Measured, because the first draft of this plan waved it away and the reason
+given was weak.** "It fits in one packet with four players" is a statement about
+sufficiency at today's caps, not a design argument, and it does not survive the
+numbers.
+
+Of everything in a snapshot, how much actually changed since the last one — at
+the 1 cm resolution item 5 packs to, over 600 ticks of steady state:
+
+| type | entry-ticks | changed |
+|---|---|---|
+| hats | 12020 | **0.2 %** |
+| rushers | 3360 | **0.2 %** |
+| specials | 3005 | **0.2 %** |
+| players | 2404 | 4.2 % |
+| **balls** | 14281 | **90.9 %** |
+| total | 35070 | 37.4 % |
+
+**Almost nothing moves.** Hats, rushers and specials are within a rounding error
+of perfectly still, and even four players are 4 % — a walking body crosses 1 cm
+in well under a tick, but three of the four were standing.
+
+**Balls are the whole cost**: 99 % of every change in the table, because a plinko
+ball is a `RigidBody3D` on a deck pitched 4° by design. It rolls downhill until
+its 25 s lifetime culls it and never comes to rest. That is the plinko design
+working, not a bug — but it means the bandwidth is dominated by one object type
+whose entire purpose is to be in motion.
+
+Even so: **~277 B/frame, 16.3 KB/s — 2.6× better than packing alone, and 12.5×
+smaller than today's 204 KB/s.**
+
+**The keyframe variant is what makes this cheap.** Classic delta encoding needs
+per-client acked baselines, because a delta against a snapshot the client never
+received decodes into silent, permanent corruption — the worst failure shape
+there is. That would mean acks on a channel that has none, per-client state on
+the host, and per-client packet construction instead of one broadcast.
+
+None of that is necessary here. **Send a full snapshot every N ticks and, in
+between, only the entries that have changed since that keyframe.** Then:
+
+- it is still **one packet broadcast to everyone** — no per-client state;
+- a lost packet costs staleness until the next keyframe rather than corruption,
+  which is the **same self-healing-by-construction** property every snapshot
+  applier in this codebase already relies on;
+- and it composes with item 1, which is already rendering ~100 ms in the past.
+
+A keyframe every 30 ticks bounds the worst case at half a second for an entry
+that moved and was missed. Tune N against the harness.
+
+### 7. Bound the input queue
 
 `_consume_remote_input` pops exactly one per tick; `_submit_input` appends
 everything that arrives; there is no cap, no catch-up and no clock sync. Queue
@@ -130,7 +181,7 @@ permanent 16.7 ms of added input latency**.
 Cap it, drop oldest, or consume two when deep. A few lines, and it removes a
 latency creep that gets worse the longer a session runs.
 
-### 7. Measure RTT and show it
+### 8. Measure RTT and show it
 
 Nothing in the codebase measures round-trip time — the audit had to reason from
 first principles about what an 80 ms link does. The next playtest report should
@@ -166,9 +217,11 @@ next one after that is 28783.
 ## Explicitly not in this milestone
 
 - **Changing the authority model.** It is right. This is the layer on top.
-- **Delta encoding and relevancy filtering.** Item 5's quantisation gets a busy
-  frame under one packet with four players, which is the party size this game
-  supports. Deltas are the answer to a problem this game does not have yet.
+- **Relevancy filtering.** Deciding *who* needs to hear about a body. The party
+  is inside a 40 m leash on a bridge everybody can see, so there is nothing to
+  filter — this is the answer to a problem this game does not have.
+- **Acked per-client baselines.** See item 6: the keyframe variant gets the win
+  without them, and they are what makes delta encoding expensive elsewhere.
 - **Rollback for anything but the local avatar.** The party is co-op; nobody is
   competing over a frame.
 - **A dedicated server.** Host-authoritative with the host playing is the
