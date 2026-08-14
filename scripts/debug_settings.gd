@@ -70,6 +70,14 @@ const OPTIONS := {
 		"help": "Slop ON TOP of real contact (ball 0.6 + body 0.4 = 1.0 m). At 1.1 the test fires at 1.5 m. Was effectively 2.0 m until the half-height unit error was fixed on 2026-08-14.",
 	},
 
+	"rusher_speed_pct": {
+		"section": "Hazards",
+		"kind": KIND_FLOAT,
+		"label": "Rusher speed",
+		"default": 100.0, "min": 25.0, "max": 100.0, "step": 25.0,
+		"help": "Percentage of RUSHER_SPEED. Stepped at 25 so it is the four settings asked for -- 100, 75, 50, 25 -- rather than a slider nobody can report a number from. A PERCENTAGE and not a speed, because what a playtest is answering is 'is it too fast', which is a question about the shipped value.",
+	},
+
 	# --- Weapons -------------------------------------------------------------
 	"mg_spread_deg": {
 		"section": "Weapons",

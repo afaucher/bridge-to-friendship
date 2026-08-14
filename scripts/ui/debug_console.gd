@@ -165,7 +165,11 @@ func _refresh(key: String) -> void:
 func _format(key: String, value: Variant) -> String:
 	match DebugSettingsScript.kind_of(key):
 		DebugSettingsScript.KIND_FLOAT:
-			return "%.2f" % float(value)
+			# A knob stepped in whole units is a whole number. "100.00" for a
+			# percentage is noise, and the echo exists to be READ OUT in a
+			# playtest report.
+			var step: float = float(DebugSettingsScript.OPTIONS[key].get("step", 0.0))
+			return str(int(round(float(value)))) if step >= 1.0 else "%.2f" % float(value)
 		DebugSettingsScript.KIND_INT:
 			return str(int(value))
 		DebugSettingsScript.KIND_BOOL:

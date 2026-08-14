@@ -86,6 +86,15 @@ func _step_rise() -> void:
 		state = State.CHASE
 		state_timer = 0.0
 
+# How fast it actually moves this tick. A PERCENTAGE of the shipped constant, so
+# the console reads "50" rather than "4.0" and a playtest report says something
+# about the value in sim_config.gd rather than about a number nobody can place.
+#
+# Read per tick rather than cached: the knob is replicated and applied on a tick
+# boundary, so a rusher mid-chase picks up a change the moment the host does.
+func _speed() -> float:
+	return SimConfig.RUSHER_SPEED 		* DebugSettings.tuned("rusher_speed_pct", 100.0) * 0.01
+
 func _step_chase(target: Vector3, has_target: bool) -> void:
 	var toward := Vector3.ZERO
 	if has_target:
@@ -95,8 +104,9 @@ func _step_chase(target: Vector3, has_target: bool) -> void:
 		toward = Vector3(target.x - position.x, 0.0, target.z - position.z)
 	if toward.length_squared() > 0.0001:
 		toward = toward.normalized()
-		velocity.x = toward.x * SimConfig.RUSHER_SPEED
-		velocity.z = toward.z * SimConfig.RUSHER_SPEED
+		var speed: float = _speed()
+		velocity.x = toward.x * speed
+		velocity.z = toward.z * speed
 	else:
 		velocity.x = 0.0
 		velocity.z = 0.0
@@ -105,6 +115,10 @@ func _step_chase(target: Vector3, has_target: bool) -> void:
 # Knocked back and briefly out of it. Friction rather than a hard stop, so a
 # deflection reads as a thing that happened to it rather than a state flag.
 func _step_stagger() -> void:
+	# NOT scaled by the speed knob. This is the friction that bleeds off a
+	# DEFLECTION, and a deflection's distance is the dash's doing, not the
+	# rusher's -- slowing the chase should not also make a batted rusher slide
+	# further, which would change what winning the dash is worth.
 	velocity.x = move_toward(velocity.x, 0.0, SimConfig.RUSHER_SPEED * SimConfig.TICK_DELTA)
 	velocity.z = move_toward(velocity.z, 0.0, SimConfig.RUSHER_SPEED * SimConfig.TICK_DELTA)
 	_apply_gravity_and_move()

@@ -60,6 +60,7 @@ func _physics_process(_delta: float) -> void:
 		3: _phase_contact_tumbles_and_spends()
 		4: _phase_dash_deflects()
 		5: _phase_burrows()
+		6: _phase_speed_knob()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -347,7 +348,7 @@ func _phase_burrows() -> void:
 	if phase_frame == 60:
 		eq(world.rusher_count(), 0,
 			"a rusher nobody could fight burrows back down on its own")
-		finish()
+		_advance(6)
 
 # --- helpers ------------------------------------------------------------------
 
@@ -421,3 +422,48 @@ func _place_rusher(cell: Vector2i) -> Node:
 	rusher.velocity = Vector3.ZERO
 	rusher.grounded = true
 	return rusher
+
+# --- 7. The speed knob actually reaches the rusher -----------------------------
+#
+# Added 2026-08-14 with the debug console's rusher_speed_pct. The knob is a
+# percentage of RUSHER_SPEED, and the failure it exists to catch is the silent
+# one: a knob that replicates perfectly, shows the right number in the panel, and
+# is read by nothing. Only measuring TRAVEL can tell those apart.
+
+func _phase_speed_knob() -> void:
+	if phase_frame == 1:
+		_isolate()
+		_park(Vector2i(6, 22))
+		DebugSettings.set_value("rusher_speed_pct", 100.0)
+		recorded["id"] = _place_rusher_id(Vector2i(6, 27))
+		return
+	if phase_frame == 20:
+		if _lost_subject(): return
+		recorded["from"] = _tracked().position
+		return
+	if phase_frame == 50:
+		if _lost_subject(): return
+		recorded["full"] = float(_tracked().position.distance_to(recorded["from"]))
+		# Same rusher would be ideal, but it is closing on the player and would
+		# reach them; a fresh one on the same lane is the honest comparison.
+		_isolate()
+		_park(Vector2i(6, 22))
+		DebugSettings.set_value("rusher_speed_pct", 25.0)
+		recorded["id"] = _place_rusher_id(Vector2i(6, 27))
+		return
+	if phase_frame == 70:
+		if _lost_subject(): return
+		recorded["from"] = _tracked().position
+		return
+	if phase_frame == 100:
+		if _lost_subject(): return
+		var quarter: float = float(_tracked().position.distance_to(recorded["from"]))
+		var full: float = float(recorded["full"])
+		# A QUARTER, within a generous margin -- the point is that the knob is read
+		# at all, not that the arithmetic is exact under a physics sweep.
+		check(quarter < full * 0.5,
+			"at 25%% a rusher covers far less ground (%.2f m against %.2f m)"
+				% [quarter, full])
+		check(quarter > 0.05, "but is still moving, rather than switched off (%.2f m)" % quarter)
+		DebugSettings.set_value("rusher_speed_pct", 100.0)
+		finish()
