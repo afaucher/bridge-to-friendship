@@ -26,6 +26,7 @@ const SpecialPool = preload("res://scripts/sim/special_pool.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
 const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
+const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -1748,17 +1749,34 @@ func _send_input() -> void:
 func _broadcast_snapshot() -> void:
 	if not networked:
 		return
-	var entries: Array = []
+	# A KEYFRAME EVERY KEYFRAME_TICKS, or whenever somebody just joined. See
+	# snapshot_delta.gd: a delta means nothing to a client with no baseline, and a
+	# joiner has none.
+	var keyframe: bool = _keyframe_due or (tick % SnapshotDelta.KEYFRAME_TICKS) == 0
+	_keyframe_due = false
+
+	var raw_players: Array = []
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
-		entries.append([peer, players[peer].capture_state(), int(_last_input_tick.get(peer, 0))])
+		raw_players.append([peer, players[peer].capture_state(), int(_last_input_tick.get(peer, 0))])
+	# Players go through the same codec as everything else even though nothing
+	# destroys a player on absence -- one shape for every section is what makes
+	# the next body type one call rather than a decision. In practice the local
+	# player's entry is always "changed" anyway, because the acked input tick in
+	# it advances every tick.
+	var entries: Array = SnapshotDelta.encode(raw_players, _section("players"), keyframe)
+
+	# Stones are NOT deltaed and do not need to be: stone_snapshot() already sends
+	# only the ones that are not SETTLED, and nothing destroys a stone on absence
+	# -- they are grid-resident, built from the segments both machines loaded.
 	var stones: Array = grid.stone_snapshot() if grid != null else []
 	# The layout only on a slow cadence -- see BridgeGrid.stone_layout().
 	var layout: PackedInt32Array = PackedInt32Array()
 	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
 		layout = grid.stone_layout()
-	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(), layout, _rusher_snapshot(),
-		_hat_snapshot(), _special_snapshot(), _bullet_snapshot())
+	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(keyframe), layout,
+		_rusher_snapshot(keyframe), _hat_snapshot(keyframe), _special_snapshot(keyframe),
+		_bullet_snapshot(keyframe))
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -1766,21 +1784,30 @@ func _broadcast_snapshot() -> void:
 # machines disagreeing about where it is means two machines disagreeing about who
 # got hit. A ball is a position and a velocity and there are at most a couple of
 # dozen; measure before optimising this.
-func _ball_snapshot() -> Array:
+func _ball_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for ball in _balls:
 		if is_instance_valid(ball):
 			out.append([ball.ball_id, ball.position, ball.linear_velocity])
-	return out
+	return SnapshotDelta.encode(out, _section("balls"), keyframe)
+
+# The per-section memory, created on first use so a new section is one call and
+# not also a declaration.
+func _section(name: String) -> Dictionary:
+	if not _last_sent.has(name):
+		_last_sent[name] = {}
+	return _last_sent[name]
 
 # Clients rebuild their ball set to match the host's, creating and freeing to
 # suit. Self-healing by construction: a dropped packet costs a frame of staleness
 # rather than a ball that exists forever on one machine.
-func _apply_ball_snapshot(balls: Array) -> void:
-	var seen: Dictionary = {}
-	for entry in balls:
+func _apply_ball_snapshot(section: Array) -> void:
+	# SEEN COMES FROM THE MANIFEST, NOT FROM THE ENTRIES. That one line is what
+	# lets the payload carry only what moved while "a body the host stops
+	# mentioning has gone" keeps meaning what it always meant.
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
 		var id: int = int(entry[0])
-		seen[id] = true
 		var ball: Node = _ball_by_id(id)
 		if ball == null:
 			ball = BallScene.instantiate()
@@ -1801,6 +1828,14 @@ func _apply_ball_snapshot(balls: Array) -> void:
 			if is_instance_valid(existing):
 				existing.queue_free()
 
+# Every id the host says exists this tick. The destroy pass below each applier
+# reads this, so an entry that did not change is still "present" and survives.
+func _seen_from(section: Array) -> Dictionary:
+	var seen: Dictionary = {}
+	for id in SnapshotDelta.ids_of(section):
+		seen[int(id)] = true
+	return seen
+
 func _ball_by_id(id: int) -> Node:
 	for ball in _balls:
 		if is_instance_valid(ball) and ball.ball_id == id:
@@ -1811,21 +1846,20 @@ func _ball_by_id(id: int) -> Node:
 # never predicted. No velocity on the wire -- a client does not integrate one, so
 # sending it would be paying MTU for a number nobody reads. See the CLAUDE.md
 # note about the 4595-byte snapshot that would not fit ENet's 1392.
-func _rusher_snapshot() -> Array:
+func _rusher_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for rusher in _rushers:
 		if is_instance_valid(rusher):
 			out.append(rusher.capture_state())
-	return out
+	return SnapshotDelta.encode(out, _section("rushers"), keyframe)
 
 # Self-healing by construction, same as the ball set: a dropped packet costs a
 # frame of staleness rather than an enemy that exists forever on one machine.
 # THIS IS ALSO HOW A CLIENT LEARNS A RUSHER DIED -- it stops being mentioned.
-func _apply_rusher_snapshot(rushers: Array) -> void:
-	var seen: Dictionary = {}
-	for entry in rushers:
+func _apply_rusher_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
 		var id: int = int(entry[0])
-		seen[id] = true
 		var rusher: Node = _rusher_by_id(id)
 		if rusher == null:
 			rusher = RusherScene.instantiate()
@@ -1855,23 +1889,22 @@ func _rusher_by_id(id: int) -> Node:
 #
 # style_id rides along because it is what a hat LOOKS like, and it is how a
 # client that has never seen this hat before draws the right one.
-func _hat_snapshot() -> Array:
+func _hat_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for hat in _hats.all():
 		if is_instance_valid(hat) and hat.mode != HatBody.Mode.WORN:
 			out.append([hat.hat_id, hat.style_id, hat.mode, hat.position])
-	return out
+	return SnapshotDelta.encode(out, _section("hats"), keyframe)
 
 # Self-healing by construction, like the ball set: a dropped packet costs a frame
 # of staleness rather than a hat that exists forever on one machine. A hat the
 # host stops mentioning has been picked up, culled or destroyed -- and a WORN hat
 # is not in this list, so it is removed here and re-created by the reliable
 # _wear_hat that put it on a head.
-func _apply_hat_snapshot(hats: Array) -> void:
-	var seen: Dictionary = {}
-	for entry in hats:
+func _apply_hat_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
 		var id: int = int(entry[0])
-		seen[id] = true
 		var hat: Node = _hats.by_id(id)
 		if hat == null:
 			hat = _hats.adopt(id, int(entry[1]))
@@ -1924,20 +1957,19 @@ func _worn_hat_dump() -> Array:
 # travels reliably through _take_special. `kind` rides along so a client that has
 # never seen this one draws the right thing; `ammo` rides along because the HUD
 # shows a friend's remaining rounds and a stale count is worse than none.
-func _special_snapshot() -> Array:
+func _special_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for s in _specials.all():
 		if is_instance_valid(s) and s.mode != SpecialBody.Mode.HELD:
 			out.append([s.special_id, s.kind, s.mode, s.position, s.ammo])
-	return out
+	return SnapshotDelta.encode(out, _section("specials"), keyframe)
 
 # Self-healing by construction, like the ball and hat sets: a dropped packet costs
 # a frame of staleness rather than a weapon that exists forever on one machine.
-func _apply_special_snapshot(specials: Array) -> void:
-	var seen: Dictionary = {}
-	for entry in specials:
+func _apply_special_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
 		var id: int = int(entry[0])
-		seen[id] = true
 		var s: Node = _specials.by_id(id)
 		if s == null:
 			s = _specials.adopt(id, int(entry[1]))
@@ -1956,21 +1988,20 @@ func _apply_special_snapshot(specials: Array) -> void:
 # SNAPSHOT_INTERVAL_TICKS of 1 that is every tick, which is as smooth as the host's
 # own copy. The moment that interval rises, this is one of the things that will
 # want interpolating.
-func _bullet_snapshot() -> Array:
+func _bullet_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for bullet in _bullets:
 		if is_instance_valid(bullet):
 			out.append([bullet.bullet_id, bullet.position])
-	return out
+	return SnapshotDelta.encode(out, _section("bullets"), keyframe)
 
 # Self-healing like the ball set: a round the host stops mentioning has hit
 # something, expired or left the world, and the client removes it without needing
 # to be told which.
-func _apply_bullet_snapshot(bullets: Array) -> void:
-	var seen: Dictionary = {}
-	for entry in bullets:
+func _apply_bullet_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
 		var id: int = int(entry[0])
-		seen[id] = true
 		var bullet: Node = _bullet_by_id(id)
 		if bullet == null:
 			bullet = BulletScene.instantiate()
@@ -2021,7 +2052,7 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 	_apply_hat_snapshot(hats)
 	_apply_special_snapshot(specials)
 	_apply_bullet_snapshot(bullets)
-	for e in entries:
+	for e in SnapshotDelta.changed_of(entries):
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
 		if body == null:
@@ -2129,6 +2160,16 @@ func _broadcast_names() -> void:
 # Requests that arrived between ticks, applied at the top of the next one. A knob
 # that affects stepping is a sim rule, and changing one halfway through a step
 # loop would mean two bodies in the same tick ran under different rules.
+# What each section last sent, per id, as a quantised comparison key. See
+# snapshot_delta.gd -- this is the entire state delta encoding needs, and it is
+# the same on every client because it is never per-client.
+var _last_sent: Dictionary = {}
+
+# Forced full snapshots. Counted down from the tick, and set outright whenever
+# somebody joins: a delta is only meaningful to a client that already has the
+# baseline, and a joiner has nothing.
+var _keyframe_due: bool = true
+
 var _pending_settings: Dictionary = {}
 
 # How many config broadcasts this world has taken from the host. Test-visible on
@@ -2258,6 +2299,10 @@ func host_add_peer(peer: int) -> void:
 	# The debug config, so a joiner tunes against the same numbers everyone else
 	# is already playing on rather than against the shipped defaults.
 	_set_settings.rpc_id(peer, DebugSettings.snapshot())
+	# THE NEXT SNAPSHOT IS A FULL ONE. A newcomer has no baseline, so a delta
+	# would name ids it has never been told the positions of -- and it would never
+	# create those bodies at all, because an applier only builds what it is sent.
+	_keyframe_due = true
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.
