@@ -83,6 +83,7 @@ func _physics_process(_delta: float) -> void:
 		2: _phase_spent_ball_is_harmless()
 		3: _phase_dash_deflects()
 		4: _phase_balls_collide()
+		5: _phase_hit_radius_matches_geometry()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -231,6 +232,45 @@ func _phase_balls_collide() -> void:
 		var moved: float = float(recorded["target_z"]) - target.position.z
 		check(moved > 0.5,
 			"a ball knocks another ball up-bridge, against the pitch -- so they collide (%.2f m)" % moved)
+		_advance(5)
+
+# --- 6. The hit radius is the geometry, not twice the geometry -----------------
+#
+# Reported 2026-08-13: "plinko balls can seemingly hit you from quite a distance
+# going past you." Measured, and it was a UNIT ERROR rather than a generous
+# constant: the test added PlayerBody.HALF_HEIGHT (0.9) as its horizontal term --
+# the body's TALLNESS standing in for its WIDTH -- so a 0.6 m ball and a 0.4 m
+# body whose real contact distance is 1.0 m triggered at 2.0 m.
+#
+# WALKED IN RATHER THAN CALCULATED. Asserting `reach == RADIUS + knob` would just
+# restate the line above it; placing a ball at a measured distance and asking
+# whether it connects is the claim a player would make.
+
+const NEAR_MISS := 1.9      # outside the fixed radius (1.5), inside the old one (2.0)
+const CLEAR_HIT := 1.2      # inside both, so this half is not what proves the fix
+
+func _phase_hit_radius_matches_geometry() -> void:
+	if phase_frame == 1:
+		_isolate()
+		# Dead level with the body and moving straight at it, so this measures the
+		# radius and nothing else -- no arc, no falling, no glancing angle.
+		var at: Vector3 = victim.position + Vector3(NEAR_MISS, 0.0, 0.0)
+		_place_ball(at, Vector3(-6.0, 0.0, 0.0))
+		recorded["health_before"] = int(victim.health)
+		return
+	if phase_frame == 3:
+		eq(int(victim.health), int(recorded["health_before"]),
+			"a ball %.1f m away has not hit yet (real contact is %.1f m)"
+				% [NEAR_MISS, SimConfig.BALL_RADIUS + PlayerBody.RADIUS])
+		_isolate()
+		var at: Vector3 = victim.position + Vector3(CLEAR_HIT, 0.0, 0.0)
+		_place_ball(at, Vector3(-6.0, 0.0, 0.0))
+		recorded["health_before"] = int(victim.health)
+		return
+	if phase_frame == 6:
+		check(int(victim.health) < int(recorded["health_before"]),
+			"but one at %.1f m does -- the radius still has room in it, deliberately"
+				% CLEAR_HIT)
 		finish()
 
 # --- helpers ------------------------------------------------------------------

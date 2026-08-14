@@ -490,6 +490,14 @@ about *method*, not about that game.
 - Commit messages use a `feat:`/`fix:` prefix.
 - Design decisions get a short doc in `design_ideas/`; milestones get a plan in
   `implementation_plans/`. Prefer adding to those over inline essays.
+- **NEVER `git checkout --` A FILE THAT HAS UNCOMMITTED WORK IN IT.** Observed
+  2026-08-14 while A/B-ing the debug console: a loop that disabled one function,
+  ran the gate, then "restored" with `git checkout -- scripts/sim/game_world.gd`
+  threw away an hour of uncommitted edits, because checkout restores from HEAD
+  and HEAD did not have them. The next iteration then ran against code where the
+  feature did not exist and reported a TIMEOUT, which reads as a hang rather than
+  as a missing file. **Copy the file somewhere and copy it back** -- an A/B is a
+  temporary edit, not a revert, and the two want different tools.
 - **Temporary files go in `tmp/`** (gitignored). Any throwaway output — a dump,
   a scratch CSV, a debug capture, a one-off script's result — writes under
   `tmp/` (`res://tmp/...` from GDScript; call

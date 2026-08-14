@@ -7,6 +7,7 @@ extends Node3D
 
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
+const DebugConsoleScript = preload("res://scripts/ui/debug_console.gd")
 const BuildVersion = preload("res://scripts/ui/build_version.gd")
 
 # A session plays an assembled RUN, not a fixed map -- see scripts/grid/
@@ -20,6 +21,7 @@ const BuildVersion = preload("res://scripts/ui/build_version.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null
+var debug_console: CanvasLayer = null
 
 func _ready() -> void:
 	# Headless entry points first, before any menu, network or Steam wiring: a
@@ -57,6 +59,13 @@ func _ready() -> void:
 func _unhandled_input(_event: InputEvent) -> void:
 	if Input.is_action_just_pressed("system_exit"):
 		get_tree().quit()
+		return
+	# F1 opens the debug console. Deliberately available WITHOUT a world, so the
+	# knobs can be read and set from the main menu -- and deliberately the same
+	# key whether hosting, joining or solo, because the panel is identical in all
+	# three and any player may change anything.
+	if Input.is_action_just_pressed("debug_console"):
+		_toggle_debug_console()
 		return
 	if world == null:
 		return
@@ -151,6 +160,17 @@ func _show_hud() -> void:
 		add_child(hud)
 	hud.world = world
 	hud.show()
+
+func _toggle_debug_console() -> void:
+	if debug_console == null:
+		debug_console = DebugConsoleScript.new()
+		debug_console.name = "DebugConsole"
+		add_child(debug_console)
+	# Re-pointed every time rather than once at creation: the panel outlives a
+	# session, and a stale world reference would send every request into the
+	# world somebody just left.
+	debug_console.world = world
+	debug_console.toggle()
 
 func _set_status(text: String) -> void:
 	if status_label != null:

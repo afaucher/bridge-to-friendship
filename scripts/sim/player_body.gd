@@ -99,6 +99,12 @@ var ledge_cooldown: float = 0.0
 var rescue_progress: float = 0.0
 
 const HALF_HEIGHT := 0.9          # matches the CylinderShape3D in player.tscn
+# The other half of that cylinder, and it exists because leaving it implicit cost
+# a real bug: the plinko hit test reached for HALF_HEIGHT as its horizontal term,
+# so a body 0.8 m across was treated as 1.8 m across and balls connected from
+# twice their own radius away. A body has two dimensions and the code should be
+# able to name both.
+const RADIUS := 0.4               # ditto -- the two are a pair, from one shape
 const FOOT_PROBE := 0.25          # how far below the feet to look for a carrier
 
 # Set by GameWorld at spawn. The world owns the momentum-transfer rules, because

@@ -522,7 +522,7 @@ cadence, stop sending fields nobody reads (~30% by deletion alone), pack the wir
 unfalsifiable without a rig that delays, jitters, drops and reorders *both*
 directions and asserts what a client SEES.
 
-## M14 — The debug console
+## M14 — The debug console — **DONE (2026-08-14)**
 
 **Added 2026-08-13**, asked for in the same playtest:
 `implementation_plans/m14_debug_console.md`.
@@ -534,9 +534,24 @@ knob has to be correct across a session. Three changes: numeric kinds in the
 registry, host-owned replication (any peer requests, host decides, broadcast to
 all), and a menu with **no per-knob UI code**. First entry is `show_hitboxes`.
 
-Listed after M13 and arguably worth doing before it: every other line in the
-playtest report is a number somebody wants to try, and hitbox visualisation
-answers the pillar and plinko items directly.
+Listed after M13 and built before it, for the reason given: every other line in
+the playtest report is a number somebody wants to try.
+
+**Shipped:** numeric kinds and sections in the registry; `tuned()` shadowing three
+constants (`PLINKO_HIT_RADIUS` -- which had been an inline `BALL_RADIUS + 0.5` and
+is the one already diagnosed as twice its geometry -- plus the MG's spread and
+fire interval); host-owned replication where any peer requests and the host
+decides, applied on a tick boundary; joiner sync; F1 opens a panel built entirely
+by walking `OPTIONS`; and `show_hitboxes` drawing every collider as a wireframe.
+
+**Two tests, both A/B'd.** `test_debug_settings` gained a **drift guard** -- a knob
+that shadows a constant must default to it, read out of the script's own constant
+map, because `tuned()` returns the registry value and a drifted default silently
+changes the game to a number nobody chose. `test_debug_replication` (port 28783)
+proves a CLIENT can change a setting and the host broadcasts it -- and it needed a
+**counter at the line that applies the broadcast**, because host and client share
+one autoload in a single process and every other assertion passed with the
+broadcast disabled.
 
 ## Later
 

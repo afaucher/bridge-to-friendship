@@ -324,6 +324,21 @@ const RUSHER_MAX := 12
 # nobody has to aim at one.
 const HAT_PICKUP_RADIUS := 0.7
 
+# HOW CLOSE A BALL COUNTS AS A HIT. Added to the PLAYER'S RADIUS, so this is the
+# slop on top of real contact rather than the whole reach.
+#
+# Real contact is BALL_RADIUS + PlayerBody.RADIUS = 0.6 + 0.4 = 1.0 m. At 1.1 the
+# test fires at 1.5 m, which is deliberately forgiving -- a hazard that demands
+# exact contact reads as a hazard that misses.
+#
+# It was written inline as `BALL_RADIUS + 0.5` at the one place that used it, and
+# that place added the player's HALF-HEIGHT (0.9) rather than its RADIUS (0.4) --
+# the body's tallness standing in for its width. So the real test was 2.0 m,
+# TWICE the geometry, and the 2026-08-13 playtest reported it as balls hitting
+# from a distance while sailing past. Fixed 2026-08-14; test_plinko walks a ball
+# in at 1.9 m and requires it to miss.
+const PLINKO_HIT_RADIUS := 1.1
+
 # Tall enough to read as absurd from across a 60 m bridge, short enough that the
 # top hat is still on screen.
 const HAT_MAX_STACK := 5

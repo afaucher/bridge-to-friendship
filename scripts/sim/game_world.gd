@@ -25,6 +25,7 @@ const HatPool = preload("res://scripts/sim/hat_pool.gd")
 const SpecialPool = preload("res://scripts/sim/special_pool.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
+const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -305,12 +306,16 @@ func _physics_process(_delta: float) -> void:
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
 	_pose_held_specials()
+	_sync_hitboxes()
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
 	if camera != null:
 		camera.focus_held = _returning.has(local_peer)
 
 func _host_tick() -> void:
 	tick += 1
+	# Before anything steps, so every body in this tick runs under one set of
+	# rules. See push_setting.
+	_apply_pending_settings()
 
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
@@ -629,12 +634,23 @@ func _launch_direction() -> Vector3:
 func _resolve_ball_hits(ball: Node) -> void:
 	if ball.hit_cooldown > 0.0:
 		return
-	var reach: float = SimConfig.BALL_RADIUS + 0.5
+	# THE PLAYER'S RADIUS, NOT ITS HALF-HEIGHT.
+	#
+	# This read PlayerBody.HALF_HEIGHT (0.9) until 2026-08-14, which is the body's
+	# TALLNESS standing in for its WIDTH -- so the horizontal test ran at
+	# 1.1 + 0.9 = 2.0 m against a real contact distance of 0.6 + 0.4 = 1.0 m.
+	# Exactly twice the geometry, and the playtest report "plinko balls can hit
+	# you from quite a distance going past you" measured.
+	#
+	# hat_pool.gd had the right number two files away the whole time
+	# (PLAYER_HALF_WIDTH). This is now PlayerBody.RADIUS so there is one place to
+	# read it from, and test_plinko walks a ball in to pin the distance.
+	var reach: float = DebugSettings.tuned("plinko_hit_radius", SimConfig.PLINKO_HIT_RADIUS) 		+ PlayerBody.RADIUS
 	for peer_key in players.keys():
 		var body: Node = players[int(peer_key)]
 		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
 			continue
-		if body.position.distance_to(ball.position) > reach + PlayerBody.HALF_HEIGHT:
+		if body.position.distance_to(ball.position) > reach:
 			continue
 
 		# A DASHING PLAYER BATS IT AWAY. No damage, and the dash carries on --
@@ -1126,7 +1142,7 @@ func _fire_specials() -> void:
 		if weapon.fire_timer > 0.0:
 			continue
 
-		weapon.fire_timer = SimConfig.MG_FIRE_INTERVAL
+		weapon.fire_timer = DebugSettings.tuned("mg_fire_interval", SimConfig.MG_FIRE_INTERVAL)
 		weapon.ammo -= 1
 		_fire_round(body, weapon)
 
@@ -1217,8 +1233,8 @@ func _muzzle_of(weapon: Node, shooter: Node) -> Vector3:
 # else re-derives it, the same licence plinko's launch angle takes. It is the only
 # randomness in the whole weapon.
 func _spread(base: Vector3) -> Vector3:
-	var yaw_off: float = deg_to_rad(
-		randf_range(-SimConfig.MG_SPREAD_DEG, SimConfig.MG_SPREAD_DEG))
+	var spread: float = DebugSettings.tuned("mg_spread_deg", SimConfig.MG_SPREAD_DEG)
+	var yaw_off: float = deg_to_rad(randf_range(-spread, spread))
 	var pitch_off: float = deg_to_rad(
 		randf_range(-SimConfig.MG_SPREAD_VERTICAL_DEG, SimConfig.MG_SPREAD_VERTICAL_DEG))
 
@@ -2093,6 +2109,84 @@ func _broadcast_names() -> void:
 	if networked:
 		_set_names.rpc(player_names)
 
+# --- Debug config -------------------------------------------------------------
+#
+# ANY PLAYER MAY ASK; THE HOST DECIDES. A knob that is only true on the machine
+# that flipped it is worse than no knob at all -- two people tuning the same
+# number would be looking at two different games and comparing notes.
+#
+# The shape is deliberately the one player_names already uses: a client submits,
+# the host is the single owner, and the host republishes the WHOLE dictionary. It
+# is a handful of entries changed by hand, so working out what changed costs more
+# than sending all of it.
+#
+# IT LIVES HERE AND NOT ON THE DebugSettings AUTOLOAD. An RPC on an autoload
+# travels over the default peerless MultiplayerAPI, while the net harness roots
+# each world at its own SceneMultiplayer -- so an autoload RPC is one no test can
+# ever reach. m9_hud.md hit exactly this with player names, and the answer was the
+# same: make it world state.
+
+# Requests that arrived between ticks, applied at the top of the next one. A knob
+# that affects stepping is a sim rule, and changing one halfway through a step
+# loop would mean two bodies in the same tick ran under different rules.
+var _pending_settings: Dictionary = {}
+
+# How many config broadcasts this world has taken from the host. Test-visible on
+# purpose -- see _set_settings.
+var settings_applied: int = 0
+
+# The local entry point. The menu calls this and does not care which machine it
+# is on.
+func push_setting(key: String, value: Variant) -> void:
+	if not networked:
+		DebugSettings.set_value(key, value)
+		return
+	if is_host:
+		_pending_settings[key] = value
+	else:
+		_request_setting.rpc_id(1, key, value)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _request_setting(key: String, value: Variant) -> void:
+	if not is_host:
+		return
+	_pending_settings[key] = value
+
+func _apply_pending_settings() -> void:
+	if _pending_settings.is_empty():
+		return
+	DebugSettings.apply_snapshot(_pending_settings)
+	_pending_settings.clear()
+	if networked:
+		_set_settings.rpc(DebugSettings.snapshot())
+
+@rpc("authority", "call_remote", "reliable")
+func _set_settings(values: Dictionary) -> void:
+	if is_host:
+		return
+	# COUNTED AT THE LINE THAT DOES IT. Host and clients share one DebugSettings
+	# autoload whenever they share a process, which every test in this project
+	# does -- so "the client has the right value" is true whether or not this RPC
+	# ever arrived. The counter is the only thing that can tell the difference,
+	# and without it test_debug_replication passed with this function emptied out.
+	settings_applied += 1
+	DebugSettings.apply_snapshot(values)
+
+# Bodies are created constantly -- balls, rounds, rushers, hats -- so this cannot
+# be a one-shot sweep when the knob flips. Running it every tick is idempotent
+# (HitboxView.apply only adds what is missing) and returns immediately while the
+# knob is off, which is always in a shipped game.
+var _hitboxes_on: bool = false
+
+func _sync_hitboxes() -> void:
+	if not view_active:
+		return
+	var want: bool = DebugSettings.is_on("show_hitboxes")
+	if not want and not _hitboxes_on:
+		return
+	HitboxView.apply(self, want)
+	_hitboxes_on = want
+
 @rpc("authority", "call_remote", "reliable")
 func _set_names(names: Dictionary) -> void:
 	if is_host:
@@ -2161,6 +2255,9 @@ func host_add_peer(peer: int) -> void:
 	# And who is holding what, for the identical reason: a HELD special is absent
 	# from the snapshot by design, so a newcomer would see an unarmed party.
 	_sync_held_specials.rpc_id(peer, _held_special_dump())
+	# The debug config, so a joiner tunes against the same numbers everyone else
+	# is already playing on rather than against the shipped defaults.
+	_set_settings.rpc_id(peer, DebugSettings.snapshot())
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.
