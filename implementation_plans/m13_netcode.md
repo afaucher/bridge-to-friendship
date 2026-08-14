@@ -67,6 +67,57 @@ packet instead of two and a half.**
 
 ---
 
+## If you only care about lag
+
+Bandwidth and lag are different problems with different fixes, and the list is
+shorter than it looks. **Three of the nine items below move perceived latency;
+the rest are bandwidth and robustness.**
+
+| item | lag? | why |
+|---|---|---|
+| **1. Interpolation** | **yes — the biggest** | the only fix for "everything stutters and teleports" |
+| **2. Predict the dash** | **yes** | removes a full RTT of dead air from the signature verb |
+| **8. Input queue / clock** | **yes** | removes latency that *accumulates over a session* |
+| 3. Halve the cadence | no — costs a little | do it only after 1 |
+| 4–6. Dead fields, packing, delta | **indirect only** | fewer bytes → under one MTU → fewer lost snapshots |
+| 7. Idle emitters | no | fewer balls, and a gameplay change |
+| 9. Measure RTT | no | tells you whether any of this worked |
+
+**Delta encoding is not a lag fix, and it is worth being blunt about that.** Its
+entire latency contribution is ending fragmentation: a busy snapshot is 2.5
+packets today, an unreliable packet loses all of itself if any fragment is
+dropped, and a dropped snapshot is a visible hitch. But the thing that makes a
+dropped snapshot *visible* is the absence of interpolation — with item 1 in
+place, one lost snapshot is invisible, and the fragmentation stops mattering.
+
+**"Rate independence" is interpolation, not delta.** They sound similar and are
+opposite ends of the problem: delta makes each snapshot smaller; interpolation
+makes the client stop caring how often snapshots arrive. If the goal is to be
+robust to a bad link rather than to a metered one, interpolation is the item that
+buys it, and it is the one that makes lowering the send rate safe afterwards.
+
+**Item 8 has a cheap version and a right version.** Capping the queue removes the
+creep. The principled fix is a clock: the host tells the client whether its input
+is arriving early or late and the client nudges its tick phase, so input lands
+*just* before the host needs it. Start with the cap, measure, and only build the
+clock if the cap is not enough.
+
+**What is deliberately NOT on the lag list**, having been checked rather than
+assumed:
+
+- **Correction smoothing.** `_reconcile` snaps the body with `apply_state` and
+  replays, so a mispredicted frame pops. Measured at 8 ticks of simulated delay:
+  **1 correction in 240 ticks, worst displacement 0.10 m.** Rare and small, so
+  smoothing is not worth the complexity yet. Re-measure on a busier rig — four
+  players colliding is the case that would change this.
+- **Lag compensation** (rewinding the world to when a client fired). This is co-op
+  and nothing in it turns on a frame. Revisit only if the machine gun feels wrong
+  once item 2 makes firing predictive.
+- **Clock sync as its own item.** It is a prerequisite of item 1, not a separate
+  piece of work — the host tick is already on the wire and unread.
+
+---
+
 ## The work, in the order it should land
 
 Each item stands alone and each is separately playtestable. **1 and 2 are the two
