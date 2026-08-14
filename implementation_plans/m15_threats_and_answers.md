@@ -45,7 +45,17 @@ by moving, and this one is answered by closing.
   probe the carrier check already uses.
 
 ### The turret
-Immobile, authored with its own glyph, fires the same round.
+Immobile, authored with its own glyph, fires the same round. **Its own type**
+(`turret_body.gd`), not a flag on the skirmisher — see `hazards.md` for why the
+firing arc is what forced that.
+
+- **Its own numbers.** `TURRET_RANGE` 19 and a 2.0 s cadence against a
+  skirmisher's 14 and 1.2 s: persistence rather than pressure, because it cannot
+  reposition.
+- **A mount facing and a firing arc.** `TURRET_ARC_DEG`, centred on the facing it
+  was bolted at, shipped at 360 so nothing changed on the day it landed. Narrowing
+  it makes flanking an answer the geometry gives free; it is a debug-console
+  slider so the value gets found in a playtest.
 
 - **Immune to `IMPACT`.** Dashing a bolted-down gun does nothing, or the free verb
   answers it and the weapon specials lose another customer.
@@ -99,7 +109,7 @@ it is planted and cannot be turned.
 | slice | the claim that carries it |
 |---|---|
 | 15a | the five existing behaviour tests pass **unchanged**, and a bullet cannot kill a mound while a blast can |
-| 15b | a skirmisher holds its band rather than closing; it does not back off an edge; a turret ignores a dash and dies to a round |
+| 15b | a skirmisher holds its band rather than closing; it does not back off an edge; a turret ignores a dash and dies to a round; a turret does not shoot outside its arc, and the same target inside it does get hit |
 | 15c | a grenade's distance follows the charge; a mine does nothing for a second and then does; a shield blocks from the front and **not** from behind |
 
 The shield's is the one carrying its design. A shield that blocked everything

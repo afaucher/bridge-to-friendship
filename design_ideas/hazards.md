@@ -188,8 +188,16 @@ segments" trick does not apply. This is the same trap written up for hats.
 
 ## The two gunners
 
-**Built 2026-08-14.** One script, two kinds -- a turret is a skirmisher that
-cannot move and ignores a dash. See `scripts/sim/gunner_body.gd`.
+**Built 2026-08-14.** Two types over a shared base: `skirmisher_body.gd` and
+`turret_body.gd` on `gunner_body.gd`. They share how a round leaves a barrel --
+line of sight, cadence, dying to a weapon and not to a body -- and nothing else.
+
+**They were one script with a kind flag for about an hour, and the arc is what
+forced the split.** A firing arc is meaningless on something that can simply turn
+to face you, so a turret needs a mount facing, a bearing test, and a gun that
+rests when it cannot reach; none of that is a flag on a skirmisher. The rule the
+episode leaves behind: *when the second kind starts needing state the first has no
+use for, it stopped being a configuration.*
 
 **They are the first enemies that make the GEOMETRY part of the fight.** A rusher
 is answered by moving, so the answer is the same everywhere; these are answered by
@@ -197,8 +205,8 @@ breaking line of sight or by closing the distance, which are answers the bridge
 has to supply. That is what they add that a third chaser would not.
 
 **A skirmisher holds a band rather than a distance.** A dead zone either side of
-`GUNNER_RANGE`, without which it jitters back and forth across a single preferred
-distance forever. It is deliberately **slower than a walk**: an enemy that can hold
+`SKIRMISHER_RANGE`, without which it jitters back and forth across a single
+preferred distance forever. It is deliberately **slower than a walk**: an enemy that can hold
 its range against a walking player holds it forever, and then closing is not an
 answer at all.
 
@@ -211,6 +219,27 @@ must do nothing, or the free verb answers the hazard and the weapon specials los
 another customer. That makes it **the first hazard in the game that genuinely
 requires cover or a weapon**, and therefore the first that can be authored into a
 spot with no answer. A validator rule is owed and is not yet written.
+
+**Its engagement profile is its own**, and that is the second reason it is a type
+rather than a flag. `TURRET_RANGE` 19 against a skirmisher's 14, and a cadence of
+2.0 s against 1.2 s: it cannot reposition, so its threat is **persistence rather
+than pressure**. It owns a piece of the bridge until something kills it, and the
+player pays for crossing that piece in distance rather than in reaction time.
+
+**The firing arc is a seam, shipped at 360.** `TURRET_ARC_DEG` is the cone it can
+swing through, centred on the facing it was bolted at; 360 is exactly the
+behaviour that shipped before the split, so the mechanism arrives without a
+balance change attached. Narrow it and **flanking becomes an answer the geometry
+supplies for free** -- the tell is a gun that visibly stops tracking as you cross
+its limit. Somewhere under about 90 degrees it stops being a hazard and becomes a
+door, which is a real design and available on purpose. It is a slider in the debug
+console because the right value is a thing to *find* in a playtest rather than
+argue about here.
+
+**What is not decided: where a turret's mount facing comes from.** It defaults to
+looking down-bridge, the direction players arrive from. Per-turret authoring is a
+glyph question -- the `T` glyph carries no direction today -- and the field exists
+on the body so that answering it later changes a loader and not the enemy.
 
 ## The specials, revised
 

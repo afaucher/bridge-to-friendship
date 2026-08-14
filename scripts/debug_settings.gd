@@ -78,6 +78,15 @@ const OPTIONS := {
 		"help": "Percentage of RUSHER_SPEED. Stepped at 25 so it is the four settings asked for -- 100, 75, 50, 25 -- rather than a slider nobody can report a number from. A PERCENTAGE and not a speed, because what a playtest is answering is 'is it too fast', which is a question about the shipped value.",
 	},
 
+	"turret_arc_deg": {
+		"section": "Hazards",
+		"kind": KIND_FLOAT,
+		"label": "Turret firing arc",
+		"default": 360.0, "min": 45.0, "max": 360.0, "step": 15.0,
+		"mirrors": "TURRET_ARC_DEG",
+		"help": "How wide a cone a turret can swing its gun through, centred on the direction it was bolted at. 360 is a gun that tracks you anywhere, which is what shipped before turrets became their own type. Narrow it and flanking becomes an answer the geometry supplies for free -- somewhere under 90 it stops being a hazard and becomes a door. This is a slider precisely because the right value is a thing to FIND in a playtest.",
+	},
+
 	# --- Weapons -------------------------------------------------------------
 	"mg_spread_deg": {
 		"section": "Weapons",

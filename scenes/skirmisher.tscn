@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfskirm1"]
 
-[ext_resource type="Script" path="res://scripts/sim/gunner_body.gd" id="1_gunner"]
+[ext_resource type="Script" path="res://scripts/sim/skirmisher_body.gd" id="1_gunner"]
 
 ; TALLER AND THINNER THAN A RUSHER, which is the whole job of the silhouette:
 ; across a 60 m bridge you get an outline and a colour and nothing else, and the

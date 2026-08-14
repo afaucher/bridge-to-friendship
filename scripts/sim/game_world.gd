@@ -160,10 +160,12 @@ var _next_bullet_id: int = 0
 
 # --- gunners: skirmishers and turrets ---
 #
-# One pool for both, because they are one script with a kind -- see
-# gunner_body.gd. They are the first enemies that make the GEOMETRY part of the
-# fight: a rusher is answered by moving, and these are answered by breaking line
-# of sight or closing the distance.
+# TWO SCRIPTS, ONE POOL. They are separate types (skirmisher_body.gd,
+# turret_body.gd) over a shared base, and everything this file does with them --
+# stepping, targeting, culling, the wire -- is written against the base, so a
+# third kind is a script and a scene and nothing here. They are the first enemies
+# that make the GEOMETRY part of the fight: a rusher is answered by moving, and
+# these are answered by breaking line of sight or closing the distance.
 var _gunners: Array = []
 var _gunners_root: Node3D = null
 var _next_gunner_id: int = 0
@@ -945,7 +947,10 @@ func _process_gunners() -> void:
 		if target == null:
 			continue
 		var range_to: float = gunner.position.distance_to(target.position)
-		if gunner.wants_to_fire(range_to):
+		# The target goes in as well as the distance: a turret also has to be able
+		# to BEAR on it, and that is a question about angle that only the turret
+		# can answer.
+		if gunner.wants_to_fire(range_to, target):
 			gunner.note_fired()
 			_spawn_round(gunner.muzzle(),
 				_spread((target.global_position + Vector3(0.0, 0.25, 0.0) - gunner.muzzle()).normalized()),
@@ -969,12 +974,15 @@ func _nearest_visible_player(gunner: Node) -> Node:
 		best_d = d
 	return best
 
+# THE KIND PICKS THE SCENE AND NOTHING ELSE. `kind` is not assigned onto the body
+# afterwards -- each script sets its own in _init, so the scene is the single
+# source of truth and a scene wired to the wrong script cannot quietly report
+# itself as the other thing over the wire.
 func _spawn_gunner(at: Vector3, kind: int) -> Node:
 	var scene: PackedScene = TurretScene if kind == GunnerBody.Kind.TURRET else SkirmisherScene
 	var gunner: Node3D = scene.instantiate()
 	_next_gunner_id += 1
 	gunner.gunner_id = _next_gunner_id
-	gunner.kind = kind
 	gunner.world = self
 	gunner.name = "Gunner_%d" % _next_gunner_id
 	_gunners_root.add_child(gunner)

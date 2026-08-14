@@ -1,46 +1,78 @@
-[gd_scene load_steps=6 format=3 uid="uid://btfturret1"]
+[gd_scene load_steps=8 format=3 uid="uid://btfturret1"]
 
-[ext_resource type="Script" path="res://scripts/sim/gunner_body.gd" id="1_gunner"]
+[ext_resource type="Script" path="res://scripts/sim/turret_body.gd" id="1_turret"]
 
-; SQUAT AND BOLTED DOWN, and the silhouette is doing real work: this is the one
-; enemy a dash does nothing to, so it has to read as furniture rather than as
-; something on legs. Wide base, no head.
+; BOLTED-DOWN FURNITURE, and the silhouette is doing real work. Across 60 m a
+; player gets an outline and a colour, and from those two things has to know
+; which answer this one takes. A skirmisher is a tall thin capsule you CLOSE on;
+; this is knee-high, twice as wide, and has no head -- it reads as part of the
+; bridge, which is exactly what "a dash does nothing to it" should look like.
+;
+; The long barrel is the other half of the read: it is the one enemy that outranges
+; you noticeably, and the gun is the biggest thing on it for that reason.
 [sub_resource type="CylinderShape3D" id="Shape_1"]
-radius = 0.6
-height = 1.0
+radius = 0.75
+height = 0.9
 
+; A flared plinth. Wider at the deck than at the top, so it looks poured rather
+; than placed -- nothing about it suggests it could be knocked over.
 [sub_resource type="CylinderMesh" id="Base_1"]
-top_radius = 0.45
-bottom_radius = 0.65
-height = 1.0
+top_radius = 0.5
+bottom_radius = 0.8
+height = 0.7
+radial_segments = 8
 
+; The turntable the gun sits on, and the visible reason the barrel can only swing
+; so far: a ring rather than a neck.
+[sub_resource type="CylinderMesh" id="Ring_1"]
+top_radius = 0.42
+bottom_radius = 0.42
+height = 0.22
+radial_segments = 8
+
+; LONG. Nearly twice the skirmisher-facing gun it replaced, because reach is this
+; enemy's entire personality.
 [sub_resource type="BoxMesh" id="Gun_1"]
-size = Vector3(0.22, 0.22, 0.8)
+size = Vector3(0.18, 0.18, 1.4)
 
-; The same near-black metal as a shooter's barrel and the machine gun, so
+; Near-black metal, the same as a shooter's barrel and the machine gun, so
 ; everything that fires at you on this bridge shares one visual language.
 [sub_resource type="StandardMaterial3D" id="Mat_1"]
-albedo_color = Color(0.28, 0.3, 0.34, 1)
-metallic = 0.4
-roughness = 0.6
+albedo_color = Color(0.2, 0.22, 0.26, 1)
+metallic = 0.5
+roughness = 0.55
+
+; The plinth is a shade warmer and duller than the gun -- concrete under steel.
+[sub_resource type="StandardMaterial3D" id="Mat_2"]
+albedo_color = Color(0.34, 0.32, 0.3, 1)
+roughness = 0.9
 
 [node name="Turret" type="CharacterBody3D"]
+; Layer 5 = rushers, shared with every enemy body, so a round's mask already
+; covers it and cover works against it without touching the weapon.
 collision_layer = 16
 collision_mask = 23
-script = ExtResource("1_gunner")
+script = ExtResource("1_turret")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="Base" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
 mesh = SubResource("Base_1")
-material_override = SubResource("Mat_1")
+material_override = SubResource("Mat_2")
 
-; Under a Facing pivot, which gunner_body turns to point at its target -- the same
-; arrangement the player's held weapon uses.
+; Under a Facing pivot, which the body turns to point at its target -- clamped to
+; the mount arc, unlike a skirmisher's which is free.
 [node name="Facing" type="Node3D" parent="."]
 
+[node name="Ring" type="MeshInstance3D" parent="Facing"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32, 0)
+mesh = SubResource("Ring_1")
+material_override = SubResource("Mat_1")
+
 [node name="Gun" type="MeshInstance3D" parent="Facing"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.34, -0.6)
 mesh = SubResource("Gun_1")
 material_override = SubResource("Mat_1")
 
 [node name="Shape" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
 shape = SubResource("Shape_1")

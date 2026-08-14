@@ -526,24 +526,40 @@ const MG_KNOCKBACK_LIFT := 2.0
 
 # --- Gunners: the skirmisher and the turret -----------------------------------
 #
-# One script, two kinds. See gunner_body.gd -- a turret is a skirmisher that
-# cannot move and ignores a dash.
+# TWO ENEMIES, NOT ONE WITH A FLAG. They share how a round leaves a barrel
+# (gunner_body.gd) and nothing else: the numbers below are deliberately separate
+# because the engagement profiles are the whole difference between them.
 
 # THE DISTANCE A SKIRMISHER WANTS. Comfortably inside MG_RANGE (30) so its rounds
 # actually arrive, and far enough that closing it is a decision rather than a
 # step. The band is the dead zone either side, without which it jitters back and
 # forth across a single preferred distance forever.
-const GUNNER_RANGE := 14.0
-const GUNNER_BAND := 3.0
+const SKIRMISHER_RANGE := 14.0
+const SKIRMISHER_BAND := 3.0
 
 # Slower than a walk (6). It has to be: an enemy that can hold its range against a
 # walking player can hold it forever, and then closing is not an answer. You catch
 # it by walking at it, which is the counter-play the whole design wants.
-const GUNNER_SPEED := 4.0
+const SKIRMISHER_SPEED := 4.0
 
 # Slower than the player's machine gun (0.4). Being shot at from range should be
 # pressure you can walk through, not a wall.
-const GUNNER_FIRE_INTERVAL := 1.2
+const SKIRMISHER_FIRE_INTERVAL := 1.2
+
+# FURTHER AND SLOWER, because a turret cannot reposition. Its threat is
+# PERSISTENCE, not pressure: it owns a piece of the bridge for as long as it is
+# alive, and the player pays for crossing that piece in distance rather than in
+# reaction time. Reach one third longer than a skirmisher's and a cadence nearly
+# twice as slow is what that trade looks like in numbers.
+const TURRET_RANGE := 19.0
+const TURRET_FIRE_INTERVAL := 2.0
+
+# THE ARC IT CAN SWING THROUGH, centred on the facing it was bolted at. 360 is
+# what shipped before turrets were their own type, so it is the default -- the
+# mechanism lands here as a seam, and narrowing it is a slider in the debug
+# console rather than an argument in a design doc. Below about 90 a turret stops
+# being a hazard and becomes a door, which is a real design available on purpose.
+const TURRET_ARC_DEG := 360.0
 
 # --- Explosions ---------------------------------------------------------------
 #

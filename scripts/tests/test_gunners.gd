@@ -2,8 +2,9 @@ extends "res://scripts/test_support/test_case.gd"
 
 # M15b. The two enemies that shoot.
 #
-# One script, two kinds -- a turret is a skirmisher that cannot move and ignores a
-# dash. See gunner_body.gd.
+# TWO TYPES OVER A SHARED BASE -- skirmisher_body.gd and turret_body.gd. They
+# share how a round leaves a barrel and disagree about everything else, which is
+# what phases 3 and 5 are for.
 #
 # The claims:
 #   1. A skirmisher HOLDS A BAND. Too far and it closes, too near and it backs
@@ -18,6 +19,10 @@ extends "res://scripts/test_support/test_case.gd"
 #      would be a rusher that cannot walk.
 #   4. Both need line of sight to fire. A gun that shoots through a pillar has no
 #      counter-play at all, and cover is the entire answer to these.
+#   5. A TURRET CANNOT SHOOT OUTSIDE ITS ARC, and both halves are asserted --
+#      CLAUDE.md's "half a gate is not a gate": a turret that never fires passes
+#      the first half perfectly, so the same target inside the arc must be shown
+#      to get hit.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
@@ -58,6 +63,7 @@ func _physics_process(_delta: float) -> void:
 		1: _phase_will_not_back_off_the_edge()
 		2: _phase_turret_ignores_a_dash()
 		3: _phase_needs_line_of_sight()
+		4: _phase_turret_arc()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -81,7 +87,7 @@ func _clear() -> void:
 func _phase_holds_its_band() -> void:
 	if phase_frame == 1:
 		# ONE END OF THE FIXTURE TO THE OTHER. test_flat is 12 rows -- 24 m -- so
-		# an offset of GUNNER_RANGE * 2 put the gunner off the end of the map,
+		# an offset of SKIRMISHER_RANGE * 2 put the gunner off the end of the map,
 		# where it fell and was culled. Twenty metres is outside the band and
 		# still on the bridge.
 		_park(Vector2i(15, 1))
@@ -93,9 +99,9 @@ func _phase_holds_its_band() -> void:
 		var now: float = float(_tracked().position.distance_to(victim.position))
 		check(now < float(recorded["start"]) - 2.0,
 			"a skirmisher too far away CLOSES (%.1f m -> %.1f m)" % [recorded["start"], now])
-		check(now > SimConfig.GUNNER_RANGE - SimConfig.GUNNER_BAND * 2.0,
+		check(now > SimConfig.SKIRMISHER_RANGE - SimConfig.SKIRMISHER_BAND * 2.0,
 			"and stops in its band rather than running into your face (%.1f m, wants %.1f)"
-				% [now, SimConfig.GUNNER_RANGE])
+				% [now, SimConfig.SKIRMISHER_RANGE])
 		_advance(1)
 
 # --- 2. It will not reverse off the deck --------------------------------------
@@ -165,9 +171,46 @@ func _phase_needs_line_of_sight() -> void:
 		# assertion above is about cover rather than about a gun that never fires.
 		_park(Vector2i(18, 4))
 		return
-	if phase_frame == 400:
+	if phase_frame == 600:
 		check(int(victim.health) < int(recorded["health"]),
 			"but out of cover it does (%d -> %d)" % [recorded["health"], victim.health])
+		_advance(4)
+
+# --- 5. The arc ---------------------------------------------------------------
+#
+# THE REASON A TURRET IS ITS OWN TYPE. An arc is meaningless on something that can
+# turn to face you, so this is the claim that could not have been a flag on a
+# skirmisher.
+#
+# BOTH HALVES ARE ASSERTED, because a turret that never fires would pass the
+# first one perfectly -- and CLAUDE.md has the scar from exactly that shape.
+
+func _phase_turret_arc() -> void:
+	if phase_frame == 1:
+		DebugSettings.set_value("turret_arc_deg", 90.0)
+		_park(Vector2i(15, 5))
+		var g: Node = _spawn(Vector2i(15, 11), GunnerBody.Kind.TURRET)
+		recorded["id"] = g.gunner_id
+		# Bolted looking the other way. The player is a clear 12 m down an empty
+		# lane -- in range, in sight, and squarely behind the gun.
+		recorded["toward"] = GridConfig.yaw_of_vector(
+			Vector3(victim.position.x - g.position.x, 0.0, victim.position.z - g.position.z))
+		g.mount_yaw = float(recorded["toward"]) + PI
+		recorded["health"] = int(victim.health)
+		return
+	if phase_frame == 300:
+		if _lost(): return
+		eq(int(victim.health), int(recorded["health"]),
+			"a turret does not shoot behind itself -- flanking is an answer the geometry gives free")
+		# Now swing the MOUNT round, not the player. Same distance, same sight
+		# line, same everything: the only thing that changed is the arc.
+		_tracked().mount_yaw = float(recorded["toward"])
+		return
+	if phase_frame == 800:
+		check(int(victim.health) < int(recorded["health"]),
+			"but the same target inside the arc gets hit (%d -> %d)"
+				% [recorded["health"], victim.health])
+		DebugSettings.set_value("turret_arc_deg", SimConfig.TURRET_ARC_DEG)
 		finish()
 
 # --- helpers ------------------------------------------------------------------
