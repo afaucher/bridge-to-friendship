@@ -80,6 +80,53 @@ and **the body never mentions it**. There is no clock sync, no RTT estimate, and
 no snapshot buffer, so there is currently no way to say "render 100 ms in the
 past" even though the information to do it is arriving 60 times a second.
 
+### Interpolation is not the prediction we already have
+
+Worth writing down, because the two get blurred and the difference decides which
+bodies get which treatment.
+
+| | **prediction** (built) | **interpolation** (missing) |
+|---|---|---|
+| direction in time | runs **ahead** of authority | renders **behind** it |
+| applies to | only the body you control | only bodies you do **not** control |
+| needs | the simulation, plus your own input history | two positions and a clock |
+| is it guessing? | **yes** — the future | **no** — smoothing between two known truths |
+| when it is wrong | rewind and replay; a visible pop | it cannot be wrong. It costs *age*, not error |
+
+**They solve opposite halves, which is why a game needs both.** For your own body
+you cannot wait a round trip, so you run the simulation forward on input the host
+has not acknowledged yet. For every other body **you have no input to run
+forward** — so there is nothing to predict *with*, and the only honest thing
+available is to draw them slightly in the past, between two snapshots that
+actually arrived.
+
+Neither substitutes for the other:
+
+- **Predicting a remote player means inventing their input.** This document's own
+  subject matter already refuses that — `_consume_snapshot` says *"a client never
+  invents a position for someone else"*.
+- **Interpolating your own body means rendering yourself 100 ms late**, which is
+  exactly what prediction exists to prevent.
+
+**What a remote body does today is neither of them.** `apply_state` writes the
+newest snapshot straight onto the body: a step function. On an even link that is
+a clean 60 Hz staircase and looks fine, which is precisely why it survives local
+testing and fails across the country. Interpolation turns the staircase into a
+continuous line — and a *lost* snapshot stops being an event at all, because you
+are drawing between two you already hold.
+
+**Extrapolation** (dead reckoning — guessing a remote body's future from its last
+velocity, with no added delay) is the third option and is rejected on purpose.
+Bodies here get shoved and tumble chaotically, and chaotic trajectories are the
+thing extrapolation is worst at: it overshoots and then snaps.
+
+**The cost is real and small here.** You see everyone else roughly 100 ms in the
+past. The host resolves every interaction anyway, so the only thing that suffers
+is *aiming* at a moving teammate — a dash or a burst from the machine gun. That is
+the gap competitive games close with lag compensation, and it is why lag
+compensation is not on this project's list: co-op, and nothing in it turns on a
+frame.
+
 ## 3. A busy snapshot is two and a half ENet packets
 
 Measured with `var_to_bytes` on real snapshot builders, on the playtest bridge:
