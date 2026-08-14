@@ -31,6 +31,7 @@ const Hit = preload("res://scripts/sim/hit.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
 const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 const TurretScene = preload("res://scenes/turret.tscn")
+const DeployableScene = preload("res://scenes/deployable.tscn")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -170,6 +171,15 @@ var _gunners: Array = []
 var _gunners_root: Node3D = null
 var _next_gunner_id: int = 0
 
+# --- deployables: live things on the deck ---
+#
+# Thrown grenades, and the land mine when it lands. A short list on purpose: the
+# fuse is what bounds it, so there is no cap and no cull-the-oldest rule the way
+# there is for balls and loose specials.
+var _deployables: Array = []
+var _deployables_root: Node3D = null
+var _next_deployable_id: int = 0
+
 # --- rushers ---
 var _rushers: Array = []
 var _rushers_root: Node3D = null
@@ -230,6 +240,9 @@ func _ready() -> void:
 	_gunners_root = Node3D.new()
 	_gunners_root.name = "Gunners"
 	add_child(_gunners_root)
+	_deployables_root = Node3D.new()
+	_deployables_root.name = "Deployables"
+	add_child(_deployables_root)
 	# Read once, before anything can overwrite it. Deliberately not in start():
 	# _remembered_hat must hold what is ON DISK from the first moment, or the
 	# first pickup would look like a change and rewrite an identical file.
@@ -411,6 +424,10 @@ func _host_tick() -> void:
 	# consequence lands on the same tick as the cause rather than the next one.
 	_process_rushers()
 	_process_gunners()
+	# Before the rescue pass for the same reason rushers are: a blast is the single
+	# biggest way to put somebody off the bridge, and the consequence should land on
+	# the tick that caused it.
+	_process_deployables()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -540,6 +557,10 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(gunner):
 			gunner.queue_free()
 	_gunners.clear()
+	for d in _deployables:
+		if is_instance_valid(d):
+			d.queue_free()
+	_deployables.clear()
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
 	# across ground the party no longer occupies are debris nobody can reach.
 	_hats.clear()
@@ -1187,8 +1208,9 @@ func _process_specials() -> void:
 		return
 
 	if grid != null:
-		for cell in grid.take_authored_special_cells():
-			_specials.spawn_loose(grid.cell_surface_world(cell) + Vector3(0.0, 0.4, 0.0))
+		for entry in grid.take_authored_special_cells():
+			_specials.spawn_loose(
+				grid.cell_surface_world(entry[0]) + Vector3(0.0, 0.4, 0.0), int(entry[1]))
 
 	_specials.step(_trailing_edge_z())
 
@@ -1240,23 +1262,165 @@ func _fire_specials() -> void:
 
 		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
 		var held: bool = (int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_SPECIAL_HELD) != 0
-		if not held or not _can_fire(peer, body):
-			continue
-		if weapon.fire_timer > 0.0:
+
+		# LOSING CONTROL LOSES THE THROW, and that is not merely bookkeeping. If a
+		# lost trigger counted as a RELEASE, being tumbled mid-charge would hurl a
+		# grenade at whatever the tumble happened to leave you facing -- a special
+		# spent, by the game, on your behalf. Cancelling costs the charge and keeps
+		# the ammo, so the cost of being knocked over is the moment rather than the
+		# resource.
+		if not _can_fire(peer, body):
+			weapon.charge = 0.0
+			weapon.was_held = false
 			continue
 
-		weapon.fire_timer = DebugSettings.tuned("mg_fire_interval", SimConfig.MG_FIRE_INTERVAL)
-		weapon.ammo -= 1
-		_fire_round(body, weapon)
+		# ONE BUTTON, THREE MEANINGS. The machine gun fires while it is DOWN, a
+		# grenade throws when it comes UP. Which one a special is, is the whole
+		# difference between them -- the slot, the pickup, the drop and the HUD box
+		# are shared, so this match is where a new special actually lands.
+		var spent_a_use: bool = false
+		match weapon.kind:
+			SpecialBody.Kind.MACHINE_GUN:
+				spent_a_use = _step_machine_gun(body, weapon, held)
+			SpecialBody.Kind.GRENADE:
+				spent_a_use = _step_grenade(peer, body, weapon, held)
+		weapon.was_held = held
 
-		# SPENT MEANS GONE, at the moment the last round leaves. An empty weapon you
+		# SPENT MEANS GONE, at the moment the last use leaves. An empty special you
 		# keep carrying is the worst possible occupant of a one-slot rule: it does
 		# nothing and it stops you picking up the thing that would.
-		if weapon.is_spent():
+		if spent_a_use and weapon.is_spent():
 			var id: int = weapon.special_id
 			_specials.destroy(weapon)
 			if networked:
 				_special_destroyed.rpc(id)
+
+# Held down, and every interval a round leaves.
+func _step_machine_gun(body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.fire_timer > 0.0:
+		return false
+	weapon.fire_timer = DebugSettings.tuned("mg_fire_interval", SimConfig.MG_FIRE_INTERVAL)
+	weapon.ammo -= 1
+	_fire_round(body, weapon)
+	return true
+
+# HELD TO ADJUST DISTANCE, thrown on release.
+#
+# THE RELEASE EDGE IS DERIVED FROM THE LEVEL BIT rather than sent as its own
+# action, so a throw does not depend on one press packet arriving -- see
+# special_body.was_held. The charge is read at the moment the button comes up,
+# which is what makes the hold a decision the player watches themselves make.
+func _step_grenade(peer: int, body: Node, weapon: Node, held: bool) -> bool:
+	if held:
+		weapon.charge = minf(weapon.charge + SimConfig.TICK_DELTA,
+			SimConfig.GRENADE_CHARGE_TIME)
+		return false
+	if not weapon.was_held:
+		return false
+	var fraction: float = weapon.charge_fraction()
+	weapon.charge = 0.0
+	weapon.ammo -= 1
+	_throw_grenade(peer, body, fraction)
+	return true
+
+# A BALLISTIC LOB, not a flat shot. Range is set by SPEED at a fixed angle, which
+# is what makes "hold longer, throw further" one number; and an arc is what lets a
+# grenade clear a parapet a bullet cannot, which is the geometry answer the
+# specials exist to add.
+#
+# The near end of the range is INSIDE the blast on purpose. A tap has to be able
+# to hurt you, or holding longer is strictly better and the verb is decoration.
+func _throw_grenade(peer: int, body: Node, fraction: float) -> void:
+	var distance: float = lerpf(SimConfig.GRENADE_MIN_RANGE, SimConfig.GRENADE_MAX_RANGE,
+		fraction)
+	var angle: float = deg_to_rad(SimConfig.GRENADE_THROW_ANGLE_DEG)
+	var forward := Vector3(sin(body.facing), 0.0, cos(body.facing)).normalized()
+
+	# SOLVED FROM THE RELEASE POINT, NOT FROM LEVEL GROUND. The hand is 1.2 m up
+	# and 0.7 m forward, and a grenade launched from a height flies further than
+	# `R = v^2 sin(2a)/g` says -- see GRENADE_RELEASE_HEIGHT for what that cost.
+	#
+	#   0 = h + x tan(a) - g x^2 / (2 v^2 cos^2(a))   ->   v^2 = g x^2 / D
+	#
+	# where x is the horizontal run still to cover and h the height it falls.
+	var run: float = maxf(distance - SimConfig.GRENADE_THROW_FORWARD, 0.5)
+	var denom: float = 2.0 * pow(cos(angle), 2.0) \
+		* (SimConfig.GRENADE_RELEASE_HEIGHT + run * tan(angle))
+	var speed: float = sqrt(SimConfig.GRAVITY * run * run / denom)
+
+	var velocity: Vector3 = forward * speed * cos(angle) + Vector3.UP * speed * sin(angle)
+	var feet: float = body.global_position.y - PlayerBody.HALF_HEIGHT
+	var release := Vector3(
+		body.global_position.x + forward.x * SimConfig.GRENADE_THROW_FORWARD,
+		feet + SimConfig.GRENADE_RELEASE_HEIGHT,
+		body.global_position.z + forward.z * SimConfig.GRENADE_THROW_FORWARD)
+	_spawn_deployable(release, velocity, peer)
+
+func _spawn_deployable(at: Vector3, velocity: Vector3, peer: int) -> Node:
+	var d: Node3D = DeployableScene.instantiate()
+	_next_deployable_id += 1
+	d.deployable_id = _next_deployable_id
+	d.name = "Deployable_%d" % d.deployable_id
+	_deployables_root.add_child(d)
+	d.throw_from(at, velocity, peer)
+	_deployables.append(d)
+	return d
+
+# One tick of every live thing on the deck. HOST ONLY: a client is told where a
+# grenade is and never decides that one went off, for the same reason it never
+# decides a round hit somebody.
+func _process_deployables() -> void:
+	for i in range(_deployables.size() - 1, -1, -1):
+		var d: Node = _deployables[i]
+		if not is_instance_valid(d):
+			_deployables.remove_at(i)
+			continue
+		# OFF THE BRIDGE IS NOT A BANG. A grenade thrown into the void is a wasted
+		# special, which is the correct outcome and the funnier one.
+		if d.position.y < SimConfig.FALL_KILL_Y or d.position.z > _trailing_edge_z():
+			_deployables.remove_at(i)
+			d.queue_free()
+			continue
+		if not d.step():
+			continue
+		blast_at(d.position, d.blast_radius())
+		_deployables.remove_at(i)
+		d.queue_free()
+
+func _deployable_snapshot(keyframe: bool) -> Array:
+	var out: Array = []
+	for d in _deployables:
+		if is_instance_valid(d):
+			out.append(d.capture_state())
+	return SnapshotDelta.encode(out, _section("deployables"), keyframe)
+
+# A client rebuilds its set to match the host's. A grenade that goes off simply
+# stops being mentioned, and the manifest turns that into a free -- the same
+# destroy-if-absent rule every other section uses.
+func _apply_deployable_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
+		var id: int = int(entry[0])
+		var d: Node = _deployable_by_id(id)
+		if d == null:
+			d = DeployableScene.instantiate()
+			d.deployable_id = id
+			d.name = "Deployable_%d" % id
+			_deployables_root.add_child(d)
+			_deployables.append(d)
+		d.apply_state(entry)
+	for i in range(_deployables.size() - 1, -1, -1):
+		var existing: Node = _deployables[i]
+		if not is_instance_valid(existing) or not seen.has(existing.deployable_id):
+			_deployables.remove_at(i)
+			if is_instance_valid(existing):
+				existing.queue_free()
+
+func _deployable_by_id(id: int) -> Node:
+	for d in _deployables:
+		if is_instance_valid(d) and d.deployable_id == id:
+			return d
+	return null
 
 # A player has to be in control of themselves to fire. Same set that may pick one
 # up, for the same reason: shooting while tumbling would make a tumble free.
@@ -1934,7 +2098,8 @@ func _broadcast_snapshot() -> void:
 		layout = grid.stone_layout()
 	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(keyframe), layout,
 		_rusher_snapshot(keyframe), _hat_snapshot(keyframe), _special_snapshot(keyframe),
-		_bullet_snapshot(keyframe), _gunner_snapshot(keyframe))
+		_bullet_snapshot(keyframe), _gunner_snapshot(keyframe),
+		_deployable_snapshot(keyframe))
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -2210,22 +2375,22 @@ func _bullet_by_id(id: int) -> Node:
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
@@ -2236,6 +2401,7 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 	_apply_special_snapshot(specials)
 	_apply_bullet_snapshot(bullets)
 	_apply_gunner_snapshot(gunners)
+	_apply_deployable_snapshot(deployables)
 	for e in SnapshotDelta.changed_of(entries):
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)

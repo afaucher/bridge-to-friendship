@@ -27,10 +27,10 @@ const Hit = preload("res://scripts/sim/hit.gd")
 
 enum Mode { HELD, FLYING, LOOSE }
 
-# WHICH SPECIAL. One kind today; the enum exists because the pool, the slot, the
-# drop rule and the HUD box are shared and a sword is a different resolve
-# function rather than a different object.
-enum Kind { MACHINE_GUN }
+# WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
+# a new special is a different resolve function rather than a different object --
+# what differs between them is what the BUTTON means, and that lives in the world.
+enum Kind { MACHINE_GUN, GRENADE }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -57,6 +57,24 @@ var fire_timer: float = 0.0
 # Counts down once the body has stopped moving. Only at zero is it collectable.
 var settle_grace: float = 0.0
 
+# --- The trigger, host-side ----------------------------------------------------
+#
+# THE EDGES ARE DERIVED HERE, FROM THE LEVEL BIT, rather than sent as their own
+# action. A machine gun only ever asked "is it down"; a grenade needs "did it just
+# come up", and the cheapest correct place to answer that is the object holding
+# the trigger, once, on the host. Deriving it also means a special does not depend
+# on a press packet ARRIVING -- a lost edge would silently do nothing, and this way
+# the next tick's level bit still tells the truth.
+var was_held: bool = false
+
+# Seconds the trigger has been down. A grenade's throw distance; ignored by
+# anything that fires on the way down.
+var charge: float = 0.0
+
+# 0..1 across GRENADE_CHARGE_TIME. What a HUD would draw, and what the throw reads.
+func charge_fraction() -> float:
+	return clampf(charge / SimConfig.GRENADE_CHARGE_TIME, 0.0, 1.0)
+
 func _ready() -> void:
 	gravity_scale = SimConfig.GRAVITY / 9.8
 	continuous_cd = true
@@ -72,6 +90,8 @@ func kind_name() -> String:
 	match kind:
 		Kind.MACHINE_GUN:
 			return "MG"
+		Kind.GRENADE:
+			return "NADE"
 	return "?"
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per

@@ -70,17 +70,34 @@ firing arc is what forced that.
 All three go in the slot M12 built. All three are `EXPLOSIVE` or a modifier, so
 15a is what makes them small.
 
-### Grenade — hold to adjust distance
+### Grenade — hold to adjust distance ✅ *built 2026-08-14*
 Hold to charge, release to throw; the charge picks the distance. The first special
 with an **analogue** commitment — everything else in this game is a binary press —
 and the arc is the tell that lets everyone else read where it is going.
 
 - **The charge is on the wire already**: `ACTION_SPECIAL_HELD` is level-triggered
   precisely because a machine gun needed it, and a grenade needs the same bit for
-  a different reason.
+  a different reason. **The release edge is derived on the host** from that level
+  bit rather than sent as its own action, so a throw never depends on one press
+  packet arriving.
 - Cooking it is deliberately **not** in scope: hold-to-aim and hold-to-cook are
   two different meanings for one input, and the second is a way to blow yourself
   up that nobody asked for.
+- **The near throw is inside your own blast** (`GRENADE_MIN_RANGE` 3 against
+  `BLAST_RADIUS` 4), and that is load-bearing: if a tap were safe, holding longer
+  would be strictly better and there would be nothing to adjust.
+- **Losing control cancels the charge and keeps the ammo.** A lost trigger must
+  not read as a release, or being tumbled mid-charge throws a live grenade at
+  whatever direction the tumble left you facing — a special spent by the game on
+  the player's behalf.
+
+**Two things this cost, both worth writing down.** The throw solved its speed with
+the level-ground range formula while releasing from 1.2 m up, so every throw
+overflew — a "3 m" tap landed at 5.5 m, *outside its own blast*, which silently
+deleted the rule the whole verb rests on. And a grenade that rolled rolled 2.4 m
+down the deck's 4° pitch during its own fuse, which moved every throw out of the
+place the player picked. A grenade is **placed**, not bowled: locked rotation, full
+friction, and zero linear damping so the solved arc stays true.
 
 ### Land mine — one second, then armed
 Placed at your feet, harmless for `MINE_ARM_SECONDS`, then triggers on proximity.

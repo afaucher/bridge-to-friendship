@@ -307,6 +307,18 @@ func _isolate() -> void:
 	world._gunners.clear()
 	world.grid.take_authored_gunner_cells()
 
+	# AND THE SPECIALS, for exactly the same reason: two grenade pickups were
+	# authored into the arena on 2026-08-14. A player who walks over one is holding
+	# a weapon this test knows nothing about, and a live grenade would move the
+	# very body whose displacement is being measured.
+	for s in world._specials.all():
+		world._specials.destroy(s)
+	world.grid.take_authored_special_cells()
+	for d in world._deployables:
+		if is_instance_valid(d):
+			d.queue_free()
+	world._deployables.clear()
+
 	victim.position = world.grid.cell_surface_world(Vector2i(6, 20)) + Vector3(0.0, 1.0, 0.0)
 	victim.state = PlayerBody.State.WALK
 	victim.velocity = Vector3.ZERO

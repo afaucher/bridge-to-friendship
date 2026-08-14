@@ -579,6 +579,53 @@ const BLAST_DAMAGE := 2
 const BLAST_PUSH := 15.0
 const BLAST_LIFT := 5.0
 
+# How far a blast reaches. Two cells: big enough that it is worth throwing at a
+# GROUP, which is what makes an explosive different from a gun, and small enough
+# that the thrower can be outside it at any charge above the minimum.
+const BLAST_RADIUS := 4.0
+
+# --- Grenades -----------------------------------------------------------------
+#
+# THE VERB IS HOLD-TO-ADJUST-DISTANCE, asked for by name. That makes the grenade
+# the first special whose interesting decision is made BEFORE the button comes
+# up: a gun asks where to point, this asks how far, and getting it wrong is a
+# blast at your own feet rather than a missed shot.
+
+const GRENADE_AMMO := 4
+
+# Seconds of hold to travel from the near throw to the far one. Long enough to be
+# a decision you can see yourself making, short enough to make under fire.
+const GRENADE_CHARGE_TIME := 1.2
+
+# THE NEAR THROW IS INSIDE YOUR OWN BLAST, deliberately. A tap must be able to
+# hurt you: without that, holding the button longer is strictly better and the
+# "adjust" half of the verb is decoration. BLAST_RADIUS is 4.
+const GRENADE_MIN_RANGE := 3.0
+const GRENADE_MAX_RANGE := 16.0
+
+# Thrown UP as well as out, on a fixed arc, so range is set by speed alone. A
+# lobbed arc is also what lets a grenade clear a parapet that a bullet cannot,
+# which is the geometry answer the specials are supposed to add.
+const GRENADE_THROW_ANGLE_DEG := 40.0
+
+# WHERE IT LEAVES THE HAND: out in front of the thrower's own capsule, or the
+# first thing a grenade does is bounce off its owner, and up at chest height.
+#
+# BOTH OF THESE ARE IN THE RANGE SOLUTION, and leaving them out is not a rounding
+# error: released 1.2 m up, a grenade aimed with the level-ground formula overflew
+# GRENADE_MIN_RANGE by 80% -- it landed at 5.5 m, outside its own 4 m blast, which
+# quietly deleted the "a tap can hurt you" rule that the whole hold-to-adjust verb
+# rests on. Measured 2026-08-14; caught because the test asserted the DESIGN claim
+# (the near throw is inside the blast) rather than the arithmetic.
+const GRENADE_THROW_FORWARD := 0.7
+const GRENADE_RELEASE_HEIGHT := 1.2
+
+# From the button coming up to the bang. It is a fuse and NOT a contact
+# detonation: a live grenade on the deck for a moment is what gives everybody --
+# thrower included -- the chance to move, and moving is this game's whole
+# vocabulary of answers.
+const GRENADE_FUSE := 1.4
+
 # --- Input action bits --------------------------------------------------------
 # One tick's actions travel as a single int. Edge-triggered actions (jump, and
 # later shove/rope) are set for exactly the tick they were pressed, which is what

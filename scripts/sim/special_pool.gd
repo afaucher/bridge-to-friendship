@@ -86,6 +86,8 @@ static func _full_ammo(kind: int) -> int:
 	match kind:
 		SpecialBody.Kind.MACHINE_GUN:
 			return SimConfig.MG_AMMO
+		SpecialBody.Kind.GRENADE:
+			return SimConfig.GRENADE_AMMO
 	return 0
 
 func destroy(s: Node) -> void:

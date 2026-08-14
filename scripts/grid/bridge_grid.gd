@@ -181,8 +181,9 @@ func load_segment(seg) -> void:
 	for local_cell in built.hat_cells:
 		authored_hat_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
 
-	for local_cell in built.special_cells:
-		authored_special_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+	for entry in built.special_cells:
+		var sc: Vector2i = entry[0]
+		authored_special_cells.append([Vector2i(sc.x, sc.y + z_offset), int(entry[1])])
 
 	for entry in built.gunner_cells:
 		var gc: Vector2i = entry[0]

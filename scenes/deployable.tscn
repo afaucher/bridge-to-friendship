@@ -1,0 +1,40 @@
+[gd_scene load_steps=4 format=3 uid="uid://btfdeploy1"]
+
+[ext_resource type="Script" path="res://scripts/sim/deployable.gd" id="1_deploy"]
+
+; SMALL AND BRIGHT. A live grenade is the one object on the bridge everybody has
+; to find instantly -- the thrower most of all, because the fuse is their problem
+; too. Hazard yellow, not olive drab: this is a thing to read at a glance, not a
+; thing to be realistic about.
+[sub_resource type="SphereShape3D" id="Shape_1"]
+radius = 0.18
+
+[sub_resource type="SphereMesh" id="Mesh_1"]
+radius = 0.18
+height = 0.36
+radial_segments = 10
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.95, 0.75, 0.15, 1)
+; It glows a little. A grenade that has rolled behind a pillar is still a thing
+; you need to know about, and emission survives being in shadow.
+emission_enabled = true
+emission = Color(0.8, 0.45, 0.05, 1)
+emission_energy_multiplier = 0.7
+roughness = 0.5
+
+[node name="Deployable" type="RigidBody3D"]
+; Layer 7 = specials, shared with dropped weapons: a round already passes through
+; it, which is deliberate -- shooting a live grenade out of the air is not a skill
+; this game is asking anybody to have.
+collision_layer = 64
+collision_mask = 1
+script = ExtResource("1_deploy")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_1")

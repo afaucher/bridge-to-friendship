@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -75,6 +75,10 @@ const CONTENT_GLYPHS := {
 	"B": Content.BOUNCER,
 	"O": Content.SHOOTER,
 	"+": Content.HEART,
+	# A machine gun on the deck. `*` predates there being more than one special,
+	# so it keeps meaning the first one rather than becoming a generic pickup --
+	# every map already authored with it means a gun, and silently changing that
+	# would be a content change disguised as a refactor.
 	"*": Content.PICKUP,
 	"S": Content.SPAWN,
 	# A dormant rusher. Lowercase because it is the only content that is not
@@ -86,6 +90,9 @@ const CONTENT_GLYPHS := {
 	"^": Content.HAT,
 	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
 	# the one bolted down -- the same convention `m` already set for a mound.
+	# Grenades. Lowercase, like the other things that are picked up rather than
+	# fought.
+	"g": Content.PICKUP_GRENADE,
 	"k": Content.SKIRMISHER,
 	"T": Content.TURRET,
 }
