@@ -553,6 +553,31 @@ proves a CLIENT can change a setting and the host broadcasts it -- and it needed
 one autoload in a single process and every other assertion passed with the
 broadcast disabled.
 
+## M15 — Two enemies, three specials, and the model underneath them
+
+**Added 2026-08-14.** Design in `design_ideas/damage_model.md`, plan in
+`implementation_plans/m15_threats_and_answers.md`.
+
+A skirmisher that holds a distance and shoots, an immobile turret, and grenades,
+mines and a shield for the slot M12 built. **The damage model comes first and the
+order is forced**: all five are its clients, and harm is currently dealt at five
+call sites that each hand-code what they do to each target -- `_resolve_round_hit`
+already type-sniffs three ways, and five new sources against three new targets
+turns that into eight questions in five places.
+
+The shape instead is one hit value and a `receive_hit` on each body, so the thing
+dealing damage stops knowing what it hit. The gate on that slice is that **nothing
+changes**: five existing behaviour tests pin what the game does today, and if the
+matrix is right none of them notice.
+
+Three cells carry design rather than bookkeeping. **A mound is immune to bullets
+and destroyed by a blast**, which makes a grenade the way to pre-empt a hazard
+before it wakes -- a new decision built entirely from parts that already exist. **A
+turret ignores a dash**, so it is the first hazard that genuinely needs cover or a
+special, and the first that has to be authored against the rule that a special is
+never the only answer. And **a shield blocks from one direction only**, which is
+what makes flanking the counter-play and a second player the co-op answer.
+
 ## Later
 
 Real Steam appid and store presence. Audio. More than four players. Progression
