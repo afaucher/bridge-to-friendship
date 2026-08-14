@@ -40,6 +40,8 @@ class Built:
 	# Specials -- the `*` glyph, declared in GridConfig since the grid was written
 	# and unbuilt until M12 filled it.
 	var special_cells: Array = []
+	# Enemies that shoot. Authored where they stand, like a shooter pillar.
+	var gunner_cells: Array = []       # [[cell, kind], ...]
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -361,6 +363,10 @@ static func _collect_content(seg, out: Built) -> void:
 					out.hat_cells.append(Vector2i(x, z))
 				GridConfig.Content.PICKUP:
 					out.special_cells.append(Vector2i(x, z))
+				GridConfig.Content.SKIRMISHER:
+					out.gunner_cells.append([Vector2i(x, z), 0])
+				GridConfig.Content.TURRET:
+					out.gunner_cells.append([Vector2i(x, z), 1])
 
 # --- Helpers ------------------------------------------------------------------
 

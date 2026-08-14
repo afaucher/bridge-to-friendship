@@ -1,0 +1,34 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfskirm1"]
+
+[ext_resource type="Script" path="res://scripts/sim/gunner_body.gd" id="1_gunner"]
+
+; TALLER AND THINNER THAN A RUSHER, which is the whole job of the silhouette:
+; across a 60 m bridge you get an outline and a colour and nothing else, and the
+; player has to know instantly whether the thing coming at them is answered by
+; moving (rusher) or by closing (this).
+[sub_resource type="CapsuleShape3D" id="Shape_1"]
+radius = 0.4
+height = 1.7
+
+[sub_resource type="CapsuleMesh" id="Mesh_1"]
+radius = 0.4
+height = 1.7
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.75, 0.25, 0.55, 1)
+roughness = 0.7
+
+[node name="Skirmisher" type="CharacterBody3D"]
+; Layer 5 = rushers, shared with every enemy body: a round's mask already covers
+; it, so cover works against these on the day they land without touching the
+; weapon.
+collision_layer = 16
+collision_mask = 23
+script = ExtResource("1_gunner")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_1")

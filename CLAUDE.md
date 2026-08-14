@@ -490,6 +490,15 @@ about *method*, not about that game.
 - Commit messages use a `feat:`/`fix:` prefix.
 - Design decisions get a short doc in `design_ideas/`; milestones get a plan in
   `implementation_plans/`. Prefer adding to those over inline essays.
+- **AUTHORING SOMETHING INTO THE PLAYTEST MAP CAN BREAK A TEST THAT MEASURES ON
+  IT.** `playtest_bridge.seg` says in its own header that it is not a fixture and
+  that tests keep their own segments -- but `test_plinko` and `test_rescue` use it
+  anyway, because it is the only map with shooters and authored gaps. Observed
+  2026-08-14: adding one skirmisher failed three assertions in `test_plinko`, and
+  not one of them named it ("the dash is running -- expected 1, got 2" was a
+  player being shot mid-dash). **Anything added to that map for feel has to be
+  cleared by the tests that borrow it** -- `_isolate()` already existed for
+  exactly this and just needed the new pool.
 - **A TEST WHOSE WINDOW STARTS AFTER THE EVENT CANNOT SEE IT.** Observed
   2026-08-14 on `test_dash_prediction`: the stall being asserted about happens
   between tick +0 and +1, and the sampling window began at +1 -- so the assertion

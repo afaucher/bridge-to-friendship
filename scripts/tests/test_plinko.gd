@@ -292,6 +292,20 @@ func _isolate() -> void:
 	if not recorded.has("shooters"):
 		recorded["shooters"] = world.grid.shooter_cells.duplicate()
 	world.grid.shooter_cells.clear()
+	# AND THE GUNNERS. This fixture is the PLAYTEST map -- the one place authored
+	# for feel rather than for measurement -- so anything added to it for a
+	# playtest arrives in here too. A skirmisher was authored into it on
+	# 2026-08-14 and immediately failed three assertions in this file, none of
+	# which named it: "the dash is running -- expected 1, got 2" was a player
+	# being shot mid-dash.
+	#
+	# Isolating is the right answer rather than moving the enemy: this test needs
+	# real shooters, and the map is the only fixture that has them.
+	for gunner in world._gunners:
+		if is_instance_valid(gunner):
+			gunner.queue_free()
+	world._gunners.clear()
+	world.grid.take_authored_gunner_cells()
 
 	victim.position = world.grid.cell_surface_world(Vector2i(6, 20)) + Vector3(0.0, 1.0, 0.0)
 	victim.state = PlayerBody.State.WALK

@@ -524,6 +524,27 @@ const MG_KNOCKBACK_LIFT := 2.0
 # (There was an MG_TRACER_SECONDS here. Rounds are real objects now, so the line
 # that stood in for one is gone -- see scripts/sim/bullet.gd.)
 
+# --- Gunners: the skirmisher and the turret -----------------------------------
+#
+# One script, two kinds. See gunner_body.gd -- a turret is a skirmisher that
+# cannot move and ignores a dash.
+
+# THE DISTANCE A SKIRMISHER WANTS. Comfortably inside MG_RANGE (30) so its rounds
+# actually arrive, and far enough that closing it is a decision rather than a
+# step. The band is the dead zone either side, without which it jitters back and
+# forth across a single preferred distance forever.
+const GUNNER_RANGE := 14.0
+const GUNNER_BAND := 3.0
+
+# Slower than a walk (6). It has to be: an enemy that can hold its range against a
+# walking player can hold it forever, and then closing is not an answer. You catch
+# it by walking at it, which is the counter-play the whole design wants.
+const GUNNER_SPEED := 4.0
+
+# Slower than the player's machine gun (0.4). Being shot at from range should be
+# pressure you can walk through, not a wall.
+const GUNNER_FIRE_INTERVAL := 1.2
+
 # --- Explosions ---------------------------------------------------------------
 #
 # Shared by every EXPLOSIVE source -- grenades and mines when they land. The

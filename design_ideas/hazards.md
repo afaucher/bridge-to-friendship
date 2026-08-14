@@ -77,6 +77,8 @@ Cost tiers reflect what machinery already exists.
 | **saw-blades** | the first authored moving body | displacement | medium |
 | **damaged ground** | the first *mutable* deck cell | denial, late | high |
 | **rushers** | the first destructible enemy | displacement | medium |
+| **skirmisher** *(built 2026-08-14)* | holds a distance and shoots | displacement + damage | **shipped** |
+| **turret** *(built 2026-08-14)* | bolted down, shoots, ignores a dash | displacement + damage | **shipped** |
 | **spiders** | patrol, aggro, pathfinding | — | own milestone |
 
 Three notes the table cannot carry:
@@ -183,6 +185,32 @@ rides the per-tick snapshot in world-local coordinates like everything else. Ids
 are **host-assigned and monotonic**, not creation-order indices — a rusher is
 created mid-run by a trigger, so the stone list's "both machines loaded the same
 segments" trick does not apply. This is the same trap written up for hats.
+
+## The two gunners
+
+**Built 2026-08-14.** One script, two kinds -- a turret is a skirmisher that
+cannot move and ignores a dash. See `scripts/sim/gunner_body.gd`.
+
+**They are the first enemies that make the GEOMETRY part of the fight.** A rusher
+is answered by moving, so the answer is the same everywhere; these are answered by
+breaking line of sight or by closing the distance, which are answers the bridge
+has to supply. That is what they add that a third chaser would not.
+
+**A skirmisher holds a band rather than a distance.** A dead zone either side of
+`GUNNER_RANGE`, without which it jitters back and forth across a single preferred
+distance forever. It is deliberately **slower than a walk**: an enemy that can hold
+its range against a walking player holds it forever, and then closing is not an
+answer at all.
+
+**It will not reverse off the bridge.** A body that retreats from you until it
+falls is a comedy nobody authored, and it hands the player a free kill for walking
+forwards. Retreating is refused with no deck behind it; approaching never is.
+
+**A turret ignores `IMPACT`**, per the damage model -- dashing a bolted-down gun
+must do nothing, or the free verb answers the hazard and the weapon specials lose
+another customer. That makes it **the first hazard in the game that genuinely
+requires cover or a weapon**, and therefore the first that can be authored into a
+spot with no answer. A validator rule is owed and is not yet written.
 
 ## The specials, revised
 

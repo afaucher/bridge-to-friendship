@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -84,6 +84,10 @@ const CONTENT_GLYPHS := {
 	# checkpoints: the interesting place for one is PAST a hazard, not beside the
 	# safe spot. Checkpoint segments get them by convention, never by rule.
 	"^": Content.HAT,
+	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
+	# the one bolted down -- the same convention `m` already set for a mound.
+	"k": Content.SKIRMISHER,
+	"T": Content.TURRET,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least

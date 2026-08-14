@@ -28,6 +28,9 @@ const BulletScene = preload("res://scenes/bullet.tscn")
 const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
 const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
+const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
+const TurretScene = preload("res://scenes/turret.tscn")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
@@ -155,6 +158,16 @@ var _bullets: Array = []
 var _bullets_root: Node3D = null
 var _next_bullet_id: int = 0
 
+# --- gunners: skirmishers and turrets ---
+#
+# One pool for both, because they are one script with a kind -- see
+# gunner_body.gd. They are the first enemies that make the GEOMETRY part of the
+# fight: a rusher is answered by moving, and these are answered by breaking line
+# of sight or closing the distance.
+var _gunners: Array = []
+var _gunners_root: Node3D = null
+var _next_gunner_id: int = 0
+
 # --- rushers ---
 var _rushers: Array = []
 var _rushers_root: Node3D = null
@@ -212,6 +225,9 @@ func _ready() -> void:
 	_bullets_root = Node3D.new()
 	_bullets_root.name = "Bullets"
 	add_child(_bullets_root)
+	_gunners_root = Node3D.new()
+	_gunners_root.name = "Gunners"
+	add_child(_gunners_root)
 	# Read once, before anything can overwrite it. Deliberately not in start():
 	# _remembered_hat must hold what is ON DISK from the first moment, or the
 	# first pickup would look like a change and rewrite an identical file.
@@ -392,6 +408,7 @@ func _host_tick() -> void:
 	# rescue pass is what notices they left the world. Running it after means the
 	# consequence lands on the same tick as the cause rather than the next one.
 	_process_rushers()
+	_process_gunners()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -517,6 +534,10 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(rusher):
 			rusher.queue_free()
 	_rushers.clear()
+	for gunner in _gunners:
+		if is_instance_valid(gunner):
+			gunner.queue_free()
+	_gunners.clear()
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
 	# across ground the party no longer occupies are debris nobody can reach.
 	_hats.clear()
@@ -892,6 +913,81 @@ func _kill_rusher(rusher: Node) -> void:
 func rusher_count() -> int:
 	return _rushers.size()
 
+# --- Gunners ------------------------------------------------------------------
+
+func gunner_count() -> int:
+	return _gunners.size()
+
+func _process_gunners() -> void:
+	if not is_host:
+		return
+	if grid != null:
+		for entry in grid.take_authored_gunner_cells():
+			_spawn_gunner(grid.cell_surface_world(entry[0]) + Vector3(0.0, 1.0, 0.0),
+				int(entry[1]))
+
+	for i in range(_gunners.size() - 1, -1, -1):
+		var gunner: Node = _gunners[i]
+		if not is_instance_valid(gunner):
+			_gunners.remove_at(i)
+			continue
+		if gunner.is_spent() or gunner.position.z > _trailing_edge_z():
+			_gunners.remove_at(i)
+			gunner.queue_free()
+			continue
+
+		# LINE OF SIGHT GATES BOTH HALVES, and for a gunner it matters more than
+		# it does for a rusher. A rusher with no sight stands still, which is
+		# merely wasteful; a GUN that fired through a pillar would have no
+		# counter-play at all, and cover is the whole answer to these.
+		var target: Node = _nearest_visible_player(gunner)
+		gunner.step(target)
+		if target == null:
+			continue
+		var range_to: float = gunner.position.distance_to(target.position)
+		if gunner.wants_to_fire(range_to):
+			gunner.note_fired()
+			_spawn_round(gunner.muzzle(),
+				_spread((target.global_position + Vector3(0.0, 0.25, 0.0) - gunner.muzzle()).normalized()),
+				0, gunner.get_rid())
+
+func _nearest_visible_player(gunner: Node) -> Node:
+	var best: Node = null
+	var best_d: float = INF
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body.is_awaiting_rescue() or _returning.has(peer):
+			continue
+		var d: float = gunner.position.distance_to(body.position)
+		if d >= best_d:
+			continue
+		if not _clear_line(gunner.global_position + Vector3(0.0, 0.25, 0.0),
+				body.global_position):
+			continue
+		best = body
+		best_d = d
+	return best
+
+func _spawn_gunner(at: Vector3, kind: int) -> Node:
+	var scene: PackedScene = TurretScene if kind == GunnerBody.Kind.TURRET else SkirmisherScene
+	var gunner: Node3D = scene.instantiate()
+	_next_gunner_id += 1
+	gunner.gunner_id = _next_gunner_id
+	gunner.kind = kind
+	gunner.world = self
+	gunner.name = "Gunner_%d" % _next_gunner_id
+	_gunners_root.add_child(gunner)
+	gunner.position = at
+	_gunners.append(gunner)
+	return gunner
+
+func _gunner_by_id(id: int) -> Node:
+	for gunner in _gunners:
+		if is_instance_valid(gunner) and gunner.gunner_id == id:
+			return gunner
+	return null
+
 # --- Hats ---------------------------------------------------------------------
 
 # Write the local player's hat to disk, when and only when it has changed.
@@ -1191,13 +1287,19 @@ func _fire_round(shooter: Node, weapon: Node) -> void:
 		+ GridConfig.yaw_vector(shooter.facing) * SimConfig.MG_RANGE
 	var direction: Vector3 = _spread((zero - from).normalized())
 
+	_spawn_round(from, direction, int(shooter.peer_id), shooter.get_rid())
+
+# ONE ROUND, whoever fired it. Shared by the player's machine gun and by both
+# gunners -- so an enemy's round is the same object as yours, stopped by the same
+# cover, and resolved through the same matrix. `source` of 0 means the world.
+func _spawn_round(from_global: Vector3, direction: Vector3, source: int, shooter_rid: RID) -> void:
 	var bullet: Node3D = BulletScene.instantiate()
 	_next_bullet_id += 1
 	bullet.bullet_id = _next_bullet_id
 	bullet.name = "Bullet_%d" % _next_bullet_id
 	_bullets_root.add_child(bullet)
 	_bullets.append(bullet)
-	bullet.launch(to_local(from), direction, int(shooter.peer_id), shooter.get_rid())
+	bullet.launch(to_local(from_global), direction, source, shooter_rid)
 
 # The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
 # somehow not been posed yet -- a round from slightly the wrong place beats a
@@ -1324,7 +1426,7 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and body.position.distance_to(centre) <= radius:
 			out.append(body)
-	for group in [_rushers, _balls, _hats.all(), _specials.all()]:
+	for group in [_rushers, _gunners, _balls, _hats.all(), _specials.all()]:
 		for node in group:
 			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
 				out.append(node)
@@ -1824,7 +1926,7 @@ func _broadcast_snapshot() -> void:
 		layout = grid.stone_layout()
 	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(keyframe), layout,
 		_rusher_snapshot(keyframe), _hat_snapshot(keyframe), _special_snapshot(keyframe),
-		_bullet_snapshot(keyframe))
+		_bullet_snapshot(keyframe), _gunner_snapshot(keyframe))
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -1894,6 +1996,31 @@ func _ball_by_id(id: int) -> Node:
 # never predicted. No velocity on the wire -- a client does not integrate one, so
 # sending it would be paying MTU for a number nobody reads. See the CLAUDE.md
 # note about the 4595-byte snapshot that would not fit ENet's 1392.
+func _gunner_snapshot(keyframe: bool) -> Array:
+	var out: Array = []
+	for gunner in _gunners:
+		if is_instance_valid(gunner):
+			out.append(gunner.capture_state())
+	return SnapshotDelta.encode(out, _section("gunners"), keyframe)
+
+# Self-healing like every other pool: one the host stops naming has been shot.
+func _apply_gunner_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
+		var id: int = int(entry[0])
+		var gunner: Node = _gunner_by_id(id)
+		if gunner == null:
+			gunner = _spawn_gunner(entry[2], int(entry[1]))
+			gunner.gunner_id = id
+		gunner.apply_state(entry)
+
+	for i in range(_gunners.size() - 1, -1, -1):
+		var existing: Node = _gunners[i]
+		if not is_instance_valid(existing) or not seen.has(existing.gunner_id):
+			_gunners.remove_at(i)
+			if is_instance_valid(existing):
+				existing.queue_free()
+
 func _rusher_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for rusher in _rushers:
@@ -2075,22 +2202,22 @@ func _bullet_by_id(id: int) -> Node:
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array) -> void:
+		bullets: Array, gunners: Array) -> void:
 	if is_host:
 		return
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array) -> void:
+		bullets: Array, gunners: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
@@ -2100,6 +2227,7 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 	_apply_hat_snapshot(hats)
 	_apply_special_snapshot(specials)
 	_apply_bullet_snapshot(bullets)
+	_apply_gunner_snapshot(gunners)
 	for e in SnapshotDelta.changed_of(entries):
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)

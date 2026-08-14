@@ -103,6 +103,16 @@ func take_authored_special_cells() -> Array:
 	authored_special_cells.clear()
 	return out
 
+# Enemies that shoot, reported rather than spawned -- the same arrangement hats
+# and specials use. An enemy is a body the WORLD owns and steps; the grid's job
+# ends at saying where the author put one.
+var authored_gunner_cells: Array = []      # [[cell, kind], ...]
+
+func take_authored_gunner_cells() -> Array:
+	var out: Array = authored_gunner_cells.duplicate()
+	authored_gunner_cells.clear()
+	return out
+
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
@@ -173,6 +183,10 @@ func load_segment(seg) -> void:
 
 	for local_cell in built.special_cells:
 		authored_special_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for entry in built.gunner_cells:
+		var gc: Vector2i = entry[0]
+		authored_gunner_cells.append([Vector2i(gc.x, gc.y + z_offset), int(entry[1])])
 
 func next_z() -> int:
 	var total := 0
