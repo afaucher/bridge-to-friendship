@@ -139,7 +139,7 @@ them at once and then teleports them.
 makes item 3 free: at 30 Hz *with* interpolation, motion is smoother than at
 60 Hz without.
 
-### 2. Predict the start of a `SHOVE`
+### 2. Predict the start of a `SHOVE` — **DONE 2026-08-14**
 
 Enter `SHOVE` locally on the press and run the fixed-speed line; the host stays
 authoritative for the contact and corrects on arrival.
@@ -149,9 +149,30 @@ about the **outcome** and is being applied to the **start**. The direction is
 chosen locally, is already on the wire as an absolute angle, and the first six
 ticks are a straight line. What is genuinely unpredictable is what it *hits*.
 
-Today a distant player presses dash and sees nothing for a full round trip. For a
-game whose comedy is built on a committed, unsteerable dash, that is the worst
-80 ms in the build. Same treatment for firing a special.
+**MEASURED 2026-08-14, AND THE DESCRIPTION ABOVE WAS WRONG.** "Nothing happens for
+a full round trip" is the intuitive account and it is not what the code did. The
+press lands inside a `WALK` tick, which the client has always predicted, so the
+first tick of travel happened locally either way. Sampled at 8 ticks of one-way
+delay, what actually happened was worse:
+
+| tick | with prediction | without |
+|---|---|---|
+| +0 | 0.93 | 0.93 |
+| +1 | 1.87 | **0.93 — stalled** |
+| +2…+8 | smooth to 7.47 | catches up to 7.47 |
+| +10 | done | **0.93 — rewound to the start, dashes again** |
+
+So the client stalled for a tick, ran the rest of the dash, and then **rubber-
+banded to the start and dashed a second time** when the first authoritative frame
+arrived. A player sees the same dash happen twice, from two different places.
+
+Fixed by predicting `SHOVE` as well as `WALK`. `test_dash_prediction` asserts the
+shape rather than "did it move" — monotonic travel, no stalled tick — because
+both are true of the broken version. A/B: 6.53 m of backward teleport.
+
+Firing a special is the same argument and is NOT done here: a predicted round is
+an object the host did not create, which needs reconciling in a way a predicted
+movement state does not.
 
 **Reconciliation already handles being wrong:** a mispredicted shove is one
 `apply_state` — the machinery is built and tested.
@@ -178,7 +199,7 @@ A `PackedByteArray` codec: `uint16` ids, 1 cm-quantised `int16` positions,
 one MTU, which ends fragmentation — and fragmentation is what turns 1% link loss
 into 3% snapshot loss exactly when the screen is busiest.
 
-### 6. Delta against a keyframe
+### 6. Delta against a keyframe — **DONE 2026-08-14**
 
 **Measured, because the first draft of this plan waved it away and the reason
 given was weak.** "It fits in one packet with four players" is a statement about

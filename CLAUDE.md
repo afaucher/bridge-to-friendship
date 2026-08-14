@@ -490,6 +490,11 @@ about *method*, not about that game.
 - Commit messages use a `feat:`/`fix:` prefix.
 - Design decisions get a short doc in `design_ideas/`; milestones get a plan in
   `implementation_plans/`. Prefer adding to those over inline essays.
+- **A TEST WHOSE WINDOW STARTS AFTER THE EVENT CANNOT SEE IT.** Observed
+  2026-08-14 on `test_dash_prediction`: the stall being asserted about happens
+  between tick +0 and +1, and the sampling window began at +1 -- so the assertion
+  was dead code and passed against the broken build. Found by A/B, which is the
+  only thing that finds it. **Sample from the tick the event happens ON.**
 - **NEVER `git checkout --` A FILE THAT HAS UNCOMMITTED WORK IN IT.** Observed
   2026-08-14 while A/B-ing the debug console: a loop that disabled one function,
   ran the gate, then "restored" with `git checkout -- scripts/sim/game_world.gd`

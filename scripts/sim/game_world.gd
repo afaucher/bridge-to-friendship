@@ -1633,20 +1633,52 @@ func _client_tick() -> void:
 
 	var body: Node = players.get(local_peer)
 	if body != null:
-		if body.state == PlayerBody.State.WALK:
+		if _is_predicted(body.state):
 			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
 			_predicted.append([tick, body.capture_state()])
 		else:
-			# COMMITTED ACTIONS ARE NOT PREDICTED. In a shove, a tumble or a
-			# rope yank the player has no control, so there is no input to
-			# mispredict and nothing to gain -- while the outcome depends on
-			# collisions with bodies and stones this machine does not own.
-			# Authority drives it. The design's comedy constraint (a shove
-			# cannot be steered) and its networking constraint are the same
-			# constraint.
+			# TUMBLE, LEDGE_HANG, DOWNED and the bus states genuinely have no
+			# input: the player is not driving, so there is nothing to predict
+			# with and nothing to gain. Authority drives them.
 			_predicted.clear()
 
 	_trim_history()
+
+# WHICH STATES A CLIENT RUNS FORWARD FOR ITSELF.
+#
+# WALK, obviously. And SHOVE, added 2026-08-14, which reverses half of an earlier
+# decision -- so here is the whole argument.
+#
+# The old rule was "committed actions are not predicted: there is no input to
+# mispredict, so the correction never fights the player". That is a statement
+# about the OUTCOME of a dash, and it was being applied to its START. Those are
+# different questions:
+#
+#   The ENTRY is perfectly predictable. The direction is chosen at the instant of
+#   the press, it is already on the wire as an absolute angle (the host cannot
+#   re-derive an aim), and the first six ticks are a straight line at a fixed
+#   speed. A client reproduces that exactly.
+#
+#   The CONTACT is not. What the dash hits, and what that does to the other body,
+#   depends on positions this machine does not own.
+#
+# So the client runs the line and authority settles the collision. On a coast-to-
+# coast link the old rule cost a FULL ROUND TRIP OF DEAD AIR on the press --
+# roughly 80 ms in which the game's signature verb did nothing at all -- and a
+# dash that hits nothing is the common case, where the prediction is exact and
+# there is no correction to make.
+#
+# When it IS wrong, reconciliation handles it the same way it handles a
+# mispredicted step: rewind and replay. A dash lasts six ticks and a client is
+# about five ahead, so a contact the client did not know about arrives near the
+# end of its own dash and corrects there.
+#
+# Replaying a shove is safe. _step_shove reads no input, and _begin_shove is
+# reachable only from _step_walk -- so replaying the tick that carried
+# ACTION_SHOVE re-enters the dash exactly once, and replaying later ticks inside
+# it does nothing.
+func _is_predicted(state: int) -> bool:
+	return state == PlayerBody.State.WALK or state == PlayerBody.State.SHOVE
 
 func _gather_local_input(for_tick: int) -> Array:
 	if input_provider.is_valid():
@@ -1693,8 +1725,12 @@ func _trim_history() -> void:
 # old scheme; it is the grid being the grid, and the same reason the ledge hang
 # keeps a cardinal `hang_dir`.
 func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
-	# Host only. A client does not simulate its own shove (see _client_tick), so
-	# this is defence in depth rather than a live branch.
+	# HOST ONLY, and this is a live branch now rather than defence in depth: a
+	# client DOES simulate its own shove (see _is_predicted), so it reaches here
+	# on contact. It must not push a stone or launch a teammate -- those are
+	# authority's to decide, and a client that moved them would be inventing a
+	# result for a body it does not own. Its own dash still STOPS on the contact,
+	# because move_and_slide already swept it.
 	if not is_host or other == null or other == shover:
 		return
 	if other.has_method("receive_shove"):
@@ -2079,9 +2115,9 @@ func _reconcile(body: Node, e: Array) -> void:
 	while _predicted.size() > 0 and int(_predicted[0][0]) < acked:
 		_predicted.pop_front()
 
-	# In a committed state there was no prediction to compare against -- just
+	# In a state the client does not predict there is nothing to compare against --
 	# take what the host says and start clean.
-	if int(authoritative[2]) != PlayerBody.State.WALK:
+	if not _is_predicted(int(authoritative[2])):
 		body.apply_state(authoritative)
 		_predicted.clear()
 		return

@@ -49,6 +49,27 @@ full round trip**. Then they are already moving. For a game whose entire comedy
 is built on a committed, unsteerable dash, that is the worst place in the build
 to spend 80 ms.
 
+**MEASURED 2026-08-14, AND THE DESCRIPTION ABOVE WAS WRONG.** "Nothing happens for
+a full round trip" is the intuitive account and it is not what the code did. The
+press lands inside a `WALK` tick, which the client has always predicted, so the
+first tick of travel happened locally either way. Sampled at 8 ticks of one-way
+delay, what actually happened was worse:
+
+| tick | with prediction | without |
+|---|---|---|
+| +0 | 0.93 | 0.93 |
+| +1 | 1.87 | **0.93 — stalled** |
+| +2…+8 | smooth to 7.47 | catches up to 7.47 |
+| +10 | done | **0.93 — rewound to the start, dashes again** |
+
+So the client stalled for a tick, ran the rest of the dash, and then **rubber-
+banded to the start and dashed a second time** when the first authoritative frame
+arrived. A player sees the same dash happen twice, from two different places.
+
+Fixed by predicting `SHOVE` as well as `WALK`. `test_dash_prediction` asserts the
+shape rather than "did it move" — monotonic travel, no stalled tick — because
+both are true of the broken version. A/B: 6.53 m of backward teleport.
+
 The same applies to firing a special: `ACTION_SPECIAL_HELD` goes to the host, the
 host spawns the round, and the round arrives in a snapshot ~1 RTT later.
 
