@@ -17,6 +17,7 @@ extends CanvasLayer
 # (that was Godot 3), and a HUD is not worth a theme resource.
 
 const HudModel = preload("res://scripts/ui/hud_model.gd")
+const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
 
 const COLOR_HEALTH := Color(0.91, 0.29, 0.33)
 const COLOR_HEALTH_LOST := Color(0.20, 0.20, 0.24)
@@ -49,6 +50,8 @@ var _own_state: Label = null
 var _own_bleed: ColorRect = null
 var _own_rescue: ColorRect = null
 
+var _markers: Control = null
+
 var _friends_panel: Control = null
 var _friends_box: VBoxContainer = null
 var _friend_rows: Dictionary = {}      # peer -> {row, name, pips, state, bar, bearing}
@@ -57,6 +60,7 @@ func _ready() -> void:
 	layer = 0        # under the menu's CanvasLayer, which is where the menu belongs
 	_build_own_panel()
 	_build_friends_panel()
+	_build_markers()
 
 func _process(_delta: float) -> void:
 	var model: Dictionary = HudModel.build(world)
@@ -67,6 +71,34 @@ func _process(_delta: float) -> void:
 		return
 	_update_own(model["own"])
 	_update_friends(model["friends"])
+	_update_markers(model["friends"], _delta)
+
+# --- Offscreen and downed markers ---------------------------------------------
+
+func _build_markers() -> void:
+	_markers = Control.new()
+	_markers.name = "TeammateMarkers"
+	_markers.set_script(TeammateMarkers)
+	add_child(_markers)
+
+func _update_markers(friends: Array, delta: float) -> void:
+	if _markers == null:
+		return
+	var list: Array = []
+	for friend in friends:
+		list.append({
+			"at": friend.get("at", Vector3.ZERO),
+			# A friend who is waiting for a rescue -- downed OR hanging off a
+			# ledge. Both are "come and get me", and the marker does not care
+			# which.
+			"downed": bool(friend.get("needs_help", false)),
+			"peer": int(friend.get("peer", 0)),
+		})
+	var cam: Camera3D = null
+	if world != null and "camera" in world:
+		cam = world.camera as Camera3D
+	_markers.visible = cam != null
+	_markers.refresh(list, cam, delta)
 
 # --- Own panel ----------------------------------------------------------------
 

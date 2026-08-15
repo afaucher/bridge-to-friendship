@@ -331,6 +331,16 @@ the moment it is written.
   runtime: `ProgressBar.tint_progress` is Godot 3 and raises on the first frame
   and nowhere earlier. If nothing in the gate ever instantiates a UI script, it
   ships having never been executed once (see `test_hud_view`).
+- **THE HEADLESS VIEWPORT IS 64x64, so screen-space UI cannot be tested through a
+  camera.** Measured 2026-08-14 building the offscreen teammate marker: a point
+  dead ahead of a `Camera3D` unprojects to (32, 32) -- correct, and also within
+  48 px of all four edges at once, so every teammate in the world read as "off
+  screen" and the first version of the test failed four ways while the code was
+  right. `unproject_position` and `is_position_behind` work fine; it is the SIZE
+  that is nonsense. **Split the placement maths into a pure function that takes an
+  explicit screen size**, assert that with a real 1280x720, and leave the
+  projection itself to Godot -- it is their code, not ours, and only one of the two
+  is worth a gate.
 - **Tests seed the global RNG** (`seed()` in `main.gd`'s `_run_test`). `randf`/
   `randi` are otherwise entropy-seeded per launch, which makes any
   outcome-dependent test flaky run to run — and a flaky gate gets ignored, which

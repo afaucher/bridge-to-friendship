@@ -86,6 +86,10 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"rescue": rescue_fraction(other),
 			"distance": to.length(),
 			"bearing": bearing_to(to),
+			# WHERE THEY ACTUALLY ARE. The bearing above is for the text row; a
+			# screen marker has to be projected through the camera, and a compass
+			# point cannot be. See teammate_markers.gd.
+			"at": other.global_position,
 			# What they are holding, as a short label -- D5's "each friend's name,
 			# health and special". Empty means empty-handed, which is exactly the
 			# thing worth knowing when a rusher is up: who can end it.

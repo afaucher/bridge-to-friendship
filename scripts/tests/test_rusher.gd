@@ -55,7 +55,7 @@ func _physics_process(_delta: float) -> void:
 	phase_frame += 1
 	match phase:
 		0: _phase_wake_and_telegraph()
-		1: _phase_chases_faster_than_a_walk()
+		1: _phase_chases_you_down()
 		2: _phase_line_of_sight()
 		3: _phase_contact_tumbles_and_spends()
 		4: _phase_dash_deflects()
@@ -122,7 +122,7 @@ func _phase_wake_and_telegraph() -> void:
 
 # --- 3. It runs at you, faster than a walk ------------------------------------
 
-func _phase_chases_faster_than_a_walk() -> void:
+func _phase_chases_you_down() -> void:
 	if phase_frame == 1:
 		_isolate()
 		# COLUMN 6 is the open lane through the whole arena: the pillar rows
@@ -139,12 +139,22 @@ func _phase_chases_faster_than_a_walk() -> void:
 		if _lost_subject(): return
 		var rusher: Node = _tracked()
 		var closed: float = float(recorded["gap"]) - rusher.position.distance_to(victim.position)
-		# HALF A SECOND OF CLOSING, compared against what a WALK would cover in
-		# the same time. "It moved" is not the claim -- the claim is that you
-		# cannot stroll away from it, and only this comparison says that.
-		var walk_would: float = SimConfig.WALK_SPEED * 0.5
+		# HALF A SECOND OF CLOSING, compared against a share of a WALK.
+		#
+		# THIS CLAIM WAS "FASTER THAN A WALK" UNTIL 2026-08-14 and the playtest
+		# overturned it: RUSHER_SPEED halved to 4.0, below WALK_SPEED, because a
+		# rusher no longer has to supply all the pressure on the bridge by itself.
+		# So a player CAN now stroll away from one, deliberately.
+		#
+		# What survives is the half of the claim that still carries the design: it
+		# is a PURSUER. "It moved" would pass against a rusher that drifts, and a
+		# comparison against its own speed would pass against any number at all --
+		# so the bar is a share of a walk, which is a number the player feels. At
+		# half a walk it still punishes standing still and dithering, which is what
+		# it is for now.
+		var walk_would: float = SimConfig.WALK_SPEED * 0.5 * 0.5
 		check(closed > walk_would,
-			"a rusher closes faster than a player walks (%.2f m vs %.2f m in 0.5 s)"
+			"a rusher closes on you meaningfully (%.2f m vs %.2f m in 0.5 s)"
 				% [closed, walk_would])
 		_advance(2)
 

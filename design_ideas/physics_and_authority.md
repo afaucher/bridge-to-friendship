@@ -201,3 +201,88 @@ stone and assert a cell record, headless, in milliseconds.
 What survives unchanged: the `NetworkManager` / `SteamManager` split, the two
 transports, the ENet-in-the-gate rule, and the host-decided spawn handshake.
 Those were the parts worth getting right early, and they were.
+
+---
+
+# The effects rule
+
+Asked directly in the 2026-08-14 playtest: *should effects wait for a server
+signal? What is best practice?* The answer is a rule, and it is not "host or
+client".
+
+> **Predict what you initiated. Wait for what the world decided.**
+
+## Why the cost is asymmetric
+
+**An effect cannot be retracted.** Once a player has seen an explosion, being told
+a moment later that it did not happen is worse than having waited — there is no
+un-flip, no un-bang, and no way to give back the second they spent reacting to it.
+Being *slightly late* costs a fraction of a second. Being *wrong* costs trust in
+everything the screen says.
+
+That asymmetry, not the network topology, is what decides each case:
+
+| Effect | Who decided it | Verdict |
+|---|---|---|
+| Muzzle flash, dash, shield rising | **your own input** | play it **immediately** |
+| Explosion, a hit landing, an enemy dying | **the host's simulation** | **wait** |
+| A body's position, a grenade's arc | host, but continuous | interpolate — never a yes/no |
+
+## The refinement: one-shot versus continuous
+
+The rule above is about *irreversible* effects. There is a second axis, and it is
+what makes a predicted effect safe:
+
+- **A ONE-SHOT effect cannot be corrected.** An explosion, a death, a sound. If it
+  might be wrong, it waits. Always.
+- **A CONTINUOUS effect corrects itself for free.** A raised shield, a body's
+  position, a held weapon's pose. If the prediction turns out wrong, the next
+  authoritative frame simply stops drawing it, and the player sees a flicker
+  rather than a lie.
+
+**So a continuous effect may be predicted even when its input is uncertain, and a
+one-shot may not.** That is the whole reason the shield wall is allowed to be local
+while the blast is not.
+
+If a one-shot ever *must* be predicted, the mitigation is not to remove it but to
+make the wrong version cheap: a short flash already fading by the time a correction
+lands is forgivable in a way a lingering scorch mark is not.
+
+## Audit — 2026-08-14
+
+Every effect in the game today, against the rule.
+
+**Correct, and for the stated reason:**
+
+- **The blast** (`_play_blast` / `_blast_seen`) — told, never inferred. A client
+  could nearly work it out, since a grenade stops being mentioned in the snapshot
+  when it detonates — but *that is also what happens when one falls off the
+  bridge*, and that deliberately is not a bang. Guessing would put an explosion
+  over the void every time somebody missed. This is the asymmetry in one case.
+- **The dash** — predicted, because it is your own input and the delay is felt.
+  This is the other half of the rule, done right.
+- **The shield wall** — predicted locally from your own trigger. Legal under the
+  refinement above: it is continuous, so a wrong guess un-draws itself.
+- **Pickups, hats, rusher wakes, deaths** — all host-decided and told. These are
+  contested between players; nobody may guess them.
+
+**One violation, and it is in the safer direction:**
+
+- **YOUR OWN GUNFIRE WAITS A FULL ROUND TRIP.** `_fire_specials` runs only inside
+  `_host_tick`, and rounds reach clients through the bullet snapshot — so on a
+  client, pulling the trigger produces nothing at all until the host has been told,
+  has fired, and has replied. The machine gun fires every 0.4 s, so at a
+  coast-to-coast RTT the first round can be a quarter of its own interval late.
+
+  This breaks the *predict what you initiated* half. It is not dangerous — being
+  late is the forgivable failure — but it is exactly the kind of latency the player
+  feels, and it is the same complaint that produced dash prediction.
+
+  **The fix, when it is taken, must split the round in two:** a *cosmetic* tracer
+  the client spawns instantly on its own trigger, and the *real* round the host
+  spawns and replicates. A client must never spawn a round that can hit somebody;
+  that is a world decision. The visual is yours; the consequence is the host's.
+
+**Nothing currently plays an effect early that could turn out false**, which is the
+failure mode the rule exists to prevent. The one thing the audit found is the
+opposite mistake, and a cheaper one.

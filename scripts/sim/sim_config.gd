@@ -287,10 +287,27 @@ const RUSHER_TRIGGER_RADIUS := 6.0
 # short enough to be worth reacting to rather than ignoring.
 const RUSHER_RISE_SECONDS := 1.0
 
-# Above WALK_SPEED (6.0), so it cannot be strolled away from -- that is what
-# makes it a decision. A rounding error against SHOVE_SPEED (56), so committing
-# an axis still beats it.
-const RUSHER_SPEED := 8.0
+# HALVED FROM 8.0 ON 2026-08-14, and the note it replaces said the opposite: "above
+# WALK_SPEED (6.0), so it cannot be strolled away from -- that is what makes it a
+# decision". At 4.0 it CAN be strolled away from, and the playtest that asked for
+# this had the debug console's rusher_speed_pct to try 100 / 75 / 50 / 25 with --
+# 50 was the answer, unambiguously.
+#
+# WHY THE OLD ARGUMENT STOPPED HOLDING: it was written when a rusher was the only
+# enemy in the game, so it had to supply all the pressure by itself and being
+# outrunnable would have made it ignorable. The bridge is busier now -- a
+# skirmisher that holds a band, a turret that owns a piece of deck, plinko, and
+# three specials that all ask the player to stand somewhere specific. A rusher no
+# longer has to be the thing that stops you strolling, and at 8.0 it was the thing
+# that stopped you doing anything else.
+#
+# What it costs, stated plainly so the next playtest knows what to watch: a lone
+# player on an empty stretch can now simply walk away from one. That is only
+# acceptable while the rest of the bridge is asking for their attention, so if
+# enemies are ever thinned out again, this number goes back up with them.
+#
+# Still a rounding error against SHOVE_SPEED (56), so committing an axis beats it.
+const RUSHER_SPEED := 4.0
 
 # One dash buys a breath, not an escape.
 const RUSHER_STAGGER_SECONDS := 2.0
