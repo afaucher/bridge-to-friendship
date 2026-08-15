@@ -243,7 +243,9 @@ the moment it is written.
   sin/cos by hand**, and when a test measures how far, ask what measures which way.
   (The earlier two were both Godot's row-major `Basis` — a bullet tail and a muzzle
   offset, from the same nine numbers.)
-- **Check the collision MASK before debugging the behaviour.** A dash passed
+- **Check the collision MASK before debugging the behaviour.** *(Now FOUR bugs,
+  the latest 2026-08-14: grenades flew through pillars because their mask was
+  world-only and a pillar is a STONE on layer 3.)* A dash passed
   straight through a pillar for two rounds of diagnosis: stones are on layer 4
   and the player's mask was 3. Nothing errors; the shove simply never contacts
   anything. **Three separate bugs have now been one wrong bit here** (that dash,

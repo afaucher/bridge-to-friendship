@@ -22,6 +22,7 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const Deployable = preload("res://scripts/sim/deployable.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
 var world: Node3D = null
@@ -57,6 +58,7 @@ func _physics_process(_delta: float) -> void:
 		1: _phase_longer_hold_goes_further()
 		2: _phase_a_tap_can_hurt_you()
 		3: _phase_a_tumble_does_not_throw()
+		4: _phase_it_bounces_off_a_pillar()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -233,6 +235,68 @@ func _phase_a_tumble_does_not_throw() -> void:
 		if weapon != null:
 			eq(weapon.ammo, SimConfig.GRENADE_AMMO,
 				"with its ammo untouched -- the cost is the moment, not the resource")
+		_advance(4)
+
+# --- 5. A pillar is solid -----------------------------------------------------
+#
+# REPORTED FROM PLAYTEST: "grenades go through pillars entirely". The mask was
+# world-only, and a pillar is a STONE on layer 3 -- the fourth bug in this project
+# to be one wrong bit in a collision mask, which is why the layers are named.
+#
+# A mask bug leaves no trace at all: nothing errors, nothing logs, the grenade
+# simply does not notice the thing it flew through. So the assertion has to be a
+# real throw at a real pillar, and the measurement has to be about WHERE IT ENDED
+# UP rather than about a contact that was never reported.
+
+func _phase_it_bounces_off_a_pillar() -> void:
+	if phase_frame == 1:
+		# THROWN FLAT, ON PURPOSE, and the reason is worth stating because the
+		# obvious version of this test cannot fail.
+		#
+		# A full-charge lob was tried first. Measured: it reached 12.8 m with the
+		# pillar and 13.7 m without, against 14.0 m to the pillar -- both SHORT, so
+		# the assertion passed either way. The 40-degree arc is above a 2 m pillar
+		# for nearly all of its flight (and the deck's 4-degree upslope shortens
+		# every throw besides), so a lobbed grenade mostly flies OVER cover. That is
+		# correct behaviour and it is a terrible instrument for a mask bug.
+		#
+		# The claim here is about the COLLISION MASK, so the throw is built to put
+		# the grenade through the pillar's waist: flat, fast, at chest height.
+		_park(Vector2i(22, 6), 0.0)
+		recorded["pillar"] = world.grid.cell_surface_world(Vector2i(22, 8))
+		recorded["from"] = thrower.position
+		recorded["reach"] = -99.0
+		# EMPTY THE HAND FIRST. Leaving a grenade in it threw a SECOND one: the
+		# phase transition drops `holding`, and a drop is a release edge. The rig
+		# then had two grenades in it and this phase was measuring _deployables[0]
+		# -- the stray lob -- while the shot under test flew past unwatched, which
+		# is why it read the same 2.29 m whatever the mask said.
+		for sp in world._specials.all():
+			world._specials.destroy(sp)
+		_clear_deployables()
+
+		var release: Vector3 = thrower.position + Vector3(0.0, 0.1, -0.7)
+		var g: Node = world._spawn_deployable(Deployable.Kind.GRENADE)
+		g.throw_from(release, Vector3(0.0, 3.0, -25.0), 1)
+		recorded["id"] = g.deployable_id
+		return
+	# BY ID, never by index. See above.
+	var live: Node = world._deployable_by_id(int(recorded.get("id", -1)))
+	if live != null:
+		recorded["reach"] = maxf(float(recorded["reach"]),
+			float(recorded["from"].z) - live.position.z)
+	if phase_frame == 60:
+		# Forward is -Z, so progress toward the pillar is a DECREASE in z. The
+		# pillar centre is 4 m ahead and its radius is 1 m, so a grenade that ever
+		# gets past 3.4 m went into it rather than off it.
+		var reached: float = float(recorded["reach"])
+		check(reached < 3.4,
+			"a pillar stops a grenade (reached %.2f m; its face is 3.0 m out)" % reached)
+		# AND IT REALLY WAS THROWN AT IT: unblocked this shot carries well past the
+		# pillar, so anything under a metre means the throw never happened and the
+		# line above passed for the wrong reason.
+		check(reached > 1.0,
+			"and it really was thrown at it (%.2f m)" % reached)
 		finish()
 
 # --- helpers ------------------------------------------------------------------

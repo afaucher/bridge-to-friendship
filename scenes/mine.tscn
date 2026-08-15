@@ -38,7 +38,11 @@ emission_energy_multiplier = 1.4
 ; through it, deliberately. Shooting a mine from range would make it a puzzle with
 ; a free solution.
 collision_layer = 64
-collision_mask = 1
+; The same mask a grenade uses, for one rule rather than two -- see grenade.tscn.
+; A placed mine is frozen, so this only decides where an unplaceable one (thrown
+; over a hole) falls, but a second answer here would be a second thing to keep
+; in step for no reason.
+collision_mask = 5
 script = ExtResource("1_deploy")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
