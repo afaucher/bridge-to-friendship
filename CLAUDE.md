@@ -483,6 +483,16 @@ about *method*, not about that game.
   honest count has to be incremented on the RECEIVING side, at the line that
   consumes the message. (This is exactly the shape of the empty-peer-list RPC
   bug above.)
+- **A LATENCY INSTRUMENT READ ON A STATIONARY BODY REPORTS ZERO, WHICH LOOKS
+  EXACTLY LIKE A BROKEN INJECTION.** Observed 2026-08-14 measuring the contact
+  prediction baseline: the client-versus-host disagreement about a remote player
+  was 0.000 m at 4 ticks of injected delay AND at 40, which reads as "the delay
+  does nothing" and would have condemned a working rig. It was zero because the
+  reading was taken at the END of the run, when both players were pressed together
+  and STILL — and a still body looks identical in every view however stale. Sampled
+  every tick it scaled properly (0.40 m at 4 ticks, 2.65 m at 40). **Staleness is
+  only observable on something that is MOVING**, so sample it across the run and
+  keep the worst, never once at the end.
 - **VALIDATE AN INSTRUMENT AGAINST A CASE WHERE IT MUST REPORT FAILURE before
   trusting its output.** Probes that could only ever return 0, and probes that
   sampled state after it had already been released, both produced confident
@@ -549,8 +559,10 @@ about *method*, not about that game.
   loses, intermittently, and reads as a networking bug. Allocated so far:
   `test_enet_loopback` 28777, `test_network_session` 28778,
   `test_authority_agreement` 28779, `test_client_prediction` 28780,
-  `test_hud_rescue_visible` 28782 (28781 is reserved for M8.5's hat replication
-  test). Pick the next free one and add it here.
+  `test_hud_rescue_visible` 28782, `test_debug_replication` 28783,
+  `test_dash_prediction` 28784, `test_contact_prediction` 28785 (28781 is
+  reserved for M8.5's hat replication test). Pick the next free one and add it
+  here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
   cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no
   game state can gate. *(inherited — diagnosing its absence cost hours.)*

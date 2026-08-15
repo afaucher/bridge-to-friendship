@@ -114,6 +114,17 @@ var debug_inbound_delay_ticks: int = 0
 # cheapest possible signal that a state field is missing from capture_state().
 var corrections: int = 0
 
+# THE MAGNITUDE, NOT ONLY THE COUNT, and the distinction decides whether a change
+# to the netcode reads as a win or a regression.
+#
+# A correction that moves the body 2 cm is invisible; one that moves it 2 m is the
+# glitch a playtester reports. Interpolating remote players is expected to trade a
+# few large corrections for more small ones -- which the COUNT alone would score
+# as a regression while the game got better. `_reconcile` already computed this
+# distance to decide whether to correct at all, and threw it away.
+var correction_metres: float = 0.0
+var correction_worst: float = 0.0
+
 var _level: Node = null
 var _players_root: Node3D = null
 var _spawn_index: Dictionary = {}
@@ -2586,12 +2597,16 @@ func _reconcile(body: Node, e: Array) -> void:
 	# Compare what we predicted for the acked tick against what actually
 	# happened. Close enough and the prediction stands and the player sees
 	# nothing, which is the common case and the whole point.
+	var missed: float = 0.0
 	if _predicted.size() > 0 and int(_predicted[0][0]) == acked:
 		var predicted_position: Vector3 = _predicted[0][1][0]
-		if predicted_position.distance_to(authoritative[0]) <= SimConfig.CORRECTION_EPSILON:
+		missed = predicted_position.distance_to(authoritative[0])
+		if missed <= SimConfig.CORRECTION_EPSILON:
 			return
 
 	corrections += 1
+	correction_metres += missed
+	correction_worst = maxf(correction_worst, missed)
 
 	# Rewind to the authoritative frame and replay every input the host has not
 	# seen. Because step() is the same function the host ran, and a sim tick is
