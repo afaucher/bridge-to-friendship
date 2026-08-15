@@ -9,15 +9,28 @@
 ; being a bouncing ball and becomes a stuck one. A round pillar deflects
 ; smoothly from any approach angle, which is the whole point of a plinko field.
 ;
-; Radius 1.0 fills the 2 m cell exactly, so a pillar still reads as "this cell is
-; occupied" on the checkerboard.
+; NARROWED 20% ON 2026-08-14, from 1.0 to 0.8. Radius 1.0 filled the 2 m cell
+; EXACTLY, which read well on the checkerboard and played badly: two pillars in
+; neighbouring cells touched at a single point, and a player walking the line
+; between them was threading a gap of zero width. Reported twice as "pillar
+; collision boxes have the player get stuck when going around", with the fix named
+; in the report.
+;
+; At 0.8 there is 0.4 m of daylight between neighbours -- half a player, so a body
+; cannot pass, but the contact is a smooth curve instead of a cusp. A pillar still
+; covers 80% of its cell, so it still reads as "this cell is occupied".
+;
+; THE MESH AND THE SHAPE MOVE TOGETHER. They are separate resources in this file
+; and nothing enforces that they agree; a collider narrower than what is drawn is
+; precisely the lie `show_hitboxes` was built to catch, and the plinko hit radius
+; was exactly that bug three weeks ago.
 [sub_resource type="CylinderShape3D" id="Cyl_1"]
-radius = 1.0
+radius = 0.8
 height = 2.0
 
 [sub_resource type="CylinderMesh" id="Cyl_2"]
-top_radius = 1.0
-bottom_radius = 1.0
+top_radius = 0.8
+bottom_radius = 0.8
 height = 2.0
 
 ; The third brown -- see GridConfig.STONE_COLOUR. Darker and more saturated than

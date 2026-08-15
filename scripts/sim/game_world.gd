@@ -1688,7 +1688,16 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) ->
 		return 0
 	var affected := 0
 	if kind == Hit.Kind.EXPLOSIVE and grid != null:
-		affected += grid.blast_mounds(centre, radius)
+		var structures: int = grid.blast_mounds(centre, radius) 			+ grid.blast_shooters(centre, radius)
+		affected += structures
+		# TOLD, NOT INFERRED, and told the moment it happens. A mound or a shooter
+		# is rebuilt from the run seed on every machine, so a client that is not
+		# told keeps drawing scenery the host has destroyed. This was already a gap
+		# for mounds -- the spent set was sent on JOIN and never again -- so the
+		# same line closes both.
+		if structures > 0 and networked and is_host:
+			_sync_spent_mounds.rpc(grid.spent_mound_layout())
+			_sync_spent_shooters.rpc(grid.spent_shooter_layout())
 
 	for target in _blast_targets(centre, radius):
 		var hit: RefCounted = Hit.make(kind, SimConfig.BLAST_DAMAGE, centre,
@@ -1869,6 +1878,13 @@ func _mound_taken(cx: int, cz: int) -> void:
 
 # Drop-in: the newcomer built the bridge from the seed, so it has every mound
 # including the ones this run already used up.
+@rpc("authority", "call_remote", "reliable")
+func _sync_spent_shooters(layout: PackedInt32Array) -> void:
+	if is_host:
+		return
+	if grid != null:
+		grid.apply_spent_shooters(layout)
+
 @rpc("authority", "call_remote", "reliable")
 func _sync_spent_mounds(layout: PackedInt32Array) -> void:
 	if grid != null:
@@ -2820,6 +2836,7 @@ func host_add_peer(peer: int) -> void:
 		# newcomer has built the segments holding them. Both are reliable, so the
 		# order they are sent in is the order they arrive in.
 		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
+		_sync_spent_shooters.rpc_id(peer, grid.spent_shooter_layout())
 	# Who is wearing what. The loose hats arrive on the next snapshot; a worn hat
 	# is not in that list by design, so it has to be told.
 	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())

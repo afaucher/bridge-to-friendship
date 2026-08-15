@@ -44,6 +44,7 @@ func setup(main) -> void:
 		return PlayerInput.empty(t)
 
 	_test_mound()
+	_test_shooter()
 	_test_stone()
 	_test_ball_is_never_destroyed()
 	finish()
@@ -73,6 +74,34 @@ func _test_mound() -> void:
 	check(removed > 0, "a blast destroys it (%d removed)" % removed)
 	eq(world.grid.mound_cells().size(), before - removed,
 		"and it is gone from the grid, so it can never rise")
+
+# --- A plinko shooter: same rule as a mound ------------------------------------
+
+func _test_shooter() -> void:
+	var cells: Array = world.grid.shooter_cells.duplicate()
+	if not check(cells.size() > 0, "the fixture has plinko shooters authored in it"):
+		return
+	var cell: Vector2i = cells[0]
+	var at: Vector3 = world.grid.shooter_body_world(cell)
+	var before: int = cells.size()
+
+	# NOT ANSWERABLE BY GUNFIRE, and that is a design position rather than an
+	# oversight: a machine gun that could clear the arena from the far side would
+	# delete the reason to walk into it, and the field exists to be crossed.
+	world.blast_at(at, 3.0, Hit.Kind.BULLET)
+	eq(world.grid.shooter_cells.size(), before,
+		"a bullet does nothing to a plinko shooter")
+
+	# A BLAST ENDS IT. The arena stops being weather and becomes a problem with a
+	# solution -- the second thing explosives can kill that nothing else can.
+	var removed: int = world.blast_at(at, 3.0, Hit.Kind.EXPLOSIVE)
+	check(removed > 0, "a blast destroys it (%d removed)" % removed)
+	check(world.grid.shooter_cells.size() < before,
+		"and it leaves the firing list (%d -> %d), which is what actually stops "
+		% [before, world.grid.shooter_cells.size()]
+		+ "the balls -- _process_plinko walks that array and nothing else")
+	check(not world.grid.shooter_cells.has(cell),
+		"specifically the one that was blown up")
 
 # --- A pillar: shrugs off a round, moved by a body or a blast ------------------
 

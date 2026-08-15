@@ -211,11 +211,24 @@ func _phase_dash_with_nothing_held() -> void:
 # push has to stay legible from across the bridge.
 func _phase_off_axis_push_is_still_one_cell() -> void:
 	if phase_frame == 1:
-		# Squarely south of the stone, aimed 40 degrees off north at it. The
-		# approach is off-axis; the answer must not be.
+		# South of the stone, aimed 40 degrees off north at it. The approach is
+		# off-axis; the answer must not be.
+		#
+		# HALF A CELL CLOSER THAN THE NEIGHBOURING CENTRE, and the offset is not
+		# arbitrary. Pillars were narrowed 20% on 2026-08-14 (radius 1.0 -> 0.8),
+		# and a 40-degree dash drifts sideways by `distance * tan(40)` -- 1.68 m
+		# over a full cell, which clipped a pillar that filled its cell exactly and
+		# misses one that does not. From 1 m out the drift is 0.84 m and the dash
+		# still lands on it.
+		#
+		# The claim under test is that an off-axis approach RESOLVES to a cardinal,
+		# not that a 40-degree dash can reach across a whole cell -- so the fix is
+		# the rig, not the angle. Keeping 40 degrees matters; it is comfortably the
+		# worst case inside the +/-45 the nearest-cardinal rule has to handle.
 		var at: Vector3 = world.grid.cell_surface_world(
 			stone_cell + GridConfig.DIR_CELLS[GridConfig.DIR_SOUTH])
-		walker.position = at + Vector3(0.0, 1.0, 0.0)
+		var closer: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_NORTH] 			* (GridConfig.CELL_SIZE * 0.5)
+		walker.position = at + closer + Vector3(0.0, 1.0, 0.0)
 		walker.velocity = Vector3.ZERO
 		walker.state = PlayerBody.State.WALK
 		walker.grounded = true

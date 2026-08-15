@@ -83,6 +83,7 @@ is plumbing.
 | **rusher** | deflect + stagger | **dies** | **dies** |
 | **skirmisher** *(new)* | deflect + stagger | **dies** | **dies** |
 | **turret** *(new)* | nothing — it is bolted down | **dies** (it is the thing you shoot) | **dies** |
+| **plinko shooter** *(2026-08-14)* | nothing | **nothing** | **destroyed** |
 | **mound** | nothing | **nothing** | **destroyed** |
 | **pillar / stone** | moves one cell | nothing | moves one cell, away from the blast |
 | **plinko ball** | deflected | shoved | shoved hard |
@@ -97,6 +98,19 @@ with the deck — there is nothing above ground to shoot. So a grenade becomes t
 way to *pre-empt* a hazard: spend a charge to remove an enemy that has not woken
 yet. That is a genuinely new decision (is this worth a grenade?) built entirely
 out of parts that already exist, and it is the best thing in this document.
+
+**A plinko shooter dies only to a blast**, exactly as a mound does, and that is
+the same argument twice: a structure is not answered by gunfire. It matters more
+here than for a mound, because it changes what the plinko arena IS. Until now the
+balls were a permanent condition of that stretch of bridge and the only verb
+against them was moving; a party carrying a grenade can now end the source. **The
+arena stops being weather and becomes a problem with a solution** — and explosives
+get a second thing nothing else can kill, which is exactly the niche this document
+wants them to have.
+
+It is deliberately NOT shootable. A machine gun that could clear the field from
+the far side would delete the reason to walk into it, and the field exists to be
+crossed.
 
 **A turret is immune to IMPACT.** Dashing a bolted-down gun should do nothing —
 otherwise the free verb answers the hazard and the specials category loses another

@@ -332,6 +332,11 @@ func step_stones() -> void:
 
 var _shooter_root: Node3D = null
 
+# Live shooters by cell, and the ones that have been destroyed. Exactly the shape
+# `_mounds` / `_spent_mounds` uses, and for the same reasons.
+var _shooters: Dictionary = {}
+var _spent_shooters: Array = []
+
 func _spawn_shooter(cell: Vector2i) -> void:
 	if _shooter_root == null:
 		_shooter_root = Node3D.new()
@@ -341,11 +346,66 @@ func _spawn_shooter(cell: Vector2i) -> void:
 	shooter.name = "Shooter_%d_%d" % [cell.x, cell.y]
 	shooter.position = cell_surface(cell) + Vector3(0.0, GridConfig.CELL_SIZE * 0.5, 0.0)
 	_shooter_root.add_child(shooter)
+	_shooters[cell] = shooter
 
 # Where a ball leaves the barrel, in the world's space. Above the pillar, so a
 # ball never spawns inside the thing that fired it.
 func shooter_muzzle(cell: Vector2i) -> Vector3:
 	return cell_surface_world(cell) + Vector3(0.0, GridConfig.CELL_SIZE + 0.9, 0.0)
+
+# The body itself, which is what a blast has to reach -- a metre up on its pillar,
+# not at the muzzle and not on the deck.
+func shooter_body_world(cell: Vector2i) -> Vector3:
+	return cell_surface_world(cell) + Vector3(0.0, GridConfig.CELL_SIZE * 0.5, 0.0)
+
+# BLOWN UP, AND ONLY BLOWN UP. Asked for 2026-08-14, and it is the same rule a
+# mound already follows: a structure is not answered by gunfire.
+#
+# WHAT IT CHANGES, which is more than it looks: the plinko arena stops being
+# weather and becomes a PROBLEM WITH A SOLUTION. Until now the balls were a
+# permanent condition of that stretch of bridge and the only verb against them was
+# moving; a party carrying a grenade can now decide to end the source instead.
+# That is the second thing explosives can kill that nothing else can -- the mound
+# is the first -- which is exactly the niche design_ideas/damage_model.md wants
+# them to have.
+#
+# DELIBERATELY NOT SHOOTABLE. A machine gun that could clear the arena from the
+# far side would delete the reason to walk into it, and the whole point of the
+# field is that it has to be crossed.
+func blast_shooters(centre: Vector3, radius: float) -> int:
+	var removed := 0
+	# Over a COPY of the keys: take_shooter mutates the dictionary underneath.
+	for cell in _shooters.keys().duplicate():
+		if shooter_body_world(cell).distance_to(centre) <= radius:
+			if take_shooter(cell):
+				removed += 1
+	return removed
+
+func take_shooter(cell: Vector2i) -> bool:
+	if not _shooters.has(cell):
+		return false
+	var shooter: Node3D = _shooters[cell]
+	_shooters.erase(cell)
+	_spent_shooters.append(cell)
+	# AND OUT OF THE FIRING LIST, which is what actually stops the balls --
+	# GameWorld._process_plinko walks `shooter_cells` and nothing else.
+	shooter_cells.erase(cell)
+	if is_instance_valid(shooter):
+		shooter.queue_free()
+	return true
+
+func spent_shooter_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _spent_shooters:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+func apply_spent_shooters(layout: PackedInt32Array) -> void:
+	var i := 0
+	while i + 1 < layout.size():
+		take_shooter(Vector2i(layout[i], layout[i + 1]))
+		i += 2
 
 # --- Hearts -------------------------------------------------------------------
 #
