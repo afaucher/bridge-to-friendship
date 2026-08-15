@@ -51,12 +51,22 @@ const CONTACT_DISTANCE := 1.0
 const SETTLE_TICKS := 40
 const RUN_TICKS := 320
 
+# Long enough for a decent number of dashes; the interval is past SHOVE_DURATION
+# (6 ticks) plus SHOVE_COOLDOWN (21) so every press lands.
+const DASH_TICKS := 400
+const DASH_INTERVAL := 40
+
 var harness: Node = null
 var client_peer: int = 0
 var frame: int = 0
 var contact_ticks: int = 0
 var closest: float = 1e9
 var worst_remote_lag: float = 0.0
+var dashing: bool = false
+var dashes_fired: int = 0
+var walk_count: int = 0
+var walk_metres: float = 0.0
+var walk_worst: float = 0.0
 
 func setup(_main) -> void:
 	timeout_seconds = 45.0
@@ -91,8 +101,18 @@ func _on_ready() -> void:
 	harness.set_input_provider(client_peer, func(for_tick: int) -> Array:
 		if for_tick <= SETTLE_TICKS:
 			return PlayerInput.make(for_tick, Vector2.ZERO, 0)
-		return PlayerInput.make(for_tick,
-			_toward(harness.client_worlds[0], client_peer, 1), 0))
+		var toward: Vector2 = _toward(harness.client_worlds[0], client_peer, 1)
+		if not dashing:
+			return PlayerInput.make(for_tick, toward, 0)
+		# DASH ON A CADENCE, aimed at whoever is in front. SHOVE is edge-triggered
+		# and has a cooldown, so holding it would fire once and then be refused --
+		# the interval is comfortably past SHOVE_DURATION plus SHOVE_COOLDOWN so
+		# every press is a real dash.
+		var actions := 0
+		if for_tick % DASH_INTERVAL == 0:
+			actions = SimConfig.ACTION_SHOVE
+			dashes_fired += 1
+		return PlayerInput.make(for_tick, toward, actions))
 
 func _physics_process(_delta: float) -> void:
 	if not harness.is_ready:
@@ -117,62 +137,80 @@ func _physics_process(_delta: float) -> void:
 		worst_remote_lag = maxf(worst_remote_lag,
 			host_remote.position.distance_to(client_remote.position))
 
-	if frame < RUN_TICKS:
+	if frame == RUN_TICKS:
+		_report_walk(client_world)
 		return
+	if frame < RUN_TICKS + DASH_TICKS:
+		return
+	_report_dash(client_world)
+	harness.shutdown()
+	finish()
 
-	# --- The instrument, before the number ----------------------------------
+# --- Phase A: walking into each other -----------------------------------------
+
+func _report_walk(client_world: Node3D) -> void:
 	check(contact_ticks > 30,
 		"the two players really were in sustained contact (%d ticks within %.1f m, "
 		% [contact_ticks, CONTACT_DISTANCE]
-		+ "closest %.2f m) -- without this the correction count below measures nothing"
+		+ "closest %.2f m) -- without this the correction count measures nothing"
 			% closest)
 	eq(client_world.debug_inbound_delay_ticks, DELAY_TICKS,
 		"and the latency injection stayed on for the whole run")
 	# AND THE LATENCY ACTUALLY DID SOMETHING. Checked because it very nearly did
-	# not: the first version of this read the lag once at the END of the run and
-	# got 0.000 m at every setting, because by then both players are pressed
-	# together and stationary, and a stationary body looks identical in every view
-	# however stale it is. That reading would have "proved" the injection was a
-	# no-op and thrown out a working measurement. Sampled per tick, it scales as it
-	# should: 0.40 m at 4 ticks of delay, 2.65 m at 40.
+	# not: read once at the END of a run this is 0.000 m at every setting, because
+	# by then both players are pressed together and stationary, and a still body
+	# looks identical in every view however stale. Sampled per tick it scales as it
+	# should -- 0.40 m at 4 ticks of delay, 2.65 m at 40.
 	check(worst_remote_lag > 0.2,
-		"and the client really was looking at a stale remote body (%.2f m worst) -- "
-		% worst_remote_lag + "without this the run proves nothing about latency")
+		"and the client really was looking at a stale remote body (%.2f m worst)"
+			% worst_remote_lag)
 
-	# --- The baseline --------------------------------------------------------
-	var count: int = int(client_world.corrections)
-	var metres: float = float(client_world.correction_metres)
-	var mean: float = metres / float(count) if count > 0 else 0.0
-	print("[contact-prediction] BASELINE over %d ticks at %d ticks of latency:"
-		% [frame, DELAY_TICKS])
-	print("[contact-prediction]   corrections = %d" % count)
-	print("[contact-prediction]   mean miss   = %.4f m" % mean)
-	print("[contact-prediction]   worst miss  = %.4f m" % client_world.correction_worst)
+	_report("WALKING", int(client_world.corrections),
+		float(client_world.correction_metres), float(client_world.correction_worst))
 	print("[contact-prediction]   contact     = %d ticks, closest %.2f m"
 		% [contact_ticks, closest])
-	# INSTRUMENT VALIDATION: how far the client's view of the REMOTE body is from
-	# the host's own copy of it. This is what the injected latency is supposed to
-	# create, so if it does not grow with DELAY_TICKS the injection is a no-op and
-	# every number above is meaningless.
-	print("[contact-prediction]   remote lag  = %.3f m worst (host vs client view of peer 1)"
-		% worst_remote_lag)
 
-	# NO BUDGET IS ASSERTED ON THE CORRECTION COUNT, deliberately. Today's number
-	# IS the bug; pinning it would be pinning the bug in place, and pinning a
-	# generous bound would be a test that cannot fail. The printed figures are the
-	# deliverable, and the comparison is made by running this file again after the
-	# change.
-	#
-	# What IS asserted is that the reconciler is alive at all. A client that never
-	# corrects under 167 ms of latency while shoulder to shoulder with somebody is
-	# a client whose prediction is not running, and that would silently turn this
-	# whole measurement into zeros.
-	check(count > 0,
-		"the reconciler is actually running (%d corrections) -- zero here would "
-		% count + "mean the measurement is broken rather than the netcode perfect")
+	# Snapshot, so phase B reports its OWN cost rather than a running total.
+	walk_count = int(client_world.corrections)
+	walk_metres = float(client_world.correction_metres)
+	walk_worst = float(client_world.correction_worst)
+	dashing = true
 
-	harness.shutdown()
-	finish()
+# --- Phase B: dashing into somebody -------------------------------------------
+#
+# THE SCENARIO THE PHASE-A NUMBERS POINT AT. Sustained contact turned out to be
+# cheap, and the reason was visible in the same data: two players pressed together
+# are both STILL, and a still body is predicted perfectly by anybody. A dash is the
+# opposite in every respect -- 56 m/s, six ticks long, client-PREDICTED, and aimed
+# at a body the client may have metres out of date.
+
+func _report_dash(client_world: Node3D) -> void:
+	check(dashes_fired > 3,
+		"the client actually dashed at somebody (%d dashes) -- a phase that never "
+		% dashes_fired + "pressed the button would report a beautiful zero")
+
+	_report("DASHING", int(client_world.corrections) - walk_count,
+		float(client_world.correction_metres) - walk_metres,
+		float(client_world.correction_worst))
+	print("[contact-prediction]   dashes      = %d, worst before this phase %.4f m"
+		% [dashes_fired, walk_worst])
+
+	# NO BUDGET ASSERTED ON EITHER NUMBER, deliberately -- today's figures ARE the
+	# thing under investigation, and pinning them would pin the bug in place. What
+	# is asserted is that the reconciler is alive, because a silent zero would mean
+	# the measurement broke rather than the netcode being perfect.
+	check(int(client_world.corrections) > 0,
+		"the reconciler is running at all (%d corrections overall)"
+			% client_world.corrections)
+
+func _report(label: String, count: int, metres: float, worst: float) -> void:
+	var mean: float = metres / float(count) if count > 0 else 0.0
+	print("[contact-prediction] %s at %d ticks of latency:" % [label, DELAY_TICKS])
+	print("[contact-prediction]   corrections = %d" % count)
+	print("[contact-prediction]   mean miss   = %.4f m" % mean)
+	print("[contact-prediction]   worst miss  = %.4f m" % worst)
+	print("[contact-prediction]   remote lag  = %.3f m worst" % worst_remote_lag)
+
 
 # Distance between the local player and the nearest other body, as the CLIENT
 # sees it. The client's own view is the one that matters: it is the machine whose
