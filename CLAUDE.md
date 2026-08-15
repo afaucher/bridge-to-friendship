@@ -216,6 +216,15 @@ the moment it is written.
   of a tick and never sinks into it. The bug needed a body that ARRIVES rather
   than crosses. **A gate can walk over a hole for months** — so when the symptom
   is "sometimes I fall through", measure the STRUCTURE, do not re-run the walk.
+- **ISOLATE EVERY SAMPLE, NOT ONCE AT SETUP.** Observed 2026-08-14 sweeping the
+  ramps: a probe cleared the rushers and balls in `setup()` and then ran 11
+  attempts. The THIRD attempt failed every time -- at lateral offset 0.5 in one
+  sweep and at 0.2 in another, which is the giveaway: it was the third ATTEMPT
+  failing, not a position. Mounds keep waking while the run continues, and the
+  rusher tumbled the probe. Both "anomalies" vanished when the clear moved into
+  the per-attempt reset, and the ramps then measured clean everywhere. **A long
+  sweep is a fixture that gets dirtier as it runs.** The tell is a failure that
+  tracks the sample INDEX rather than the sample VALUE, so print both.
 - **Measure on a fixture with nothing else moving in it.** The first pass of that
   investigation ran on `playtest_bridge.seg`, where live shooters and rushers were
   tumbling the probe body — and every one of those reads as "the ramp threw me
