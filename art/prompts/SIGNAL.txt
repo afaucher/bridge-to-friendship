@@ -1,0 +1,21 @@
+[STYLE]
+Late-1990s real-time 3D, remembered fondly. Deliberately low polygon count with
+un-smoothed facets, tiny 64x64 textures whose pixels are clearly visible, no
+normal maps, and hard ordered-dither patterning standing in for gradients and
+fog. Vertex-coloured surfaces, unlit or simply vertex-lit. Palette is
+high-contrast and slightly wrong -- cyan, magenta, amber and deep blue-black --
+and colour banding is a feature rather than an artefact.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, high polygon count, smooth shading, ray tracing, 4k textures, soft gradients

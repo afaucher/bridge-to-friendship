@@ -1,0 +1,22 @@
+[STYLE]
+Hand-painted storybook illustration in gouache, like a 1970s children's picture
+book. Visible brush strokes and low texel density -- the paint should read as
+paint. Lighting is soft and low-contrast so it never fights the painted
+surface; painted-in shadow pools where objects meet the ground. Palette is
+dusty and warm: ochre, sage, brick and cream, against a cool sky that pushes the
+subject forward. Saturation is rationed and spent only on things that threaten
+you.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, harsh contrast, neon colours, chrome, photorealism, airbrush, plastic

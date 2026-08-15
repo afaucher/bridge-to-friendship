@@ -1,0 +1,87 @@
+{
+  "_comment": "Stage 0 of the art bake-off -- see design_ideas/art_direction.md. THIS FILE IS THE ARTEFACT, not the PNGs it produces: it is what makes a before/after comparison possible after the art has changed. Run it with: godot --path . --run-shots art/shots.json (WINDOWED -- --headless disables rendering).",
+
+  "output_dir": "res://tmp/shots",
+  "size": [1024, 1024],
+
+  "studio": {
+    "_comment": "One element on neutral ground, orthographic, identical camera. ortho_size is the vertical extent of the frame in metres, so it is also the scale key: 3.0 means the frame is 3 m tall.",
+    "cam_yaw": 35.0,
+    "cam_pitch": -45.0,
+    "ortho_size": 3.0,
+
+    "items": [
+      {"name": "player_blue", "scene": "res://scenes/player.tscn", "yaw": 205.0, "focus_y": 0.9},
+      {"name": "player_amber", "scene": "res://scenes/player.tscn", "yaw": 205.0, "focus_y": 0.9,
+       "tint": [0.92, 0.62, 0.18]},
+      {"name": "player_hatted", "scene": "res://scenes/player.tscn", "yaw": 205.0, "focus_y": 1.1,
+       "attach": [{"scene": "res://scenes/hat.tscn", "at": [0, 1.05, 0]}]},
+
+      {"name": "hat", "scene": "res://scenes/hat.tscn", "focus_y": 0.2, "ortho_size": 1.2},
+      {"name": "heart", "scene": "res://scenes/heart.tscn", "focus_y": 0.35, "ortho_size": 1.4},
+      {"name": "mound", "scene": "res://scenes/mound.tscn", "focus_y": 0.2, "ortho_size": 2.6},
+
+      {"name": "stone", "scene": "res://scenes/stone.tscn", "focus_y": 1.0, "ortho_size": 3.2},
+      {"name": "plinko_ball", "scene": "res://scenes/plinko_ball.tscn", "focus_y": 0.6, "ortho_size": 2.0},
+      {"name": "shooter", "scene": "res://scenes/shooter.tscn", "focus_y": 1.0, "ortho_size": 4.0},
+
+      {"name": "rusher", "scene": "res://scenes/rusher.tscn", "yaw": 205.0, "focus_y": 0.7, "ortho_size": 2.4},
+      {"name": "skirmisher", "scene": "res://scenes/skirmisher.tscn", "yaw": 205.0, "focus_y": 0.85, "ortho_size": 2.6},
+      {"name": "turret", "scene": "res://scenes/turret.tscn", "yaw": 205.0, "focus_y": 0.5, "ortho_size": 2.6},
+
+      {"name": "bullet", "scene": "res://scenes/bullet.tscn", "yaw": 90.0, "focus_y": 0.0, "ortho_size": 1.6, "lift": 0.6},
+      {"name": "rocket", "scene": "res://scenes/rocket.tscn", "yaw": 90.0, "focus_y": 0.0, "ortho_size": 1.6, "lift": 0.6},
+      {"name": "grenade", "scene": "res://scenes/grenade.tscn", "focus_y": 0.2, "ortho_size": 1.0},
+      {"name": "mine", "scene": "res://scenes/mine.tscn", "focus_y": 0.1, "ortho_size": 1.2},
+
+      {"name": "special_machine_gun", "scene": "res://scenes/special.tscn", "yaw": 25.0, "focus_y": 0.15, "ortho_size": 1.6, "special_kind": 0},
+      {"name": "special_grenade", "scene": "res://scenes/special.tscn", "yaw": 25.0, "focus_y": 0.15, "ortho_size": 1.6, "special_kind": 1},
+      {"name": "special_mine", "scene": "res://scenes/special.tscn", "yaw": 25.0, "focus_y": 0.15, "ortho_size": 1.6, "special_kind": 2},
+      {"name": "special_shield", "scene": "res://scenes/special.tscn", "yaw": 25.0, "focus_y": 0.6, "ortho_size": 2.0, "special_kind": 3},
+      {"name": "special_rocket", "scene": "res://scenes/special.tscn", "yaw": 25.0, "focus_y": 0.15, "ortho_size": 1.6, "special_kind": 4}
+    ]
+  },
+
+  "scenes": [
+    {
+      "_comment": "Action shot 1 -- the shove. Two players, one committed to a dash, near the edge. Everything is placed explicitly relative to a spawn point so the shot survives a change to the segment's absolute coordinates.",
+      "name": "action_shove",
+      "segment": "res://segments/playtest_bridge.seg",
+      "size": [1600, 900],
+      "anchor_spawn": 0,
+      "anchor_offset": [3.0, 0, -13.0],
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 90.0},
+        {"type": "player", "peer": 2, "at": [3.2, 0, 0], "yaw": 200.0, "tint": [0.92, 0.62, 0.18]}
+      ]
+    },
+    {
+      "_comment": "Action shot 2 -- incoming. A ball in the air on its way down at a player who is busy.",
+      "name": "action_ball_incoming",
+      "segment": "res://segments/playtest_bridge.seg",
+      "size": [1600, 900],
+      "anchor_spawn": 0,
+      "anchor_offset": [3.0, 0, -13.0],
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 160.0},
+        {"scene": "res://scenes/plinko_ball.tscn", "at": [2.4, 2.6, -3.0]},
+        {"scene": "res://scenes/plinko_ball.tscn", "at": [-1.6, 0.6, -6.0]}
+      ]
+    },
+    {
+      "_comment": "Action shot 3 -- the wave. Rushers converging on two players from up-bridge.",
+      "name": "action_rusher_wave",
+      "segment": "res://segments/playtest_bridge.seg",
+      "size": [1600, 900],
+      "anchor_spawn": 0,
+      "anchor_offset": [3.0, 0, -13.0],
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 180.0},
+        {"type": "player", "peer": 2, "at": [2.6, 0, 0.8], "yaw": 180.0, "tint": [0.92, 0.62, 0.18]},
+        {"type": "rusher", "at": [-1.2, 0, -3.4], "yaw": 0.0},
+        {"type": "rusher", "at": [1.8, 0, -4.6], "yaw": 0.0},
+        {"type": "skirmisher", "at": [4.4, 0, -6.2], "yaw": 180.0}
+      ]
+    }
+  ]
+}

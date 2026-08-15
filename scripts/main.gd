@@ -34,6 +34,9 @@ func _ready() -> void:
 		elif args[i] == "--run-sim" and i + 1 < args.size():
 			_run_sim(args[i + 1])
 			return
+		elif args[i] == "--run-shots" and i + 1 < args.size():
+			_run_shots(args[i + 1])
+			return
 
 	# A sibling of the menu rather than a child of it, so hiding the menu to start
 	# a game leaves the build stamp on screen. It is added here and not in the
@@ -215,6 +218,30 @@ func _run_test(test_name: String) -> void:
 		get_tree().quit(1)
 		return
 	node.setup(self)
+
+# Stage 0 of the art bake-off: render the control images every generated style is
+# seeded from. See design_ideas/art_direction.md and art/shots.json.
+#
+# NOT a headless entry point despite sitting beside two that are -- `--headless`
+# disables all rendering, so this is a WINDOWED run and deliberately not a test.
+# It is here because it is an automated entry point, and this is where they live.
+func _run_shots(manifest_path: String) -> void:
+	print("Rendering shots from: ", manifest_path)
+	# The same guard _run_test carries, for the same reason: load() returns null
+	# on a PARSE ERROR, and setting a null script leaves a bare Node with no
+	# setup() that runs nothing and never quits. The typo then presents as a HANG
+	# with the real message sitting unread in stderr. Cost one "it got stuck and
+	# never started" on 2026-08-15 -- fail loudly instead.
+	var script: Resource = load("res://scripts/shots/shot_runner.gd")
+	if script == null:
+		printerr("[SHOTS] shot_runner.gd did not compile -- see the Parse Error above")
+		get_tree().quit(1)
+		return
+	var node := Node.new()
+	node.name = "ShotRunner"
+	node.set_script(script)
+	add_child(node)
+	node.setup(self, manifest_path)
 
 func _run_sim(sim_name: String) -> void:
 	print("Starting simulation: ", sim_name)

@@ -1,0 +1,23 @@
+[STYLE]
+A live construction site, rendered with honest physically-based materials:
+poured concrete with form-tie holes, galvanised and painted steel with chipped
+paint, weld beads, exposed bolt heads, hi-vis polyester. Grime accumulates in
+corners and along the underside of edges. The field palette is concrete grey and
+rust brown. Safety yellow, safety orange and black-and-yellow chevron striping
+are RESERVED -- they appear only on things that are dangerous or things you
+interact with, never as decoration. Overcast daylight, slightly cool, real
+contact shadows.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, toy-like, cute, pastel colours, clean unweathered surfaces, fantasy

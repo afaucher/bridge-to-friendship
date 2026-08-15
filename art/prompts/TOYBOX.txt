@@ -1,0 +1,23 @@
+[STYLE]
+Injection-moulded plastic playset. Every object is a piece from the same toy
+set: glossy ABS plastic, high specular, low roughness, no metal anywhere. Soft
+2 mm chamfers on every edge, because a mould cannot make a sharp corner. Visible
+mould seam lines and leftover sprue nubs. Sticker decals applied very slightly
+crooked. Wear appears as scuffing and stress-whitening at the corners, never as
+rust or dirt. Palette is a strict six-colour toy set -- red, blue, yellow,
+green, white, black -- plus one neutral grey for the baseplate; no colour sits
+between two of those. Clean bright even studio light, soft shadow.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, rust, grime, weathering, muted colours, painterly brushwork, fabric

@@ -35,3 +35,7 @@ Thumbs.db
 # these stay so an engine left at the root by an older checkout is still ignored.
 Godot_v*_linux.x86_64
 *.tar.gz
+
+# Art bake-off output: generated sheets are large, regenerable, and not the
+# artefact -- art/shots.json, art/subjects.json and art/prompts/ are.
+art/out/

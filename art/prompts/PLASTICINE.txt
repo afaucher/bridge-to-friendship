@@ -1,0 +1,23 @@
+[STYLE]
+Stop-motion clay animation, Aardman-like. Everything is modelled from
+plasticine: matte clay with a faint waxy sheen, visible thumb dents, fingerprint
+texture and sculpting-tool marks. Seams show where two colours of clay were
+pressed together. Nothing is perfectly straight or symmetrical -- every edge is
+hand-formed and slightly wobbly. Colours are warm and a little dirty, because
+clay never stays clean: an earthy base with three or four saturated accents that
+read as freshly-worked clay. Lit like a miniature set on a table with two soft
+lamps, shallow warm shadows.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, clean CG surfaces, perfect symmetry, metal, glass, sharp machined edges

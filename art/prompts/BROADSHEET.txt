@@ -1,0 +1,23 @@
+[STYLE]
+Flat inked comic art, ligne claire. Two-band toon shading with absolutely no
+specular highlight and no gradient anywhere: shadow is a hatched or dot-screen
+pattern, not a soft falloff. Every object carries a heavy black ink contour, and
+line weight encodes importance -- thick on characters and threats, thin on
+scenery. Colour is a limited printed set: paper-white ground, one dense ink
+black, and six to eight flat spot colours with a hint of print
+misregistration. Reads as a panel from a comic that happens to be
+three-dimensional.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photorealistic human faces, text, watermark, signature, UI overlay, HUD,
+lens flare, depth-of-field blur, motion blur, busy background, gradients, soft shading, specular highlights, photorealism, texture detail
