@@ -45,6 +45,7 @@ static func build(world: Node, for_peer: int = -1) -> Dictionary:
 static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 	return {
 		"peer": peer,
+		"steam_id": world.player_steam_id(peer),
 		"name": world.player_name(peer),
 		"health": int(body.health),
 		"max_health": int(SimConfig.MAX_HEALTH),
@@ -76,6 +77,7 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 		var to: Vector3 = other.position - body.position
 		out.append({
 			"peer": other_peer,
+			"steam_id": world.player_steam_id(other_peer),
 			"name": world.player_name(other_peer),
 			"health": int(other.health),
 			"max_health": int(SimConfig.MAX_HEALTH),

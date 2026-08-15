@@ -30,6 +30,12 @@ const COLOR_DIM := Color(0.62, 0.64, 0.70)
 const COLOR_ALERT := Color(1.00, 0.45, 0.22)
 const COLOR_BAR_BACK := Color(0.11, 0.11, 0.14)
 
+# A FACE, WHERE THERE IS ONE. Small on purpose: this is a co-op game about where
+# your friends ARE, so the portrait is an identifier beside a name, not a
+# character card. At 26 px it reads as "who" without competing with the health
+# pips, which are the thing you actually act on.
+const AVATAR_SIZE := Vector2(26.0, 26.0)
+
 const PIP_SIZE := Vector2(18.0, 18.0)
 const SLOT_SIZE := Vector2(58.0, 40.0)
 const BAR_SIZE := Vector2(150.0, 8.0)
@@ -44,6 +50,7 @@ var world: Node = null
 
 var _own_panel: Control = null
 var _own_name: Label = null
+var _own_face: TextureRect = null
 var _own_pips: HBoxContainer = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
@@ -72,6 +79,38 @@ func _process(_delta: float) -> void:
 	_update_own(model["own"])
 	_update_friends(model["friends"])
 	_update_markers(model["friends"], _delta)
+
+# --- Avatars ------------------------------------------------------------------
+#
+# STEAM IS ASKED EVERY FRAME AND ANSWERS INSTANTLY, because SteamManager caches --
+# the first ask starts an async fetch and returns null, and every ask after it
+# returns the cached texture. Polling is therefore the simple correct thing here
+# and a signal would buy nothing.
+#
+# NULL IS THE ORDINARY ANSWER. No Steam, no picture on the account, or it has not
+# arrived yet -- all three look the same and all three mean "hide it". The HUD is
+# built and laid out identically either way, so a machine with no Steam is not a
+# degraded HUD, it is the same HUD without portraits. That also makes this
+# testable: the gate has no Steam client and never will.
+func _avatar() -> TextureRect:
+	var face := TextureRect.new()
+	face.custom_minimum_size = AVATAR_SIZE
+	# STRETCH ONLY, NO EXPAND MODE. EXPAND_IGNORE_SIZE made headless print
+	# "Failed to get image size." once a real avatar was set -- the dummy
+	# rasterizer cannot answer the query that mode makes. The avatar is a fixed
+	# 26 px either way because custom_minimum_size says so, so the expand mode was
+	# buying nothing and costing an error line in the gate. A stray error in a
+	# green run is worse than no error at all: it teaches people to skim past them.
+	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	face.visible = false
+	return face
+
+func _set_avatar(face: TextureRect, steam_id: int) -> void:
+	if face == null:
+		return
+	var texture: Texture2D = NetworkManager.steam_avatar(steam_id)
+	face.texture = texture
+	face.visible = texture != null
 
 # --- Offscreen and downed markers ---------------------------------------------
 
@@ -106,8 +145,16 @@ func _build_own_panel() -> void:
 	var box := _anchored_box(Control.PRESET_TOP_LEFT)
 	_own_panel = box.get_parent()
 
+	# YOUR OWN FACE BESIDE YOUR OWN NAME. Beside rather than instead: the name is
+	# what a player says out loud to their friends, and a portrait cannot be said.
+	var own_header := HBoxContainer.new()
+	own_header.add_theme_constant_override("separation", 8)
+	box.add_child(own_header)
+
+	_own_face = _avatar()
+	own_header.add_child(_own_face)
 	_own_name = _label("", 18, COLOR_TEXT)
-	box.add_child(_own_name)
+	own_header.add_child(_own_name)
 
 	_own_pips = HBoxContainer.new()
 	_own_pips.add_theme_constant_override("separation", 5)
@@ -127,6 +174,7 @@ func _build_own_panel() -> void:
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
+	_set_avatar(_own_face, int(own.get("steam_id", 0)))
 
 	# The grace window is why one tumble through a pillar field does not empty
 	# the bar (B7). It is 0.75 s and entirely unknowable today; flashing the pips
@@ -216,6 +264,8 @@ func _build_friend_row() -> Dictionary:
 	header.add_child(state)
 	var name_label := _label("", 15, COLOR_TEXT)
 	header.add_child(name_label)
+	var face := _avatar()
+	header.add_child(face)
 	var bearing := _label("", 13, COLOR_DIM)
 	header.add_child(bearing)
 
@@ -228,10 +278,11 @@ func _build_friend_row() -> Dictionary:
 	row.add_child(bar)
 
 	return {"row": row, "name": name_label, "state": state, "pips": pips,
-		"bar": bar, "bearing": bearing}
+		"bar": bar, "bearing": bearing, "face": face}
 
 func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	nodes["name"].text = str(entry.get("name", ""))
+	_set_avatar(nodes.get("face"), int(entry.get("steam_id", 0)))
 	nodes["state"].text = str(entry.get("state_label", ""))
 	nodes["state"].visible = nodes["state"].text != ""
 

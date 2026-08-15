@@ -92,6 +92,16 @@ var camera: Camera3D = null
 # else.
 var player_names: Dictionary = {}
 
+# Steam ids, peer -> id, riding exactly the channel player_names rides and for
+# exactly the same reason. An AVATAR cannot go on the wire -- it is a 64x64 image
+# and the snapshot budget is already the thing M13 is about -- but the ID is a
+# number, and every machine that can see this player already has their picture in
+# Steam's own cache. So the id travels and the picture is fetched locally.
+#
+# 0 means "no Steam", which is every headless run, every ENet session and every
+# CI box. It is the ordinary case, not an error.
+var player_steam_ids: Dictionary = {}
+
 # True on the world a human is looking at. False for headless test worlds and for
 # every world the net harness stands up, so they do not fight over the viewport's
 # single `current` camera.
@@ -2682,11 +2692,13 @@ func _reconcile(body: Node, e: Array) -> void:
 
 func _announce_name() -> void:
 	var display: String = _local_display_name()
+	var steam: int = NetworkManager.steam_id_of_self()
 	if is_host:
 		player_names[local_peer] = display
+		player_steam_ids[local_peer] = steam
 		_broadcast_names()
 	elif networked:
-		_submit_name.rpc_id(1, display)
+		_submit_name.rpc_id(1, display, steam)
 
 func _local_display_name() -> String:
 	# Steam persona where there is one; otherwise a name derived from OUR OWN peer
@@ -2697,15 +2709,21 @@ func _local_display_name() -> String:
 	return persona if persona != "" else default_player_name(local_peer)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _submit_name(display: String) -> void:
+func _submit_name(display: String, steam: int = 0) -> void:
 	if not is_host:
 		return
-	player_names[multiplayer.get_remote_sender_id()] = display
+	var from: int = multiplayer.get_remote_sender_id()
+	player_names[from] = display
+	player_steam_ids[from] = steam
 	_broadcast_names()
 
 func _broadcast_names() -> void:
 	if networked:
-		_set_names.rpc(player_names)
+		_set_names.rpc(player_names, player_steam_ids)
+
+# Somebody's Steam id, or 0. The HUD asks so it can ask for a face.
+func player_steam_id(peer: int) -> int:
+	return int(player_steam_ids.get(peer, 0))
 
 # --- Debug config -------------------------------------------------------------
 #
@@ -2814,10 +2832,11 @@ func _sync_hitboxes() -> void:
 	_hitboxes_on = want
 
 @rpc("authority", "call_remote", "reliable")
-func _set_names(names: Dictionary) -> void:
+func _set_names(names: Dictionary, steam_ids: Dictionary = {}) -> void:
 	if is_host:
 		return
 	player_names = names.duplicate()
+	player_steam_ids = steam_ids.duplicate()
 
 func player_name(peer: int) -> String:
 	var stored: String = str(player_names.get(peer, ""))

@@ -73,6 +73,13 @@ func _initialize() -> void:
 	on_steam_deck = Steam.isSteamRunningOnSteamDeck()
 	print("[Steam] ready: ", username, " (", steam_id, ")")
 
+	# AVATARS ARE ASYNC AND MAY NOT EXIST. GodotSteam has moved this signal's name
+	# and its argument order across versions, and a missing signal is a crash at
+	# connect() rather than a quiet nothing -- so it is guarded, and a build
+	# without it simply never shows a face.
+	if Steam.has_signal("avatar_loaded"):
+		Steam.avatar_loaded.connect(_on_avatar_loaded)
+
 	Steam.lobby_created.connect(_on_lobby_created)
 	Steam.lobby_joined.connect(_on_lobby_joined)
 	Steam.lobby_match_list.connect(_on_lobby_match_list)
@@ -81,6 +88,49 @@ func _initialize() -> void:
 func _process(_delta: float) -> void:
 	if available:
 		Steam.run_callbacks()
+
+# --- Avatars ------------------------------------------------------------------
+#
+# THE ONLY PLACE Steam.* IS TOUCHED FOR THIS, per the rule at the top of the file
+# and in CLAUDE.md: the gate has no Steam client, so anything that reaches past
+# here is untestable the moment it is written. The HUD asks NetworkManager, which
+# asks this, and gets `null` on any machine without Steam -- which is every CI
+# box, every headless run and every ENet session.
+#
+# CACHED, because the HUD asks EVERY FRAME. Steam's own call is asynchronous:
+# getPlayerAvatar() returns nothing useful and the image arrives later on a
+# signal, so re-requesting per frame would queue thousands of fetches for one
+# face. `_avatar_pending` is what stops that.
+var _avatars: Dictionary = {}          # steam id -> ImageTexture
+var _avatar_pending: Dictionary = {}   # steam id -> true
+
+signal avatar_ready(id: int)
+
+# Returns the texture if it has arrived, null otherwise -- and kicks off the fetch
+# the first time it is asked. A caller polls it; there is nothing to await.
+func avatar_of(id: int) -> Texture2D:
+	if id == 0 or not available:
+		return null
+	if _avatars.has(id):
+		return _avatars[id]
+	if not _avatar_pending.has(id):
+		_avatar_pending[id] = true
+		if Steam.has_method("getPlayerAvatar"):
+			# MEDIUM is 64x64. Large is 184 and would be resampled down to a HUD
+			# row; small is 32 and looks like mud at any size worth having.
+			Steam.getPlayerAvatar(Steam.AVATAR_MEDIUM, id)
+	return null
+
+func _on_avatar_loaded(id: int, size: int, buffer: PackedByteArray) -> void:
+	# A zero-size or short buffer means Steam has no picture for this account --
+	# a real state, not an error, and the answer is to keep showing the fallback.
+	if size <= 0 or buffer.size() < size * size * 4:
+		return
+	var image := Image.create_from_data(size, size, false, Image.FORMAT_RGBA8, buffer)
+	if image == null:
+		return
+	_avatars[id] = ImageTexture.create_from_image(image)
+	avatar_ready.emit(id)
 
 # --- Lobby lifecycle ---------------------------------------------------------
 

@@ -155,6 +155,22 @@ func steam_display_name() -> String:
 		return ""
 	return SteamManager.username
 
+# OUR OWN Steam id, or 0. Published with the name so that everybody else can ask
+# Steam for our face -- an avatar is far too big for the snapshot wire, but the
+# ID is eight bytes and Steam already has the picture cached on every machine
+# that can see us.
+func steam_id_of_self() -> int:
+	if not SteamManager.available:
+		return 0
+	return SteamManager.steam_id
+
+# Somebody's avatar, or null. Null is the ordinary answer: no Steam, no picture
+# on the account, or it simply has not arrived yet.
+func steam_avatar(id: int) -> Texture2D:
+	if not SteamManager.available:
+		return null
+	return SteamManager.avatar_of(id)
+
 # --- Multiplayer callbacks ---------------------------------------------------
 
 func _on_peer_connected(id: int) -> void:

@@ -334,6 +334,13 @@ the moment it is written.
   name was announced *at all* — never the value. Generalises past names: anything
   read out of the environment (persona, locale, machine name, wall clock) is not
   a property of the code and does not belong in an assertion.
+  **Repeated 2026-08-15 in the other direction, which is worth knowing about:** a
+  test for Steam AVATARS asserted our own id was 0 and that every portrait was
+  hidden. Both are true on CI and false beside a running Steam client, so it went
+  GREEN in the gate and failed on the dev box. The fix is the same either way --
+  assert a RELATIONSHIP, never a value. `own.steam_id == steam_id_of_self()` and
+  `face.visible == (face.texture != null)` hold on every machine; "the id is 0"
+  holds on half of them.
 - **Headless builds the whole Control tree; it just does not draw it.** So a HUD
   or menu IS testable — node construction, `_ready`, `_process` and property
   writes all really run. That matters because GDScript resolves properties at
