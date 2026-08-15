@@ -1,34 +1,55 @@
 extends "res://scripts/test_support/test_case.gd"
 
-# WHERE A FALL PUTS YOU BACK, measured across the whole bridge.
+# WHERE A FALL PUTS YOU BACK, measured rather than reasoned about.
 #
 # Written 2026-08-15 from a playtest report that a respawn lands "WAY ahead of
-# where we actually got to". Reading the code produced three wrong theories in a
-# row, so this sweeps instead: stand at every row of a real assembled run, bank
-# whatever the game banks, wipe, and print where the game puts you.
+# where we actually got to", and reading the code produced three wrong theories
+# before this file produced one number. It sweeps: stand at a row, fall out of
+# the world, and print where the game puts you back.
+#
+# WHAT IT MEASURED, on a 3-segment run:
+#   the restart is ALWAYS BEHIND, by up to a full checkpoint interval -- 61 rows
+#   at the worst sample, which is two segments of bridge. Never ahead, in 1800
+#   samples. So the forward jump in the report is NOT this path.
+#
+# It is the drone: _drone_drop_point puts a returning player beside the teammate
+# FURTHEST UP THE BRIDGE, and the leash lets the party stretch to LEASH_HARD --
+# so a fall can legitimately return you 70 m past where you went over. That is a
+# design decision, deliberately made, and it is not a rounding error.
 #
 # SOLO IS THE WIPE PATH, NOT THE DRONE. One player waiting on the drone is every
-# player waiting on the drone, which is the wipe condition -- so _drone_drop_point
-# never runs and _restart_at_checkpoint does.
+# player waiting on the drone, which is the wipe condition -- so the restart runs
+# on the same tick and _drone_drop_point never gets asked.
 #
-# The claim, and the only one worth a gate: A RESTART NEVER PUTS YOU PAST THE
-# FURTHEST YOU GOT. A checkpoint is ground the party already took; being returned
-# ahead of it skips bridge nobody crossed, and skipped bridge is the report.
+# The two claims, which are the promise a checkpoint makes:
+#   1. IT NEVER PUTS YOU PAST THE FURTHEST YOU GOT. Ground nobody crossed is
+#      ground the run skipped.
+#   2. IT NEVER TAKES BACK MORE THAN IT SAID IT WOULD -- at most
+#      CHECKPOINT_EVERY_SEGMENTS segments. A checkpoint that quietly rewinds
+#      further is a checkpoint that was not banked.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
+# Every Nth row of the initial run. The sweep is what found the real number; a
+# single sample would have been read as whatever the checkpoint happened to be.
+const ROW_STEP := 3
+
 var world: Node3D = null
 var body: CharacterBody3D = null
 var phase_frame: int = 0
 var probe_row: int = 2
+var last_row: int = 0
 var reached_row: int = 0
+var samples: int = 0
 var worst_ahead: int = -9999
-var worst_at: int = 0
+var worst_ahead_at: int = 0
+var worst_behind: int = 0
+var worst_behind_at: int = 0
 
 func setup(main) -> void:
-	timeout_seconds = 120.0
+	timeout_seconds = 90.0
 	world = Node3D.new()
 	world.name = "CheckpointWorld"
 	world.set_script(GameWorldScript)
@@ -42,6 +63,10 @@ func setup(main) -> void:
 	body = world.player_body(1)
 	world.scripted_inputs[1] = func(t: int) -> Array:
 		return PlayerInput.empty(t)
+	# THE ROWS THAT EXIST AT THE START. The run extends itself as the party
+	# advances, so an unbounded sweep walks the bridge forever -- the first draft
+	# of this reached 170 segments and timed out.
+	last_row = world.grid.total_length() - 2
 
 func _row_of(at: Vector3) -> int:
 	return world.grid.cell_of_world(at).y
@@ -59,11 +84,11 @@ func _physics_process(_delta: float) -> void:
 	# Stand at the row (so _bank_checkpoint sees a party there), drop out of the
 	# world, then WAIT FOR THE RETURN TO ACTUALLY HAPPEN before reading anything.
 	#
-	# The first version of this read one frame after the drop and measured the
-	# FALLING BODY -- which reported "1 to 2 rows behind" for every row on the
-	# bridge, a number that is not about respawning at all. (It is real, though,
-	# and worth knowing: cell_of_world runs the PITCHED transform, so the same x/z
-	# 35 m below the deck reads two rows down-bridge of the same x/z on it.)
+	# The first draft read one frame after the drop and was measuring the FALLING
+	# BODY -- which reported "1 to 2 rows behind" everywhere, a number with nothing
+	# to do with respawning. (It is real and worth knowing: cell_of_world runs the
+	# PITCHED transform, so the same x/z 35 m below the deck reads two rows
+	# down-bridge of the same x/z standing on it.)
 	match phase_frame:
 		1:
 			_place(probe_row)
@@ -74,32 +99,61 @@ func _physics_process(_delta: float) -> void:
 				SimConfig.FALL_KILL_Y - 5.0, body.position.z)
 			return
 		_:
-			# The drone takes DRONE_RETURN_SECONDS; the body is invisible and
-			# parked until then. Waiting on the VISIBILITY rather than on a frame
-			# count means this cannot silently sample early again.
+			# Waiting on VISIBILITY rather than a frame count, so this cannot
+			# silently start sampling early again.
 			if not body.visible and phase_frame < 60 * 8:
 				return
-			var landed: int = _row_of(body.position)
-			var ahead: int = landed - reached_row
-			if ahead > worst_ahead:
-				worst_ahead = ahead
-				worst_at = reached_row
-			print("[probe] stood row %2d  seg %d  checkpoint_row %2d  ->  landed %2d  (%+d)"
-				% [reached_row, world.grid.segment_index_of_row(reached_row),
-					world.checkpoint_row, landed, ahead])
+			_record(_row_of(body.position))
 			phase_frame = 0
-			probe_row += 2
-			if probe_row < world.grid.total_length() - 1:
+			probe_row += ROW_STEP
+			if probe_row <= last_row:
 				return
 
 	if phase_frame != 0:
 		return
+	_report()
 
-	print("[probe] WORST: %+d rows, standing at row %d (total %d rows, %d segments)"
-		% [worst_ahead, worst_at, world.grid.total_length(),
-			world.grid.segment_count()])
-	check(worst_ahead <= 0,
-		"a restart never puts you PAST the furthest you got -- worst was %+d rows, "
-			% worst_ahead
-		+ "standing at row %d" % worst_at)
+func _record(landed: int) -> void:
+	samples += 1
+	var delta: int = landed - reached_row
+	if delta > worst_ahead:
+		worst_ahead = delta
+		worst_ahead_at = reached_row
+	if -delta > worst_behind:
+		worst_behind = -delta
+		worst_behind_at = reached_row
+	print("[checkpoint] stood row %3d (seg %d)  banked %3d  ->  landed %3d  (%+d)"
+		% [reached_row, world.grid.segment_index_of_row(reached_row),
+			world.checkpoint_row, landed, delta])
+
+func _report() -> void:
+	print("[checkpoint] %d samples over %d rows: worst forward %+d (at row %d), "
+		% [samples, last_row, worst_ahead, worst_ahead_at]
+		+ "worst back %d (at row %d)" % [worst_behind, worst_behind_at])
+	check(samples > 8, "the sweep really ran (%d samples)" % samples)
+
+	# 1. NEVER PAST THE FURTHEST YOU GOT. One row of slack, and only one: standing
+	# exactly ON a banked row lands you on the row above it, which is the "+1" the
+	# restart adds so nobody spawns inside a segment seam.
+	check(worst_ahead <= 1,
+		"a restart never puts you past the furthest you got -- worst forward was "
+		+ "%+d rows, standing at row %d" % [worst_ahead, worst_ahead_at])
+
+	# 2. AND NEVER TAKES BACK MORE THAN THE INTERVAL IT PROMISED. Measured worst
+	# is one interval; the allowance is two, so this catches a checkpoint that
+	# stopped banking rather than one that banked a row later than expected.
+	var interval_rows: int = _longest_segment() * SimConfig.CHECKPOINT_EVERY_SEGMENTS
+	check(worst_behind <= interval_rows * 2,
+		"and never rewinds more than the interval it promised -- worst back was "
+		+ "%d rows against an allowance of %d" % [worst_behind, interval_rows * 2])
 	finish()
+
+func _longest_segment() -> int:
+	var longest := 1
+	for i in world.grid.segment_count():
+		var rows: int = world.grid.first_row_of_segment(i + 1) \
+			- world.grid.first_row_of_segment(i)
+		if i + 1 >= world.grid.segment_count():
+			rows = world.grid.total_length() - world.grid.first_row_of_segment(i)
+		longest = maxi(longest, rows)
+	return longest
