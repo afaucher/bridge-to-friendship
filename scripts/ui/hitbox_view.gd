@@ -17,6 +17,27 @@ extends RefCounted
 # clearing up is a search rather than a bookkeeping list that can go stale.
 const MARKER := "__hitbox"
 
+# Layer 1 is the WORLD: deck slabs, parapets, ramp wedges, ladders.
+const WORLD_LAYER_BIT := 1
+
+# BODIES ONLY, NEVER THE BRIDGE ITSELF. The first version drew every collision
+# shape in the tree, and came back from playtest as "the whole screen is light
+# green, you cannot see anything any more" -- which is exactly right: the deck is
+# hundreds of box slabs, the material has no_depth_test on, and the camera is
+# always standing INSIDE one of them. Several hundred wireframe boxes drawn over
+# the top of everything is a green fog.
+#
+# It was also the wrong content. The bridge's colliders match what is drawn by
+# construction -- both are built from the same cells. Every question this tool
+# exists to answer is about a BODY: does that pillar catch me, is the ball's hit
+# radius the ball. So a shape is drawn when its owner sits on any layer other than
+# the world's, which leaves exactly those.
+static func _shown(shape: CollisionShape3D) -> bool:
+	var owner := shape.get_parent() as CollisionObject3D
+	if owner == null:
+		return false
+	return (owner.collision_layer & ~WORLD_LAYER_BIT) != 0
+
 static func _material() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -36,6 +57,8 @@ static func apply(root: Node, on: bool) -> void:
 	if root == null:
 		return
 	for shape in _collision_shapes(root):
+		if not _shown(shape):
+			continue
 		var existing: Node = shape.get_node_or_null(MARKER)
 		if on:
 			if existing == null:

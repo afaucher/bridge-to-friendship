@@ -59,11 +59,12 @@ func held_by(peer: int) -> Node:
 # --- Host: creating and destroying --------------------------------------------
 
 func spawn_loose(at: Vector3, kind: int = SpecialBody.Kind.MACHINE_GUN,
-		ammo: int = -1) -> Node:
+		ammo: int = -1, authored: bool = false) -> Node:
 	var s: Node3D = SpecialScene.instantiate()
 	_next_id += 1
 	s.special_id = _next_id
 	s.kind = kind
+	s.authored = authored
 	s.ammo = ammo if ammo >= 0 else _full_ammo(kind)
 	s.name = "Special_%d" % s.special_id
 	_root.add_child(s)
@@ -130,9 +131,17 @@ func step(trailing_z: float) -> void:
 			_specials.remove_at(i)
 			s.queue_free()
 
+	# THE CAP BOUNDS LITTER, NOT THE LEVEL. Authored pickups are excluded, because
+	# an author who places twelve gets twelve -- the alternative, measured
+	# 2026-08-14, is that the twelfth silently deletes the FIRST, and the first is
+	# the rack beside the spawn. Nothing errors and nothing logs; the specials are
+	# simply not there.
+	#
+	# Authored ones are still culled by the streaming window a few lines above, so
+	# walking a long bridge does not accumulate them forever.
 	var loose: Array = []
 	for s in _specials:
-		if is_instance_valid(s) and s.mode != SpecialBody.Mode.HELD:
+		if is_instance_valid(s) and s.mode != SpecialBody.Mode.HELD and not s.authored:
 			loose.append(s)
 	# Oldest first: ids are monotonic, so a lower id is an older special.
 	loose.sort_custom(func(a, b): return a.special_id < b.special_id)

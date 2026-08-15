@@ -33,6 +33,10 @@ const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 const TurretScene = preload("res://scenes/turret.tscn")
 const GrenadeScene = preload("res://scenes/grenade.tscn")
 const MineScene = preload("res://scenes/mine.tscn")
+# The SCRIPT, for its statics. Reading a script-level member through the
+# DebugSettings autoload INSTANCE is the trap CLAUDE.md records for enums: it
+# raises at runtime and silently aborts the rest of the frame.
+const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
@@ -1213,7 +1217,8 @@ func _process_specials() -> void:
 	if grid != null:
 		for entry in grid.take_authored_special_cells():
 			_specials.spawn_loose(
-				grid.cell_surface_world(entry[0]) + Vector3(0.0, 0.4, 0.0), int(entry[1]))
+				grid.cell_surface_world(entry[0]) + Vector3(0.0, 0.4, 0.0), int(entry[1]),
+				-1, true)
 
 	_specials.step(_trailing_edge_z())
 
@@ -2650,8 +2655,26 @@ func push_setting(key: String, value: Variant) -> void:
 		return
 	if is_host:
 		_pending_settings[key] = value
-	else:
-		_request_setting.rpc_id(1, key, value)
+		return
+	# A VIEW KNOB TAKES EFFECT ON THE SPOT; A SIMULATION KNOB WAITS FOR THE HOST.
+	#
+	# A client used to change nothing at all on its own machine and wait for the
+	# host's snapshot to come back, so between the click and the echo the local
+	# value was still the OLD one -- and any refresh in that window (a `changed`
+	# signal from another key, or reopening the panel) put the control straight back
+	# where it was. Reported from playtest as "after turning it off it periodically
+	# turns itself back on".
+	#
+	# Applying EVERY knob optimistically was the first fix and it was too broad:
+	# test_debug_replication caught it in one run. A simulation knob is applied by
+	# the host at a tick boundary precisely so that two bodies in one tick cannot
+	# run under different rules, and a client writing the value early is exactly
+	# that hazard. `view_only` knobs cannot be -- nothing in the sim reads them --
+	# so they are safe to apply at once and are the ones whose latency is felt,
+	# because the player is looking straight at the thing they toggled.
+	if DebugSettingsScript.is_view_only(key):
+		DebugSettings.set_value(key, value)
+	_request_setting.rpc_id(1, key, value)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _request_setting(key: String, value: Variant) -> void:

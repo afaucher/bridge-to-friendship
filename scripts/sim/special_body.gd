@@ -47,6 +47,12 @@ var ammo: int = 0
 
 var mode: int = Mode.LOOSE
 
+# PLACED BY AN AUTHOR, not dropped by a player. It is the difference between the
+# level and the litter, and the loose cap bounds only the litter -- see
+# SpecialPool.step. Without it, authoring more pickups than SPECIAL_MAX_LOOSE
+# silently deletes the oldest of them, which is the ones nearest the spawn.
+var authored: bool = false
+
 # Only meaningful while HELD.
 var owner_peer: int = 0
 

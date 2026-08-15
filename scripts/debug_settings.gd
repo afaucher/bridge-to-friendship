@@ -41,6 +41,7 @@ const OPTIONS := {
 	"show_hitboxes": {
 		"section": "Diagnostics",
 		"kind": KIND_BOOL,
+		"view_only": true,
 		"label": "Show hitboxes",
 		"default": 0,
 		"help": "Draw every collision shape as a wireframe. The first thing to reach for when something catches on geometry it looks clear of.",
@@ -150,6 +151,17 @@ static func kind_of(key: String) -> String:
 	if not OPTIONS.has(key):
 		return KIND_CHOICE
 	return str(OPTIONS[key].get("kind", KIND_CHOICE))
+
+# A VIEW KNOB CHANGES WHAT IS DRAWN AND NOTHING THE SIMULATION READS.
+#
+# The distinction earns its keep in GameWorld.push_setting: a client may apply one
+# of these the instant it is clicked, because there is no way for it to make two
+# bodies in one host tick run under different rules. A simulation knob has to wait
+# for the host to apply it on a tick boundary, and test_debug_replication is the
+# assertion that says so -- it caught the version of this that skipped the
+# distinction, on the first run.
+static func is_view_only(key: String) -> bool:
+	return bool(OPTIONS.get(key, {}).get("view_only", false))
 
 static func section_of(key: String) -> String:
 	return str(OPTIONS.get(key, {}).get("section", "Other"))
