@@ -15,6 +15,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
 var world: Node3D = null
@@ -93,7 +94,7 @@ func _phase_damage_and_grace() -> void:
 	# SILENCE IS A STATE. A player at full health shows nothing at all -- four
 	# permanent bars on a 60 m bridge are furniture, and furniture is not read, so
 	# a bar appearing has to mean somebody needs something.
-	a.sync_downed_timer()
+	a.sync_downed_timer(0.0)
 	var bar := a.get_node_or_null("StatusBar") as Node3D
 	if check(bar != null, "a player carries a status bar"):
 		check(not bar.visible, "which a HEALTHY player does not show at all")
@@ -103,7 +104,7 @@ func _phase_damage_and_grace() -> void:
 
 	# Injured: it appears, green over red, and reads the health rather than a
 	# countdown.
-	a.sync_downed_timer()
+	a.sync_downed_timer(0.0)
 	if bar != null:
 		check(bar.visible, "an INJURED player shows one")
 		near(a.health_fraction(), 0.8, 0.001, "filled to the health that is left")
@@ -121,7 +122,7 @@ func _phase_damage_and_grace() -> void:
 	b.health = SimConfig.MAX_HEALTH
 	b.state = PlayerBody.State.LEDGE_HANG
 	b.state_timer = 0.0
-	b.sync_downed_timer()
+	b.sync_downed_timer(0.0)
 	eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL,
 		"and one player's bar colour does not follow another's")
 	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL, "each body owning its own")
@@ -133,7 +134,7 @@ func _phase_damage_and_grace() -> void:
 	# read -- what they need is whether to come as well or go and deal with the
 	# rusher. So the moment progress exists, the bar changes meaning.
 	b.rescue_progress = SimConfig.LEDGE_HAUL_SECONDS * 0.5
-	b.sync_downed_timer()
+	b.sync_downed_timer(0.0)
 	eq(_fill_colour(b), PlayerBody.BAR_HAUL_FILL,
 		"a hanging player being hauled shows BLUE, not the red countdown")
 	eq(_back_colour(b), PlayerBody.BAR_HAUL_BACK, "on black")
@@ -146,9 +147,37 @@ func _phase_damage_and_grace() -> void:
 	# helped", an empty blue bar would appear and vanish every time somebody walked
 	# past a downed friend.
 	b.rescue_progress = 0.0
-	b.sync_downed_timer()
+	b.sync_downed_timer(0.0)
 	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL,
 		"and it goes back to the red countdown the moment the helper leaves")
+
+	# --- THE COUNTDOWN FLASHES, AND THE HAUL DOES NOT --------------------------
+	#
+	# Added 2026-08-15 with the marker change, and the two are one signal: a player
+	# who needs help is red-to-white on crisis_flash's clock BOTH on the arrow at
+	# the edge of the screen and on the bar over their head, so following the arrow
+	# leads to the marking you were already following.
+	#
+	# EVERY sync_downed_timer CALL IN THIS FILE PASSES A PHASE for this reason. A
+	# colour that alternates twice a second, asserted against the clock, is a coin
+	# toss -- it would pass locally and fail in the gate about half the time, and a
+	# flaky gate is a gate nobody reads.
+	b.sync_downed_timer(CrisisFlash.PERIOD * 0.75)
+	eq(_fill_colour(b), Color(1.0, 1.0, 1.0, PlayerBody.BAR_RESCUE_FILL.a),
+		"a player waiting for help FLASHES WHITE on the other half of the cycle")
+	b.sync_downed_timer(CrisisFlash.PERIOD * 1.1)
+	eq(_fill_colour(b), PlayerBody.BAR_RESCUE_FILL, "and back to red on the next")
+
+	# THE HAUL IS STEADY. Movement means "come here"; help is already there, and a
+	# second thing demanding attention would pull a third player toward a problem
+	# that is being solved. Asserted across the cycle, because "it did not flash"
+	# is only meaningful if the sample would have caught one.
+	b.rescue_progress = SimConfig.LEDGE_HAUL_SECONDS * 0.5
+	for step in 4:
+		b.sync_downed_timer(CrisisFlash.PERIOD * float(step) * 0.3)
+		eq(_fill_colour(b), PlayerBody.BAR_HAUL_FILL,
+			"while a haul in progress stays a steady blue all the way round")
+	b.rescue_progress = 0.0
 
 	b.rescue_progress = 0.0
 	b.state = PlayerBody.State.WALK
@@ -181,7 +210,7 @@ func _phase_downed_and_revive() -> void:
 		# THE RESCUE BAR OVER THEIR HEAD. In the world and not on the HUD because
 		# both rescues are performed by standing next to someone: what a rescuer
 		# needs is attached to the body they have to reach.
-		a.sync_downed_timer()
+		a.sync_downed_timer(0.0)
 		var bar := a.get_node_or_null("StatusBar") as Node3D
 		if check(bar != null, "a player carries a status bar"):
 			check(bar.visible, "which appears the moment they go down")
@@ -269,7 +298,7 @@ func _phase_downed_and_revive() -> void:
 			# REVIVE_HEALTH, so the bar does not vanish -- it switches question,
 			# from "how long have I got" to "how hurt am I", and the colours say
 			# which one it is answering.
-			a.sync_downed_timer()
+			a.sync_downed_timer(0.0)
 			check(bar.visible, "and stays up, because a revive returns you hurt")
 			eq(_fill_colour(a), PlayerBody.BAR_HEALTH_FILL,
 				"having switched back to green-over-red health")
@@ -279,7 +308,7 @@ func _phase_downed_and_revive() -> void:
 
 			# Only a player at FULL health shows nothing.
 			a.health = SimConfig.MAX_HEALTH
-			a.sync_downed_timer()
+			a.sync_downed_timer(0.0)
 			check(not bar.visible, "and goes away entirely once they are patched up")
 		_advance(2)
 		return
@@ -315,7 +344,7 @@ func _phase_ledge_catch() -> void:
 		# separate hits and falling deals no damage, so in a real playtest you hang
 		# or you fall. This is the reachable half, and it went three builds without
 		# anyone being able to confirm the counter existed.
-		a.sync_downed_timer()
+		a.sync_downed_timer(0.0)
 		var hang_bar := a.get_node_or_null("StatusBar") as Node3D
 		if check(hang_bar != null, "a hanging player carries a bar as well"):
 			check(hang_bar.visible, "and it is showing while they hang")

@@ -16,6 +16,11 @@ extends CharacterBody3D
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+# A VIEW SCRIPT, PRELOADED BY A SIM ONE, and deliberately: the bar over this
+# body's head is already a view built here, colours and all, and the alternative
+# is a second copy of the crisis palette. crisis_flash.gd preloads nothing, so it
+# cannot close a class cycle -- see CLAUDE.md on what a new preload can cost.
+const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 
 enum State {
 	WALK,        # full control
@@ -273,7 +278,11 @@ func _process(_delta: float) -> void:
 # something.
 const BAR_HEALTH_FILL := Color(0.30, 0.85, 0.35)   # health you still have
 const BAR_HEALTH_BACK := Color(0.75, 0.15, 0.12)   # health you have lost
-const BAR_RESCUE_FILL := Color(1.00, 0.27, 0.16)   # time left to reach them
+# THE SAME RED AS THE TRIANGLE POINTING AT THIS PLAYER, and the same constant
+# rather than the same literal -- the marker at the edge of the screen and this
+# bar are one fact reported twice, so they share one colour and one rhythm. See
+# crisis_flash.gd.
+const BAR_RESCUE_FILL := CrisisFlash.RED           # time left to reach them
 const BAR_RESCUE_BACK := Color(0.03, 0.03, 0.04)   # time already gone
 # SOMEBODY IS ON IT. Blue is the only colour on this bar that is not a warning,
 # and it means the opposite of the other two: the red bar is a clock running out,
@@ -287,7 +296,10 @@ const BAR_HAUL_BACK := Color(0.03, 0.03, 0.04)     # how much is still to go
 # pixel_size -- 200 x 30 at 0.006 is 1.2 m x 0.18 m.
 const BAR_PIXELS := Vector2(200.0, 30.0)
 
-func sync_downed_timer() -> void:
+# `at_seconds` is where in the flash cycle to draw. Negative means "read the
+# clock", which is what the game passes; a test passes a chosen phase, because a
+# colour that alternates twice a second is otherwise a coin toss to assert.
+func sync_downed_timer(at_seconds: float = -1.0) -> void:
 	var bar := get_node_or_null("StatusBar") as Sprite3D
 	if bar == null:
 		return
@@ -295,7 +307,8 @@ func sync_downed_timer() -> void:
 
 	var status: Dictionary = status_bar()
 	var fraction: float = float(status["fraction"])
-	var fill: Color = status["fill"]
+	var seconds: float = at_seconds if at_seconds >= 0.0 else CrisisFlash.now()
+	var fill: Color = CrisisFlash.fill_for(status, seconds)
 	var back: Color = status["back"]
 	if str(status["kind"]) == "":
 		# Unhurt and in no trouble: say nothing, and STOP RENDERING. A viewport
@@ -347,20 +360,31 @@ func sync_downed_timer() -> void:
 # `kind` is what lets a caller take only the part it wants. The HUD already draws
 # health as PIPS, so it shows this bar for "haul" and "rescue" and ignores
 # "health" -- one bar, never two, and never a second one that is only ever black.
+#
+# `flash` IS SET ON EXACTLY ONE OF THEM. The red countdown alternates to white on
+# crisis_flash's rhythm; nothing else does. That is the same signal as the
+# triangle at the edge of the screen pointing at this player -- same red, same
+# rhythm, same clock -- so a player who sees a blinking arrow and then finds the
+# body it belongs to sees the marking they were already following, rather than
+# two unrelated warnings about one person.
+#
+# The haul deliberately does NOT flash. Movement means "come here"; help is
+# already there, and a second thing demanding attention would be pulling a third
+# player toward a problem that is being solved.
 func status_bar() -> Dictionary:
 	var fraction: float = haul_fraction()
 	if fraction >= 0.0:
-		return {"kind": "haul", "fraction": fraction,
+		return {"kind": "haul", "fraction": fraction, "flash": false,
 			"fill": BAR_HAUL_FILL, "back": BAR_HAUL_BACK}
 	fraction = rescue_fraction()
 	if fraction >= 0.0:
-		return {"kind": "rescue", "fraction": fraction,
+		return {"kind": "rescue", "fraction": fraction, "flash": true,
 			"fill": BAR_RESCUE_FILL, "back": BAR_RESCUE_BACK}
 	fraction = health_fraction()
 	if fraction < 1.0:
-		return {"kind": "health", "fraction": fraction,
+		return {"kind": "health", "fraction": fraction, "flash": false,
 			"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
-	return {"kind": "", "fraction": 0.0,
+	return {"kind": "", "fraction": 0.0, "flash": false,
 		"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
 
 func health_fraction() -> float:

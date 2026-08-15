@@ -287,6 +287,15 @@ the moment it is written.
   entirely, so nothing under it is scanned, imported or exported. The
   `exclude_filter` is the committed backstop. **Anything the build writes inside
   `res://` is a candidate for the shipped `.pck`.**
+  **`tmp/` is the same trap and it fired 2026-08-15**, which is worse than
+  `build/` in one specific way: the convention below sends every throwaway file
+  there, so it is *by design* full of things that must never ship. Scratch COPIES
+  OF TWO REAL SCRIPTS, made for an A/B and deleted ninety seconds later, were
+  packed as `res://tmp/ab/*.gdc` — duplicate classes in the shipped game, from
+  files that were not meant to survive the afternoon. Same fix as `build/`: the
+  env scripts drop a `.gdignore` in, and `exclude_filter` carries `tmp/*` as the
+  committed backstop. Caught by reading the `savepack:` list, which is the only
+  thing that ever catches this.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

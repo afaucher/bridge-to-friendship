@@ -109,6 +109,15 @@ godot_export_env() {
     # before any engine run. export_presets.cfg carries an exclude_filter for
     # the same paths as a committed backstop.
     [[ -f "$GODOT_ENV_ROOT/build/.gdignore" ]] || : >"$GODOT_ENV_ROOT/build/.gdignore"
+
+    # tmp/ IS THE SAME TRAP AND IT FIRED 2026-08-15: a scratch copy of two
+    # scripts, made for an A/B and left in tmp/ for ninety seconds, was packed
+    # into the shipped game as res://tmp/ab/*.gdc. CLAUDE.md sends every
+    # throwaway file to tmp/, so this directory is BY DESIGN full of things that
+    # must never ship -- stale copies of real scripts most of all, since a
+    # duplicate class in the .pck is a genuinely confusing thing to debug.
+    mkdir -p "$GODOT_ENV_ROOT/tmp"
+    [[ -f "$GODOT_ENV_ROOT/tmp/.gdignore" ]] || : >"$GODOT_ENV_ROOT/tmp/.gdignore"
     return 0
 }
 

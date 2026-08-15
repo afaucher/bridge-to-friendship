@@ -18,6 +18,7 @@ extends CanvasLayer
 
 const HudModel = preload("res://scripts/ui/hud_model.gd")
 const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
+const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 
 const COLOR_HEALTH := Color(0.91, 0.29, 0.33)
 const COLOR_HEALTH_LOST := Color(0.20, 0.20, 0.24)
@@ -87,7 +88,7 @@ func _process(_delta: float) -> void:
 		return
 	_update_own(model["own"])
 	_update_friends(model["friends"])
-	_update_markers(model["friends"], _delta)
+	_update_markers(model["friends"])
 
 # --- Avatars ------------------------------------------------------------------
 #
@@ -129,7 +130,7 @@ func _build_markers() -> void:
 	_markers.set_script(TeammateMarkers)
 	add_child(_markers)
 
-func _update_markers(friends: Array, delta: float) -> void:
+func _update_markers(friends: Array) -> void:
 	if _markers == null:
 		return
 	var list: Array = []
@@ -146,7 +147,7 @@ func _update_markers(friends: Array, delta: float) -> void:
 	if world != null and "camera" in world:
 		cam = world.camera as Camera3D
 	_markers.visible = cam != null
-	_markers.refresh(list, cam, delta)
+	_markers.refresh(list, cam)
 
 # --- Own panel ----------------------------------------------------------------
 
@@ -368,7 +369,12 @@ func _set_status_bar(bar: ColorRect, status: Dictionary) -> void:
 		bar.visible = false
 		return
 	bar.color = status.get("back", COLOR_BAR_BACK)
-	_bar_fill(bar).color = status.get("fill", COLOR_ALERT)
+	# THE SAME FLASH AS THE BAR OVER THEIR HEAD AND THE TRIANGLE POINTING AT THEM,
+	# because it is the same clock -- crisis_flash reads wall time rather than
+	# taking a delta, so three separate widgets blink together with nothing passed
+	# between them. Whether it flashes at all is the BODY's call (status["flash"]);
+	# this only draws it.
+	_bar_fill(bar).color = CrisisFlash.fill_for(status, CrisisFlash.now())
 	_set_bar(bar, float(status.get("fraction", HudModel.NO_BAR)))
 
 func _set_bar(bar: ColorRect, value: float) -> void:

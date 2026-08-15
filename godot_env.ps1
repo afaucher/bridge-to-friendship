@@ -65,6 +65,17 @@ function Set-GodotDataDir {
     # the same paths as a committed backstop.
     $gdignore = Join-Path $GodotEnvRoot "build\.gdignore"
     if (-not (Test-Path -LiteralPath $gdignore)) { New-Item -ItemType File -Path $gdignore -Force | Out-Null }
+
+    # tmp/ IS THE SAME TRAP AND IT FIRED 2026-08-15: a scratch copy of two
+    # scripts, made for an A/B and left in tmp/ for ninety seconds, was packed
+    # into the shipped game as res://tmp/ab/*.gdc. CLAUDE.md sends every
+    # throwaway file to tmp/, so this directory is BY DESIGN full of things that
+    # must never ship -- stale copies of real scripts most of all, since a
+    # duplicate class in the .pck is a genuinely confusing thing to debug.
+    $tmpDir = Join-Path $GodotEnvRoot "tmp"
+    New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+    $tmpIgnore = Join-Path $tmpDir ".gdignore"
+    if (-not (Test-Path -LiteralPath $tmpIgnore)) { New-Item -ItemType File -Path $tmpIgnore -Force | Out-Null }
 }
 
 # A PATH inherited as a User+Machine pair can leave the process copy stale in
