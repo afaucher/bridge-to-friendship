@@ -24,6 +24,11 @@ const SegmentData = preload("res://scripts/grid/segment_data.gd")
 # `difficulty` is a rough rank, used by the curve in M10. `tags` are what a future
 # assembler balances on -- avoiding three ramp segments in a row, or deliberately
 # stacking them.
+# THE LOBBY, which is not in the pool and never should be. It is not a level --
+# it is the punctuation between them, and it appears in every run at every odd
+# index by construction rather than by a dice roll that might not come up.
+const LOBBY := "res://segments/lobby.seg"
+
 const POOL := [
 	{
 		"path": "res://segments/playtest_bridge.seg",
@@ -54,17 +59,33 @@ static func _mix(value: int) -> int:
 
 # The ordered list of segment paths for a run. Same seed and same index always
 # give the same segment, on every machine, forever.
+#
+# LOBBY, SECTION, LOBBY, SECTION (M16). A run OPENS on a lobby, because the first
+# thing that should happen in a session is the party standing together deciding
+# to start -- and because the lobby's entry strip is what gives the round machine
+# a rear boundary to hang the first corridor off.
+#
+# THE SECTION IS A SLOT FILLED BY NAME. `section_for` is the only thing that
+# decides which level comes next, and it is a pure function of (seed, index)
+# today. When players vote for the next one, this is where the vote is READ --
+# a value change, not a structural one, which is the entire reason the loop is
+# expressed this way rather than as "append whatever is next".
 static func plan(run_seed: int, count: int) -> Array:
 	var out: Array = []
 	if POOL.is_empty():
 		return out
 	for i in count:
-		# The first segment is always the same one, so every run opens on
-		# familiar ground and a player is never dropped straight into the
-		# hardest thing the pool has.
-		var index: int = 0 if i == 0 else _mix(run_seed + i * 7919) % POOL.size()
-		out.append(String(POOL[index]["path"]))
+		out.append(LOBBY if i % 2 == 0 else section_for(run_seed, i))
 	return out
+
+# Which section fills slot `i`. The first one is always the same, so every run
+# opens on familiar ground and nobody is dropped straight into the hardest thing
+# the pool has.
+static func section_for(run_seed: int, i: int) -> String:
+	if POOL.is_empty():
+		return LOBBY
+	var index: int = 0 if i <= 1 else _mix(run_seed + i * 7919) % POOL.size()
+	return String(POOL[index]["path"])
 
 static func entry_for(path: String) -> Dictionary:
 	for entry in POOL:

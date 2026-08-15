@@ -19,6 +19,7 @@ extends CanvasLayer
 const HudModel = preload("res://scripts/ui/hud_model.gd")
 const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
 const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 
 const COLOR_GRACE := Color(1.00, 0.93, 0.55)
 const COLOR_SLOT_READY := Color(0.88, 0.90, 0.96)
@@ -81,6 +82,15 @@ var _own_status: ColorRect = null
 
 var _markers: Control = null
 
+# THE ROUND BANNER AND THE BOARD, both centred and both transient. Centre-top is
+# the most expensive real estate on the screen and it is deliberately empty
+# except when the round state is doing something a player has to act on: get to
+# the strip, or read the result.
+var _round_panel: VBoxContainer = null
+var _round_label: Label = null
+var _round_clock: Label = null
+var _board_panel: VBoxContainer = null
+
 var _friends_panel: Control = null
 var _friends_box: VBoxContainer = null
 var _friend_rows: Dictionary = {}      # peer -> {row, name, state, bar, bearing, face}
@@ -90,6 +100,7 @@ func _ready() -> void:
 	_build_own_panel()
 	_build_friends_panel()
 	_build_markers()
+	_build_round_panel()
 
 func _process(_delta: float) -> void:
 	var model: Dictionary = HudModel.build(world)
@@ -101,6 +112,7 @@ func _process(_delta: float) -> void:
 	_update_own(model["own"])
 	_update_friends(model["friends"])
 	_update_markers(model["friends"])
+	_update_round(model.get("round", {}))
 
 # --- Avatars ------------------------------------------------------------------
 #
@@ -160,6 +172,94 @@ func _update_markers(friends: Array) -> void:
 		cam = world.camera as Camera3D
 	_markers.visible = cam != null
 	_markers.refresh(list, cam)
+
+# --- The round ----------------------------------------------------------------
+
+func _build_round_panel() -> void:
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	margin.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	margin.add_theme_constant_override("margin_top", 14)
+	add_child(margin)
+
+	_round_panel = VBoxContainer.new()
+	_round_panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(_round_panel)
+
+	_round_label = _label("", 22, COLOR_TEXT)
+	_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_round_panel.add_child(_round_label)
+
+	_round_clock = _label("", 30, COLOR_ALERT)
+	_round_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_round_panel.add_child(_round_clock)
+
+	_board_panel = VBoxContainer.new()
+	_board_panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	_board_panel.add_theme_constant_override("separation", 3)
+	_round_panel.add_child(_board_panel)
+
+func _update_round(entry: Dictionary) -> void:
+	if _round_panel == null:
+		return
+	if entry.is_empty():
+		_round_panel.visible = false
+		return
+	_round_panel.visible = true
+
+	var state: int = int(entry.get("state", 0))
+	var label: String = str(entry.get("label", ""))
+	if bool(entry.get("waiting", false)):
+		# THE INSTRUCTION, not the state name. "LOBBY" tells a player where they
+		# are, which they can see; what they need is what to do about it, and this
+		# is the only screen in the game that says it.
+		label = "LOBBY -- everyone onto the checker to begin"
+	_round_label.text = label
+
+	# The countdown while the round closes; the elapsed clock while it runs; a
+	# blank in the lobby, because a timer that is always there is not read.
+	var countdown: float = float(entry.get("countdown", -1.0))
+	if countdown >= 0.0:
+		_round_clock.text = "%0.0f" % ceilf(countdown)
+		_round_clock.add_theme_color_override("font_color",
+			CrisisFlash.alternate(COLOR_ALERT, CrisisFlash.now()))
+		_round_clock.visible = true
+	elif state == RoundMachine.State.RUNNING:
+		_round_clock.text = _mmss(float(entry.get("elapsed", 0.0)))
+		_round_clock.add_theme_color_override("font_color", COLOR_DIM)
+		_round_clock.visible = true
+	else:
+		_round_clock.visible = false
+
+	_sync_board(entry.get("board", []))
+
+func _sync_board(board: Array) -> void:
+	while _board_panel.get_child_count() < board.size():
+		var row := _label("", 18, COLOR_TEXT)
+		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_board_panel.add_child(row)
+	for i in _board_panel.get_child_count():
+		var row: Label = _board_panel.get_child(i)
+		row.visible = i < board.size()
+		if not row.visible:
+			continue
+		var entry: Dictionary = board[i]
+		var hats: int = int(entry.get("hats", 0))
+		# WHAT THE RANK WAS FOR, spelled out. A number nobody can explain is a
+		# number nobody trusts, and this is the first scoring criterion the game
+		# has ever shown.
+		var why: String = "%d hats" % hats
+		if hats == 1:
+			why = "1 hat"
+		elif hats == 0:
+			why = "made it" if bool(entry.get("made_it", false)) else "did not make it"
+		row.text = "%d.  %s  --  %s" % [i + 1, str(entry.get("name", "")), why]
+		row.add_theme_color_override("font_color",
+			COLOR_TEXT if bool(entry.get("made_it", false)) else COLOR_DIM)
+
+static func _mmss(seconds: float) -> String:
+	var whole: int = int(maxf(0.0, seconds))
+	return "%d:%02d" % [whole / 60, whole % 60]
 
 # --- Own panel ----------------------------------------------------------------
 

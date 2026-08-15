@@ -17,6 +17,7 @@ extends RefCounted
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 
 # Fractions are 0..1 and are always "how full should the bar be":
 #   bleed_out  1.0 = the whole timer left, 0.0 = about to expire
@@ -40,7 +41,36 @@ static func build(world: Node, for_peer: int = -1) -> Dictionary:
 	model["active"] = true
 	model["own"] = _own_entry(world, peer, body)
 	model["friends"] = _friend_entries(world, peer, body)
+	model["round"] = round_entry(world)
 	return model
+
+# THE ROUND, AS DATA. Everything the player is told about what phase they are in
+# comes through here, which is what makes the whole M16 state machine assertable
+# without looking at a screen -- the same split the rest of this file exists for.
+#
+# THE CLOCK IS SHOWN AND DECIDES NOTHING. `elapsed` against `target` is a
+# measurement of the AUTHORING, put in front of players and playtesters precisely
+# so somebody notices a section that is really ninety seconds. If it ever gains
+# the power to end a round it stops measuring the design and becomes part of it.
+static func round_entry(world: Node) -> Dictionary:
+	var machine = world.round_machine
+	if machine == null:
+		return {}
+	return {
+		"state": int(machine.state),
+		"label": String(machine.state_name()),
+		# The one number that matters right now. A countdown while the round is
+		# closing, elapsed while it is running, and nothing in a lobby -- a
+		# permanent timer is furniture, and furniture does not get read.
+		"countdown": float(machine.close_timer) 			if int(machine.state) == RoundMachine.State.CLOSING else -1.0,
+		"elapsed": float(machine.round_clock),
+		"target": float(machine.TARGET_SECONDS),
+		"index": int(machine.round_index),
+		# Shown only while the board is up. Held on the machine between rounds so
+		# a console in the lobby can ask for it again later.
+		"board": machine.board if int(machine.state) == RoundMachine.State.SCORING else [],
+		"waiting": int(machine.state) == RoundMachine.State.LOBBY,
+	}
 
 static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 	return {

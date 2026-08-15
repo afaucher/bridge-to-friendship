@@ -150,6 +150,7 @@ system_exit={
 3d_physics/layer_5="rushers"
 3d_physics/layer_6="hats"
 3d_physics/layer_7="specials"
+3d_physics/layer_8="barrier"
 
 [physics]
 

@@ -103,14 +103,18 @@ func _test_checkpoint_and_wipe(main) -> void:
 	var a: Node = world.player_body(1)
 	var b: Node = world.player_body(2)
 
-	# Walk the party up past a checkpoint boundary.
-	var deep_row: int = world.grid.first_row_of_segment(SimConfig.CHECKPOINT_EVERY_SEGMENTS) + 2
+	# Walk the party well up the bridge.
+	#
+	# CHECKPOINTS ARE GONE (M16). They banked a segment index every N segments and
+	# a wipe restarted there; with rounds the answer to "where does the party
+	# restart" is always THE LOBBY THEY CAME FROM, which is authored and obvious
+	# rather than derived from arithmetic on a segment index. The claim this phase
+	# makes is unchanged in spirit -- a wipe does not drop you at the bottom of
+	# the bridge -- and is now asserted against the lobby.
+	var deep_row: int = world.grid.first_row_of_segment(2) + 2
 	a.position = world.grid.cell_surface_world(Vector2i(7, deep_row)) + Vector3(0.0, 1.0, 0.0)
 	b.position = a.position + Vector3(2.0, 0.0, 0.0)
 	world._process_run()
-	check(world.checkpoint_index > 0, "reaching a new segment banks a checkpoint")
-	var banked: int = world.checkpoint_row
-	check(banked > 0, "and the banked row is up the bridge, not the start")
 
 	# EVERYONE DOWN IS NOT YET A WIPE. A downed player still has a bleed-out and a
 	# drone; the run has not lost ground until nobody can come back on their own.
@@ -139,8 +143,9 @@ func _test_checkpoint_and_wipe(main) -> void:
 	eq(a.state, PlayerBody.State.WALK, "which puts the party back on their feet")
 	eq(a.health, SimConfig.MAX_HEALTH, "at full health")
 	var restored: Vector2i = world.grid.cell_of_world(a.position)
-	check(absi(restored.y - banked) <= 3,
-		"AT THE BANKED CHECKPOINT (row %d, banked %d) -- not at the bottom" % [restored.y, banked])
+	var lobby_row: int = maxi(world.round_machine.rear_row + 1, 1)
+	check(absi(restored.y - lobby_row) <= 3,
+		"IN THE LOBBY (row %d, lobby %d) -- not wherever they fell" % [restored.y, lobby_row])
 	check(a.position.distance_to(b.position) > 0.5, "and not stacked on each other")
 
 	world.stop()

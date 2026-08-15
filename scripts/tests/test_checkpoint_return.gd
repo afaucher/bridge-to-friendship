@@ -2,6 +2,11 @@ extends "res://scripts/test_support/test_case.gd"
 
 # WHERE A FALL PUTS YOU BACK, measured rather than reasoned about.
 #
+# REWRITTEN 2026-08-15 FOR M16, NOT DELETED. Checkpoints are gone -- a wipe now
+# returns the party to the lobby they came from rather than to a banked segment
+# row -- but both claims below are about the SHAPE of a return and survive the
+# change intact. A test that encodes two real bugs is worth carrying forward.
+#
 # Written 2026-08-15 from a playtest report that a respawn lands "WAY ahead of
 # where we actually got to", and reading the code produced three wrong theories
 # before this file produced one number. It sweeps: stand at a row, fall out of
@@ -24,9 +29,10 @@ extends "res://scripts/test_support/test_case.gd"
 # The two claims, which are the promise a checkpoint makes:
 #   1. IT NEVER PUTS YOU PAST THE FURTHEST YOU GOT. Ground nobody crossed is
 #      ground the run skipped.
-#   2. IT NEVER TAKES BACK MORE THAN IT SAID IT WOULD -- at most
-#      CHECKPOINT_EVERY_SEGMENTS segments. A checkpoint that quietly rewinds
-#      further is a checkpoint that was not banked.
+#   2. IT NEVER TAKES BACK MORE THAN A SECTION. Under M16 a fall in a section
+#      returns you to that section's lobby; a return that lands further back than
+#      that has lost track of the lobby entirely, which is the failure that
+#      actually happened.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
@@ -54,9 +60,8 @@ func setup(main) -> void:
 	world.name = "CheckpointWorld"
 	world.set_script(GameWorldScript)
 	main.add_child(world)
-	# A REAL ASSEMBLED RUN. The question is about segment boundaries and the
-	# checkpoint's integer division by CHECKPOINT_EVERY_SEGMENTS, and a single
-	# test segment cannot show either.
+	# A REAL ASSEMBLED RUN. The question is about segment boundaries and about
+	# where a lobby is, and a single test segment cannot show either.
 	world.assemble_run = true
 	world.start(true, 1, false)
 	world._spawn_player(1, 0)
@@ -81,7 +86,7 @@ func _physics_process(_delta: float) -> void:
 		return
 	phase_frame += 1
 
-	# Stand at the row (so _bank_checkpoint sees a party there), drop out of the
+	# Stand at the row (so the run machinery sees a party there), drop out of the
 	# world, then WAIT FOR THE RETURN TO ACTUALLY HAPPEN before reading anything.
 	#
 	# The first draft read one frame after the drop and was measuring the FALLING
@@ -122,9 +127,9 @@ func _record(landed: int) -> void:
 	if -delta > worst_behind:
 		worst_behind = -delta
 		worst_behind_at = reached_row
-	print("[checkpoint] stood row %3d (seg %d)  banked %3d  ->  landed %3d  (%+d)"
+	print("[checkpoint] stood row %3d (seg %d)  lobby %3d  ->  landed %3d  (%+d)"
 		% [reached_row, world.grid.segment_index_of_row(reached_row),
-			world.checkpoint_row, landed, delta])
+			world.round_machine.rear_row + 1, landed, delta])
 
 func _report() -> void:
 	print("[checkpoint] %d samples over %d rows: worst forward %+d (at row %d), "
@@ -142,9 +147,13 @@ func _report() -> void:
 	# 2. AND NEVER TAKES BACK MORE THAN THE INTERVAL IT PROMISED. Measured worst
 	# is one interval; the allowance is two, so this catches a checkpoint that
 	# stopped banking rather than one that banked a row later than expected.
-	var interval_rows: int = _longest_segment() * SimConfig.CHECKPOINT_EVERY_SEGMENTS
+	# The allowance is a whole SECTION, because that is what a round now is: fall
+	# in a section and you go back to its lobby. Generous on purpose -- this
+	# catches a return that has lost track of the lobby entirely, which is the
+	# failure that actually happened, not one that is a few rows out.
+	var interval_rows: int = _longest_segment() * 2
 	check(worst_behind <= interval_rows * 2,
-		"and never rewinds more than the interval it promised -- worst back was "
+		"and never rewinds more than a section -- worst back was "
 		+ "%d rows against an allowance of %d" % [worst_behind, interval_rows * 2])
 	finish()
 

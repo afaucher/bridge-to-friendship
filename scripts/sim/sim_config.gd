@@ -186,9 +186,14 @@ const HEART_HEAL := 1
 const RUN_INITIAL_SEGMENTS := 3
 const RUN_LOOKAHEAD_SEGMENTS := 2
 
-# Progress banks every N segments. A wipe restarts there rather than at the
-# bottom -- the design's "endless climb with banked checkpoints".
-const CHECKPOINT_EVERY_SEGMENTS := 2
+# THE ROUND BARRIER (M16). Two metres, matching the parapet: it has to stop a
+# dash, which is the only verb that could otherwise carry a player through, and
+# it must not be so tall that the party cannot see the lobby they are waiting to
+# enter. Wider than any bridge so it cannot be walked around at the parapet.
+const ROUND_WALL_HEIGHT := 2.0
+# Transparent blue. Alpha low enough to read the deck through it -- the wall says
+# "not yet", and a wall you cannot see past says "never".
+const ROUND_WALL_COLOUR := Color(0.30, 0.60, 1.00, 0.28)
 
 # --- The soft leash -----------------------------------------------------------
 #

@@ -252,6 +252,16 @@ the moment it is written.
   sin/cos by hand**, and when a test measures how far, ask what measures which way.
   (The earlier two were both Godot's row-major `Basis` — a bullet tail and a muzzle
   offset, from the same nine numbers.)
+- **A LAYER NOTHING MASKS IS A COLLIDER MADE OF NOTHING, and it passes every
+  test that asks whether it EXISTS.** Observed 2026-08-15 building M16's round
+  barrier: the wall was put on layer 9 while the player mask is 7, so it was
+  created, positioned, replicated and drawn, and players walked straight through
+  it. `check(world._front_wall != null)` was green the whole time. **A test that a
+  blocker exists is not a test that it blocks** -- walk a body into it under
+  power, over several ticks, and assert the position. The mask itself is also
+  worth asserting directly (`wall.collision_layer & body.collision_mask != 0`),
+  because that names the fault instead of leaving a position assertion to be
+  explained. This is the FIFTH bug in this project to be one wrong bit in a mask.
 - **Check the collision MASK before debugging the behaviour.** *(Now FOUR bugs,
   the latest 2026-08-14: grenades flew through pillars because their mask was
   world-only and a pillar is a STONE on layer 3.)* A dash passed

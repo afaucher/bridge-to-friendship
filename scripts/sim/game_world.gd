@@ -14,6 +14,7 @@ extends Node3D
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
@@ -219,9 +220,27 @@ var _rushers_root: Node3D = null
 var _next_rusher_id: int = 0
 
 # --- the run ---
-var checkpoint_index: int = 0
-var checkpoint_row: int = 0
+# CHECKPOINTS ARE GONE (M16). They existed to answer "where does the party
+# restart" for an endless bridge; with rounds the answer is always the lobby you
+# came from, which is authored and obvious to the player rather than derived from
+# a segment index. Their arithmetic is also what produced the 2026-08-15 bug that
+# respawned a party four thousand rows up the bridge -- rounds remove the
+# question that was an answer to.
+#
+# `wipes` survives as a COUNT of rounds nobody finished, because it is worth
+# knowing and the tests read it.
 var wipes: int = 0
+
+# THE ROUND. Lobby, section, lobby -- and the state that says which. Host-owned
+# and replicated (see _round_sync); a client never infers it from where its body
+# is standing, which is R1 of the plan and the reason this is a menu rather than
+# a coincidence of geometry.
+var round_machine = RoundMachine.new()
+
+# The two barriers, as SIM OBJECTS. The transparent blue is a mesh that follows;
+# a wall that exists only as a mesh is a wall a client walks through.
+var _front_wall: StaticBody3D = null
+var _rear_wall: StaticBody3D = null
 
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
 const PLAYERS_LAYER_BIT := 2
@@ -486,9 +505,62 @@ func _process_run() -> void:
 	if grid == null:
 		return
 	_extend_run()
-	_bank_checkpoint()
+	if is_host:
+		var was: int = round_machine.state
+		round_machine.step(self)
+		if round_machine.state != was:
+			_on_round_state_changed()
+	_sync_walls()
 	_check_wipe()
 	_apply_leash()
+
+# A state change is rare -- a few times a round -- so it goes out RELIABLY the
+# moment it happens rather than riding the per-tick snapshot. The countdown is
+# re-sent with it and again on the snapshot interval; a client tickng its own
+# copy down between those is right to within a frame, and the frame it is wrong
+# by is a number on a screen rather than anything the sim reads.
+func _on_round_state_changed() -> void:
+	_settle_round_transition()
+	if networked:
+		_round_sync.rpc(round_machine.state, round_machine.rear_row,
+			round_machine.target_row, round_machine.close_timer,
+			round_machine.round_clock, round_machine.reached.keys(),
+			round_machine.board)
+
+@rpc("authority", "call_remote", "reliable")
+func _round_sync(state: int, rear: int, target: int, closing: float,
+		clock: float, reached: Array, board: Array) -> void:
+	if is_host:
+		return
+	round_machine.state = state
+	round_machine.rear_row = rear
+	round_machine.target_row = target
+	round_machine.close_timer = closing
+	round_machine.round_clock = clock
+	round_machine.reached.clear()
+	for peer in reached:
+		round_machine.reached[int(peer)] = true
+	round_machine.board = board
+	_sync_walls()
+
+# WHAT A TRANSITION DOES TO BODIES. Only the host runs this; clients see the
+# result as ordinary replicated positions.
+func _settle_round_transition() -> void:
+	if round_machine.state != RoundMachine.State.SCORING:
+		return
+	# THE STRAGGLERS. Anyone who did not get over the line is put in the lobby
+	# immediately -- no drone, no ceremony. They have already lost the round;
+	# making them watch a three-second flight as well is a punishment on top of a
+	# punishment, and it would play out over the scoreboard.
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		if round_machine.reached.has(peer):
+			continue
+		var body: Node = players[peer]
+		if body == null or not is_instance_valid(body):
+			continue
+		_returning.erase(peer)
+		body.respawn_at(_lobby_point(peer), maxi(body.health, SimConfig.REVIVE_HEALTH))
 
 # The bridge is endless; it is just built lazily. Keep a couple of segments ahead
 # of whoever is furthest up, and tell clients so they build the same thing.
@@ -546,16 +618,6 @@ func _front_position() -> Vector3:
 	if found:
 		return best
 	return any
-
-# Progress banks every few segments. What is stored is the CELL ROW, not a
-# position, so a restart puts everyone back on authored deck rather than at
-# whatever coordinate somebody happened to be standing at.
-func _bank_checkpoint() -> void:
-	var lead_segment: int = _segment_of(_front_position().z)
-	var reached: int = lead_segment / SimConfig.CHECKPOINT_EVERY_SEGMENTS
-	if reached > checkpoint_index:
-		checkpoint_index = reached
-		checkpoint_row = grid.first_row_of_segment(reached * SimConfig.CHECKPOINT_EVERY_SEGMENTS)
 
 # A WIPE is everyone out at once -- downed, hanging, or waiting on the drone.
 # Nothing else can end a run: the drone always brings people back, so "everyone
@@ -628,14 +690,15 @@ func _restart_at_checkpoint() -> void:
 			bullet.queue_free()
 	_bullets.clear()
 
+	# BACK TO THE LOBBY YOU CAME FROM. Authored, obvious, and derived from nothing
+	# -- which is the whole reason M16 could delete checkpoint_row and the
+	# integer-division interval that went with it.
 	var lane := 0
 	for peer_key in players.keys():
 		var body: Node = players[int(peer_key)]
-		var cell := Vector2i(grid.entry_spawn_cell(lane).x, checkpoint_row + 1)
 		# A wipe is the one place health comes back in full -- the run has already
 		# taken the ground back, which is the cost.
-		body.respawn_at(grid.cell_surface_world(cell) + Vector3(0.0, 1.2, 0.0),
-			SimConfig.MAX_HEALTH)
+		body.respawn_at(_lobby_point(lane), SimConfig.MAX_HEALTH)
 		lane += 1
 
 # Nobody gets left behind far enough that the party stops being a party. Under
@@ -2096,6 +2159,102 @@ func _drone_drop_point(peer: int) -> Vector3:
 	if grid != null:
 		return grid.cell_surface_world(grid.entry_spawn_cell(0)) + Vector3(0.0, 1.2, 0.0)
 	return spawn_point(0)
+
+# WHERE THE LOBBY IS, in world space, spread across lanes.
+#
+# The lobby is the stretch immediately up-bridge of the strip the party last came
+# through, so `rear_row + 1` is its first walkable row. Before the first crossing
+# there is no rear strip and the answer is the bridge's own entry -- which is the
+# lobby, for the first round.
+#
+# LANES, NEVER A POINT. Two perfectly coincident bodies depenetrate into a
+# degenerate normal and are driven DOWN THROUGH THE FLOOR (CLAUDE.md), so every
+# function in this file that places several players at once spreads them.
+func _lobby_point(lane: int) -> Vector3:
+	if grid == null:
+		return spawn_point(lane)
+	var row: int = round_machine.rear_row + 1 if round_machine.rear_row >= 0 else 1
+	var cell := Vector2i(grid.entry_spawn_cell(lane).x, row)
+	if not grid.is_solid(cell):
+		# An authored lobby is solid across its entry row; a section that is not
+		# falls back to the bridge entry rather than dropping somebody into a gap.
+		cell = grid.entry_spawn_cell(lane)
+	return grid.cell_surface_world(cell) + Vector3(0.0, 1.2, 0.0)
+
+# --- The barriers -------------------------------------------------------------
+#
+# ONE RULE, TWO WALLS. The party is always in a corridor between the strip they
+# came through and the strip they are heading for, and a wall stands at each end
+# of it -- the front one on the UP-BRIDGE edge of the target, so a player can
+# stand ON the checker and not pass, and the rear one on the DOWN-BRIDGE edge of
+# the strip behind, so it appears immediately behind them the moment they cross.
+#
+# A wall exists exactly when it should block. During RUNNING there is no front
+# wall at all: the section is the thing you are supposed to cross.
+func _sync_walls() -> void:
+	if grid == null:
+		return
+	var want_front: int = -1
+	var want_rear: int = round_machine.rear_row
+	if round_machine.state != RoundMachine.State.RUNNING:
+		want_front = round_machine.target_row
+	_front_wall = _place_wall(_front_wall, "FrontWall", want_front, true)
+	_rear_wall = _place_wall(_rear_wall, "RearWall", want_rear, false)
+
+func _place_wall(wall: StaticBody3D, wall_name: String, row: int,
+		up_bridge: bool) -> StaticBody3D:
+	if row < 0:
+		if wall != null and is_instance_valid(wall):
+			wall.queue_free()
+		return null
+	if wall == null or not is_instance_valid(wall):
+		wall = _build_wall(wall_name)
+		grid.add_child(wall)
+	# LOCAL to the grid, so the four-degree pitch comes for free. A world-space
+	# placement would have to redo it and would be wrong on every segment above
+	# the first.
+	wall.position = Vector3(0.0,
+		float(grid.height_at(Vector2i(grid.width / 2, row))) * GridConfig.HEIGHT_UNIT
+			+ SimConfig.ROUND_WALL_HEIGHT * 0.5,
+		RoundMachine.wall_z_local(row, up_bridge))
+	return wall
+
+func _build_wall(wall_name: String) -> StaticBody3D:
+	var wall := StaticBody3D.new()
+	wall.name = wall_name
+	# PLAYERS ONLY, on the NAMED "barrier" layer 8 -- and the players' mask has bit
+	# 8 in it (scenes/player.tscn, mask 135 = 7 + 128). Both halves are required
+	# and the first draft had only one: the wall sat on a layer nothing masked, so
+	# it existed, replicated, drew, and stopped absolutely nothing. That is the
+	# FIFTH bug in this project to be one wrong bit in a collision mask, and it
+	# survived a test that asserted the wall EXISTS -- which is why there is now
+	# one that walks a body into it.
+	#
+	# Not layer 1 (world), which every body masks: putting the barrier there would
+	# stop bullets, balls, grenades and rushers too, and each of those is a design
+	# decision nobody has made yet.
+	wall.collision_layer = 1 << 7
+	wall.collision_mask = 0
+
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(GridConfig.CELL_SIZE * 64.0, SimConfig.ROUND_WALL_HEIGHT, 0.4)
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	wall.add_child(col)
+
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = shape.size
+	mesh.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = SimConfig.ROUND_WALL_COLOUR
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Unshaded, so it reads as a field rather than as a pane of painted glass that
+	# happens to catch the light differently at each end of a 30 m bridge.
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh.material_override = mat
+	wall.add_child(mesh)
+	return wall
 
 # --- Hearts -------------------------------------------------------------------
 #
