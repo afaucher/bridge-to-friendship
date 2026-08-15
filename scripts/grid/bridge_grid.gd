@@ -46,7 +46,30 @@ func segment_count() -> int:
 
 # Which segment a cell row belongs to. Segments vary in length, so this walks
 # rather than dividing by a nominal size.
+#
+# A ROW BEFORE THE BRIDGE IS THE FIRST SEGMENT, NOT THE LAST. This function used
+# to answer "the last one" for ANY row it could not place, and a row behind the
+# start is exactly that -- so a player standing off the back end of the bridge
+# was reported as being at the very front of everything built. Two playtest bugs
+# on 2026-08-15, both of them this line:
+#
+#   THE GAME DIED IF YOU STEPPED OFF THE BACK AT SPAWN. _extend_run keeps
+#   RUN_LOOKAHEAD_SEGMENTS ahead of the front, so "the front is the last segment"
+#   means build more, which moves the last segment, which means build more.
+#   Measured: 199 segments and 4198 rows -- 8.4 km of bridge geometry -- within
+#   two seconds of walking backwards off the edge.
+#   RESPAWNS LANDED WAY AHEAD OF WHERE THE PARTY GOT. _bank_checkpoint banks off
+#   the same answer, so it banked a row thousands up the bridge and the wipe
+#   returned everyone there, past ground nobody had crossed.
+#
+# The clamp at the end is still right for a row PAST the end -- that is a party
+# at the front of a bridge still being built, which is the ordinary case every
+# frame. It was only ever wrong in the other direction.
 func segment_index_of_row(row: int) -> int:
+	if _segments.is_empty():
+		return 0
+	if row < int(_segments[0]["z_offset"]):
+		return 0
 	for i in _segments.size():
 		var start: int = int(_segments[i]["z_offset"])
 		if row >= start and row < start + int(_segments[i]["data"].length):

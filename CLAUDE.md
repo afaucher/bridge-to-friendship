@@ -296,6 +296,21 @@ the moment it is written.
   env scripts drop a `.gdignore` in, and `exclude_filter` carries `tmp/*` as the
   committed backstop. Caught by reading the `savepack:` list, which is the only
   thing that ever catches this.
+- **AN OUT-OF-RANGE FALLBACK THAT PICKS "THE LAST ONE" IS A FEEDBACK LOOP WHEN
+  SOMETHING KEEPS EXTENDING THE LIST.** Observed 2026-08-15 from two playtest
+  reports that turned out to be one line. `segment_index_of_row` answered "the
+  last segment" for any row it could not place, and a player standing BEHIND the
+  start of the bridge is exactly that -- so a body off the back end reported as
+  being at the very FRONT of everything built. `_extend_run` keeps segments ahead
+  of the front, which moved the front, which built more: **199 segments and 4198
+  rows -- 8.4 km of geometry -- within two seconds of walking backwards off the
+  spawn.** The same wrong answer fed `_bank_checkpoint`, so a wipe returned the
+  party thousands of rows up the bridge, past ground nobody had crossed. **A
+  clamp is only ever correct at ONE end**; the two ends of a range are two
+  different questions and want two different answers. And the second symptom is
+  the tell for the general shape: **when a query about progress can be answered
+  by something that is not making progress, anything that scales with progress
+  becomes a loop.**
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

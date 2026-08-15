@@ -513,15 +513,39 @@ func _segment_of(world_z: float) -> int:
 	var cell: Vector2i = grid.cell_of_world(Vector3(0.0, 0.0, world_z))
 	return grid.segment_index_of_row(cell.y)
 
+# How far the party has got. Everything that scales with progress reads this --
+# the run extension, the checkpoint, the leash -- so a wrong answer here is a
+# wrong answer everywhere at once.
+#
+# A PLAYER WHO IS OUT OF THE WORLD IS NOT PROGRESS. Somebody waiting on the drone
+# is invisible and parked at whatever coordinate they went over the edge at, and
+# on 2026-08-15 that coordinate was BEHIND THE START of the bridge, which
+# segment_index_of_row then reported as the front. That specific hole is fixed at
+# its source; this is the layer that stops the next one, because there is no
+# position a fallen body can hold that should move the run forward.
+#
+# The fallback matters: with everyone out at once (which is the wipe condition,
+# and solo it is every fall) there is no in-world player to ask, and a party of
+# nobody must still answer something rather than the origin.
 func _front_position() -> Vector3:
 	var best: Vector3 = Vector3.ZERO
 	var found := false
+	var any: Vector3 = Vector3.ZERO
+	var found_any := false
 	for peer_key in players.keys():
-		var body: Node = players[int(peer_key)]
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if not found_any or body.position.z < any.z:
+			any = body.position
+			found_any = true
+		if _returning.has(peer):
+			continue
 		if not found or body.position.z < best.z:
 			best = body.position
 			found = true
-	return best
+	if found:
+		return best
+	return any
 
 # Progress banks every few segments. What is stored is the CELL ROW, not a
 # position, so a restart puts everyone back on authored deck rather than at
