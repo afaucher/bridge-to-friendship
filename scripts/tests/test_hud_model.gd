@@ -143,7 +143,22 @@ func _check_downed() -> void:
 	check(bool(friend["needs_help"]), "a downed friend is asking for help")
 	eq(str(friend["state_label"]), "DOWN", "and says so")
 	near(float(friend["bleed_out"]), 1.0, 0.001, "with the whole countdown still to run")
-	near(float(friend["rescue"]), 0.0, 0.001, "and nobody helping yet")
+
+	# NO_BAR, NOT 0.0 -- and this line asserted 0.0 until 2026-08-15, which is the
+	# playtest report of "a second bar that is just black". Nobody helping is not a
+	# rescue standing at zero percent; it is a rescue that is not happening, and the
+	# difference is whether anything is drawn at all. The body has always known this
+	# (haul_fraction returns -1); this file used to answer separately and disagree.
+	eq(friend["rescue"], HudModel.NO_BAR, "and nobody helping draws NOTHING, not an empty bar")
+
+	# ONE BAR ANSWERS EVERYTHING. `status` is the whole decision -- which crisis is
+	# showing, how full it is, and in which colours -- taken once in PlayerBody so
+	# the HUD and the bar over that player's head cannot drift apart. That drift is
+	# what produced two bars.
+	var status: Dictionary = friend["status"]
+	eq(str(status["kind"]), "rescue",
+		"with nobody helping, the ONE bar is the countdown")
+	near(float(status["fraction"]), 1.0, 0.001, "showing the countdown's own fraction")
 
 	b.state_timer = SimConfig.DOWNED_SECONDS * 0.25
 	near(float(_friends()[0]["bleed_out"]), 0.75, 0.01,
@@ -151,6 +166,15 @@ func _check_downed() -> void:
 
 	b.rescue_progress = SimConfig.REVIVE_SECONDS * 0.5
 	near(float(_friends()[0]["rescue"]), 0.5, 0.01, "a revive in progress is half done")
+
+	# AND THE SAME ONE BAR SWITCHES TO IT. Being hauled outranks bleeding out,
+	# because the second is only interesting while the first is not happening -- so
+	# the moment somebody kneels down, the bar stops counting down and starts
+	# filling up. Two bars could show both and did; one bar has to choose, and this
+	# is the choice.
+	var helped: Dictionary = _friends()[0]["status"]
+	eq(str(helped["kind"]), "haul", "and the SAME bar becomes the haul once help arrives")
+	near(float(helped["fraction"]), 0.5, 0.01, "carrying the haul's fraction, not the countdown's")
 
 	# Past the end, clamped rather than overflowing into a bar drawn off its own
 	# background.

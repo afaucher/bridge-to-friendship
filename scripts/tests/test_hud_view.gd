@@ -18,6 +18,7 @@ extends "res://scripts/test_support/test_case.gd"
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null
@@ -67,23 +68,61 @@ func _phase_built() -> void:
 	eq(special.color, HudScript.COLOR_SLOT_EMPTY,
 		"an empty special slot draws as deliberately empty, not missing")
 
-	# Nobody is in trouble, so no crisis bars are on screen.
-	check(not hud._own_bleed.visible, "no bleed-out bar for a walking player")
-	check(not hud._own_rescue.visible, "and no rescue bar")
+	# ONE STATUS BAR, and nothing to say right now. There were two here until
+	# 2026-08-15 -- a countdown and a rescue bar -- and the second was pure black
+	# whenever nobody was helping, which is most of the time somebody spends
+	# waiting. A bar showing "0% of a rescue" is indistinguishable from a bar that
+	# failed to draw, and it was reported as exactly that.
+	check(hud._own_status != null, "there is ONE own-status bar, not two")
+	check(not hud._own_status.visible, "and it says nothing for a walking player")
 	_advance(1)
 
 func _phase_rescue_bar() -> void:
 	if phase_frame == 3:
 		world.player_body(2).begin_downed()
+		world.player_body(1).begin_downed()
+		return
+	if phase_frame == 6:
+		# NOBODY HELPING YET. The bar has to be the COUNTDOWN, drawn in the colour
+		# the body's own head uses -- not a second empty bar beside it.
+		check(hud._own_status.visible, "waiting for a rescue shows the one bar")
+		eq(hud._own_status.color, PlayerBody.BAR_RESCUE_BACK,
+			"in the countdown's colours, the same ones over the player's head")
+		# AND THE ONLY OTHER BAR IN THE OWN PANEL IS NOT A SECOND CRISIS BAR.
+		# Counting them is what stops a second one reappearing unnoticed.
+		eq(_own_bars(), 1, "and there is exactly one of them")
+
+		world.player_body(1).rescue_progress = SimConfig.REVIVE_SECONDS * 0.5
+		return
+	if phase_frame == 9:
+		# SOMEBODY IS ON IT. The SAME bar switches to the hold, because being
+		# helped outranks the countdown -- the priority lives in
+		# PlayerBody.status_bar() and both this and the 3D bar read it.
+		eq(hud._own_status.color, PlayerBody.BAR_HAUL_BACK,
+			"once somebody is hauling, the same bar becomes the hold")
+		eq(_own_bars(), 1, "still exactly one bar")
+
 		world.player_body(2).rescue_progress = SimConfig.REVIVE_SECONDS * 0.5
 		return
-	if phase_frame < 6:
+	if phase_frame < 12:
 		return
 	var row: Dictionary = hud._friend_rows[2]
 	check(row["bar"].visible, "a downed friend gets a bar")
 	check(row["state"].visible, "and a state banner")
 	eq(str(row["state"].text), "DOWN", "saying what is wrong")
 	_advance(2)
+
+# Every ColorRect directly in the own panel that is acting as a bar. Fills are
+# CHILDREN of a bar, so counting top-level ones counts bars.
+func _own_bars() -> int:
+	var count := 0
+	for child in _own_box().get_children():
+		if child is ColorRect:
+			count += 1
+	return count
+
+func _own_box() -> Node:
+	return hud._own_status.get_parent()
 
 func _phase_roster_shrinks() -> void:
 	if phase_frame == 3:

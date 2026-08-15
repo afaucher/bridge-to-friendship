@@ -293,41 +293,18 @@ func sync_downed_timer() -> void:
 		return
 	var vp := bar.get_node_or_null("SubViewport") as SubViewport
 
-	# THREE STATES, IN PRIORITY ORDER, and the priority is the design:
-	#
-	#   being helped   BLUE over black -- a hold filling up
-	#   in trouble     RED over black  -- a clock running down
-	#   injured        GREEN over red  -- health kept over health lost
-	#   healthy        nothing at all
-	#
-	# BEING HELPED OUTRANKS BEING IN TROUBLE. Once somebody is crouched over you
-	# the countdown is no longer the thing anybody watching needs to know -- what
-	# they need to know is whether to come as well or go and deal with the rusher.
-	# The two bars also read as opposites at a glance, which is the point: red is
-	# draining, blue is filling.
-	#
-	# And rescue outranks injury: a hanging player's health is not the thing
-	# anybody needs, and they are on zero anyway once they are down.
-	var fraction: float = haul_fraction()
-	var fill := BAR_HAUL_FILL
-	var back := BAR_HAUL_BACK
-	if fraction < 0.0:
-		fraction = rescue_fraction()
-		fill = BAR_RESCUE_FILL
-		back = BAR_RESCUE_BACK
-	if fraction < 0.0:
-		fraction = health_fraction()
-		fill = BAR_HEALTH_FILL
-		back = BAR_HEALTH_BACK
-		if fraction >= 1.0:
-			# Unhurt and in no trouble: say nothing, and STOP RENDERING. A
-			# viewport left updating for a party of four healthy players is four
-			# render targets redrawn every frame to show something nobody is
-			# looking at.
-			bar.visible = false
-			if vp != null:
-				vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-			return
+	var status: Dictionary = status_bar()
+	var fraction: float = float(status["fraction"])
+	var fill: Color = status["fill"]
+	var back: Color = status["back"]
+	if str(status["kind"]) == "":
+		# Unhurt and in no trouble: say nothing, and STOP RENDERING. A viewport
+		# left updating for a party of four healthy players is four render targets
+		# redrawn every frame to show something nobody is looking at.
+		bar.visible = false
+		if vp != null:
+			vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		return
 
 	bar.visible = true
 	if vp != null:
@@ -343,6 +320,48 @@ func sync_downed_timer() -> void:
 		# settled by tree order and nothing else -- no depth, no distance sort, no
 		# origin that moves as it drains.
 		fill_rect.size = Vector2(BAR_PIXELS.x * clampf(fraction, 0.0, 1.0), BAR_PIXELS.y)
+
+# THE ONE PLACE THAT DECIDES WHAT A STATUS BAR IS SAYING, and it is shared by the
+# bar over this body's head and by the HUD. It used to be inline in
+# sync_downed_timer, and the HUD grew its OWN pair of bars beside it -- which is
+# how the HUD ended up drawing two at once, an orange countdown and a rescue bar
+# that was pure black whenever nobody was helping. Two places expressing one rule
+# is two places for it to differ, and it did.
+#
+# THREE STATES, IN PRIORITY ORDER, and the priority IS the design:
+#
+#   being helped   BLUE over black -- a hold filling up
+#   in trouble     RED over black  -- a clock running down
+#   injured        GREEN over red  -- health kept over health lost
+#   healthy        nothing at all, and `kind` is ""
+#
+# BEING HELPED OUTRANKS BEING IN TROUBLE. Once somebody is crouched over you the
+# countdown is no longer the thing anybody watching needs to know -- what they
+# need is whether to come as well or go and deal with the rusher. The two also
+# read as opposites at a glance, which is the point: red is draining, blue is
+# filling.
+#
+# And rescue outranks injury: a hanging player's health is not the thing anybody
+# needs, and they are on zero anyway once they are down.
+#
+# `kind` is what lets a caller take only the part it wants. The HUD already draws
+# health as PIPS, so it shows this bar for "haul" and "rescue" and ignores
+# "health" -- one bar, never two, and never a second one that is only ever black.
+func status_bar() -> Dictionary:
+	var fraction: float = haul_fraction()
+	if fraction >= 0.0:
+		return {"kind": "haul", "fraction": fraction,
+			"fill": BAR_HAUL_FILL, "back": BAR_HAUL_BACK}
+	fraction = rescue_fraction()
+	if fraction >= 0.0:
+		return {"kind": "rescue", "fraction": fraction,
+			"fill": BAR_RESCUE_FILL, "back": BAR_RESCUE_BACK}
+	fraction = health_fraction()
+	if fraction < 1.0:
+		return {"kind": "health", "fraction": fraction,
+			"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
+	return {"kind": "", "fraction": 0.0,
+		"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
 
 func health_fraction() -> float:
 	return clampf(float(health) / float(SimConfig.MAX_HEALTH), 0.0, 1.0)

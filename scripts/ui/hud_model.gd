@@ -55,6 +55,9 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		"grace": _fraction(float(body.invulnerable), SimConfig.HIT_GRACE),
 		"bleed_out": bleed_out_fraction(body),
 		"rescue": rescue_fraction(body),
+		# THE ONE DECISION, taken in PlayerBody and shared with the bar over that
+		# body's head. See status_bar(): kind, fraction and both colours.
+		"status": body.status_bar(),
 		"slots": _slots(world, peer, body),
 	}
 
@@ -86,6 +89,7 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"needs_help": bool(other.is_awaiting_rescue()),
 			"bleed_out": bleed_out_fraction(other),
 			"rescue": rescue_fraction(other),
+			"status": other.status_bar(),
 			"distance": to.length(),
 			"bearing": bearing_to(to),
 			# WHERE THEY ACTUALLY ARE. The bearing above is for the text row; a
@@ -111,32 +115,21 @@ static func _friend_special(world: Node, peer: int) -> String:
 
 # How much of the bleed-out is left. LEDGE_HANG and DOWNED are the same
 # machinery with different durations, which is why one function answers both.
+# BOTH DELEGATE TO THE BODY, which is where these are computed for the bar over
+# its head. They were reimplemented here once and the copies DISAGREED about the
+# most important case: the body returns -1 for "nobody is helping" -- see
+# haul_fraction, "zero progress is not being helped" -- and this file returned
+# 0.0, which is a VISIBLE bar with nothing in it.
+#
+# That is the second black bar reported from playtest on 2026-08-15. The fix was
+# already written, in the other copy, months earlier.
 static func bleed_out_fraction(body: Node) -> float:
-	var total: float = 0.0
-	match int(body.state):
-		PlayerBody.State.LEDGE_HANG:
-			total = SimConfig.LEDGE_HANG_SECONDS
-		PlayerBody.State.DOWNED:
-			total = SimConfig.DOWNED_SECONDS
-		_:
-			return NO_BAR
-	if total <= 0.0:
-		return NO_BAR
-	return clampf(1.0 - float(body.state_timer) / total, 0.0, 1.0)
+	var value: float = body.rescue_fraction()
+	return value if value >= 0.0 else NO_BAR
 
-# How far a teammate has got with pulling them out.
 static func rescue_fraction(body: Node) -> float:
-	var total: float = 0.0
-	match int(body.state):
-		PlayerBody.State.LEDGE_HANG:
-			total = SimConfig.LEDGE_HAUL_SECONDS
-		PlayerBody.State.DOWNED:
-			total = SimConfig.REVIVE_SECONDS
-		_:
-			return NO_BAR
-	if total <= 0.0:
-		return NO_BAR
-	return clampf(float(body.rescue_progress) / total, 0.0, 1.0)
+	var value: float = body.haul_fraction()
+	return value if value >= 0.0 else NO_BAR
 
 static func _fraction(value: float, total: float) -> float:
 	if total <= 0.0:

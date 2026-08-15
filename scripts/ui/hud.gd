@@ -54,8 +54,17 @@ var _own_face: TextureRect = null
 var _own_pips: HBoxContainer = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
-var _own_bleed: ColorRect = null
-var _own_rescue: ColorRect = null
+# ONE BAR, NEVER TWO. There were a bleed-out bar and a rescue bar stacked here,
+# and while you were hanging the second one was pure black -- because nobody was
+# helping yet, which is most of the time you spend waiting. Reported as a broken
+# second bar, and it was: a bar showing "0% of a rescue" is indistinguishable
+# from a bar that failed to draw.
+#
+# It is now the same bar the player's own head carries, driven by the same
+# PlayerBody.status_bar() -- red draining while you wait, blue filling once
+# somebody is on you, gone when neither applies. Health stays as PIPS here, so
+# this HUD ignores status_bar()'s "health" case; that is what `kind` is for.
+var _own_status: ColorRect = null
 
 var _markers: Control = null
 
@@ -167,10 +176,8 @@ func _build_own_panel() -> void:
 	_own_state = _label("", 20, COLOR_ALERT)
 	box.add_child(_own_state)
 
-	_own_bleed = _bar(COLOR_ALERT)
-	box.add_child(_own_bleed)
-	_own_rescue = _bar(COLOR_HEALTH)
-	box.add_child(_own_rescue)
+	_own_status = _bar(COLOR_ALERT)
+	box.add_child(_own_status)
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
@@ -188,8 +195,7 @@ func _update_own(own: Dictionary) -> void:
 
 	_own_state.text = str(own.get("state_label", ""))
 	_own_state.visible = _own_state.text != ""
-	_set_bar(_own_bleed, float(own.get("bleed_out", HudModel.NO_BAR)))
-	_set_bar(_own_rescue, float(own.get("rescue", HudModel.NO_BAR)))
+	_set_status_bar(_own_status, own.get("status", {}))
 
 func _sync_slots(slots: Array) -> void:
 	while _own_slots.get_child_count() < slots.size():
@@ -305,16 +311,10 @@ func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	_sync_pips(nodes["pips"], int(entry.get("health", 0)), int(entry.get("max_health", 0)),
 		PIP_SIZE * 0.7, COLOR_HEALTH, COLOR_HEALTH_LOST)
 
-	# A rescue in progress beats a bleed-out running down: the useful thing to
-	# know is that someone is already on it.
-	var rescue: float = float(entry.get("rescue", HudModel.NO_BAR))
-	var bar: ColorRect = nodes["bar"]
-	if rescue > 0.0:
-		_bar_fill(bar).color = COLOR_HEALTH
-		_set_bar(bar, rescue)
-	else:
-		_bar_fill(bar).color = COLOR_ALERT
-		_set_bar(bar, float(entry.get("bleed_out", HudModel.NO_BAR)))
+	# THE SAME ONE BAR the own panel and the body's own head use. This row had
+	# already grown its own copy of the priority -- correct, but a third place
+	# expressing one rule.
+	_set_status_bar(nodes["bar"], entry.get("status", {}))
 
 # --- Small builders -----------------------------------------------------------
 
@@ -356,6 +356,21 @@ func _bar_fill(bar: ColorRect) -> ColorRect:
 # NO_BAR is not zero. Zero means "this applies and is empty"; NO_BAR means the
 # bar does not apply and drawing it would announce a crisis that is not
 # happening.
+# Draw one status bar from PlayerBody.status_bar(). HEALTH IS IGNORED HERE: this
+# HUD already shows health as pips, and a bar repeating them would be the second
+# redundant bar all over again. So only "haul" and "rescue" are drawn, and
+# anything else hides it.
+func _set_status_bar(bar: ColorRect, status: Dictionary) -> void:
+	if bar == null:
+		return
+	var kind: String = str(status.get("kind", ""))
+	if kind != "haul" and kind != "rescue":
+		bar.visible = false
+		return
+	bar.color = status.get("back", COLOR_BAR_BACK)
+	_bar_fill(bar).color = status.get("fill", COLOR_ALERT)
+	_set_bar(bar, float(status.get("fraction", HudModel.NO_BAR)))
+
 func _set_bar(bar: ColorRect, value: float) -> void:
 	if value <= HudModel.NO_BAR + 0.0001:
 		bar.visible = false
