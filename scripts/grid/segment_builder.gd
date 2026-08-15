@@ -10,9 +10,19 @@ extends RefCounted
 # COLLISION IS MERGED, MESHES ARE NOT, and the two are deliberately different
 # shapes of the same data:
 #
-#   Collision merges deck cells into runs along X. A segment is mostly long flat
-#   stretches, and one collision shape per cell is hundreds of shapes the physics
-#   server tests every tick for no benefit.
+#   Collision merges deck cells into RECTANGLES -- greedy along X, then extended
+#   down Z for as long as the whole run still matches. A segment is mostly long
+#   flat stretches, and one collision shape per cell is hundreds of shapes the
+#   physics server tests every tick for no benefit.
+#
+#   IT MERGED ALONG X ONLY UNTIL 2026-08-14, AND THE BRIDGE IS WALKED ALONG Z.
+#   That left a collision seam across the player's path every two metres, and a
+#   CharacterBody3D catching on the boundary between two static shapes is known
+#   Godot behaviour (godotengine/godot#76811, #77485, #46712) -- reported here for
+#   two playtests running as "ramps are still buggy" and "it gets worse the
+#   further up the map you go", which is what more segments and more seams looks
+#   like. CLAUDE.md already carried the rule from the ramp seam bug: merge
+#   co-planar geometry into ONE shape. It had never been applied to the deck.
 #
 #   Meshes stay per-cell, because the deck is a CHECKERBOARD -- adjacent cells
 #   are different colours, so there is nothing to merge. That is the point: the
@@ -89,32 +99,9 @@ static func _material(colour: Color) -> StandardMaterial3D:
 static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary, out: Built) -> void:
 	var width: int = seg.width
+	_merge_deck_collision(seg, z_offset, h_offset, body, out)
+
 	for z in seg.length:
-		# Collision: greedy runs of same kind and height along X.
-		var x := 0
-		while x < width:
-			if seg.kind_at(x, z) != GridConfig.Kind.DECK and seg.kind_at(x, z) != GridConfig.Kind.WATER:
-				x += 1
-				continue
-			var height: int = seg.height_at(x, z) + h_offset
-			var kind: int = seg.kind_at(x, z)
-			var run := 1
-			while x + run < width \
-					and seg.kind_at(x + run, z) == kind \
-					and seg.height_at(x + run, z) + h_offset == height:
-				run += 1
-
-			var top: float = _surface_y(kind, height)
-			var size := Vector3(float(run) * GridConfig.CELL_SIZE, GridConfig.DECK_THICKNESS, GridConfig.CELL_SIZE)
-			var centre := Vector3(
-				GridConfig.cell_origin_x(x, width) + float(run) * GridConfig.CELL_SIZE * 0.5,
-				top - GridConfig.DECK_THICKNESS * 0.5,
-				GridConfig.cell_z_world(z + z_offset)
-			)
-			_add_collision_box(body, centre, size)
-			out.deck_box_count += 1
-			x += run
-
 		# Meshes: one per cell, so the checkerboard exists.
 		for cx in width:
 			var kind2: int = seg.kind_at(cx, z)
@@ -135,6 +122,75 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 # Water sits a little below its cell's nominal top so it reads as a channel
 # rather than as deck of a different colour. The flow that makes it dangerous is
 # M7.
+# GREEDY RECTANGLES, NOT ROWS. For each cell not yet covered, take the longest run
+# along X of the same kind and height, then push that run down Z for as long as
+# EVERY column in it still matches. One box per flat rectangle.
+#
+# Fewer shapes AND fewer seams, which is unusual -- most fixes for one cost the
+# other. A flat 15-wide, 30-long segment goes from 30 boxes to one.
+#
+# WHAT THIS CANNOT FIX: the boundary BETWEEN segments. Each segment builds its own
+# StaticBody3D as it streams in, so two segments that would have merged into one
+# rectangle still meet at a seam. If catching remains after this, that join is the
+# next place to look -- and it is one seam per SEGMENT now rather than one per
+# cell, which is a thirtieth as many chances.
+static func _merge_deck_collision(seg, z_offset: int, h_offset: int,
+		body: StaticBody3D, out: Built) -> void:
+	var width: int = seg.width
+	var covered: Dictionary = {}
+
+	for z in seg.length:
+		for x in width:
+			if covered.has(Vector2i(x, z)):
+				continue
+			var kind: int = seg.kind_at(x, z)
+			if kind != GridConfig.Kind.DECK and kind != GridConfig.Kind.WATER:
+				continue
+			var height: int = seg.height_at(x, z) + h_offset
+
+			var run := 1
+			while x + run < width and not covered.has(Vector2i(x + run, z)) 					and _same_cell(seg, x + run, z, kind, height, h_offset):
+				run += 1
+
+			# The whole run pushed down Z. It stops at the first row where ANY
+			# column disagrees -- a rectangle, never a staircase.
+			var depth := 1
+			while z + depth < seg.length and _row_matches(seg, x, run, z + depth,
+					kind, height, h_offset, covered):
+				depth += 1
+
+			for dz in depth:
+				for dx in run:
+					covered[Vector2i(x + dx, z + dz)] = true
+
+			var top: float = _surface_y(kind, height)
+			var size := Vector3(
+				float(run) * GridConfig.CELL_SIZE,
+				GridConfig.DECK_THICKNESS,
+				float(depth) * GridConfig.CELL_SIZE)
+			# Midway between the first and last cell centres, which is right whichever
+			# way world Z runs against cell z.
+			var mid_z: float = (GridConfig.cell_z_world(z + z_offset) 				+ GridConfig.cell_z_world(z + depth - 1 + z_offset)) * 0.5
+			var centre := Vector3(
+				GridConfig.cell_origin_x(x, width) + float(run) * GridConfig.CELL_SIZE * 0.5,
+				top - GridConfig.DECK_THICKNESS * 0.5,
+				mid_z)
+			_add_collision_box(body, centre, size)
+			out.deck_box_count += 1
+
+static func _same_cell(seg, x: int, z: int, kind: int, height: int,
+		h_offset: int) -> bool:
+	return seg.kind_at(x, z) == kind and seg.height_at(x, z) + h_offset == height
+
+static func _row_matches(seg, x: int, run: int, z: int, kind: int, height: int,
+		h_offset: int, covered: Dictionary) -> bool:
+	for dx in run:
+		if covered.has(Vector2i(x + dx, z)):
+			return false
+		if not _same_cell(seg, x + dx, z, kind, height, h_offset):
+			return false
+	return true
+
 static func _surface_y(kind: int, height: int) -> float:
 	var top: float = GridConfig.height_to_world(height)
 	if kind == GridConfig.Kind.WATER:
