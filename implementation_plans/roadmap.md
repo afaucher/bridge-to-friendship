@@ -578,6 +578,38 @@ special, and the first that has to be authored against the rule that a special i
 never the only answer. And **a shield blocks from one direction only**, which is
 what makes flanking the counter-play and a second player the co-op answer.
 
+## M16 — Rounds and the lobby
+
+**Added 2026-08-15.** Plan in `implementation_plans/m16_rounds_and_lobby.md`.
+
+**Proves: the game has a shape.** Everything up to here is a bridge you walk
+along until you fall off it. This gives the walk a beginning, an end, a score and
+a place to stand between attempts: five-minute sections separated by lobbies,
+with a black-and-white checker strip marking each boundary and a transparent
+barrier enforcing that the party crosses together.
+
+The structural claim is that **this is also the in-game menu.** A lobby where
+players gather, pick a hat, see the last round's scores and later vote on the
+next section is the only menu a co-op game of this kind needs — so the round
+state is a replicated enum rather than anything derived from where bodies are
+standing, and every future console, vote or selection screen is a field on it
+rather than a new system.
+
+It also RETIRES machinery. Checkpoints exist to answer "where does the party
+restart" for an endless bridge; with rounds the answer is always the lobby you
+came from, which is authored and obvious. `checkpoint_row`, `_bank_checkpoint`
+and `_restart_at_checkpoint` all go — and with them the question that produced
+the 2026-08-15 bug where a party that walked off the back of the bridge respawned
+four thousand rows up it.
+
+Eight steps, each separately gateable. **Five minutes is a TARGET, not a cap**
+(decided 2026-08-15): the clock is measured, shown and put on the scoreboard, but
+nothing in the state machine reads it, because a target nobody measures is a
+target nobody hits and a clock that can end a round stops being a measurement of
+the design and becomes part of it. The consequence is that reaching the next
+strip is the only way forward, which promotes "does a round end when everyone is
+out?" from an open question to a required transition.
+
 ## Later
 
 Real Steam appid and store presence. Audio. More than four players. Progression
