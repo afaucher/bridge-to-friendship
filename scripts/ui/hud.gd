@@ -20,8 +20,6 @@ const HudModel = preload("res://scripts/ui/hud_model.gd")
 const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
 const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 
-const COLOR_HEALTH := Color(0.91, 0.29, 0.33)
-const COLOR_HEALTH_LOST := Color(0.20, 0.20, 0.24)
 const COLOR_GRACE := Color(1.00, 0.93, 0.55)
 const COLOR_SLOT_READY := Color(0.88, 0.90, 0.96)
 const COLOR_SLOT_COOLING := Color(0.42, 0.44, 0.52)
@@ -33,13 +31,22 @@ const COLOR_BAR_BACK := Color(0.11, 0.11, 0.14)
 
 # A FACE, WHERE THERE IS ONE. Small on purpose: this is a co-op game about where
 # your friends ARE, so the portrait is an identifier beside a name, not a
-# character card. At 26 px it reads as "who" without competing with the health
-# pips, which are the thing you actually act on.
+# character card. At 26 px it reads as "who" without competing with the status
+# bar, which is the thing you actually act on.
 const AVATAR_SIZE := Vector2(26.0, 26.0)
 
-const PIP_SIZE := Vector2(18.0, 18.0)
 const SLOT_SIZE := Vector2(58.0, 40.0)
-const BAR_SIZE := Vector2(150.0, 8.0)
+
+# ONE BAR PER PLAYER, and it is now the ONLY reading of their condition on this
+# panel -- health, the bleed-out countdown and a rescue in progress are all the
+# same strip of colour. Health used to be a row of PIPS with the crisis bar
+# somewhere below it, so a player in trouble was described in two places, in two
+# shapes, and neither of them matched the bar over their own head in the world.
+#
+# Bigger than the old crisis bar because it inherited the pips' job: this is the
+# number you act on.
+const BAR_SIZE := Vector2(160.0, 13.0)
+const FRIEND_BAR_SIZE := Vector2(120.0, 9.0)
 
 # Eight-point compass, because the game already is one: the dash locks to four
 # world axes and the camera is fixed-yaw, so "NE" means the same thing on every
@@ -52,26 +59,31 @@ var world: Node = null
 var _own_panel: Control = null
 var _own_name: Label = null
 var _own_face: TextureRect = null
-var _own_pips: HBoxContainer = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
-# ONE BAR, NEVER TWO. There were a bleed-out bar and a rescue bar stacked here,
-# and while you were hanging the second one was pure black -- because nobody was
-# helping yet, which is most of the time you spend waiting. Reported as a broken
-# second bar, and it was: a bar showing "0% of a rescue" is indistinguishable
-# from a bar that failed to draw.
+# ONE BAR. Not one crisis bar -- ONE BAR, full stop, and it took three passes to
+# get here:
 #
-# It is now the same bar the player's own head carries, driven by the same
-# PlayerBody.status_bar() -- red draining while you wait, blue filling once
-# somebody is on you, gone when neither applies. Health stays as PIPS here, so
-# this HUD ignores status_bar()'s "health" case; that is what `kind` is for.
+#   there were a bleed-out bar and a rescue bar stacked together, and the second
+#   was pure black whenever nobody was helping (which is most of the time you
+#   spend waiting), so it was reported as a bar that had failed to draw;
+#   then there was one crisis bar, but health was still a row of PIPS above it
+#   and the state word had the bar under it, so a hanging player was described
+#   three times in three shapes;
+#   now everything this player's condition amounts to -- health, the countdown,
+#   a rescue in progress -- is this one strip, driven by the same
+#   PlayerBody.status_bar() that draws the bar over their own head in the world.
+#
+# So a player learns ONE thing to read: green draining is health, red draining is
+# a clock, blue filling is help arriving. In the panel, over their head, and over
+# a teammate's head, it is the same bar saying the same thing.
 var _own_status: ColorRect = null
 
 var _markers: Control = null
 
 var _friends_panel: Control = null
 var _friends_box: VBoxContainer = null
-var _friend_rows: Dictionary = {}      # peer -> {row, name, pips, state, bar, bearing}
+var _friend_rows: Dictionary = {}      # peer -> {row, name, state, bar, bearing, face}
 
 func _ready() -> void:
 	layer = 0        # under the menu's CanvasLayer, which is where the menu belongs
@@ -166,37 +178,34 @@ func _build_own_panel() -> void:
 	_own_name = _label("", 18, COLOR_TEXT)
 	own_header.add_child(_own_name)
 
-	_own_pips = HBoxContainer.new()
-	_own_pips.add_theme_constant_override("separation", 5)
-	box.add_child(_own_pips)
+	_own_status = _bar(BAR_SIZE)
+	box.add_child(_own_status)
 
 	_own_slots = HBoxContainer.new()
 	_own_slots.add_theme_constant_override("separation", 8)
 	box.add_child(_own_slots)
 
+	# THE WORD, WITH NO BAR UNDER IT. "HANGING" says which trouble you are in; the
+	# bar above already says how much of it is left, and it said so first.
 	_own_state = _label("", 20, COLOR_ALERT)
 	box.add_child(_own_state)
-
-	_own_status = _bar(COLOR_ALERT)
-	box.add_child(_own_status)
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
 	_set_avatar(_own_face, int(own.get("steam_id", 0)))
 
-	# The grace window is why one tumble through a pillar field does not empty
-	# the bar (B7). It is 0.75 s and entirely unknowable today; flashing the pips
-	# is the cheapest way to make "that hit did not count" legible.
-	var grace: float = float(own.get("grace", 0.0))
-	_sync_pips(_own_pips, int(own.get("health", 0)), int(own.get("max_health", 0)),
-		PIP_SIZE, COLOR_HEALTH.lerp(COLOR_GRACE, grace),
-		COLOR_HEALTH_LOST.lerp(COLOR_GRACE, grace))
-
 	_sync_slots(own.get("slots", []))
 
 	_own_state.text = str(own.get("state_label", ""))
 	_own_state.visible = _own_state.text != ""
-	_set_status_bar(_own_status, own.get("status", {}))
+
+	# THE GRACE WINDOW RIDES ON THE ONE BAR NOW. It is 0.75 s of invulnerability
+	# after a hit (B7) and entirely unknowable otherwise -- it is why one tumble
+	# through a pillar field does not empty your health. The pips used to carry it;
+	# washing the bar toward the same warm yellow keeps "that hit did not count"
+	# legible now that there is nothing else on screen to carry it.
+	_set_status_bar(_own_status, own.get("status", {}),
+		float(own.get("grace", 0.0)))
 
 func _sync_slots(slots: Array) -> void:
 	while _own_slots.get_child_count() < slots.size():
@@ -280,15 +289,13 @@ func _build_friend_row() -> Dictionary:
 	var bearing := _label("", 13, COLOR_DIM)
 	header.add_child(bearing)
 
-	var pips := HBoxContainer.new()
-	pips.add_theme_constant_override("separation", 4)
-	pips.alignment = BoxContainer.ALIGNMENT_END
-	row.add_child(pips)
-
-	var bar := _bar(COLOR_ALERT)
+	# THE SAME ONE BAR, smaller. A friend's row carried pips AND a crisis bar, so a
+	# downed teammate was three separate pieces of furniture saying one thing. It
+	# is one now, and it is the one they are already wearing on their head.
+	var bar := _bar(FRIEND_BAR_SIZE)
 	row.add_child(bar)
 
-	return {"row": row, "name": name_label, "state": state, "pips": pips,
+	return {"row": row, "name": name_label, "state": state,
 		"bar": bar, "bearing": bearing, "face": face}
 
 func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
@@ -309,12 +316,9 @@ func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	nodes["name"].add_theme_color_override("font_color",
 		COLOR_ALERT if needs_help else COLOR_TEXT)
 
-	_sync_pips(nodes["pips"], int(entry.get("health", 0)), int(entry.get("max_health", 0)),
-		PIP_SIZE * 0.7, COLOR_HEALTH, COLOR_HEALTH_LOST)
-
-	# THE SAME ONE BAR the own panel and the body's own head use. This row had
-	# already grown its own copy of the priority -- correct, but a third place
-	# expressing one rule.
+	# NO GRACE TINT FOR A FRIEND: the model does not publish theirs, and it should
+	# not. A 0.75 s window on somebody else's body is not something you can act on,
+	# and it exists to explain YOUR hits.
 	_set_status_bar(nodes["bar"], entry.get("status", {}))
 
 # --- Small builders -----------------------------------------------------------
@@ -338,43 +342,49 @@ func _label(text: String, size: int, colour: Color) -> Label:
 	label.add_theme_color_override("font_color", colour)
 	return label
 
-func _bar(colour: Color) -> ColorRect:
+func _bar(size: Vector2) -> ColorRect:
 	var back := ColorRect.new()
-	back.custom_minimum_size = BAR_SIZE
+	back.custom_minimum_size = size
 	back.color = COLOR_BAR_BACK
 	back.visible = false
 	var fill := ColorRect.new()
 	fill.name = "Fill"
-	fill.color = colour
+	fill.color = COLOR_ALERT
 	fill.position = Vector2.ZERO
-	fill.size = Vector2(0.0, BAR_SIZE.y)
+	fill.size = Vector2(0.0, size.y)
 	back.add_child(fill)
 	return back
 
 func _bar_fill(bar: ColorRect) -> ColorRect:
 	return bar.get_node("Fill") as ColorRect
 
-# NO_BAR is not zero. Zero means "this applies and is empty"; NO_BAR means the
-# bar does not apply and drawing it would announce a crisis that is not
-# happening.
-# Draw one status bar from PlayerBody.status_bar(). HEALTH IS IGNORED HERE: this
-# HUD already shows health as pips, and a bar repeating them would be the second
-# redundant bar all over again. So only "haul" and "rescue" are drawn, and
-# anything else hides it.
-func _set_status_bar(bar: ColorRect, status: Dictionary) -> void:
+# ONE BAR, EVERY KIND, ALWAYS DRAWN. This used to hide itself for anything that
+# was not a crisis, because health lived in pips beside it -- so the panel gave
+# your condition in two different shapes and neither matched the bar over your
+# own head out in the world. status_bar() now answers every case including the
+# healthy one, and this draws whatever it says.
+#
+# THE HUD DRAWS THE HEALTHY CASE AND THE BODY DOES NOT, which is not a
+# disagreement: a panel is somewhere you look on purpose, and a floating bar is
+# something that appears in front of you. Silence is right in the world and
+# useless in the corner of a screen.
+#
+# `grace` washes the bar toward the warm yellow for the invulnerable window after
+# a hit. Zero for anybody but yourself.
+func _set_status_bar(bar: ColorRect, status: Dictionary, grace: float = 0.0) -> void:
 	if bar == null:
 		return
-	var kind: String = str(status.get("kind", ""))
-	if kind != "haul" and kind != "rescue":
+	if status.is_empty():
 		bar.visible = false
 		return
-	bar.color = status.get("back", COLOR_BAR_BACK)
+	bar.color = Color(status.get("back", COLOR_BAR_BACK)).lerp(COLOR_GRACE, grace)
 	# THE SAME FLASH AS THE BAR OVER THEIR HEAD AND THE TRIANGLE POINTING AT THEM,
 	# because it is the same clock -- crisis_flash reads wall time rather than
 	# taking a delta, so three separate widgets blink together with nothing passed
 	# between them. Whether it flashes at all is the BODY's call (status["flash"]);
 	# this only draws it.
-	_bar_fill(bar).color = CrisisFlash.fill_for(status, CrisisFlash.now())
+	_bar_fill(bar).color = CrisisFlash.fill_for(status, CrisisFlash.now()).lerp(
+		COLOR_GRACE, grace)
 	_set_bar(bar, float(status.get("fraction", HudModel.NO_BAR)))
 
 func _set_bar(bar: ColorRect, value: float) -> void:
@@ -384,21 +394,6 @@ func _set_bar(bar: ColorRect, value: float) -> void:
 	bar.visible = true
 	var fill := _bar_fill(bar)
 	fill.size = Vector2(bar.size.x * clampf(value, 0.0, 1.0), bar.size.y)
-
-func _sync_pips(into: HBoxContainer, health: int, max_health: int, size: Vector2,
-		full: Color, lost: Color) -> void:
-	while into.get_child_count() < max_health:
-		into.add_child(ColorRect.new())
-	# remove_child BEFORE queue_free: queue_free is deferred, so a loop that
-	# waited for the child count to drop would never terminate.
-	while into.get_child_count() > max_health:
-		var extra: Node = into.get_child(into.get_child_count() - 1)
-		into.remove_child(extra)
-		extra.queue_free()
-	for i in into.get_child_count():
-		var pip: ColorRect = into.get_child(i)
-		pip.custom_minimum_size = size
-		pip.color = full if i < health else lost
 
 # Bearing in radians clockwise from up-bridge, to one of eight compass points.
 static func compass_point(bearing: float) -> String:

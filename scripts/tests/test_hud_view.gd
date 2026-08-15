@@ -54,9 +54,23 @@ func _advance(next_phase: int) -> void:
 	phase_frame = 0
 
 func _phase_built() -> void:
+	# THE HEALTH BAR REALLY DRAINS, checked before anything is asserted about it
+	# being full. A zero-width rect in an undrawn headless layout would satisfy
+	# "the fill is as wide as the bar" perfectly -- 0 == 0 -- so the instrument is
+	# fed a case where it MUST report a difference first.
+	if phase_frame == 3:
+		world.player_body(1).health = 1
+		return
+	if phase_frame == 4:
+		check(_own_fill_width() < hud._own_status.size.x,
+			"a hurt player's bar is visibly shorter than the bar (%.0f of %.0f px)"
+				% [_own_fill_width(), hud._own_status.size.x])
+		check(hud._own_status.size.x > 1.0,
+			"and the bar has a real width, so the comparison means something")
+		world.player_body(1).health = SimConfig.MAX_HEALTH
+		return
+
 	check(hud._own_panel.visible, "the own panel is shown once there is a local avatar")
-	eq(hud._own_pips.get_child_count(), SimConfig.MAX_HEALTH,
-		"one health pip per hit point")
 	eq(hud._own_slots.get_child_count(), 2,
 		"two action slots -- the permanently-blank rope box was removed 2026-08-15")
 	eq(hud._friend_rows.size(), 1, "and a row for the one other player")
@@ -68,13 +82,23 @@ func _phase_built() -> void:
 	eq(special.color, HudScript.COLOR_SLOT_EMPTY,
 		"an empty special slot draws as deliberately empty, not missing")
 
-	# ONE STATUS BAR, and nothing to say right now. There were two here until
-	# 2026-08-15 -- a countdown and a rescue bar -- and the second was pure black
-	# whenever nobody was helping, which is most of the time somebody spends
-	# waiting. A bar showing "0% of a rescue" is indistinguishable from a bar that
-	# failed to draw, and it was reported as exactly that.
-	check(hud._own_status != null, "there is ONE own-status bar, not two")
-	check(not hud._own_status.visible, "and it says nothing for a walking player")
+	# ONE BAR IN THE WHOLE PANEL, and for a healthy player it is their HEALTH.
+	#
+	# Both halves matter and both have been wrong. There were two crisis bars once
+	# and the second was pure black whenever nobody was helping. Then there was one
+	# crisis bar plus a row of health PIPS, so a hanging player was described in
+	# two shapes at once, neither matching the bar over their own head. Counting
+	# every ColorRect in the panel is what stops a second reading growing back:
+	# what is asserted is the COUNT, not the identity of the one that survived.
+	check(hud._own_status != null, "there is an own-status bar")
+	eq(_own_bars(), 1, "and it is the ONLY bar in the panel -- no pips beside it")
+	check(hud._own_status.visible,
+		"which is always drawn, because health is now the bar's healthy case")
+	eq(hud._own_status.color, PlayerBody.BAR_HEALTH_BACK,
+		"green over red for a healthy player -- the colours the body itself uses")
+	eq(_own_fill_width(), hud._own_status.size.x,
+		"and full, because nothing has hit them yet (%.0f of %.0f px)"
+			% [_own_fill_width(), hud._own_status.size.x])
 	_advance(1)
 
 func _phase_rescue_bar() -> void:
@@ -88,9 +112,9 @@ func _phase_rescue_bar() -> void:
 		check(hud._own_status.visible, "waiting for a rescue shows the one bar")
 		eq(hud._own_status.color, PlayerBody.BAR_RESCUE_BACK,
 			"in the countdown's colours, the same ones over the player's head")
-		# AND THE ONLY OTHER BAR IN THE OWN PANEL IS NOT A SECOND CRISIS BAR.
-		# Counting them is what stops a second one reappearing unnoticed.
-		eq(_own_bars(), 1, "and there is exactly one of them")
+		# THE SAME BAR THAT WAS SHOWING HEALTH A MOMENT AGO. Not a second one that
+		# appeared beside it -- the count is still one.
+		eq(_own_bars(), 1, "and there is still exactly one bar in the panel")
 
 		world.player_body(1).rescue_progress = SimConfig.REVIVE_SECONDS * 0.5
 		return
@@ -110,19 +134,41 @@ func _phase_rescue_bar() -> void:
 	check(row["bar"].visible, "a downed friend gets a bar")
 	check(row["state"].visible, "and a state banner")
 	eq(str(row["state"].text), "DOWN", "saying what is wrong")
+
+	# A FRIEND'S ROW GETS THE SAME TREATMENT: one bar, no pips. It carried both
+	# until 2026-08-15, which made a downed teammate three pieces of furniture
+	# saying one thing.
+	eq(_bars_in(row["row"]), 1, "and ONE bar in their row, not a bar and pips")
 	_advance(2)
 
-# Every ColorRect directly in the own panel that is acting as a bar. Fills are
-# CHILDREN of a bar, so counting top-level ones counts bars.
+# HOW MANY READINGS OF THIS PLAYER ARE ON SCREEN. A bar is a direct ColorRect
+# child of the panel (its fill is a child of the BAR, so it does not double-
+# count), and a row of pips was a direct HBoxContainer child. Both counted here,
+# because the mistake this guards against is a second reading coming back in a
+# DIFFERENT SHAPE -- which is exactly what pips were.
+#
+# The action slots are ColorRects too and are deliberately not counted: they live
+# in _own_slots, they are buttons rather than readings, and there are meant to be
+# two of them.
 func _own_bars() -> int:
+	return _readings_in(hud._own_status.get_parent(), hud._own_slots)
+
+func _bars_in(box: Node) -> int:
+	return _readings_in(box, null)
+
+func _readings_in(box: Node, skip: Node) -> int:
 	var count := 0
-	for child in _own_box().get_children():
+	for child in box.get_children():
+		if child == skip:
+			continue
 		if child is ColorRect:
 			count += 1
+		elif child is HBoxContainer or child is VBoxContainer:
+			count += _readings_in(child, skip)
 	return count
 
-func _own_box() -> Node:
-	return hud._own_status.get_parent()
+func _own_fill_width() -> float:
+	return float((hud._own_status.get_node("Fill") as ColorRect).size.x)
 
 func _phase_roster_shrinks() -> void:
 	if phase_frame == 3:

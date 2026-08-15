@@ -384,7 +384,14 @@ func status_bar() -> Dictionary:
 	if fraction < 1.0:
 		return {"kind": "health", "fraction": fraction, "flash": false,
 			"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
-	return {"kind": "", "fraction": 0.0, "flash": false,
+	# UNHURT. `kind` is "" because the bar over this body's head says NOTHING here
+	# -- that is the silence rule above. But the fraction and the colours are still
+	# the honest answer to "what would a health bar show", because the HUD asks the
+	# same question and always draws: a panel is a place you look deliberately, so
+	# a full green bar there is a reading, while the same bar floating over a
+	# healthy player in the world is furniture. One dictionary, two correct
+	# behaviours, and neither caller has to know about the other's.
+	return {"kind": "", "fraction": fraction, "flash": false,
 		"fill": BAR_HEALTH_FILL, "back": BAR_HEALTH_BACK}
 
 func health_fraction() -> float:
