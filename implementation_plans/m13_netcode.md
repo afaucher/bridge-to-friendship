@@ -139,6 +139,45 @@ them at once and then teleports them.
 makes item 3 free: at 30 Hz *with* interpolation, motion is smoother than at
 60 Hz without.
 
+#### It is NOT the answer to the contact glitch — measured 2026-08-14
+
+The 2026-08-14 playtest reported players glitching when they touch, and this item
+was named as the fix. `test_contact_prediction` was then written **before any
+change**, so the number could not be tuned afterwards to flatter it, and it says
+otherwise:
+
+| | walking into each other | dashing into somebody |
+|---|---|---|
+| corrections | 2 | **53** |
+| mean miss | 0.072 m | **0.534 m** |
+| worst miss | 0.144 m | **1.135 m** |
+
+Sustained contact is nearly free, at any latency from 4 to 40 ticks. **Two players
+leaning on each other are both STILL, and a still body is predicted perfectly by
+anybody.** What breaks is a DASH — 56 m/s, six ticks, client-predicted, aimed at a
+body the client has metres out of date. Five corrections per dash.
+
+So interpolation stays worth doing for everything else on the list — it is still
+the biggest *visual* win and it still makes item 3 free — but **it cannot fix the
+dash case, and should not be sold as doing so.** An interpolated body is
+deliberately ~100 ms old and a dash crosses 5.6 m in that time; smoothing the
+target does not make the client and the host agree about a collision at that
+speed.
+
+The candidates that actually address it, in the order worth trying:
+
+- **Predict the dash's MOTION but not its COLLISION.** The dash goes where the
+  client thinks until it hits something, and what it hits is the host's business.
+  Smallest change, targets the measured cause, costs a little of the
+  responsiveness item 2 was built for.
+- **Lag compensation on the host** — rewind to the world the client saw when it
+  pressed. The answer that genuinely makes the two agree, and the standard one for
+  this class of problem. Most work, and it hands a client authority over the past,
+  which `physics_and_authority.md` should get a say in.
+
+`test_contact_prediction` prints both phases every run, so whichever is tried is
+judged against those figures rather than against an argument.
+
 ### 2. Predict the start of a `SHOVE` — **DONE 2026-08-14**
 
 Enter `SHOVE` locally on the press and run the fixed-speed line; the host stays

@@ -148,6 +148,31 @@ the gap competitive games close with lag compensation, and it is why lag
 compensation is not on this project's list: co-op, and nothing in it turns on a
 frame.
 
+### Measured 2026-08-14: what the absence of interpolation actually costs
+
+This section argued that nothing being interpolated is a serious defect. It is —
+but when the first playtest complaint was attributed to it, the measurement did
+not agree, and the difference is worth keeping because it is a lesson about which
+claims are safe to make from reading code.
+
+`test_contact_prediction`, written before any fix:
+
+- **Two players walking into each other and pushing: 2 corrections over 252 ticks
+  of contact**, worst miss 0.144 m, and the count does not move between 4 and 40
+  ticks of injected latency.
+- **The same two players when one DASHES: 53 corrections from 10 dashes**, mean
+  miss 0.534 m, worst 1.135 m.
+
+The client's view of a remote body really is stale — up to 2.65 m at 40 ticks of
+delay, and 6.4 m during a dash exchange. **Staleness is not the same as a visible
+defect.** It only becomes one when something moves fast enough to care, and in
+this game exactly one thing does.
+
+**The reading rule this leaves behind:** a diagnosis derived from reading the code
+is a hypothesis about a scenario. Name the scenario, then measure THAT — the code
+reading here was correct about the mechanism and wrong about when it fires, which
+is a failure mode no amount of re-reading would have caught.
+
 ## 3. A busy snapshot is two and a half ENet packets
 
 Measured with `var_to_bytes` on real snapshot builders, on the playtest bridge:
