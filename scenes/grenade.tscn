@@ -28,22 +28,27 @@ roughness = 0.5
 ; Layer 7 = specials, shared with dropped weapons: a round already passes through
 ; it, which is deliberate -- shooting a live grenade out of the air is not a skill
 ; this game is asking anybody to have.
-; WHAT IT BOUNCES OFF: layer 1 (world) + layer 3 (stones) = 5.
+; WHAT IT BOUNCES OFF: world (1) + players (2) + stones (4) + enemies (16) = 23.
 ;
-; THE STATIC SHAPE OF THE BRIDGE, AND NOTHING SOFT. Pillars were missing until
-; 2026-08-14 and grenades flew straight through them -- the fourth bug in this
-; project to be one wrong bit in a mask, which is why the layers are named in
-; project.godot.
+; EVERYTHING SOLID THAT STANDS ON THE DECK. Pillars were missing until
+; 2026-08-14 and grenades flew through them -- the fourth bug in this project to
+; be one wrong bit in a mask, which is why the layers are named in project.godot.
 ;
-; Bodies are deliberately NOT in here, and the thrower is the reason. A grenade
-; leaves the hand 0.7 m in front of a body whose radius is 0.4, so colliding with
-; players would make the most common short throw clip its own thrower or a
-; teammate beside them and drop at their feet. The near throw is already inside
-; your own blast on purpose -- that is a risk the player chooses -- and a bounce
-; off a friend would turn that decision into a coin flip. A grenade respects what
-; you are aiming AROUND; the blast is what touches people.
+; BODIES WERE LEFT OUT AT FIRST AND PUT BACK ON PURPOSE. The argument against was
+; that a grenade leaves the hand close to its thrower, so bouncing off people
+; would sometimes drop one at your own feet. The argument for is better: this is a
+; game whose comedy is the party being a hazard to itself, banking a grenade off a
+; friend is a thing a player will try on purpose, and "it went through him" is the
+; answer nobody wants. GRENADE_THROW_FORWARD moved out to 0.9 to buy the clear air
+; that makes it safe to want.
+;
+; Players AND enemies, as ONE rule. A grenade that bounced off a friend and passed
+; through the rusher standing beside him would be two rules and an arbitrary line.
+;
+; Plinko balls (layer 4) stay out: two dynamic bodies shoving each other is noise,
+; and the arena is full of them.
 collision_layer = 64
-collision_mask = 5
+collision_mask = 23
 script = ExtResource("1_deploy")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

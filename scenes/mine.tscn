@@ -42,7 +42,7 @@ collision_layer = 64
 ; A placed mine is frozen, so this only decides where an unplaceable one (thrown
 ; over a hole) falls, but a second answer here would be a second thing to keep
 ; in step for no reason.
-collision_mask = 5
+collision_mask = 23
 script = ExtResource("1_deploy")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

@@ -59,6 +59,7 @@ func _physics_process(_delta: float) -> void:
 		2: _phase_a_tap_can_hurt_you()
 		3: _phase_a_tumble_does_not_throw()
 		4: _phase_it_bounces_off_a_pillar()
+		5: _phase_it_bounces_off_a_friend()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -297,6 +298,52 @@ func _phase_it_bounces_off_a_pillar() -> void:
 		# line above passed for the wrong reason.
 		check(reached > 1.0,
 			"and it really was thrown at it (%.2f m)" % reached)
+		_advance(5)
+
+# --- 6. A friend is solid too -------------------------------------------------
+#
+# BANKING ONE OFF A TEAMMATE IS A THING A PLAYER WILL TRY ON PURPOSE, and "it went
+# through him" is the answer nobody wants. Bodies were left out of the mask at
+# first on the grounds that a grenade leaves the hand close to its thrower; the
+# clear air was bought with GRENADE_THROW_FORWARD instead.
+#
+# Flat and fast for the same reason as the pillar phase: a 40-degree lob sails
+# over a 1.8 m player, which is correct and tests nothing about a mask.
+
+func _phase_it_bounces_off_a_friend() -> void:
+	if phase_frame == 1:
+		_park(Vector2i(15, 3), 0.0)
+		for sp in world._specials.all():
+			world._specials.destroy(sp)
+		_clear_deployables()
+		# A second player, two cells up-bridge and directly in the line of fire.
+		if not world.players.has(2):
+			world._spawn_player(2, 1)
+		var friend: Node = world.player_body(2)
+		friend.position = world.grid.cell_surface_world(Vector2i(15, 5)) 			+ Vector3(0.0, 1.0, 0.0)
+		friend.velocity = Vector3.ZERO
+		friend.state = PlayerBody.State.WALK
+		friend.grounded = true
+		recorded["from"] = thrower.position
+		recorded["friend"] = friend.position
+		recorded["reach"] = -99.0
+		var release: Vector3 = thrower.position + Vector3(0.0, 0.1, -0.9)
+		var g: Node = world._spawn_deployable(Deployable.Kind.GRENADE)
+		g.throw_from(release, Vector3(0.0, 3.0, -25.0), 1)
+		recorded["id"] = g.deployable_id
+		return
+	var flying: Node = world._deployable_by_id(int(recorded.get("id", -1)))
+	if flying != null:
+		recorded["reach"] = maxf(float(recorded["reach"]),
+			float(recorded["from"].z) - flying.position.z)
+	if phase_frame == 40:
+		var to_friend: float = float(recorded["from"].z) - float(recorded["friend"].z)
+		var reached: float = float(recorded["reach"])
+		check(reached < to_friend + 0.5,
+			"a teammate stops a grenade (reached %.2f m; they are %.2f m out)"
+				% [reached, to_friend])
+		check(reached > 1.0,
+			"and it really was thrown at them (%.2f m)" % reached)
 		finish()
 
 # --- helpers ------------------------------------------------------------------

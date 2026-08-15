@@ -617,7 +617,12 @@ const GRENADE_THROW_ANGLE_DEG := 40.0
 # quietly deleted the "a tap can hurt you" rule that the whole hold-to-adjust verb
 # rests on. Measured 2026-08-14; caught because the test asserted the DESIGN claim
 # (the near throw is inside the blast) rather than the arithmetic.
-const GRENADE_THROW_FORWARD := 0.7
+# MOVED OUT FROM 0.7 when grenades started bouncing off bodies. A player's radius
+# is 0.4 and a grenade's is 0.18, so 0.7 left 12 cm of clear air between the two
+# -- fine while people were transparent to it, thin once they are not, and thinnest
+# in exactly the case that matters: a slow throw made while walking forwards, where
+# the thrower is chasing their own grenade at nearly its speed.
+const GRENADE_THROW_FORWARD := 0.9
 const GRENADE_RELEASE_HEIGHT := 1.2
 
 # From the button coming up to the bang. It is a fuse and NOT a contact
