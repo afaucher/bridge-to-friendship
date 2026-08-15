@@ -1,0 +1,47 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfrocket1"]
+
+[ext_resource type="Script" path="res://scripts/sim/bullet.gd" id="1_bullet"]
+
+; A ROCKET IS A ROUND THAT EXPLODES, so it runs bullet.gd -- the same travel, the
+; same sweep, the same replication. Only the silhouette and what happens at the
+; end of the raycast differ.
+;
+; BIGGER AND BRIGHTER THAN A ROUND, deliberately. A machine gun round is dark grey
+; and easy to lose against the deck, which is right for something that fires ten
+; of them; a rocket is one of two a player will ever have and everybody in the
+; blast radius needs to see it coming.
+[sub_resource type="CapsuleMesh" id="Body_1"]
+radius = 0.13
+height = 0.62
+radial_segments = 8
+rings = 4
+
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.55, 0.62, 0.3, 1)
+metallic = 0.3
+roughness = 0.6
+
+; The flame. Wide end against the rocket, exactly as the bullet tail is -- the
+; basis maps local +Y to the direction of travel, so the mesh's TOP is the end
+; that trails. Getting this backwards is a mistake this project has made twice.
+[sub_resource type="CylinderMesh" id="Flame_1"]
+top_radius = 0.16
+bottom_radius = 0.0
+height = 0.75
+radial_segments = 6
+
+[node name="Rocket" type="Node3D"]
+script = ExtResource("1_bullet")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0)
+mesh = SubResource("Body_1")
+material_override = SubResource("Mat_1")
+
+[node name="Flame" type="MeshInstance3D" parent="."]
+; THE SAME TRANSFORM THE BULLET'S TAIL USES, copied rather than re-derived. That
+; basis is nine numbers this project has got the sign of wrong twice, and the
+; second time it shipped -- a tail that trails FORWARD looks like a comet flying
+; backwards. If the bullet's tail is ever re-oriented, this moves with it.
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0.55)
+mesh = SubResource("Flame_1")

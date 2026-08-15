@@ -61,6 +61,12 @@
 # down swapping through all four. It exists so a playtest can reach any special in
 # five seconds instead of walking to z11 to find out how the shield feels.
 #
+# A ROCKET LAUNCHER (`r`) joins the rack at x8, and there is a second one out on
+# the bridge at z20 x12 -- one cell down-bridge of the turret at z21 x11, on its
+# own side of the arena. The player who wants it has to walk into the turret's arc
+# to reach the thing that answers a turret, which is the trade the whole special
+# roster is supposed to ask.
+#
 # It deliberately breaks the rule stated immediately below, and it is the only
 # thing on this map that does. A shipped bridge should never open with a free
 # armoury; when this map stops being a laboratory, this row is the first thing to
@@ -170,7 +176,7 @@ _//____//___.._
 [content]
 ...............
 ..#.........#..
-.*..g.....x..s.
+.*..g...r.x..s.
 ...............
 ...^...#...^...
 ..+..m...m..+..
@@ -188,7 +194,7 @@ _//____//___.._
 .......k.......
 ..+....*....+..
 .#..#..#.s#..#.
-..g............
+..g.........r..
 ..#..#..#..T...
 ...............
 .#..#..#..#..#.

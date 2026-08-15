@@ -1,17 +1,31 @@
-[gd_scene load_steps=6 format=3 uid="uid://btfspecial1"]
+[gd_scene load_steps=14 format=3 uid="uid://btfspecial1"]
 
 [ext_resource type="Script" path="res://scripts/sim/special_body.gd" id="1_special"]
 
-; A PLACEHOLDER SHAPE, and knowingly so -- see implementation_plans/m12_machine_gun.md.
+; ONE BODY, FIVE SILHOUETTES.
 ;
-; What it has to do at bridge scale is be READ AS A WEAPON FROM 30 M and not be
-; mistaken for a hat, which is the only other thing lying loose on the deck. So it
-; is a long horizontal box with a darker barrel: a silhouette that points, against
-; a hat's silhouette that stacks.
+; Every special is the same physical object -- same collider, same pickup radius,
+; same held-pivot geometry -- and differs only in what it looks like. So this is
+; ONE scene with a shape per kind and `apply_kind_look` showing the matching one,
+; NOT five scenes. That is the opposite call from the turret, which was split out
+; of the skirmisher, and the test is the same one: does the second kind need
+; anything the first has no use for? A pickup does not. A turret did.
 ;
-; The colour is the same near-black metal as a shooter's barrel, deliberately.
-; That pillar is where balls come out of, and this is the player's version of the
-; same idea -- one visual language for "this end is the business end".
+; WHY IT MATTERS AT ALL: the slot holds exactly one, so walking over the wrong
+; thing costs you the right one. Until 2026-08-15 every special was the same gun
+; silhouette in a different colour, which is a colour test at 30 m on a bridge lit
+; by one warm sun. A SHAPE reads at any distance and in any light.
+;
+; The shapes, and what each is trying to say in one glance:
+;
+;   MACHINE GUN   a long box with a barrel -- it points
+;   ROCKET        a fat tube -- it points, but it is a PIPE, not a rifle
+;   GRENADE       a sphere with a handle -- it is thrown
+;   MINE          a flat disc -- it is put down
+;   SHIELD        an upright slab -- it stands between you and something
+;
+; Colour still carries the warm/cool rule (see special_body._kind_colour): warm
+; hurts something, cool protects you. Shape says WHICH, colour says WHOSE SIDE.
 [sub_resource type="BoxMesh" id="Body_1"]
 size = Vector3(0.18, 0.18, 0.7)
 
@@ -31,6 +45,41 @@ roughness = 0.4
 [sub_resource type="StandardMaterial3D" id="Mat_2"]
 albedo_color = Color(0.95, 0.6, 0.15, 1)
 roughness = 0.5
+
+; --- The other four silhouettes ----------------------------------------------
+
+; ROCKET: a fat tube. Wider than the gun's body and open-ended, so it reads as a
+; launcher rather than a rifle even in outline.
+[sub_resource type="CylinderMesh" id="Rocket_1"]
+top_radius = 0.17
+bottom_radius = 0.17
+height = 0.8
+radial_segments = 10
+
+; GRENADE: a sphere. The one round pickup, which is most of the read.
+[sub_resource type="SphereMesh" id="Nade_1"]
+radius = 0.2
+height = 0.4
+radial_segments = 10
+rings = 6
+
+; ...with a handle, so it is a grenade rather than a ball. The plinko balls are
+; the other spheres on this bridge and they must never be confused.
+[sub_resource type="BoxMesh" id="NadeGrip_1"]
+size = Vector3(0.07, 0.26, 0.07)
+
+; MINE: a flat disc, the same shape it takes once placed. A pickup that looks like
+; what it becomes is one fewer thing to learn.
+[sub_resource type="CylinderMesh" id="Mine_1"]
+top_radius = 0.26
+bottom_radius = 0.3
+height = 0.12
+radial_segments = 12
+
+; SHIELD: an upright slab, narrow edge-on. Also the shape it becomes -- see the
+; riot wall on the player's Facing pivot.
+[sub_resource type="BoxMesh" id="Shield_1"]
+size = Vector3(0.46, 0.6, 0.08)
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(0.3, 0.25, 0.7)
@@ -61,6 +110,36 @@ material_override = SubResource("Mat_2")
 transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0.02, -0.5)
 mesh = SubResource("Barrel_1")
 material_override = SubResource("Mat_1")
+
+; ALL FIVE EXIST AND FOUR ARE HIDDEN. Building them up front and toggling
+; visibility keeps this a data question rather than a construction one -- a pickup
+; whose mesh is built in code is a pickup that has to be rebuilt when its kind
+; arrives over the wire, and the kind arrives AFTER instantiate().
+[node name="Rocket" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0)
+mesh = SubResource("Rocket_1")
+material_override = SubResource("Mat_2")
+visible = false
+
+[node name="Nade" type="MeshInstance3D" parent="."]
+mesh = SubResource("Nade_1")
+material_override = SubResource("Mat_2")
+visible = false
+
+[node name="NadeGrip" type="MeshInstance3D" parent="Nade"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.22, 0)
+mesh = SubResource("NadeGrip_1")
+material_override = SubResource("Mat_1")
+
+[node name="Mine" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mine_1")
+material_override = SubResource("Mat_2")
+visible = false
+
+[node name="Shield" type="MeshInstance3D" parent="."]
+mesh = SubResource("Shield_1")
+material_override = SubResource("Mat_2")
+visible = false
 
 [node name="Shape" type="CollisionShape3D" parent="."]
 shape = SubResource("Shape_1")

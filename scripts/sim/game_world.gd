@@ -25,6 +25,7 @@ const HatPool = preload("res://scripts/sim/hat_pool.gd")
 const SpecialPool = preload("res://scripts/sim/special_pool.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
+const RocketScene = preload("res://scenes/rocket.tscn")
 const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
 const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
@@ -1309,6 +1310,8 @@ func _fire_specials() -> void:
 				spent_a_use = _step_mine(peer, body, weapon, held)
 			SpecialBody.Kind.SHIELD:
 				spent_a_use = _step_shield(peer, body, weapon, held)
+			SpecialBody.Kind.ROCKET:
+				spent_a_use = _step_rocket(body, weapon, held)
 		weapon.was_held = held
 
 		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
@@ -1333,6 +1336,29 @@ func _step_machine_gun(body: Node, weapon: Node, held: bool) -> bool:
 	weapon.fire_timer = DebugSettings.tuned("mg_fire_interval", SimConfig.MG_FIRE_INTERVAL)
 	weapon.ammo -= 1
 	_fire_round(body, weapon)
+	return true
+
+# HELD DOWN, like the machine gun, and firing on the same timer -- a rocket is a
+# gun, not a thrown thing. The cadence does all the work of making it feel
+# different: at ROCKET_FIRE_INTERVAL two shots take three seconds, so holding the
+# button is not a strategy.
+func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.fire_timer > 0.0:
+		return false
+	weapon.fire_timer = SimConfig.ROCKET_FIRE_INTERVAL
+	weapon.ammo -= 1
+	# ZEROED THE SAME WAY THE MACHINE GUN IS, and for the same reason: the barrel
+	# is held to one side of the body, so a rocket sent straight down `facing`
+	# would travel on a line offset by that much forever and miss somebody standing
+	# dead centre. See _fire_round for the full argument.
+	#
+	# BUT NO SPREAD. The cone is what makes the machine gun a suppression weapon; a
+	# rocket is one decision and it goes where it was pointed, or the player is
+	# being asked to gamble two of them on a dice roll.
+	var from: Vector3 = _muzzle_of(weapon, body)
+	var zero: Vector3 = body.global_position 		+ GridConfig.yaw_vector(body.facing) * SimConfig.MG_RANGE
+	_spawn_round(from, (zero - from).normalized(), int(body.peer_id),
+		body.get_rid(), true)
 	return true
 
 # HELD TO ADJUST DISTANCE, thrown on release.
@@ -1573,14 +1599,16 @@ func _fire_round(shooter: Node, weapon: Node) -> void:
 # ONE ROUND, whoever fired it. Shared by the player's machine gun and by both
 # gunners -- so an enemy's round is the same object as yours, stopped by the same
 # cover, and resolved through the same matrix. `source` of 0 means the world.
-func _spawn_round(from_global: Vector3, direction: Vector3, source: int, shooter_rid: RID) -> void:
-	var bullet: Node3D = BulletScene.instantiate()
+func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
+		shooter_rid: RID, as_rocket: bool = false) -> void:
+	var scene: PackedScene = RocketScene if as_rocket else BulletScene
+	var bullet: Node3D = scene.instantiate()
 	_next_bullet_id += 1
 	bullet.bullet_id = _next_bullet_id
 	bullet.name = "Bullet_%d" % _next_bullet_id
 	_bullets_root.add_child(bullet)
 	_bullets.append(bullet)
-	bullet.launch(to_local(from_global), direction, source, shooter_rid)
+	bullet.launch(to_local(from_global), direction, source, shooter_rid, as_rocket)
 
 # The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
 # somehow not been posed yet -- a round from slightly the wrong place beats a
@@ -1663,8 +1691,14 @@ func _process_bullets() -> void:
 			var hit := space.intersect_ray(query)
 			if not hit.is_empty():
 				struck = true
-				_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
-					to_local(hit["position"]))
+				# THE ONLY LINE A ROCKET CHANGES. It travels, is swept and is
+				# replicated exactly as a round is; what differs is what happens at
+				# the far end of the raycast.
+				if bool(bullet.explodes):
+					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS)
+				else:
+					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
+						to_local(hit["position"]))
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -2514,7 +2548,10 @@ func _bullet_snapshot(keyframe: bool) -> Array:
 	var out: Array = []
 	for bullet in _bullets:
 		if is_instance_valid(bullet):
-			out.append([bullet.bullet_id, bullet.position])
+			# The EXPLODES flag rides along because a client picks the scene from
+			# it. A rocket drawn as a bullet would be the one thing on screen that
+			# gives no warning of what is about to happen.
+			out.append([bullet.bullet_id, bullet.position, bullet.explodes])
 	return SnapshotDelta.encode(out, _section("bullets"), keyframe)
 
 # Self-healing like the ball set: a round the host stops mentioning has hit
@@ -2526,7 +2563,9 @@ func _apply_bullet_snapshot(section: Array) -> void:
 		var id: int = int(entry[0])
 		var bullet: Node = _bullet_by_id(id)
 		if bullet == null:
-			bullet = BulletScene.instantiate()
+			var rocket: bool = entry.size() > 2 and bool(entry[2])
+			bullet = (RocketScene if rocket else BulletScene).instantiate()
+			bullet.explodes = rocket
 			bullet.bullet_id = id
 			bullet.name = "Bullet_%d" % id
 			_bullets_root.add_child(bullet)

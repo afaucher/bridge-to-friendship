@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -98,6 +98,9 @@ const CONTENT_GLYPHS := {
 	# A shield. Lowercase `s` -- uppercase `S` was already the spawn point, and
 	# the two are never in the same place, so the case is doing real work.
 	"s": Content.PICKUP_SHIELD,
+	# A rocket launcher. `r` for rocket, and lowercase like every other thing
+	# that is picked up rather than fought.
+	"r": Content.PICKUP_ROCKET,
 	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,

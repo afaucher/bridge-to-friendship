@@ -241,7 +241,37 @@ looking down-bridge, the direction players arrive from. Per-turret authoring is 
 glyph question -- the `T` glyph carries no direction today -- and the field exists
 on the body so that answering it later changes a loader and not the enemy.
 
-## The specials, revised
+## The rocket launcher — direct fire *(built 2026-08-15)*
+
+**THE GRENADE GOES OVER THINGS; THE ROCKET GOES AT THEM.** They deal the identical
+damage through the identical `blast_at`, and that is the point — the difference is
+entirely the trajectory, so choosing between them is a question about the SHAPE of
+the problem rather than about power.
+
+- A grenade is lobbed at 40°, which puts it above a 2 m pillar for most of its
+  flight. It clears cover, it lands, it waits. It is an area weapon and a timing
+  weapon.
+- A rocket flies flat and fast and detonates where it touches. It cannot get over
+  anything, and it does not need to.
+
+**So it is the answer to a TURRET** — bolted down, in the open, immune to the free
+verb, and needing cover or a weapon. It is the wrong tool for anything behind a
+parapet, which is exactly where the grenade is right. Two explosives with the same
+payload and opposite geometry is a better roster than two power levels.
+
+**It is a round, not a new object.** `bullet.gd` with `explodes = true`: same
+flight, same per-tick sweep, same replication, and one branch at the far end of
+the raycast. Everything else about it — 22 m/s, two shots, a 1.4 s cadence — is
+tuning, and the tuning is what makes it feel like a decision rather than a
+trigger.
+
+**Two rounds only, and no spread.** The cone is what makes the machine gun a
+suppression weapon; a rocket is one decision and it goes where it was pointed, or
+the player is being asked to gamble both of them on a dice roll. It IS zeroed on
+the aim ray the same way the machine gun is, because the barrel sits off-centre
+and a rocket fired parallel to the aim line misses somebody standing dead ahead.
+
+## The specials, revised## The specials, revised
 
 | special | answers | note |
 |---|---|---|

@@ -95,6 +95,8 @@ static func _full_ammo(kind: int) -> int:
 			return SimConfig.MINE_AMMO
 		SpecialBody.Kind.SHIELD:
 			return SimConfig.SHIELD_AMMO
+		SpecialBody.Kind.ROCKET:
+			return SimConfig.ROCKET_AMMO
 	return 0
 
 func destroy(s: Node) -> void:

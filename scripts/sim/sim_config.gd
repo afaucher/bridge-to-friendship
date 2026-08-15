@@ -578,6 +578,36 @@ const TURRET_FIRE_INTERVAL := 2.0
 # being a hazard and becomes a door, which is a real design available on purpose.
 const TURRET_ARC_DEG := 360.0
 
+# --- The rocket launcher ------------------------------------------------------
+#
+# DIRECT FIRE, and that is the whole reason it exists beside the grenade. A
+# grenade goes OVER things -- it is lobbed, it arcs above a 2 m pillar for most of
+# its flight, it lands and waits. A rocket goes AT things: flat, fast, and it
+# detonates where it touches. The two are the same damage from opposite
+# directions, and the choice between them is a question about the shape of the
+# problem rather than about power.
+#
+# So it is the answer to a TURRET -- the one hazard that is bolted down, in the
+# open, and needs cover or a weapon -- and it is the wrong tool for anything
+# behind a parapet, which is exactly where the grenade is right.
+
+# TWO. It is the most powerful thing a player can carry and the pickup is meant to
+# be an event; a third shot would make it a weapon rather than a decision.
+const ROCKET_AMMO := 2
+
+# Fast enough to feel like a direct-fire weapon, slow enough to WATCH -- both
+# because a rocket you cannot see coming is a rocket nobody can dodge, and
+# because playtest asked for slower rounds and was right.
+const ROCKET_SPEED := 22.0
+
+# Slower than the machine gun by a wide margin. Two shots at this cadence is
+# roughly one every three seconds, which is the pace of a decision.
+const ROCKET_FIRE_INTERVAL := 1.4
+
+# Seconds before it gives up. At 22 m/s that is 33 m, a little past MG_RANGE, so
+# the practical limit is line of sight rather than a timer.
+const ROCKET_LIFETIME := 1.5
+
 # --- Explosions ---------------------------------------------------------------
 #
 # Shared by every EXPLOSIVE source -- grenades and mines when they land. The

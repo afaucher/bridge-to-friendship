@@ -44,10 +44,19 @@ var origin: Vector3 = Vector3.ZERO
 var owner_peer: int = 0
 var shooter_rid: RID = RID()
 
-func launch(from: Vector3, direction: Vector3, peer: int, rid: RID) -> void:
+# A ROCKET IS A ROUND THAT EXPLODES, which is why it is this script and not a new
+# one. It travels the same way, it is swept the same way, and it is replicated the
+# same way; the only thing it does differently is what happens at the far end of
+# the raycast. Everything else about a rocket -- the speed, the cadence, the
+# scarcity -- is tuning.
+var explodes: bool = false
+
+func launch(from: Vector3, direction: Vector3, peer: int, rid: RID,
+		as_rocket: bool = false) -> void:
+	explodes = as_rocket
 	position = from
 	origin = from
-	velocity = direction.normalized() * SimConfig.MG_BULLET_SPEED
+	velocity = direction.normalized() * (SimConfig.ROCKET_SPEED if as_rocket 		else SimConfig.MG_BULLET_SPEED)
 	owner_peer = peer
 	shooter_rid = rid
 	age = 0.0
@@ -88,7 +97,8 @@ func _face_travel() -> void:
 func is_spent() -> bool:
 	if origin.distance_to(position) > SimConfig.MG_RANGE:
 		return true
-	return age > SimConfig.MG_BULLET_LIFETIME or position.y < SimConfig.FALL_KILL_Y
+	var lifetime: float = SimConfig.ROCKET_LIFETIME if explodes 		else SimConfig.MG_BULLET_LIFETIME
+	return age > lifetime or position.y < SimConfig.FALL_KILL_Y
 
 # Clients are TOLD where a round is; they never simulate one.
 #

@@ -30,7 +30,7 @@ enum Mode { HELD, FLYING, LOOSE }
 # WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
 # a new special is a different resolve function rather than a different object --
 # what differs between them is what the BUTTON means, and that lives in the world.
-enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD }
+enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -102,6 +102,8 @@ func kind_name() -> String:
 			return "MINE"
 		Kind.SHIELD:
 			return "SHLD"
+		Kind.ROCKET:
+			return "RKT"
 	return "?"
 
 # WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
@@ -116,14 +118,30 @@ func kind_name() -> String:
 # The material is DUPLICATED first. Sub-resources are shared between instances of
 # a scene, so tinting one in place would repaint every special in the world --
 # including the ones already in somebody's hands.
+# The node that IS this kind. Every silhouette exists in the scene from the start
+# and four of the five are hidden -- see special.tscn for why they are not built
+# on demand.
+const SHAPE_NODES := {
+	Kind.MACHINE_GUN: "Body",
+	Kind.ROCKET: "Rocket",
+	Kind.GRENADE: "Nade",
+	Kind.MINE: "Mine",
+	Kind.SHIELD: "Shield",
+}
+
 func apply_kind_look() -> void:
-	var body := get_node_or_null("Body") as MeshInstance3D
-	if body != null and body.material_override != null:
-		var mat: StandardMaterial3D = body.material_override.duplicate()
-		mat.albedo_color = _kind_colour()
-		body.material_override = mat
+	for shape_kind in SHAPE_NODES:
+		var node := get_node_or_null(str(SHAPE_NODES[shape_kind])) as MeshInstance3D
+		if node == null:
+			continue
+		var mine: bool = shape_kind == kind
+		node.visible = mine
+		if mine and node.material_override != null:
+			var mat: StandardMaterial3D = node.material_override.duplicate()
+			mat.albedo_color = _kind_colour()
+			node.material_override = mat
 	# The barrel is the machine gun's tell and nobody else's: a thrown, placed or
-	# raised thing does not point.
+	# raised thing does not point, and the rocket has its own tube.
 	var barrel := get_node_or_null("Barrel") as MeshInstance3D
 	if barrel != null:
 		barrel.visible = kind == Kind.MACHINE_GUN
@@ -136,6 +154,8 @@ func _kind_colour() -> Color:
 			return Color(0.85, 0.22, 0.15)
 		Kind.SHIELD:
 			return Color(0.25, 0.52, 0.88)
+		Kind.ROCKET:
+			return Color(0.55, 0.62, 0.30)   # olive, the only military thing here
 	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per
