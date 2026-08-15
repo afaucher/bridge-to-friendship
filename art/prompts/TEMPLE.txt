@@ -1,0 +1,41 @@
+[RENDER]
+THIS IMAGE IS A SCREENSHOT OF A VIDEO GAME, captured while the game is running.
+Real-time 3D rendered by a game engine, seen from the player's camera. It is not
+a photograph, not a physical object photographed on a table, not product
+photography, and not a studio still-life.
+
+Production values of a well-made INDIE game rather than a AAA blockbuster: a
+small team's budget, simple sculpted forms, modest polygon and texture counts,
+and detail spent only where it is actually read. Cohesive and confident rather
+than lavish.
+
+[STYLE]
+An ancient stone temple, rendered with modern game fidelity. Weathered granite
+and sandstone carved into HIGH-RELIEF ornament -- deep-cut geometric borders,
+carved faces and figures standing proud of the surface, worn smooth at the
+edges by centuries. Moss and lichen creep out of every crevice and along the
+shaded underside of every ledge, in wet greens against warm grey stone. Cracks
+run through blocks, corners are chipped, and fine sand collects in the carving.
+
+The RENDERING is contemporary, not retro: stylized physically-based materials,
+soft global illumination, gentle ambient occlusion pooling in the carved relief,
+warm key light with cool sky bounce, crisp contact shadows. Detail is carried by
+sculpted geometry and honest stone material rather than by noise -- forms stay
+simple and silhouettes stay readable at a distance. Saturated colour is rationed
+and reserved for things that matter.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photograph, product photography, physical object photographed on a table,
+retro low-poly, pixelation, dithering, flat cartoon shading, photorealistic
+human faces, text, watermark, signature, UI overlay, HUD, lens flare,
+depth-of-field blur, motion blur, busy background

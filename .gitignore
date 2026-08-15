@@ -39,3 +39,6 @@ Godot_v*_linux.x86_64
 # Art bake-off output: generated sheets are large, regenerable, and not the
 # artefact -- art/shots.json, art/subjects.json and art/prompts/ are.
 art/out/
+
+# Python bytecode from art/gen.py
+__pycache__/

@@ -1,41 +1,133 @@
 {
   "_comment": "What each generated cell IS. The `subject` string is the only part of the prompt that changes between cells -- see design_ideas/art_direction.md Stage 2. `control` names the Stage-0 render in tmp/shots that seeds it; a cell with no control is generated without a composition reference (the anchors only).",
-
   "framing": {
     "roster": "Single object, three-quarter view, centred on a plain neutral mid-grey ground plane, plain soft background, even studio lighting, full object visible with margin on all sides. Square image.",
     "action": "Wide gameplay shot seen from a fixed camera above and behind the party, looking down the bridge at about 45 degrees. The bridge is a raised structure in open air with nothing below it.",
-    "anchor": "A single establishing image that fixes the material logic of this style: one upright character, one stone pillar, one enemy and a patch of the bridge deck, arranged on a plain background. Even lighting, three-quarter view."
+    "anchor": "An in-game screenshot that fixes the material logic of this style: the character, the pillar and the enemy standing together on a section of the raised bridge deck, with the drop into open sky beyond it. Seen from the game's fixed camera, above and behind, looking down at about 45 degrees."
   },
-
-  "anchor_subject": "A stout upright cylindrical character about 1.8 m tall with a small wedge on its front showing which way it faces, standing beside a waist-high round stone pillar and a small hostile cone-shaped creature, on a section of raised walkway deck.",
-
+  "anchor_subject": "A stout upright cylindrical character about 1.8 m tall, flat-topped and flat-bottomed, with a wedge-shaped pointer standing out from one side to show which direction it is pointing -- a compass needle, NOT a face. The character has no face, no eyes, no beak and no mouth. It stands beside a waist-high round pillar block with a flat top, and a small hostile cone-shaped creature, on a section of raised deck.",
   "roster": [
-    {"cell": "player_blue",  "control": "player_blue",  "subject": "A stout upright cylindrical character 1.8 m tall and 0.8 m across, flat-topped and flat-bottomed, in the party's blue colour, with a small bright wedge on its front face showing which way it is pointing. It is a playable hero, readable from above."},
-    {"cell": "player_amber", "control": "player_amber", "subject": "The same stout upright cylindrical character, in the party's amber colour instead of blue. The colour is the only difference: silhouette and proportions are identical to the blue one."},
-    {"cell": "player_hatted","control": "player_hatted","subject": "The same stout upright cylindrical character wearing a separate brimmed hat resting on its flat top. The hat must read as a distinct removable object sitting on the character, not as part of it."},
-    {"cell": "hat",          "control": "hat",          "subject": "A small brimmed hat lying by itself, a loose prop that can be knocked off a head and picked up by someone else."},
-    {"cell": "heart",        "control": "heart",        "subject": "A pickup that restores health: a small round object 0.7 m across, unmistakably a healing item and unmistakably good news."},
-    {"cell": "mound",        "control": "mound",        "subject": "A low mound of disturbed earth about 2 m across on a walkway deck, the telegraph that something hostile is about to burst out of it."},
-    {"cell": "stone",        "control": "stone",        "subject": "A round stone pillar block 1.6 m across and 2 m tall, flat-topped so a character can stand on it. It can be shoved one step sideways, and things bounce off it."},
-    {"cell": "plinko_ball",  "control": "plinko_ball",  "subject": "A heavy dark sphere 1.2 m across, the game's main hazard. It is slow, weighty and obviously dangerous, and must stay clearly visible against both a pale deck and an open sky."},
-    {"cell": "shooter",      "control": "shooter",      "subject": "A squat cylindrical emplacement 2 m wide with a short barrel on its top face, which lobs heavy balls up the bridge. It belongs to the pillar field it stands in, but is identifiably the dangerous one."},
-    {"cell": "rusher",       "control": "rusher",       "subject": "A hostile cone-shaped creature 1.4 m tall that bursts out of the ground and charges in a straight line. It dies in one hit. All of its design points forward."},
-    {"cell": "skirmisher",   "control": "skirmisher",   "subject": "A hostile humanoid enemy 1.7 m tall that keeps its distance and shoots. It must be distinguishable at a glance from the charging cone enemy and from the bolted-down turret."},
-    {"cell": "turret",       "control": "turret",       "subject": "A hostile gun emplacement 1.5 m wide bolted to the deck with a rotating top and a barrel. It cannot be shoved, and it must look immovable."},
-    {"cell": "bullet",       "control": "bullet",       "subject": "A single slow-moving projectile round about 0.3 m across with a visible tail, travelling left to right. Slow enough that a player watches it cross the gap."},
-    {"cell": "rocket",       "control": "rocket",       "subject": "A small rocket projectile 0.6 m long with an exhaust plume behind it, travelling left to right."},
-    {"cell": "grenade",      "control": "grenade",      "subject": "A small round thrown explosive 0.36 m across, lying armed on the ground."},
-    {"cell": "mine",         "control": "mine",         "subject": "A flat disc-shaped proximity mine 0.65 m across lying on the deck, with a single small sensor on top."},
-    {"cell": "special_machine_gun", "control": "special_machine_gun", "subject": "A pickup weapon lying on the deck: a compact rapid-fire gun with a barrel. One of five pickups that must be told apart by SHAPE alone at thirty metres, not by colour."},
-    {"cell": "special_grenade",     "control": "special_grenade",     "subject": "A pickup lying on the deck: a round thrown explosive with a grip. The only round one in the pickup set."},
-    {"cell": "special_mine",        "control": "special_mine",        "subject": "A pickup lying on the deck: a flat disc-shaped proximity mine, the flattest silhouette in the pickup set."},
-    {"cell": "special_shield",      "control": "special_shield",      "subject": "A pickup lying on the deck: a plantable shield panel. The only protective item in the game, and the only one that should read as cool rather than warm."},
-    {"cell": "special_rocket",      "control": "special_rocket",      "subject": "A pickup lying on the deck: a fat open-ended rocket launcher tube, wider than the other weapon pickups."}
+    {
+      "cell": "player_blue",
+      "control": "player_blue",
+      "subject": "A stout upright cylindrical character 1.8 m tall and 0.8 m across, flat-topped and flat-bottomed, in the party's blue colour, with a small bright wedge on its front face showing which way it is pointing. It is a playable hero, readable from above."
+    },
+    {
+      "cell": "player_amber",
+      "control": "player_amber",
+      "subject": "The same stout upright cylindrical character, in the party's amber colour instead of blue. The colour is the only difference: silhouette and proportions are identical to the blue one."
+    },
+    {
+      "cell": "player_hatted",
+      "control": "player_hatted",
+      "subject": "The same stout upright cylindrical character wearing a separate brimmed hat resting on its flat top. The hat must read as a distinct removable object sitting on the character, not as part of it."
+    },
+    {
+      "cell": "hat",
+      "control": "hat",
+      "subject": "A small brimmed hat lying by itself, a loose prop that can be knocked off a head and picked up by someone else."
+    },
+    {
+      "cell": "heart",
+      "control": "heart",
+      "subject": "A pickup that restores health: a small round object 0.7 m across, unmistakably a healing item and unmistakably good news."
+    },
+    {
+      "cell": "mound",
+      "control": "mound",
+      "subject": "A low mound of disturbed earth about 2 m across on a walkway deck, the telegraph that something hostile is about to burst out of it."
+    },
+    {
+      "cell": "stone",
+      "control": "stone",
+      "subject": "A round stone pillar block 1.6 m across and 2 m tall, flat-topped so a character can stand on it. It can be shoved one step sideways, and things bounce off it."
+    },
+    {
+      "cell": "plinko_ball",
+      "control": "plinko_ball",
+      "subject": "A heavy dark sphere 1.2 m across, the game's main hazard. It is slow, weighty and obviously dangerous, and must stay clearly visible against both a pale deck and an open sky."
+    },
+    {
+      "cell": "shooter",
+      "control": "shooter",
+      "subject": "A squat cylindrical emplacement 2 m wide with a short barrel on its top face, which lobs heavy balls up the bridge. It belongs to the pillar field it stands in, but is identifiably the dangerous one."
+    },
+    {
+      "cell": "rusher",
+      "control": "rusher",
+      "subject": "A hostile cone-shaped creature 1.4 m tall that bursts out of the ground and charges in a straight line. It dies in one hit. All of its design points forward."
+    },
+    {
+      "cell": "skirmisher",
+      "control": "skirmisher",
+      "subject": "A hostile humanoid enemy 1.7 m tall that keeps its distance and shoots. It must be distinguishable at a glance from the charging cone enemy and from the bolted-down turret."
+    },
+    {
+      "cell": "turret",
+      "control": "turret",
+      "subject": "A hostile gun emplacement 1.5 m wide bolted to the deck with a rotating top and a barrel. It cannot be shoved, and it must look immovable."
+    },
+    {
+      "cell": "bullet",
+      "control": "bullet",
+      "subject": "A single slow-moving projectile round about 0.3 m across with a visible tail, travelling left to right. Slow enough that a player watches it cross the gap."
+    },
+    {
+      "cell": "rocket",
+      "control": "rocket",
+      "subject": "A small rocket projectile 0.6 m long with an exhaust plume behind it, travelling left to right."
+    },
+    {
+      "cell": "grenade",
+      "control": "grenade",
+      "subject": "A small round thrown explosive 0.36 m across, lying armed on the ground."
+    },
+    {
+      "cell": "mine",
+      "control": "mine",
+      "subject": "A flat disc-shaped proximity mine 0.65 m across lying on the deck, with a single small sensor on top."
+    },
+    {
+      "cell": "special_machine_gun",
+      "control": "special_machine_gun",
+      "subject": "A pickup weapon lying on the deck: a compact rapid-fire gun with a barrel. One of five pickups that must be told apart by SHAPE alone at thirty metres, not by colour."
+    },
+    {
+      "cell": "special_grenade",
+      "control": "special_grenade",
+      "subject": "A pickup lying on the deck: a round thrown explosive with a grip. The only round one in the pickup set."
+    },
+    {
+      "cell": "special_mine",
+      "control": "special_mine",
+      "subject": "A pickup lying on the deck: a flat disc-shaped proximity mine, the flattest silhouette in the pickup set."
+    },
+    {
+      "cell": "special_shield",
+      "control": "special_shield",
+      "subject": "A pickup lying on the deck: a plantable shield panel. The only protective item in the game, and the only one that should read as cool rather than warm."
+    },
+    {
+      "cell": "special_rocket",
+      "control": "special_rocket",
+      "subject": "A pickup lying on the deck: a fat open-ended rocket launcher tube, wider than the other weapon pickups."
+    }
   ],
-
   "action": [
-    {"cell": "action_shove",         "control": "action_shove",         "subject": "Two of the cylindrical characters on a raised checkerboard walkway high in the air. One is mid-dash, committed and unable to steer, about to slam into the other, who is standing a few steps from a hole in the deck. Round stone pillars and a scattering of pickups sit around them."},
-    {"cell": "action_ball_incoming", "control": "action_ball_incoming", "subject": "A cylindrical character on a raised walkway with a heavy dark sphere arcing down through the air toward it, and a second sphere already rolling along the deck. Stone pillars, holes in the deck, and a drop into open sky on both sides."},
-    {"cell": "action_rusher_wave",   "control": "action_rusher_wave",   "subject": "Two cylindrical characters, one blue and one amber, standing together on a raised walkway as two hostile cone creatures charge at them from up the bridge, with a distant humanoid enemy shooting from behind. Stone pillars, holes in the deck, water on the level above."}
+    {
+      "cell": "action_shove",
+      "control": "action_shove",
+      "subject": "Two of the cylindrical characters on a raised checkerboard walkway high in the air. One is mid-dash, committed and unable to steer, about to slam into the other, who is standing a few steps from a hole in the deck. Round stone pillars and a scattering of pickups sit around them."
+    },
+    {
+      "cell": "action_ball_incoming",
+      "control": "action_ball_incoming",
+      "subject": "A cylindrical character on a raised walkway with a heavy dark sphere arcing down through the air toward it, and a second sphere already rolling along the deck. Stone pillars, holes in the deck, and a drop into open sky on both sides."
+    },
+    {
+      "cell": "action_rusher_wave",
+      "control": "action_rusher_wave",
+      "subject": "Two cylindrical characters, one blue and one amber, standing together on a raised walkway as two hostile cone creatures charge at them from up the bridge, with a distant humanoid enemy shooting from behind. Stone pillars, holes in the deck, water on the level above."
+    }
   ]
 }

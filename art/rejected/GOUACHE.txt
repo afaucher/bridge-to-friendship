@@ -1,3 +1,13 @@
+[RENDER]
+Digital game art rendered in a real-time 3D engine and seen in-game. Not a
+photograph, not a physical object photographed on a table, not product
+photography.
+
+Production values of a well-made INDIE game rather than a AAA blockbuster: a
+small team's budget, simple sculpted forms, modest polygon and texture counts,
+and detail spent only where it is actually read. Cohesive and confident rather
+than lavish.
+
 [STYLE]
 Hand-painted storybook illustration in gouache, like a 1970s children's picture
 book. Visible brush strokes and low texel density -- the paint should read as
@@ -18,5 +28,6 @@ you.
 logos or UI. Do not add a ground grid, ruler or scale bar.
 
 [NEGATIVE]
+photograph, product photography, physical object photographed on a table,
 photorealistic human faces, text, watermark, signature, UI overlay, HUD,
 lens flare, depth-of-field blur, motion blur, busy background, harsh contrast, neon colours, chrome, photorealism, airbrush, plastic

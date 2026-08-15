@@ -1,0 +1,40 @@
+[RENDER]
+THIS IMAGE IS A SCREENSHOT OF A VIDEO GAME, captured while the game is running.
+Real-time 3D rendered by a game engine, seen from the player's camera. It is not
+a photograph, not a physical object photographed on a table, not product
+photography, and not a studio still-life.
+
+Production values of a well-made INDIE game rather than a AAA blockbuster: a
+small team's budget, simple sculpted forms, modest polygon and texture counts,
+and detail spent only where it is actually read. Cohesive and confident rather
+than lavish.
+
+[STYLE]
+Contemporary stylized 3D game art, the look of a current high-production co-op
+party game. Physically-based but deliberately stylized: clean simplified forms,
+generous soft bevels catching the light, restrained surface detail, and
+silhouettes that stay readable at a distance. Materials are painted plastic,
+soft rubber and matte powder-coated metal with gentle roughness variation --
+never grunge, never photo-real, never sci-fi panelling. Lighting is modern
+real-time: one warm key, cool sky bounce, soft contact shadows, light ambient
+occlusion in the crevices, a touch of subsurface warmth on characters. Colour is
+saturated but controlled, with the palette doing the work rather than texture
+detail. Everything looks manufactured for this world and freshly made, not
+ancient, weathered or ruined.
+
+[SUBJECT]
+{SUBJECT}
+
+[FRAMING]
+{FRAMING}
+
+[RULES]
+{CONTROL_RULE}Do not add characters, props, text, labels, watermarks,
+logos or UI. Do not add a ground grid, ruler or scale bar.
+
+[NEGATIVE]
+photograph, physical object photographed on a table, product photography,
+stone temple, ancient ruins, dungeon, cobblestone, medieval masonry, rust,
+grunge, retro low-poly, pixelation, dithering, photorealistic human faces, text,
+watermark, signature, UI overlay, HUD, lens flare, depth-of-field blur, motion
+blur, busy background

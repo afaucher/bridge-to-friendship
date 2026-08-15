@@ -54,9 +54,47 @@ MODEL_FLASH = "gemini-3.1-flash-image"
 # Per-model reference-slot budgets, asserted rather than discovered in a 400.
 SLOT_BUDGET = {MODEL_PRO: 6, MODEL_FLASH: 10}
 
+# THE API RETURNS JPEG ONLY. Asking for image/png is a 400, not a fallback:
+#   "The value 'image/png' is not supported for 'response_format.mime_type'"
+# Inputs may still be PNG, which is why an attached reference reports its own
+# mime from its extension rather than inheriting this one.
+OUT_MIME = "image/jpeg"
+OUT_EXT = ".jpg"
+
 
 def styles():
     return sorted(f[:-4] for f in os.listdir(PROMPTS) if f.endswith(".txt"))
+
+
+# Where a key may live when it is not in the environment. OUTSIDE THE REPO, and
+# checked to be outside below -- a key file under res:// is one `git add -A` away
+# from being published, and unlike most mistakes that one cannot be taken back.
+DEFAULT_KEY_FILE = os.path.join(os.path.expanduser("~"), ".btf_gemini_key")
+
+
+def load_key():
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    path = os.environ.get("GEMINI_API_KEY_FILE", DEFAULT_KEY_FILE)
+    path = os.path.abspath(os.path.expanduser(path))
+    # Checked BEFORE the existence test, so pointing this at the repo is refused
+    # whether or not the file happens to be there yet.
+    if os.path.commonpath([path, REPO]) == REPO:
+        raise SystemExit(
+            "refusing to read an API key from %s: it is inside the repository.\n"
+            "Put it at %s instead, or set GEMINI_API_KEY in the environment."
+            % (path, DEFAULT_KEY_FILE))
+    if not os.path.exists(path):
+        return ""
+    with open(path, encoding="utf-8") as fh:
+        # First non-blank, non-comment line, stripped -- so a stray newline from
+        # an editor does not travel to the API as part of the credential.
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return line
+    return ""
 
 
 CONTROL_RULE = (
@@ -86,7 +124,8 @@ def b64(path):
 def build_request(model, prompt, images, aspect="1:1", size="2K"):
     parts = [{"type": "text", "text": prompt}]
     for path in images:
-        parts.append({"type": "image", "mime_type": "image/png", "data": b64(path)})
+        mime = "image/jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "image/png"
+        parts.append({"type": "image", "mime_type": mime, "data": b64(path)})
     budget = SLOT_BUDGET.get(model, 6)
     if len(images) > budget:
         raise SystemExit("%s takes at most %d reference images, got %d"
@@ -96,7 +135,7 @@ def build_request(model, prompt, images, aspect="1:1", size="2K"):
         "input": parts,
         "response_format": {
             "type": "image",
-            "mime_type": "image/png",
+            "mime_type": OUT_MIME,
             "aspect_ratio": aspect,
             "image_size": size,
         },
@@ -126,7 +165,7 @@ def find_image(payload):
     return None
 
 
-def call(api_key, body, retries=4):
+def call(api_key, body, retries=6):
     request = urllib.request.Request(
         ENDPOINT,
         data=json.dumps(body).encode("utf-8"),
@@ -143,9 +182,19 @@ def call(api_key, body, retries=4):
             # 429 and 5xx are worth waiting out; a 400 is a bug in what we sent
             # and retrying it just spends money slowly.
             if err.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
-                print("    http %d, retrying in %.0fs" % (err.code, delay))
-                time.sleep(delay)
-                delay *= 2
+                # The server's own Retry-After beats our guess when it sends
+                # one -- backing off less than asked is how a throttle becomes a
+                # ban, and backing off far more than asked wastes an hour.
+                wait = delay
+                header = err.headers.get("Retry-After") if err.headers else None
+                if header:
+                    try:
+                        wait = max(delay, float(header))
+                    except ValueError:
+                        pass
+                print("    http %d, retrying in %.0fs" % (err.code, wait))
+                time.sleep(wait)
+                delay = min(delay * 2, 120.0)
                 continue
             raise SystemExit("http %d: %s" % (err.code, detail))
         except urllib.error.URLError as err:
@@ -169,14 +218,14 @@ def generate(api_key, code, cell, subject, framing, control, model, aspect, size
              dry_run, force):
     out_dir = os.path.join(OUT, code)
     os.makedirs(out_dir, exist_ok=True)
-    target = os.path.join(out_dir, cell + ".png")
+    target = os.path.join(out_dir, cell + OUT_EXT)
     if os.path.exists(target) and not force:
         print("  = %-24s (exists, --force to redo)" % cell)
         return True
 
     prompt = read_prompt(code, subject, framing, control is not None)
     refs = []
-    anchor = os.path.join(ANCHORS, code + ".png")
+    anchor = os.path.join(ANCHORS, code + OUT_EXT)
     if os.path.exists(anchor):
         refs.append(anchor)
     elif cell != "_anchor" and dry_run:
@@ -190,9 +239,16 @@ def generate(api_key, code, cell, subject, framing, control, model, aspect, size
         refs.append(control)
 
     if dry_run:
-        print("  ~ %-24s %s  refs=%s  %s %s" % (
-            cell, model, [os.path.basename(r) for r in refs], aspect, size))
-        print("    " + "\n    ".join(prompt.strip().splitlines()))
+        # THE REAL BODY, not a description of it. Built through the same
+        # build_request() the live path uses -- including the slot-budget
+        # assertion -- with the base64 payloads replaced by a note of their size,
+        # so what you read is what would go on the wire.
+        body = build_request(model, prompt, refs, aspect, size)
+        for part, path in zip([p for p in body["input"] if p["type"] == "image"], refs):
+            part["data"] = "<%s -- %d KB of base64>" % (
+                os.path.basename(path), len(part["data"]) // 1024)
+        print("  ~ %s  ->  POST %s" % (cell, ENDPOINT))
+        print(json.dumps(body, indent=2))
         print()
         return True
 
@@ -241,7 +297,7 @@ def write_sheet(code, rows):
     html = ["<meta charset='utf-8'><title>%s sheet</title><style>%s</style>" % (code, SHEET_CSS),
             "<h1>%s</h1><div class='grid'>" % code]
     for cell, subject, control in rows:
-        img = cell + ".png"
+        img = cell + OUT_EXT
         if not os.path.exists(os.path.join(out_dir, img)):
             continue
         control_img = ""
@@ -275,8 +331,8 @@ def write_compare(codes, rows):
         else:
             html.append("<td></td>")
         for code in codes:
-            img = os.path.join(OUT, code, cell + ".png")
-            html.append("<td><img src='%s/%s.png'></td>" % (code, cell)
+            img = os.path.join(OUT, code, cell + OUT_EXT)
+            html.append("<td><img src='%s/%s%s'></td>" % (code, cell, OUT_EXT)
                         if os.path.exists(img) else "<td></td>")
         html.append("</tr>")
     html.append("</table>")
@@ -301,13 +357,13 @@ def main():
     with open(os.path.join(ROOT, "subjects.json"), encoding="utf-8") as fh:
         subjects = json.load(fh)
 
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = load_key()
     if not api_key and not args.dry_run and args.stage != "sheets":
         # Refuses rather than prompting: a key typed at a prompt ends up in a
-        # shell history, and a key read from a file in the repo ends up in a
-        # commit.
-        raise SystemExit("GEMINI_API_KEY is not set. Set it in the environment; "
-                         "this script will not read a key from a file in the repo.")
+        # shell history.
+        raise SystemExit(
+            "no API key found. Either set GEMINI_API_KEY in the environment, or "
+            "put the key on the first line of:\n    %s" % DEFAULT_KEY_FILE)
 
     codes = args.style or styles()
     for code in codes:
@@ -337,12 +393,12 @@ def main():
             generate(api_key, code, "_anchor", subjects["anchor_subject"],
                      subjects["framing"]["anchor"], None, MODEL_PRO, "4:3", "4K",
                      args.dry_run, args.force)
-            src = os.path.join(OUT, code, "_anchor.png")
-            if os.path.exists(src) and not os.path.exists(os.path.join(ANCHORS, code + ".png")):
+            src = os.path.join(OUT, code, "_anchor" + OUT_EXT)
+            if os.path.exists(src) and not os.path.exists(os.path.join(ANCHORS, code + OUT_EXT)):
                 os.makedirs(ANCHORS, exist_ok=True)
-                with open(src, "rb") as a, open(os.path.join(ANCHORS, code + ".png"), "wb") as b:
+                with open(src, "rb") as a, open(os.path.join(ANCHORS, code + OUT_EXT), "wb") as b:
                     b.write(a.read())
-                print("  -> promoted to art/anchors/%s.png (the style contract; "
+                print("  -> promoted to art/anchors/%s.jpg (the style contract; "
                       "delete it to re-roll)" % code)
 
         if args.stage in ("roster", "all"):

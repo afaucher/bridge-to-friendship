@@ -1,3 +1,14 @@
+[RENDER]
+THIS IMAGE IS A SCREENSHOT OF A VIDEO GAME, captured while the game is running.
+Real-time 3D rendered by a game engine, seen from the player's camera. It is not
+a photograph, not a physical object photographed on a table, not product
+photography, and not a studio still-life.
+
+Production values of a well-made INDIE game rather than a AAA blockbuster: a
+small team's budget, simple sculpted forms, modest polygon and texture counts,
+and detail spent only where it is actually read. Cohesive and confident rather
+than lavish.
+
 [STYLE]
 Injection-moulded plastic playset. Every object is a piece from the same toy
 set: glossy ABS plastic, high specular, low roughness, no metal anywhere. Soft
@@ -19,5 +30,6 @@ between two of those. Clean bright even studio light, soft shadow.
 logos or UI. Do not add a ground grid, ruler or scale bar.
 
 [NEGATIVE]
+photograph, product photography, physical object photographed on a table,
 photorealistic human faces, text, watermark, signature, UI overlay, HUD,
 lens flare, depth-of-field blur, motion blur, busy background, rust, grime, weathering, muted colours, painterly brushwork, fabric

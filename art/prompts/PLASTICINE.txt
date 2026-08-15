@@ -1,3 +1,14 @@
+[RENDER]
+THIS IMAGE IS A SCREENSHOT OF A VIDEO GAME, captured while the game is running.
+Real-time 3D rendered by a game engine, seen from the player's camera. It is not
+a photograph, not a physical object photographed on a table, not product
+photography, and not a studio still-life.
+
+Production values of a well-made INDIE game rather than a AAA blockbuster: a
+small team's budget, simple sculpted forms, modest polygon and texture counts,
+and detail spent only where it is actually read. Cohesive and confident rather
+than lavish.
+
 [STYLE]
 Stop-motion clay animation, Aardman-like. Everything is modelled from
 plasticine: matte clay with a faint waxy sheen, visible thumb dents, fingerprint
@@ -19,5 +30,6 @@ lamps, shallow warm shadows.
 logos or UI. Do not add a ground grid, ruler or scale bar.
 
 [NEGATIVE]
+photograph, product photography, physical object photographed on a table,
 photorealistic human faces, text, watermark, signature, UI overlay, HUD,
 lens flare, depth-of-field blur, motion blur, busy background, clean CG surfaces, perfect symmetry, metal, glass, sharp machined edges

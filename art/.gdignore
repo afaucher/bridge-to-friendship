@@ -1,0 +1,4 @@
+# art/ holds bake-off tooling and reference images the GAME never loads.
+# Without this, Godot imports every generated .jpg, writes .import files beside
+# them and sweeps them into the exported .pck -- see the CLAUDE.md note on
+# export_filter and the stray editor_settings.tres.

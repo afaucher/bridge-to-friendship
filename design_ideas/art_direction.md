@@ -387,11 +387,21 @@ concatenated at the call site.
 art/
   shots.json          # Stage-0 camera + pose manifest (committed)
   subjects.json       # the roster/environment/action cell lists (committed)
-  prompts/<CODE>.txt  # six style scaffolds (committed)
-  anchors/<CODE>.png  # one hero image per style (committed -- small, and it IS the contract)
+  prompts/<CODE>.txt  # one style scaffold per style (committed)
+  anchors/<CODE>.jpg  # the style contract, at REFERENCE size (committed, ~150 KB each)
+  rejected/           # styles that were cut, and why (committed)
   gen.py              # the generator (committed, stdlib only)
-  out/                # generated sheets (gitignored)
+  out/                # full-resolution generations + sheets (gitignored)
+  .gdignore           # keeps Godot's importer out of all of the above
 ```
+
+**The committed anchor is a reference, not a master.** Generated at 4K it is
+2-3 MB, and anchors accumulate -- every re-roll and every new style adds another,
+so committing masters is a repo that grows by 20 MB a round for images nobody
+diffs. The full-resolution original stays in `art/out/<CODE>/_anchor.jpg`, which
+is gitignored; `art/anchors/` holds it downscaled to ~1100 px, which is ~150 KB
+and is all a style reference needs to be -- for the model *or* for a human. It
+also makes every subsequent request cheaper to upload.
 
 **`GEMINI_API_KEY` comes from the environment, never from a file in the repo.**
 The script should refuse to run rather than prompt for it, and `art/out/` goes in
@@ -501,6 +511,53 @@ Small, and worth doing regardless of which style wins:
 5. **Keep `show_hitboxes` honest.** After any restyle, run it. The whole point of
    the tool is catching a mesh that lies about its collider, and a restyle is the
    single most likely moment to introduce one.
+
+## What rounds 1 and 2 actually taught us
+
+Run 2026-08-15. Stage 1 cost six images and paid for itself immediately.
+
+- **A style block that describes MATERIALS produces photography.** Three of the
+  first six anchors came back as photographs of physical objects -- a real toy on
+  a table, a clay model, a concrete still-life. The three that worked described a
+  *rendering technique* instead. The bible was written for a human art director,
+  who would have assumed "in a game" without being told. Every scaffold now opens
+  with a `[RENDER]` block stating outright that the image is a screenshot of a
+  running game, and `photograph, product photography` is in every negative.
+- **The FRAMING line was half the cause.** The anchor framing said "arranged on a
+  plain background, even lighting, three-quarter view", which is how you stage a
+  product shot. It now describes the game's own camera. Worth remembering that a
+  framing instruction can contradict a style instruction and win.
+- **"Indie, not AAA" is worth saying explicitly.** Without it the temple style
+  drifts toward photoreal blockbuster ruins, which is a target nobody here can
+  build to.
+- **A subject description leaks a shape you did not intend.** "A wedge on its
+  front showing which way it FACES" produced a BIRD in all six styles
+  independently -- front plus faces plus wedge is a beak. It now says compass
+  needle, and says no face, no eyes, no beak.
+- **The API returns JPEG only.** `response_format.mime_type: "image/png"` is a
+  400, not a fallback.
+- **The provenance label is a POST STEP** (`scripts/shots/stamp.gd`), never asked
+  of the model: the prompts forbid rendered text, and a model that does render
+  text renders it differently every time and in the style of the image -- which
+  is exactly what a provenance label must not be.
+
+**Styles after round 2:** `TEMPLE`, `MODERN`, `BROADSHEET`, `SITE`, `SIGNAL`,
+`TOYBOX`, `PLASTICINE`. `GOUACHE` was cut for soft threat contrast and is kept in
+`art/rejected/` as evidence.
+
+**What the action shots showed that the anchors could not**, which is the whole
+argument for generating them first and the roster later:
+
+- `MODERN` holds our composition; `TEMPLE` rebuilds the scene into a nicer one.
+  A style that restyles the level is worth more than a style that replaces it.
+- `BROADSHEET` renders holes and the void behind the bridge in the SAME flat
+  black. On a bridge whose failure state is falling through a hole, that fails
+  contract rule 6 as generated.
+- `SITE` keeps building a ROOM: the drop into open sky becomes a sunken pit with
+  walls. "Construction site" implies enclosure, and enclosure removes the threat.
+- In all four, pickups and hearts are coloured blobs at gameplay distance. The
+  five distinct special silhouettes are under pressure at real framing
+  *regardless of style*, which is a finding about the game, not about the art.
 
 ## Open questions
 
