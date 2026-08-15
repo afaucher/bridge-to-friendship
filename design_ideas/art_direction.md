@@ -388,20 +388,32 @@ art/
   shots.json          # Stage-0 camera + pose manifest (committed)
   subjects.json       # the roster/environment/action cell lists (committed)
   prompts/<CODE>.txt  # one style scaffold per style (committed)
-  anchors/<CODE>.jpg  # the style contract, at REFERENCE size (committed, ~150 KB each)
-  rejected/           # styles that were cut, and why (committed)
+  anchors/<CODE>.jpg  # the style contract (GITIGNORED -- see below)
+  rejected/<CODE>.txt # scaffolds for styles that were cut (committed)
   gen.py              # the generator (committed, stdlib only)
   out/                # full-resolution generations + sheets (gitignored)
   .gdignore           # keeps Godot's importer out of all of the above
 ```
 
-**The committed anchor is a reference, not a master.** Generated at 4K it is
-2-3 MB, and anchors accumulate -- every re-roll and every new style adds another,
-so committing masters is a repo that grows by 20 MB a round for images nobody
-diffs. The full-resolution original stays in `art/out/<CODE>/_anchor.jpg`, which
-is gitignored; `art/anchors/` holds it downscaled to ~1100 px, which is ~150 KB
-and is all a style reference needs to be -- for the model *or* for a human. It
-also makes every subsequent request cheaper to upload.
+**Generated images are not tracked; everything that produces them is.** Decided
+2026-08-15. Anchors accumulate -- every re-roll and every new style adds another
+-- and a game repo that grows by megabytes a round for binaries nobody can diff
+is a repo nobody wants to clone. The generator, the prompt scaffolds, the two
+manifests and the Godot shot rig are the reproducible part, and those are
+committed.
+
+**Know what that costs, because it is not nothing.** The API has no seed, so an
+anchor CANNOT be regenerated identically -- re-running `gen.py anchors` gives a
+different image in the same style. An untracked anchor is therefore irreplaceable
+local state, and a fresh clone can rebuild the pipeline but not the exact style
+contract the sheets were generated against. If a style is chosen and work starts
+against it, its anchor needs a home that outlives one laptop -- an asset drive or
+a release attachment -- before that happens.
+
+`art/anchors/` is also kept at REFERENCE size rather than the 4K the API returns:
+~1100 px and ~150 KB, which is all a style reference needs to be for the model or
+for a human, and it makes every subsequent request cheaper to upload. The
+full-resolution original stays in `art/out/<CODE>/_anchor.jpg`.
 
 **`GEMINI_API_KEY` comes from the environment, never from a file in the repo.**
 The script should refuse to run rather than prompt for it, and `art/out/` goes in

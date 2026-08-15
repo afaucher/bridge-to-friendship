@@ -42,3 +42,10 @@ art/out/
 
 # Python bytecode from art/gen.py
 __pycache__/
+
+# Generated art is model OUTPUT, not source. The generator, the prompt
+# scaffolds, the manifests and the shot rig that produce it are all tracked;
+# the images themselves are not. NOTE the consequence: the API has no seed, so
+# an anchor cannot be regenerated identically -- see design_ideas/art_direction.md.
+art/anchors/
+art/rejected/*.jpg
