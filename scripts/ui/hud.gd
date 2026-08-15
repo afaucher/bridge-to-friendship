@@ -213,9 +213,13 @@ func _sync_slots(slots: Array) -> void:
 		if data.has("ammo") and bool(data.get("filled", false)):
 			caption.text = "%s\n%d" % [caption.text, int(data["ammo"])]
 		if not bool(data.get("filled", false)):
-			# DELIBERATELY EMPTY, not broken. Rope arrives in M4 and special in
-			# M12; an unexplained blank box in a playtest build reads as a bug and
-			# costs someone a report.
+			# DELIBERATELY EMPTY, not broken -- an unexplained blank box in a
+			# playtest build reads as a bug and costs somebody a report.
+			#
+			# The only slot that is ever empty now is the SPECIAL one, and it is
+			# empty because your hands are. The permanently-blank ROPE box that
+			# used to sit beside it was removed on 2026-08-15: this treatment is
+			# for a slot that fills, and a box that never has is furniture.
 			slot.color = COLOR_SLOT_EMPTY
 			caption.add_theme_color_override("font_color", COLOR_DIM)
 		else:

@@ -145,14 +145,20 @@ static func _fraction(value: float, total: float) -> float:
 
 # --- Slots --------------------------------------------------------------------
 
-# Three action slots, per D5. Rope is empty until M4, and `filled` is what tells
-# the view to draw "deliberately empty" rather than "broken" -- an unexplained
-# blank box reads as a bug in a build someone is playtesting.
+# TWO ACTION SLOTS. D5 asked for three and the third was ROPE, drawn permanently
+# blank against M4 landing -- removed 2026-08-15 because a box that has never
+# filled and cannot fill is not "deliberately empty", it is furniture. It was
+# reported from a playtest as a button that does nothing, which is exactly the
+# report the empty-versus-broken distinction was meant to prevent.
 #
-# THE SPECIAL SLOT IS NOW SOMETIMES FILLED, which is the shape M9 predicted: a new
-# field on a dictionary rather than new layout code. It is the first slot whose
-# `filled` genuinely varies at runtime, so it is also the first real test of that
-# empty-versus-broken distinction.
+# THE DISTINCTION ITSELF SURVIVES, and is better carried now: the SPECIAL slot
+# genuinely varies at runtime -- empty-handed one moment and holding a rocket the
+# next -- so "empty is a state, not an absence" is taught by a slot the player
+# watches change rather than by one that never has.
+#
+# `ACTION_ROPE` stays reserved in sim_config: it is a wire constant, it costs a
+# bit nobody is using, and renumbering the action bits to reclaim it would be a
+# protocol change for no gain. When M4 lands, the slot comes back here.
 static func _slots(world: Node, peer: int, body: Node) -> Array:
 	return [
 		{
@@ -162,7 +168,6 @@ static func _slots(world: Node, peer: int, body: Node) -> Array:
 			"ready": float(body.shove_cooldown) <= 0.0,
 			"cooldown": _fraction(float(body.shove_cooldown), SimConfig.SHOVE_COOLDOWN),
 		},
-		{"id": "rope", "label": "ROPE", "filled": false, "ready": false, "cooldown": 0.0},
 		_special_slot(world, peer),
 	]
 

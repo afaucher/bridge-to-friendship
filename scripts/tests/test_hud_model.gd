@@ -77,14 +77,20 @@ func _check_shape() -> void:
 
 func _check_slots() -> void:
 	var slots: Array = _own()["slots"]
-	eq(slots.size(), 3, "three action slots, per D5")
+	# TWO, not the three D5 asked for. The rope slot was removed on 2026-08-15 --
+	# it had never filled and could not, so it was furniture rather than a
+	# deliberate blank. Asserting the COUNT is what stops it drifting back in
+	# unnoticed, and what would catch a fourth arriving without a decision.
+	eq(slots.size(), 2, "two action slots -- rope is gone until M4 brings it back")
 	eq(str(slots[0]["id"]), "push", "push first")
 	check(bool(slots[0]["filled"]), "push is live")
 	check(bool(slots[0]["ready"]), "and ready when the dash is off cooldown")
-	# Empty is a STATE, not an absence: the view draws these deliberately blank
-	# rather than omitting them, so the layout does not move when M4 and M12 land.
-	check(not bool(slots[1]["filled"]), "rope is empty until M4")
-	check(not bool(slots[2]["filled"]), "special is empty until M12")
+	# Empty is a STATE, not an absence: the view draws this deliberately blank
+	# rather than omitting it, so the layout does not move when a special is
+	# picked up. It is now the ONLY slot that does this, and the only one that
+	# genuinely varies -- which is what makes the distinction worth having.
+	eq(str(slots[1]["id"]), "special", "and the special slot second")
+	check(not bool(slots[1]["filled"]), "empty-handed until something is picked up")
 
 	a.shove_cooldown = SimConfig.SHOVE_COOLDOWN * 0.5
 	slots = _own()["slots"]

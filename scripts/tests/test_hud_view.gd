@@ -56,13 +56,16 @@ func _phase_built() -> void:
 	check(hud._own_panel.visible, "the own panel is shown once there is a local avatar")
 	eq(hud._own_pips.get_child_count(), SimConfig.MAX_HEALTH,
 		"one health pip per hit point")
-	eq(hud._own_slots.get_child_count(), 3, "three action slots")
+	eq(hud._own_slots.get_child_count(), 2,
+		"two action slots -- the permanently-blank rope box was removed 2026-08-15")
 	eq(hud._friend_rows.size(), 1, "and a row for the one other player")
 
-	# The empty slots have to be visibly present, not omitted -- otherwise the
-	# layout jumps when M4 and M12 fill them.
-	var rope: ColorRect = hud._own_slots.get_child(1)
-	eq(rope.color, HudScript.COLOR_SLOT_EMPTY, "rope draws as deliberately empty")
+	# An empty slot has to be visibly PRESENT rather than omitted, or the layout
+	# jumps the moment somebody picks a special up. The special slot is the only
+	# one that is ever empty now, and unlike the rope box it actually fills.
+	var special: ColorRect = hud._own_slots.get_child(1)
+	eq(special.color, HudScript.COLOR_SLOT_EMPTY,
+		"an empty special slot draws as deliberately empty, not missing")
 
 	# Nobody is in trouble, so no crisis bars are on screen.
 	check(not hud._own_bleed.visible, "no bleed-out bar for a walking player")
