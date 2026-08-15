@@ -416,6 +416,18 @@ func _point_nose() -> void:
 	# with no correction term.
 	nose.rotation.y = facing
 
+	# THE SHIELD RIDES THE SAME PIVOT, so it faces where the shield was raised
+	# without a second angle to keep in step -- while shielding, `facing` IS
+	# `shield_yaw` (see _step_walk), which is what makes that free.
+	#
+	# Driven from here rather than from the world because a REMOTE player's shield
+	# has to appear too, and a remote player is never stepped: they are posed by
+	# apply_state, which calls _sync_mesh, which is one line from here. Wiring it
+	# into the step alone would have shown the shield only to its owner.
+	var wall := nose.get_node_or_null("Shield") as Node3D
+	if wall != null:
+		wall.visible = shielding
+
 # Where a dash would go if it were pressed right now.
 #
 # THE ORDER IS THE DESIGN. Aim wins, because a player holding a direction on the
@@ -702,6 +714,7 @@ func _end_tumble() -> void:
 # Called from step() AND from apply_state(), so a client shown a remote player
 # who stopped tumbling somewhere it never simulated also puts them upright.
 func _sync_mesh() -> void:
+	_point_nose()
 	if state == State.TUMBLE:
 		_spin_mesh()
 	else:

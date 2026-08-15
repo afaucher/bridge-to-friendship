@@ -37,6 +37,7 @@ const MineScene = preload("res://scenes/mine.tscn")
 # DebugSettings autoload INSTANCE is the trap CLAUDE.md records for enums: it
 # raises at runtime and silently aborts the rest of the frame.
 const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
+const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
@@ -1683,7 +1684,32 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) ->
 			SimConfig.BLAST_PUSH, SimConfig.BLAST_LIFT)
 		if target.receive_hit(hit):
 			affected += 1
+
+	# SEEN BY EVERYONE, AND TOLD RATHER THAN INFERRED. A client could almost work
+	# this out for itself -- a grenade stops being mentioned in the snapshot when
+	# it goes off -- but "stopped being mentioned" is also what happens when one
+	# falls off the bridge, and that deliberately is NOT a bang. Guessing would put
+	# an explosion over the void every time somebody missed.
+	#
+	# EVERY blast comes through here, so the grenade and the mine get this from the
+	# same line and a third explosive will too.
+	_play_blast(centre, radius)
+	if networked:
+		_blast_seen.rpc(centre, radius)
 	return affected
+
+# The visual only. Host and client both land here -- one from blast_at, the other
+# from the RPC -- so there is a single description of what an explosion looks like.
+func _play_blast(at: Vector3, radius: float) -> void:
+	if not view_active:
+		return
+	BlastEffect.spawn(self, at, radius)
+
+@rpc("authority", "call_remote", "reliable")
+func _blast_seen(at: Vector3, radius: float) -> void:
+	if is_host:
+		return
+	_play_blast(at, radius)
 
 # ANYTHING ON LEGS, standing here. Players, rushers and gunners -- the things a
 # mine is for. Deliberately NOT balls: a plinko ball rolling over a mine would
