@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -105,6 +105,21 @@ const CONTENT_GLYPHS := {
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,
 	"T": Content.TURRET,
+	# THE ROUND BOUNDARY (M16). A black-and-white checker strip across the full
+	# width of the bridge, marking where one round ends and the lobby begins.
+	#
+	# CONTENT AND NOT A NEW `Kind`, which was the first design and is wrong. A
+	# gate cell is ordinary deck in every physical respect -- solid, walkable, a
+	# slab under it, parapets and ramps behaving normally -- and the only thing
+	# that makes it a gate is that the round machine reads it. A fourth Kind would
+	# have to be added to every `kind == DECK` test in the builder, and there are
+	# two of them guarding the mesh and the collision separately: miss the second
+	# and the strip is a walkable surface with NOTHING UNDER IT, which is exactly
+	# the ramp-skirt bug of 2026-08-13 and presents as "sometimes I fall through".
+	#
+	# `=` because it looks like the thing: a row of them draws a stripe across the
+	# deck layer in a text editor, which is the whole reason this format is ASCII.
+	"=": Content.GATE,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least
@@ -225,6 +240,15 @@ const DECK_DARK := Color(0.68, 0.55, 0.38)
 # apart at a glance from across the bridge is gameplay, not decoration.
 const STONE_COLOUR := Color(0.56, 0.38, 0.20)
 
+# THE ROUND BOUNDARY, in black and white on the same parity as everything else.
+#
+# Not literally 0 and 1: pure black reads as a hole from a distance on a deck lit
+# this way, which is the one thing a boundary strip must never look like. Near
+# enough to be unmistakably not-brown, far enough off the ends to still read as a
+# surface.
+const GATE_LIGHT := Color(0.93, 0.93, 0.94)
+const GATE_DARK := Color(0.12, 0.12, 0.14)
+
 # Parapets go grey-brown so they read as structure, not as more deck.
 const WALL_COLOUR := Color(0.42, 0.36, 0.30)
 const RAMP_COLOUR := Color(0.75, 0.62, 0.45)
@@ -232,6 +256,14 @@ const WATER_COLOUR := Color(0.35, 0.55, 0.68)
 
 static func deck_colour(x: int, z: int) -> Color:
 	return DECK_LIGHT if (x + z) % 2 == 0 else DECK_DARK
+
+# THE SAME PARITY RULE, A DIFFERENT PALETTE. The checker is not decoration -- it
+# is what makes distance readable from a fixed 45-degree camera, and every
+# judgement this game asks for is a judgement about cells. So a boundary strip
+# changes the two colours and never the rule: a player counting squares across it
+# is still counting the same squares.
+static func gate_colour(x: int, z: int) -> Color:
+	return GATE_LIGHT if (x + z) % 2 == 0 else GATE_DARK
 
 static func height_to_world(height: int) -> float:
 	return float(height) * HEIGHT_UNIT

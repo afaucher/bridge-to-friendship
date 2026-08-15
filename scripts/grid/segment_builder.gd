@@ -52,6 +52,10 @@ class Built:
 	var special_cells: Array = []
 	# Enemies that shoot. Authored where they stand, like a shooter pillar.
 	var gunner_cells: Array = []       # [[cell, kind], ...]
+	# ROWS, NOT CELLS. A round boundary is a line across the bridge; the cells are
+	# how it is authored and the row is what it MEANS. Everything downstream asks
+	# "is this row a boundary", never "is this cell one" -- a party crosses a line.
+	var gate_rows: Array = []          # local z, ascending, no duplicates
 	var deck_box_count: int = 0
 	var wall_box_count: int = 0
 
@@ -80,6 +84,8 @@ static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 		"wall": _material(GridConfig.WALL_COLOUR),
 		"ramp": _material(GridConfig.RAMP_COLOUR),
 		"water": _material(GridConfig.WATER_COLOUR),
+		"gate_light": _material(GridConfig.GATE_LIGHT),
+		"gate_dark": _material(GridConfig.GATE_DARK),
 	}
 
 	_build_deck(seg, z_offset, h_offset, body, meshes, palette, out)
@@ -114,8 +120,16 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 				top2 - GridConfig.DECK_THICKNESS * 0.5,
 				GridConfig.cell_z_world(z + z_offset)
 			)
-			var material: StandardMaterial3D = palette["water"] if kind2 == GridConfig.Kind.WATER \
-				else (palette["light"] if (cx + z + z_offset) % 2 == 0 else palette["dark"])
+			var lit: bool = (cx + z + z_offset) % 2 == 0
+			var material: StandardMaterial3D
+			if kind2 == GridConfig.Kind.WATER:
+				material = palette["water"]
+			elif seg.content_at(cx, z) == GridConfig.Content.GATE:
+				# The round boundary. Same parity, different palette -- see
+				# GridConfig.gate_colour.
+				material = palette["gate_light"] if lit else palette["gate_dark"]
+			else:
+				material = palette["light"] if lit else palette["dark"]
 			_add_mesh_box(meshes, cell_centre,
 				Vector3(GridConfig.CELL_SIZE, GridConfig.DECK_THICKNESS, GridConfig.CELL_SIZE), material)
 
@@ -433,6 +447,12 @@ static func _collect_content(seg, out: Built) -> void:
 					out.gunner_cells.append([Vector2i(x, z), 0])
 				GridConfig.Content.TURRET:
 					out.gunner_cells.append([Vector2i(x, z), 1])
+				GridConfig.Content.GATE:
+					# Once per ROW however many cells carry the glyph. The
+					# validator has already refused a strip that does not span
+					# the width, so any one cell is proof of the whole line.
+					if not out.gate_rows.has(z):
+						out.gate_rows.append(z)
 
 # --- Helpers ------------------------------------------------------------------
 

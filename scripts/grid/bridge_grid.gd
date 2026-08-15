@@ -136,6 +136,40 @@ func take_authored_gunner_cells() -> Array:
 	authored_gunner_cells.clear()
 	return out
 
+# --- Round boundaries (M16) ---------------------------------------------------
+#
+# The rows carrying a checker strip, in RUN space, ascending. Kept rather than
+# taken: unlike hats and specials, nothing consumes a boundary -- it is a
+# permanent feature of the bridge and the round machine asks about it every tick.
+#
+# THE ROUND MACHINE ASKS THE GRID, AND NEVER DOES ARITHMETIC ON A POSITION. The
+# bridge is assembled from a seed and segments vary in length, so the only stable
+# name for a place is the cell an author drew it in. A hardcoded row would be
+# wrong the first time the pool put a different segment first.
+var gate_rows: Array = []          # int, run-space z, ascending
+
+func is_gate_row(row: int) -> bool:
+	return gate_rows.has(row)
+
+# The next boundary strictly up-bridge of `row`, or -1 if the bridge does not
+# have one yet. -1 rather than a guess: "there is no next boundary" is a real
+# state during a run whose next segment has not been appended, and a caller that
+# gets a plausible wrong number cannot tell.
+func gate_after(row: int) -> int:
+	for r in gate_rows:
+		if int(r) > row:
+			return int(r)
+	return -1
+
+# The last boundary at or below `row`, or -1. This is "which side of the line are
+# you on" asked from the other direction, and the lobby uses it.
+func gate_at_or_before(row: int) -> int:
+	var best := -1
+	for r in gate_rows:
+		if int(r) <= row:
+			best = int(r)
+	return best
+
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
@@ -211,6 +245,16 @@ func load_segment(seg) -> void:
 	for entry in built.gunner_cells:
 		var gc: Vector2i = entry[0]
 		authored_gunner_cells.append([Vector2i(gc.x, gc.y + z_offset), int(entry[1])])
+
+	# Boundaries are recorded in RUN space and kept sorted, because gate_after
+	# walks them in order. Segments only ever append, so this stays sorted by
+	# construction -- but a run that ever loaded out of order would break
+	# gate_after silently, which is the kind of thing worth one line to prevent.
+	for local_row in built.gate_rows:
+		var run_row: int = int(local_row) + z_offset
+		if not gate_rows.has(run_row):
+			gate_rows.append(run_row)
+	gate_rows.sort()
 
 func next_z() -> int:
 	var total := 0

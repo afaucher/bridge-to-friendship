@@ -43,7 +43,45 @@ static func validate(seg) -> Array:
 
 	_check_orphans(seg, assisted, problems)
 	_check_content_placement(seg, problems)
+	_check_gates(seg, problems)
 	return problems
+
+# A ROUND BOUNDARY MUST BE UNCROSSABLE EXCEPT BY CROSSING IT (M16).
+#
+# Every rule downstream -- the barrier, "is everyone over", who lived through the
+# round -- assumes a player cannot get past the strip without standing on it. A
+# row with one cell of ordinary deck in it is a row players walk around, and
+# every one of those rules then fails somewhere far from the cause: the barrier
+# opens with somebody still behind it, or a player who crossed is scored as
+# having been left behind.
+#
+# So it is refused at AUTHORING TIME, where the message can name the row. This is
+# the cheapest place in the entire milestone to catch it, and the only place
+# where the fix is obvious to the person who caused it.
+static func _check_gates(seg, problems: Array) -> void:
+	for z in seg.length:
+		var marked := 0
+		for x in seg.width:
+			if seg.content_at(x, z) == GridConfig.Content.GATE:
+				marked += 1
+		if marked == 0:
+			continue
+		if marked < seg.width:
+			problems.append(
+				("the round boundary at z = %d covers %d of %d cells -- a strip with a "
+					% [z, marked, seg.width])
+				+ "gap is a strip players walk around, and every rule about crossing it "
+				+ "then fails somewhere else")
+		# A gate cell on a ramp is a boundary on a slope: the strip is a LINE the
+		# party stands on together, and a sloped one has them at four heights.
+		for x in seg.width:
+			if seg.content_at(x, z) != GridConfig.Content.GATE:
+				continue
+			if seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				problems.append(
+					"the round boundary at (%d, %d) sits on a ramp -- a boundary is somewhere the party STANDS"
+						% [x, z])
+				break
 
 # Flood from every solid cell in the entry row, stepping only where a player with
 # the given rise budget could go. Returns the set of reachable cells.
