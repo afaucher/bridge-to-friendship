@@ -32,6 +32,7 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
 var world: Node3D = null
@@ -77,6 +78,7 @@ func _physics_process(_delta: float) -> void:
 		# SHIELD_MIN_BLOCK_DISTANCE even measured honestly from the muzzle.
 		3: _phase_front(0.9, 0.0, 4, "point blank")
 		4: _phase_blast_still_gets_through()
+		5: _phase_spikes_get_through()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -174,4 +176,34 @@ func _phase_blast_still_gets_through() -> void:
 				% [recorded["health"], holder.health]
 			+ "direction to be in, and a mine is how you answer somebody who has "
 			+ "decided to stop moving")
+		# THROUGH _advance, not by hand. Setting the phase directly skipped the
+		# health and invulnerability reset, so the next phase measured a holder
+		# still inside the blast's HIT_GRACE and read "no damage" as a pass.
+		_advance(5)
+
+# --- 5. Nor does it stop the floor --------------------------------------------
+
+func _phase_spikes_get_through() -> void:
+	if phase_frame == 1:
+		_park()
+		_arm()
+		raising = true
+		return
+	if phase_frame == 20:
+		check(holder.shielding, "the shield is up before the spikes come out")
+		recorded["health"] = int(holder.health)
+		# A CRUSH from well OUTSIDE the proximity distance and dead ahead, which
+		# is the case a distance-based rule lets through. Spikes come up through
+		# the ground: there is no direction to hold a slab against.
+		var hit = Hit.new()
+		hit.kind = Hit.Kind.CRUSH
+		hit.amount = 1
+		hit.from = holder.position + Vector3(0.0, 0.0, -2.5)
+		holder.receive_hit(hit)
+		return
+	if phase_frame == 40:
+		check(int(holder.health) < int(recorded["health"]),
+			"a shield does not stop the floor (%d -> %d) -- spikes come UP through "
+				% [recorded["health"], holder.health]
+			+ "the ground you are standing on, so there is nothing to face")
 		finish()

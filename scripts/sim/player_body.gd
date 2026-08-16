@@ -211,6 +211,18 @@ func shield_blocks(hit) -> bool:
 	# to every kind, and a SHOOTER standing next to you is not a mine. Being
 	# flanked is the counter to a shield; walking up close is not, or a skirmisher
 	# beats the answer to skirmishers by taking one step forward.
+	# A SHIELD DOES NOT STOP THE FLOOR. Spikes come UP THROUGH the ground you are
+	# standing on; there is no direction to hold a slab against, and the arc test
+	# below would happily "block" them from whichever side the cell centre
+	# happened to be on. Refused outright rather than by distance, because
+	# distance is not what makes it unblockable.
+	#
+	# This was a REGRESSION for a few hours on 2026-08-16: scoping the proximity
+	# rule to blasts (correct, for gunfire) quietly made CRUSH blockable at over a
+	# metre, contradicting the note _spike_hits has always carried. Two rules that
+	# happened to share one condition, separated by a change aimed at neither.
+	if hit.kind == Hit.Kind.CRUSH:
+		return false
 	if hit.kind == Hit.Kind.EXPLOSIVE 			and flat.length() < SimConfig.SHIELD_MIN_BLOCK_DISTANCE:
 		return false
 	# The yaw pointing FROM the player TOWARD the source, against the yaw the
