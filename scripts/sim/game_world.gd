@@ -331,6 +331,14 @@ func _build_level() -> void:
 			# seed it happened to hold (0), and `build_run` only ever APPENDS, so
 			# those wrong segments would survive being told the right seed and
 			# the two bridges would differ for the rest of the session.
+			#
+			# AND ONLY AN ASSEMBLED RUN IS DRESSED. A map pinned by name is
+			# pinned on purpose: playtest_bridge is authored for feel and every
+			# fixture is authored to be measured, so dressing either would change
+			# what it is. The dressing is a pure function of (seed, index), so a
+			# client told the seed builds the identical dressed bridge -- it rides
+			# the same guarantee the terrain already does and needs no wire.
+			grid.dress_hazards = true
 			grid.build_run(run_seed, SimConfig.RUN_INITIAL_SEGMENTS)
 		# A bridge is assembled from .seg files, which describe structure and
 		# nothing else -- so unlike the gym it has no lighting of its own.
@@ -743,6 +751,12 @@ func _apply_leash() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _extend_run_to(seed_value: int, wanted: int) -> void:
 	if grid != null:
+		# A CLIENT DRESSES TOO, and must, because the dressing is part of what the
+		# bridge IS -- a client that skipped it would build the same terrain with
+		# none of the hazards on it. Safe to do locally rather than send: it is a
+		# pure function of (seed, index), which is the same guarantee that lets a
+		# joining client be told two numbers instead of a world.
+		grid.dress_hazards = true
 		grid.build_run(seed_value, wanted)
 
 # --- Spike blocks (M17) -------------------------------------------------------

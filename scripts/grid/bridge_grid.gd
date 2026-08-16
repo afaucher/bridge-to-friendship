@@ -255,11 +255,27 @@ func _ready() -> void:
 	_stone_root.name = "Stones"
 	add_child(_stone_root)
 
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
+
+# Themes are OFF for an explicit segment list and ON for an assembled run. A map
+# pinned by name is pinned on purpose -- playtest_bridge is authored for feel and
+# every test fixture is authored to be measured, and dressing either would change
+# what they are. `assemble_run` is the same switch _extend_run uses for the same
+# reason.
+var dress_hazards: bool = false
+
 func load_segment_file(path: String) -> bool:
 	var seg = SegmentData.from_file(path)
 	if not seg.is_valid():
 		printerr("[BridgeGrid] ", path, " failed to parse: ", ", ".join(seg.errors))
 		return false
+	# BEFORE load_segment, because dressing writes cell records and load_segment
+	# turns cell records into bodies and meshes. The other order would mean
+	# building the segment twice.
+	if dress_hazards and not seg.tags.has("lobby"):
+		var index: int = _segments.size()
+		var theme: String = HazardDressing.theme_for(run_seed, index)
+		HazardDressing.dress(seg, theme, run_seed, index)
 	load_segment(seg)
 	return true
 
