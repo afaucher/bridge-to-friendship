@@ -646,6 +646,15 @@ elevator never has to refuse to move.** Mutable terrain does (a slab must not
 close around a body), and one authoritative exception is what makes a rule
 something only the host can evaluate.
 
+**Placed by the generator from 2026-08-16**, as an alternative to a ramp rather
+than as a dressing item — an elevator only means anything where there is a
+height change, and a height change is terrain. The trade is legible: a ramp
+spends a ROW PER UNIT of climb out of a section that only has so many, and is
+walkable the moment you reach it; a lift does any rise in one row and charges up
+to a full cycle of waiting. Offered only for a rise of two or more (below that a
+ramp is already one row, so the wait buys nothing) and taken about one qualifying
+climb in three, which measures at 23 lifts across 40 sections.
+
 There is no call button, deliberately. 2b counts an elevator as "always available
 with a time cost", and a called elevator is only that if the call is free; a
 button turns a time cost into a STATE, and a state can be left in the wrong one by

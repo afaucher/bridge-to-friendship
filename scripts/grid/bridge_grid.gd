@@ -787,7 +787,43 @@ func _spawn_elevator(cell: Vector2i) -> void:
 	mesh.material_override = mat
 	body.add_child(mesh)
 
+	_shaft_frame(cell, low, high)
 	_elevators[cell] = {"body": body, "low": low, "high": high}
+
+# FOUR POSTS THAT DO NOT MOVE, marking where the shaft is.
+#
+# Without them a lift is unreadable in both of its states, and each failure is
+# its own kind of unfair. DOWN, it is a slab flush with the deck: you walk over
+# the way up without noticing it. UP, its cell is an open hole with nothing
+# around it, which is a trap rather than a hazard — you cannot avoid a thing
+# whose only tell is that the floor is missing.
+#
+# NO COLLIDER. The posts are at the corners, which is exactly where a body
+# squeezes past a doorway, and a decoration that catches a player is worse than
+# no decoration. They are scenery, and the platform is the only solid thing here.
+func _shaft_frame(cell: Vector2i, low: float, high: float) -> void:
+	if is_equal_approx(low, high):
+		return
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.ELEVATOR_COLOUR.darkened(0.35)
+	mat.metallic = 0.6
+	mat.roughness = 0.5
+
+	var span: float = high - low
+	var post := BoxMesh.new()
+	# Up to the top of the travel, so the frame is as tall as the thing is
+	# capable of being. A frame that stopped short would say the lift did too.
+	post.size = Vector3(0.12, span, 0.12)
+	var half: float = GridConfig.CELL_SIZE * 0.5 - 0.06
+	var centre: Vector3 = cell_surface(cell)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var bar := MeshInstance3D.new()
+			bar.mesh = post
+			bar.material_override = mat
+			bar.position = Vector3(centre.x + sx * half, low + span * 0.5,
+				centre.z + sz * half)
+			_mutable_root.add_child(bar)
 
 # WHERE A PLATFORM'S SURFACE IS AT TICK `t`. Rise, dwell, fall, dwell -- and the
 # dwells are not decoration: a platform that reverses the instant it arrives is

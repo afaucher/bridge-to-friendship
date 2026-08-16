@@ -178,6 +178,12 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var ramp_h: Array = []         # height of the ramp columns, or -1
 	var ramp_x0: Array = []
 	var ramp_w: Array = []
+	# A LIFT IS THE OTHER WAY UP (M17 phase 9), and it belongs in the SKELETON
+	# rather than in the dressing pass: an elevator only means anything where
+	# there is a height change, and a height change is terrain. Per row: the
+	# column an elevator stands in, or -1.
+	var lift_x: Array = []
+	var lift_h: Array = []
 
 	var height := 0
 	var row := 0
@@ -190,6 +196,8 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			ramp_h.append(-1)
 			ramp_x0.append(0)
 			ramp_w.append(0)
+			lift_x.append(-1)
+			lift_h.append(0)
 			row += 1
 		if row >= length:
 			break
@@ -208,6 +216,32 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			rise = mini(rise, length - 2 - row)
 			if rise < 1:
 				continue
+			# RAMP OR LIFT, and the trade is floor space against time. A ramp
+			# spends a ROW PER UNIT of climb — three units is three rows out of a
+			# section that only has `length` of them — and it is walkable the
+			# moment you reach it. A lift does any rise in ONE row and charges the
+			# party up to a full cycle of standing there waiting for it.
+			#
+			# ONLY FOR A RISE OF TWO OR MORE. A one-unit climb is a one-row ramp
+			# already, so replacing it with a wait is a cost that buys nothing.
+			#
+			# AND A MINORITY, about one qualifying climb in three. A section whose
+			# every ascent is a lift is a section spent standing still, and a ramp
+			# is still what this game is mostly made of.
+			if rise >= 2 and _mix(salt + row * 6151) % 3 == 0:
+				low.append(height)
+				ramp_h.append(-1)
+				ramp_x0.append(0)
+				ramp_w.append(0)
+				# One column, anchored in the safe corridor for the same reason a
+				# ramp is: a shaft with a hole beside it is somewhere a player
+				# falls off while standing still waiting.
+				lift_x.append(_safe_ramp_x0(safe, 1, _mix(salt + row * 2087)))
+				lift_h.append(height + rise)
+				row += 1
+				height += rise
+				continue
+
 			var w: int = _ramp_width(salt + row * 4093)
 			# ANCHORED IN THE SAFE CORRIDOR, and clamped to a run of it that is
 			# actually contiguous -- landing half a ramp on a hole is the same bug
@@ -224,6 +258,8 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				ramp_h.append(height + k + 1)
 				ramp_x0.append(x0)
 				ramp_w.append(w)
+				lift_x.append(-1)
+				lift_h.append(0)
 				row += 1
 			height += rise
 		elif roll < 8 and height > 0:
@@ -237,14 +273,27 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		ramp_h.append(-1)
 		ramp_x0.append(0)
 		ramp_w.append(0)
+		lift_x.append(-1)
+		lift_h.append(0)
 
 	for z in length:
 		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
-		var is_transition: bool = int(ramp_h[z]) >= 0
+		# A LIFT ROW IS A TRANSITION ROW TOO, so it is never narrowed: a shaft
+		# with a hole beside it is somewhere a player falls while standing still.
+		var is_transition: bool = int(ramp_h[z]) >= 0 or int(lift_x[z]) >= 0
 		for x in width:
-			var on_ramp: bool = is_transition \
+			var on_ramp: bool = int(ramp_h[z]) >= 0 \
 				and x >= int(ramp_x0[z]) and x < int(ramp_x0[z]) + int(ramp_w[z])
-			seg.heights[z][x] = int(ramp_h[z]) if on_ramp else int(low[z])
+			# AUTHORED AT THE HEIGHT IT RISES TO. Where it comes back down to is
+			# read off the terrain by BridgeGrid, so the two ends of a lift cannot
+			# be written separately and allowed to disagree.
+			var on_lift: bool = x == int(lift_x[z])
+			if on_lift:
+				seg.heights[z][x] = int(lift_h[z])
+			elif on_ramp:
+				seg.heights[z][x] = int(ramp_h[z])
+			else:
+				seg.heights[z][x] = int(low[z])
 
 			var solid := true
 			# A TRANSITION ROW IS NEVER NARROWED. A wedge with a hole beside it is
@@ -266,6 +315,11 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				seg.kinds[z][x] = GridConfig.Kind.RAMP
 			else:
 				seg.kinds[z][x] = GridConfig.Kind.DECK
+				if on_lift:
+					# DECK, with the elevator as its CONTENT. The platform is built
+					# from that record and the cell is kept out of the deck merge,
+					# so the "deck" here is really the shaft the lift travels in.
+					seg.contents[z][x] = GridConfig.Content.ELEVATOR
 
 	# THE ENTRY AND EXIT ROWS ARE FLAT DECK, never a ramp: a segment is stacked on
 	# the one before it by its exit HEIGHT, and joining a wedge to a flat row

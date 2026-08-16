@@ -36,6 +36,7 @@ func setup(_main) -> void:
 	_check_sections()
 	_check_variation()
 	_check_joins()
+	_check_lifts()
 	_check_deterministic()
 	finish()
 
@@ -290,6 +291,67 @@ func _check_joins() -> void:
 			% ("" if problems.is_empty() else problems[0]))
 
 # --- 5. Deterministic ---------------------------------------------------------
+
+# --- Lifts (M17 phase 9) ------------------------------------------------------
+#
+# THE GENERATOR HAS TO ACTUALLY EMIT SOME. A feature nothing places is a feature
+# nobody meets, and elevators spent a whole milestone in exactly that state:
+# built, tested, replicated, and present in one test fixture and nowhere else.
+#
+# Rates rather than counts, over a sweep of seeds: the number in any ONE section
+# is a dice roll, and asserting it would be asserting the mixer.
+func _check_lifts() -> void:
+	var sections: int = 0
+	var with_lift: int = 0
+	var lifts: int = 0
+	var bad_rise: int = 0
+	var narrowed: int = 0
+
+	for i in 40:
+		var seg = SegmentGen.section(WIDTH, 9100 + i * 37, i)
+		if seg == null:
+			continue
+		sections += 1
+		var here: int = 0
+		for z in seg.length:
+			for x in seg.width:
+				if seg.content_at(x, z) != GridConfig.Content.ELEVATOR:
+					continue
+				here += 1
+				lifts += 1
+				# A LIFT EARNS ITS WAIT. One unit is a one-row ramp already, so a
+				# lift over one is a cost that buys nothing.
+				var rise: int = seg.height_at(x, z) - seg.height_at(
+					x if x > 0 else 1, z - 1 if z > 0 else 0)
+				if rise < 2:
+					bad_rise += 1
+				# AND ITS ROW IS FULL WIDTH. A shaft with a hole beside it is
+				# somewhere a player falls off while standing still waiting.
+				for wx in seg.width:
+					if not seg.is_solid(wx, z):
+						narrowed += 1
+						break
+		if here > 0:
+			with_lift += 1
+
+	print("[gen lifts] %d lifts across %d sections, %d sections have one"
+		% [lifts, sections, with_lift])
+
+	check(lifts > 0,
+		"the generator emits lifts at all -- they existed for a whole milestone "
+		+ "in one test fixture and nowhere a player could reach")
+	# A MINORITY, not a fashion. Every ascent being a lift is a section spent
+	# standing still, and a ramp is still what this game is mostly made of.
+	check(with_lift < sections,
+		"and not in every section (%d of %d) -- a ramp is still the default way "
+			% [with_lift, sections]
+		+ "up, and a lift is the one that costs time instead of floor space")
+	eq(bad_rise, 0,
+		"every lift climbs at least two units: below that a ramp does it in one "
+		+ "row and the wait buys nothing")
+	eq(narrowed, 0,
+		"and no lift row is narrowed -- waiting beside a hole is falling off "
+		+ "while standing still")
 
 func _check_deterministic() -> void:
 	var a = SegmentGen.section(WIDTH, 4242, 2)
