@@ -188,6 +188,20 @@ static func _candidates(seg, kind: String) -> Array:
 	# Never the entry or exit row: a segment has to be enterable and leavable,
 	# and a turret on the seam is a turret the party meets with no warning.
 	for z in range(1, maxi(2, seg.length - 1)):
+		# A SET-PIECE IS SOMEBODY ELSE'S WORK (M18 phase 2). Refusing to overwrite
+		# its CONTENT is not enough: the empty cells of a composition are the
+		# composition -- the lane you cross, the ground the cover is cover from --
+		# so the whole row is out of bounds.
+		#
+		# EVERY KIND, INCLUDING COVER AND PICKUPS. A lift with cover beside it is a
+		# better lift and that argument does not carry here: a piece was authored
+		# with the cover it wanted, and one more changes the answer it was posing.
+		# Start closed; a piece that WANTS dressing can say so with a tag later.
+		#
+		# Filtered here rather than in _wants, for the reason the lift clearance is
+		# checked up front: the next kind added would not have remembered.
+		if seg.piece_rows.has(z):
+			continue
 		for x in seg.width:
 			if not seg.is_solid(x, z):
 				continue

@@ -44,6 +44,16 @@ var piece_min_party: int = 1
 func is_piece() -> bool:
 	return tags.has("piece")
 
+# WHICH ROWS OF THIS SECTION A PIECE OWNS. Written by the generator when it
+# stamps one; never parsed from a file, because a hand-authored `.seg` is
+# authored throughout and has nothing to keep anybody out of.
+#
+# It exists so LAYER 3 CAN KEEP OUT. dress() already refuses to overwrite
+# content, and that is not enough: the EMPTY cells of a composition are part of
+# it -- the lane you are meant to cross, the ground the cover is cover from --
+# and a turret dropped in one is somebody else editing the piece.
+var piece_rows: Array = []       # int, section-local z
+
 # Row-major, indexed [z][x].
 var kinds: Array = []      # GridConfig.Kind
 var heights: Array = []    # int, in HEIGHT_UNITs above base_height

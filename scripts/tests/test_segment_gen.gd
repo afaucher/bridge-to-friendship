@@ -40,6 +40,7 @@ func setup(_main) -> void:
 	_check_joins()
 	_check_lifts()
 	_check_pieces()
+	_check_dressing_keeps_out()
 	_check_deterministic()
 	finish()
 
@@ -408,6 +409,64 @@ static func _piece_at(seg, piece, at: int) -> bool:
 			if seg.height_at(x, at + pz) != piece.height_at(x, pz) + offset:
 				return false
 	return true
+
+# --- Layer 3 keeps out of a piece (M18 phase 2) -------------------------------
+#
+# DRESSED FIRST, and this is the fault that made the lift-clearance check
+# vacuous twice in M17: hazards are placed by BridgeGrid at LOAD, not inside
+# section(), so a check run on the raw output is a check run on a map with no
+# hazards in it. The A/B below is what proves this one can fail.
+#
+# MEASURED AS A DIFF, not as a content scan. Every cell is recorded before
+# dressing and compared after: any change inside a piece's rows is layer 3
+# editing somebody else's composition, whatever it put there.
+func _check_dressing_keeps_out() -> void:
+	var dressed_sections: int = 0
+	var with_piece: int = 0
+	var intrusions: int = 0
+	var dressed_anything: int = 0
+	var w: int = GridConfig.DEFAULT_WIDTH
+
+	for i in 250:
+		var seed_i: int = 8800 + i * 61
+		var seg = SegmentGen.section(w, seed_i, i)
+		if seg == null or seg.piece_rows.is_empty():
+			continue
+		dressed_sections += 1
+		with_piece += 1
+
+		var before: Array = []
+		for z in seg.length:
+			var row: Array = []
+			for x in seg.width:
+				row.append(seg.content_at(x, z))
+			before.append(row)
+
+		HazardDressing.dress(seg, HazardDressing.theme_for(seed_i, i), seed_i, i)
+
+		for z in seg.length:
+			for x in seg.width:
+				if seg.content_at(x, z) == before[z][x]:
+					continue
+				dressed_anything += 1
+				if seg.piece_rows.has(z):
+					intrusions += 1
+
+	print("[gen keep-out] %d sections with a piece, %d cells dressed, %d intrusions"
+		% [with_piece, dressed_anything, intrusions])
+
+	check(with_piece > 0, "the sweep found sections carrying a piece")
+	# THE CONTROL: if the pass placed nothing at all, "nothing landed in a piece"
+	# would be true for the wrong reason -- the same shape as a hazard test run on
+	# an undressed map.
+	check(dressed_anything > 0,
+		"and layer 3 really dressed them (%d cells) -- without this, zero "
+			% dressed_anything
+		+ "intrusions is a sentence about a pass that did nothing")
+	eq(intrusions, 0,
+		"nothing layer 3 places lands inside a piece's rows: the EMPTY cells of a "
+		+ "composition are the composition, and a turret in one is somebody else "
+		+ "editing it")
 
 func _check_pieces() -> void:
 	var sections: int = 0

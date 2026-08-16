@@ -351,6 +351,9 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				seg.heights[z][x] = base + piece.height_at(x, pz)
 				seg.kinds[z][x] = piece.kind_at(x, pz)
 				seg.contents[z][x] = piece.content_at(x, pz)
+			# RECORDED AS THE ROWS ARE WRITTEN, so the record cannot disagree with
+			# what was stamped. Layer 3 reads it and keeps out.
+			seg.piece_rows.append(z)
 			continue
 
 		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
