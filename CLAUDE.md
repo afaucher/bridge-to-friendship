@@ -334,6 +334,21 @@ the moment it is written.
   the tell for the general shape: **when a query about progress can be answered
   by something that is not making progress, anything that scales with progress
   becomes a loop.**
+- **A VALIDATOR THAT MODELS A MOVEMENT THE PLAYER DOES NOT HAVE CERTIFIES BROKEN
+  LEVELS.** Observed 2026-08-16. `SegmentValidator` allowed a rise of
+  `SOLO_RISE` (1 unit) between any two deck cells, so a one-unit step read as
+  walkable. **There is no step-up in this game** -- `move_and_slide` does not
+  mantle and nothing implements it -- so measured, a body at full stick into a
+  one-unit step stops at y 1.45 against a step top of 1.76 and never gets up. Any
+  segment whose only route crossed one VALIDATED AND WAS IMPASSABLE, which is the
+  worst failure an oracle can have: it does not report a problem, it certifies a
+  broken thing. A rise is now allowed only onto a RAMP (where the budget is a
+  slope limit) or a real ascender. **Check what the BODY does before trusting
+  what the model says it does** -- and the tell is that the fiction had been
+  contradicted in writing for months: playtest_bridge's own header said the
+  ladder "is not climbable yet, so today it is a 2 m wall" while the flood
+  counted ladders as a way up. `LADDERS_CLIMBABLE` is now a flag rather than a
+  comment somebody has to remember.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

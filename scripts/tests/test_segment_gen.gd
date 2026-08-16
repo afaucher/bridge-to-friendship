@@ -148,6 +148,57 @@ func _check_variation() -> void:
 	check(gap_counts.size() > 3, "and in how many holes they have (%d distinct)"
 		% gap_counts.size())
 
+	# UP NEEDS A RAMP, DOWN NEEDS NOTHING, and both halves are asserted because
+	# the generator had neither until a playtest asked about it. With no
+	# ascenders every height change has to be ONE unit -- anything taller is a
+	# wall a lone player cannot pass -- so the terrain came out as a gentle
+	# staircase and could never be anything else. Everything validated the whole
+	# time: "accessible" was true, and "interesting" is not something a flood has
+	# an opinion about.
+	var ramp_rows := 0
+	var biggest_drop := 0
+	var biggest_climb := 0
+	for seed_value in [3, 11, 777, 20260816, 424242]:
+		for index in range(1, 6):
+			var seg = SegmentGen.section(WIDTH, seed_value, index)
+			var prev: int = seg.height_at(0, 0)
+			for z in seg.length:
+				var h: int = seg.height_at(0, z)
+				biggest_drop = maxi(biggest_drop, prev - h)
+				biggest_climb = maxi(biggest_climb, h - prev)
+				prev = h
+				if seg.kind_at(0, z) == GridConfig.Kind.RAMP:
+					ramp_rows += 1
+
+	check(ramp_rows > 20,
+		"climbs are made of RAMPS (%d ramp rows) -- without them a generated "
+			% ramp_rows
+		+ "section can only ever be a one-unit staircase")
+	eq(biggest_climb, 1,
+		"and no single step UP is more than one unit, ramp or not: SOLO_RISE is 1 "
+		+ "and a taller step is a wall a lone player cannot pass")
+	check(biggest_drop > 1,
+		"while DROPS are real cliffs (%d units) -- falling is free, which is the "
+			% biggest_drop
+		+ "asymmetry that makes split level possible at all")
+
+	# LADDERS ARE NOT USED, and this is the assertion that keeps it that way.
+	# ASCENDER_CONTENTS has counted LADDER since M2 but there is no climb mechanic
+	# yet, so a generated ladder would produce a run that VALIDATES and cannot be
+	# walked -- the worst possible failure for a rejection oracle. Phase 6 makes
+	# ladders real; until then this must stay zero.
+	var ladders := 0
+	for seed_value in [3, 777, 424242]:
+		for index in range(1, 6):
+			var seg = SegmentGen.section(WIDTH, seed_value, index)
+			for z in seg.length:
+				for x in seg.width:
+					if seg.content_at(x, z) == GridConfig.Content.LADDER:
+						ladders += 1
+	eq(ladders, 0,
+		"and NO ladders are generated: the validator counts them as ascenders and "
+		+ "the game has no climb mechanic, so one would validate and be impassable")
+
 # --- 4. Generated and authored join ------------------------------------------
 
 func _check_joins() -> void:

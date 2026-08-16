@@ -290,13 +290,20 @@ func load_segment_file(path: String) -> bool:
 	if not seg.is_valid():
 		printerr("[BridgeGrid] ", path, " failed to parse: ", ", ".join(seg.errors))
 		return false
-	# BEFORE load_segment, because dressing writes cell records and load_segment
-	# turns cell records into bodies and meshes. The other order would mean
-	# building the segment twice.
-	if dress_hazards and not seg.tags.has("lobby"):
-		var index: int = _segments.size()
-		var theme: String = HazardDressing.theme_for(run_seed, index)
-		HazardDressing.dress(seg, theme, run_seed, index)
+	# AN AUTHORED SEGMENT IS NOT DRESSED. It was authored COMPLETE.
+	#
+	# It was, until a playtest on 2026-08-16 reported the opening section as "WAY
+	# too busy" -- and measured, it was: playtest_bridge carries 66 authored
+	# contents and the survival theme took it to 90, adding six more rushers and
+	# four more plinko shooters to the densest map in the game. The commit that
+	# shipped it even claimed authored maps were spared; the guard only excluded
+	# lobbies.
+	#
+	# So the rule is now the simple one, and it matches what the layers were for:
+	# GENERATED terrain gets a generated theme, because it arrives empty and
+	# something has to fill it. An authored map arrives full, and a person already
+	# decided what is in it — which is the entire difference between layer 2 and
+	# layer 3.
 	load_segment(seg)
 	return true
 
@@ -687,7 +694,8 @@ func _spawn_mound(cell: Vector2i) -> void:
 var spike_cells: Array = []            # Vector2i, run space
 var _cover_root: Node3D = null
 var _spike_root: Node3D = null
-var _spikes: Dictionary = {}           # Vector2i -> the spike mesh, so the world can raise it
+var _spikes: Dictionary = {}           # Vector2i -> the spike prop, so the world can raise it
+var spike_lift: Dictionary = {}        # Vector2i -> 0..1, how far out they are
 
 func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
 	if _cover_root == null:
@@ -742,31 +750,75 @@ func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
 # THE BLOCK ITSELF IS NOT THE HAZARD. It is ordinary deck you can stand on; what
 # hurts is the spikes it drives into the cells AROUND it, which is why it is
 # authored where a player must pass BESIDE something rather than over it.
+#
+# NINE CONES, NOT A BOX. The first version was a single white slab that blinked
+# on and off, which reads as a tile changing colour rather than as something
+# coming out of the floor -- and "there is a thing in that square" is exactly what
+# a player has to judge at a glance from a fixed camera 30 m away. A cluster of
+# points reads as spikes from any angle, and it reads as spikes even at the top
+# of the screen where a slab is four pixels tall.
+#
+# THEY RISE RATHER THAN APPEAR. The lift is driven by the world from the same
+# tick-derived phase that decides the damage, so the movement IS the telegraph:
+# a player sees them coming up and has the length of the ramp to step off.
+const SPIKE_COUNT := 3                 # 3 x 3 across the cell
+const SPIKE_HEIGHT := 0.8
+
 func _spawn_spikes(cell: Vector2i) -> void:
 	if _spike_root == null:
 		_spike_root = Node3D.new()
 		_spike_root.name = "Spikes"
 		add_child(_spike_root)
-	var prop := MeshInstance3D.new()
+
+	var prop := Node3D.new()
 	prop.name = "Spikes_%d_%d" % [cell.x, cell.y]
-	var box := BoxMesh.new()
-	box.size = Vector3(GridConfig.CELL_SIZE * 0.9, 0.7, GridConfig.CELL_SIZE * 0.9)
-	prop.mesh = box
+	prop.position = cell_surface(cell)
+
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = GridConfig.SPIKE_COLOUR
-	mat.roughness = 0.4
-	prop.material_override = mat
-	prop.position = cell_surface(cell) + Vector3(0.0, 0.35, 0.0)
+	# Metallic and smooth, so the points catch the light and separate from the
+	# matte deck they come out of.
+	mat.roughness = 0.25
+	mat.metallic = 0.6
+
+	# A cone is a cylinder with no top. Sized so nine of them fill the cell
+	# without touching -- a solid bed of them would be the slab again.
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.16
+	cone.height = SPIKE_HEIGHT
+	cone.radial_segments = 6
+
+	var step: float = GridConfig.CELL_SIZE / float(SPIKE_COUNT + 1)
+	for ix in SPIKE_COUNT:
+		for iz in SPIKE_COUNT:
+			var spike := MeshInstance3D.new()
+			spike.mesh = cone
+			spike.material_override = mat
+			spike.position = Vector3(
+				-GridConfig.CELL_SIZE * 0.5 + step * float(ix + 1),
+				SPIKE_HEIGHT * 0.5,
+				-GridConfig.CELL_SIZE * 0.5 + step * float(iz + 1))
+			prop.add_child(spike)
+
 	prop.visible = false
 	_spike_root.add_child(prop)
 	_spikes[cell] = prop
 
-# Raised or withdrawn. The WORLD decides, from the tick, so every machine agrees
-# without anything being sent.
-func set_spikes_out(cell: Vector2i, out: bool) -> void:
-	var prop: Node = _spikes.get(cell)
-	if prop != null and is_instance_valid(prop):
-		prop.visible = out
+# How far out, 0 to 1. The WORLD decides, from the tick, so every machine agrees
+# without anything being sent. Below 0 they are inside the deck slab, which is a
+# metre thick and hides them completely.
+func set_spikes_lift(cell: Vector2i, lift: float) -> void:
+	# Kept as well as applied, so the state is readable rather than having to be
+	# inferred from a mesh position. A test that has to reverse-engineer a
+	# transform to find out what the sim decided is a test measuring the view.
+	spike_lift[cell] = lift
+	var prop: Node3D = _spikes.get(cell)
+	if prop == null or not is_instance_valid(prop):
+		return
+	prop.visible = lift > 0.02
+	var base: Vector3 = cell_surface(cell)
+	prop.position = Vector3(base.x, base.y - SPIKE_HEIGHT * (1.0 - lift), base.z)
 
 func mound_count() -> int:
 	return _mounds.size()

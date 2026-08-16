@@ -779,9 +779,18 @@ func _process_spikes() -> void:
 	for cell in grid.spike_cells:
 		var offset: float = float((int(cell.x) * 5 + int(cell.y) * 3) % 7) / 7.0
 		var phase: float = fmod(now / SimConfig.SPIKE_PERIOD + offset, 1.0)
-		var out: bool = phase < SimConfig.SPIKE_OUT_FRACTION
-		grid.set_spikes_out(cell, out)
-		if not out or not is_host:
+		# THE RAMP IS THE TELEGRAPH. A quarter of the out-window is spent coming
+		# up and a quarter going back down, so a player sees them rising and has
+		# time to step off -- a hazard that appears instantly is a hazard you can
+		# only learn by dying to it.
+		var lift := 0.0
+		if phase < SimConfig.SPIKE_OUT_FRACTION:
+			var t: float = phase / SimConfig.SPIKE_OUT_FRACTION
+			lift = clampf(minf(t / 0.25, (1.0 - t) / 0.25), 0.0, 1.0)
+		grid.set_spikes_lift(cell, lift)
+		# HURT ONLY WHEN THEY ARE ACTUALLY OUT, which is what makes the ramp a
+		# real warning rather than a decoration over an instant hit.
+		if lift < 0.6 or not is_host:
 			continue
 		_spike_hits(cell)
 

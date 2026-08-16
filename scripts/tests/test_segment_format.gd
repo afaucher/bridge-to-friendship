@@ -183,25 +183,87 @@ length = 3
 ...
 .L.
 """)
-	check(SegmentValidator.validate(laddered).is_empty(),
-		"a ladder makes the same cliff passable (%s)" % ", ".join(SegmentValidator.validate(laddered)))
+	# A LADDER DOES NOT MAKE IT PASSABLE, AND THAT IS THE CORRECT ANSWER TODAY.
+	#
+	# This assertion was the other way round until 2026-08-16, and it was
+	# asserting a capability the game does not have: ASCENDER_CONTENTS has listed
+	# LADDER since M2 and there is still no climb mechanic, so the validator was
+	# certifying segments whose only route is a wall. playtest_bridge's own header
+	# has said so all along -- "there is no climb mechanic, so today it is a 2 m
+	# wall" -- and the flood disagreed with the map's own documentation.
+	#
+	# SegmentValidator.LADDERS_CLIMBABLE is the switch, and M17 phase 6 flips it
+	# on the day the climb exists. This assertion inverts on that day, which is
+	# the point of writing it as a claim about the FLAG rather than about ladders.
+	if SegmentValidator.LADDERS_CLIMBABLE:
+		check(SegmentValidator.validate(laddered).is_empty(),
+			"a ladder makes the same cliff passable (%s)"
+				% ", ".join(SegmentValidator.validate(laddered)))
+	else:
+		check(SegmentValidator.validate(laddered).size() > 0,
+			"a ladder does NOT make a cliff passable while there is no climb "
+			+ "mechanic -- the validator must not certify a wall")
 
-	# A cliff crossable only with help strands a lone player -- the rule that
-	# exists because drop-in means the party can be one person at any moment.
-	var assisted_only = SegmentData.parse("""
-name = assisted
+	# A RAMP DOES, which is the half that stops the above passing by rejecting
+	# everything. It is also the only ascender the game actually implements.
+	var ramped = SegmentData.parse("""
+name = ramped
 width = 3
-length = 3
+length = 4
 
 [deck]
 ...
 ...
+///
 ...
 
 [height]
 000
 000
-333
+111
+111
+
+[content]
+...
+...
+...
+...
+""")
+	check(SegmentValidator.validate(ramped).is_empty(),
+		"while a RAMP does, which is the ascender this game has (%s)"
+			% ", ".join(SegmentValidator.validate(ramped)))
+
+	# A route crossable only WITH HELP strands a lone player -- the rule that
+	# exists because drop-in means the party can be one person at any moment.
+	#
+	# A STEEP RAMP, not a bare cliff. It was a cliff until 2026-08-16, when bare
+	# rises stopped counting as climbable at any budget: a cliff is now simply
+	# impassable and says so, which is a different message and a different rule.
+	# The help-only case is what it always was on the real maps -- playtest_bridge
+	# calls it "2 units per cell (45 deg), above max_walk_slope, so no
+	# single-player solution: shove or rope".
+	var assisted_only = SegmentData.parse("""
+name = assisted
+width = 3
+length = 4
+
+[deck]
+...
+...
+///
+...
+
+[height]
+000
+000
+222
+222
+
+[content]
+...
+...
+...
+...
 """)
 	var stranded: Array = SegmentValidator.validate(assisted_only)
 	check(stranded.size() > 0, "a help-only route is rejected")

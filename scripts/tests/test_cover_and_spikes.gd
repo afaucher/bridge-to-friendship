@@ -44,6 +44,7 @@ var phase_frame: int = 0
 var out_ticks: int = 0
 var in_ticks: int = 0
 var hurt_beside: bool = false
+var telegraph_ticks: int = 0
 
 func setup(main) -> void:
 	timeout_seconds = 60.0
@@ -106,9 +107,15 @@ func _physics_process(_delta: float) -> void:
 		0: _phase_on_the_block()
 		1: _phase_beside_the_block()
 
-func _spikes_out() -> bool:
-	var prop: Node = world.grid._spikes.get(SPIKE_CELL)
-	return prop != null and prop.visible
+# HOW FAR OUT, not whether the mesh is visible. Those are different windows now:
+# the spikes are SEEN rising before they are DANGEROUS, which is the whole point
+# of the ramp -- a hazard that appears instantly can only be learned by dying to
+# it. Measuring visibility would quietly assert the wrong one.
+func _lift() -> float:
+	return float(world.grid.spike_lift.get(SPIKE_CELL, 0.0))
+
+func _dangerous() -> bool:
+	return _lift() >= 0.6
 
 # STANDING ON IT IS SAFE. The block is ordinary deck; what hurts is being next to
 # it, which is what makes it a thing to walk past rather than a thing to avoid.
@@ -117,17 +124,26 @@ func _phase_on_the_block() -> void:
 		_park(SPIKE_CELL)
 		body.health = SimConfig.MAX_HEALTH
 		return
-	if _spikes_out():
+	if _dangerous():
 		out_ticks += 1
 	else:
 		in_ticks += 1
+	# Seen but not yet lethal: the warning window.
+	if _lift() > 0.02 and not _dangerous():
+		telegraph_ticks += 1
 	if phase_frame < int(SimConfig.SPIKE_PERIOD * 60.0) + 10:
 		return
 
 	# ASSERTED OVER A WHOLE PERIOD, not at a moment: a block stuck permanently out
 	# and one stuck permanently in both look correct at the right single frame.
-	check(out_ticks > 0, "the spikes come out (%d ticks)" % out_ticks)
-	check(in_ticks > 0, "and go back in (%d ticks)" % in_ticks)
+	check(out_ticks > 0, "the spikes come out (%d dangerous ticks)" % out_ticks)
+	check(in_ticks > 0, "and go back in (%d safe ticks)" % in_ticks)
+	# THE TELEGRAPH EXISTS. Without this the ramp could be a single frame and
+	# everything else here would still pass -- and a hazard with no warning is
+	# one a player can only learn by dying to it.
+	check(telegraph_ticks > 10,
+		"and there is a real window where they are VISIBLY RISING but not yet "
+		+ "lethal (%d ticks) -- the movement is the warning" % telegraph_ticks)
 	check(float(out_ticks) / float(out_ticks + in_ticks) < 0.5,
 		"and are safe for most of the cycle (%.0f%% out) -- the safe window is the "
 			% (100.0 * float(out_ticks) / float(out_ticks + in_ticks))

@@ -25,6 +25,19 @@ const SOLO_RISE := 1
 # result -- a design statement about how much cooperation buys.
 const ASSISTED_RISE := 4
 
+# LADDERS AND BOUNCERS ARE AUTHORABLE AND NOT YET CLIMBABLE.
+#
+# `GridConfig.ASCENDER_CONTENTS` has listed both since M2 and the flood has
+# counted them as a way up ever since -- but no climb mechanic exists.
+# playtest_bridge's own header says so: "the glyph validates and the loader
+# collects it, but there is no climb mechanic, so today it is a 2 m wall".
+#
+# Which means the validator would certify a segment whose only route is a ladder,
+# and the party would walk up to it and stop. Turned off here rather than left as
+# a comment somebody has to remember, and it is ONE LINE to flip on the day M17
+# phase 6 builds the climb.
+const LADDERS_CLIMBABLE := false
+
 static func validate(seg) -> Array:
 	var problems: Array[String] = []
 	if not seg.is_valid():
@@ -116,13 +129,33 @@ static func _flood_from(seg, entry_columns: Array, max_rise: int) -> Dictionary:
 			queue.append(next)
 	return seen
 
+# THERE IS NO STEP-UP IN THIS GAME, and the flood believed there was.
+#
+# Measured 2026-08-16 with a body walking full stick into a ONE UNIT deck step
+# for two and a half seconds: it stopped at y 1.45 against a step top of y 1.76
+# and never got up. `move_and_slide` does not mantle and nothing here implements
+# it, so ANY vertical rise between two deck cells is a wall, whatever the rise
+# budget says.
+#
+# The budget was therefore modelling a movement the player does not have, and any
+# segment whose only route crossed a bare one-unit step VALIDATED AND WAS
+# IMPASSABLE. That is the worst failure a rejection oracle can have: it does not
+# report a problem, it certifies a broken thing.
+#
+# So a rise is allowed only where something exists to climb:
+#   A RAMP, and then the budget is a SLOPE limit -- one unit per cell is 27
+#   degrees and walkable, two is 45 and needs a shove, which is exactly what
+#   SOLO_RISE and ASSISTED_RISE have always meant on a ramp.
+#   AN ASCENDER, once one is actually implemented. See below.
 static func _can_step(seg, from: Vector2i, to: Vector2i, max_rise: int) -> bool:
 	var rise: int = seg.height_at(to.x, to.y) - seg.height_at(from.x, from.y)
 	if rise <= 0:
 		return true   # falling or level is always allowed
-	# A ladder or a bouncer gets you up regardless of how far.
-	if seg.content_at(to.x, to.y) in GridConfig.ASCENDER_CONTENTS:
+	if LADDERS_CLIMBABLE and seg.content_at(to.x, to.y) in GridConfig.ASCENDER_CONTENTS:
 		return true
+	# A BARE STEP UP IS A WALL. No mantle, no step-up, no exceptions.
+	if seg.kind_at(to.x, to.y) != GridConfig.Kind.RAMP:
+		return false
 	return rise <= max_rise
 
 static func _exit_reached(seg, seen: Dictionary) -> bool:

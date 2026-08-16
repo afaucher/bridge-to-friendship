@@ -120,21 +120,65 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var section_tags: Array[String] = ["foot", "generated"]
 	seg.tags = section_tags
 
-	# THE HEIGHT PROFILE. A run climbs, so the profile trends up -- but a STEP
-	# DOWN is valid and is one of the things hand authoring never does.
-	var height := 0
+	# THE HEIGHT PROFILE, AS PLATEAUS AND TRANSITIONS.
+	#
+	# THE FIRST VERSION HAD NO ASCENDERS AT ALL, which meant every height change
+	# had to be a single unit -- SOLO_RISE is 1, so anything taller is a wall a
+	# lone player cannot pass and the validator rejects the whole attempt. The
+	# terrain came out as a gentle staircase and could never be anything else.
+	# Caught by a playtest question rather than by a test: everything validated,
+	# because "accessible" was true and "interesting" is not something the flood
+	# has an opinion about.
+	#
+	# UP NEEDS A RAMP; DOWN NEEDS NOTHING. That asymmetry is the whole trick.
+	# Falling is free, so a DROP can be as tall as it likes and is a real cliff --
+	# which is where split level comes from, and what the thickness rule of phase
+	# 2 exists to make solid. A CLIMB gets a ramp row per unit, each rising one,
+	# which is inside the solo budget however tall the climb is.
+	#
+	# LADDERS ARE DELIBERATELY NOT USED, and this is a trap worth naming. The
+	# validator counts LADDER as an ascender (ASCENDER_CONTENTS, since M2) but
+	# THERE IS NO CLIMB MECHANIC YET -- playtest_bridge's own header says so. A
+	# generator that placed ladders would produce runs that VALIDATE and cannot be
+	# walked, which is the worst possible failure for a rejection oracle. Ladders
+	# become available to this file in phase 6, and not before.
 	var heights: Array = []
-	for z in length:
-		if z > 0 and z % (2 + salt % 3) == 0:
-			var roll: int = _mix(salt + z * 7717) % 10
-			# Up four times as often as down, and never more than one unit at a
-			# time: SOLO_RISE is 1, so a two-unit step is a wall to a lone player
-			# and the validator would reject the whole attempt.
-			if roll < 4:
+	var ramps: Array = []
+	var height := 0
+	var row := 0
+	while row < length:
+		# A flat run to stand on and fight in.
+		var flat: int = 2 + _mix(salt + row * 3301) % 3
+		for _f in flat:
+			if row >= length:
+				break
+			heights.append(height)
+			ramps.append(false)
+			row += 1
+		if row >= length:
+			break
+		var roll: int = _mix(salt + row * 7717) % 10
+		if roll < 6:
+			# CLIMB. One ramp row per unit, so the slope is always walkable
+			# regardless of how far it goes up.
+			var rise: int = 1 + _mix(salt + row * 911) % 3
+			for _r in rise:
+				if row >= length:
+					break
 				height += 1
-			elif roll < 5 and height > 0:
-				height -= 1
+				heights.append(height)
+				ramps.append(true)
+				row += 1
+		elif roll < 8 and height > 0:
+			# A DROP, and no ramp: falling is free. This is the cliff that makes a
+			# split level, and it is the one thing hand authoring almost never does
+			# because it looks like a mistake in a text file.
+			height -= mini(height, 1 + _mix(salt + row * 577) % 3)
+		# roll 8-9: nothing, a longer flat.
+
+	while heights.size() < length:
 		heights.append(height)
+		ramps.append(false)
 
 	# THE LANE SPLIT. Narrowness is drawn as HOLES in the outer columns, never as
 	# a width change: the loader refuses a width mismatch, and a fiction is
@@ -147,10 +191,14 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 
 	for z in length:
 		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
+		var is_ramp: bool = bool(ramps[z])
 		for x in width:
 			seg.heights[z][x] = int(heights[z])
 			var solid := true
-			if narrow:
+			# A RAMP ROW IS NEVER NARROWED. A wedge with a hole in it is a wedge
+			# somebody falls off the side of while climbing, and the climb is the
+			# one place a player has no lateral control to spare.
+			if narrow and not is_ramp:
 				if x < margin or x >= width - margin:
 					solid = false
 				elif split and absi(x - width / 2) < 1:
@@ -159,12 +207,20 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 					# be anywhere on them -- each lane is an ordinary route from
 					# one band to the next.
 					solid = false
-			seg.kinds[z][x] = GridConfig.Kind.DECK if solid else GridConfig.Kind.HOLE
+			if not solid:
+				seg.kinds[z][x] = GridConfig.Kind.HOLE
+			elif is_ramp:
+				seg.kinds[z][x] = GridConfig.Kind.RAMP
+			else:
+				seg.kinds[z][x] = GridConfig.Kind.DECK
 
 	# THE ENTRY AND EXIT ROWS ARE ALWAYS FULL WIDTH AND FLAT. That is the join
 	# contract's easiest possible satisfaction -- any neighbour overlaps -- and it
 	# is also what makes the height profile safe, since a segment is stacked on
 	# the one before by its exit height.
+	# THE ENTRY AND EXIT ROWS ARE FLAT DECK, never a ramp: a segment is stacked on
+	# the one before it by its exit HEIGHT, and joining a wedge to a flat row
+	# leaves a step nobody authored.
 	for x in width:
 		seg.kinds[0][x] = GridConfig.Kind.DECK
 		seg.kinds[length - 1][x] = GridConfig.Kind.DECK
