@@ -48,6 +48,35 @@ authored once and then reused.
 
 ---
 
+## It is ADDITIVE. Nothing that works today stops working
+
+Worth stating first, because it bounds the risk of the whole milestone: this adds
+a way to author, it does not replace one.
+
+| stays exactly as it is | why it is safe |
+|---|---|
+| whole-segment `.seg` files | `playtest_bridge`, `run_gaps`, `run_pillars` and the test fixtures are unchanged; a run still opens on the authored bridge |
+| `SegmentPool.POOL` | the existing list of authored sections and `@section` / `@lobby` markers is untouched |
+| the profile loop's flat / ramp / lift / drop branches | a piece is a FIFTH thing it can decide to do, beside them |
+| the dressing pass | unchanged, plus one keep-out band — the same shape as the lift clearance rule |
+| the oracle and the reroll | unchanged; a stamped section is validated by exactly the check that already runs |
+| `SegmentData` | gains two OPTIONAL header fields; a file without them parses precisely as today |
+
+Nothing scans `segments/`. `SegmentPool` lists paths explicitly and says why in
+its own comment — "a DirAccess scan of res:// behaves differently in an export
+than in a dev run" — which is the same reasoning the piece library follows, and
+it also means **a new `.seg` in that folder cannot leak into play by existing.**
+Pieces are inert until the profile loop is taught to reach for them, so Phase 0
+ships with zero effect on the game.
+
+**The one real behaviour change**, and it is worth knowing before it surprises
+somebody: a new branch in the profile loop consumes the mixer differently, so
+**existing seeds stop producing the terrain they produce today.** Nothing breaks
+— every run is still a pure function of `(seed, count)` and still validated —
+but a seed noted down as "the good one" is not the same bridge afterwards. That is
+true of every generator change and was equally true when lifts landed; it is
+called out here because this is the last cheap moment to decide the seeds matter.
+
 ## What a set-piece is
 
 **A `.seg` file with a `piece` tag, 4–8 rows long, stamped into a generated
@@ -113,7 +142,8 @@ that was never asked to place one. No silent caps.
 ## The library is an ORDERED LIST IN CODE, not a directory scan
 
 `const LIBRARY: Array[String]` in a `set_pieces.gd`, listing paths in a fixed
-order.
+order — the same shape as `SegmentPool.POOL`, which already exists and already
+carries this exact argument in its own comment.
 
 This is not tidiness. The bridge is a pure function of `(seed, count)` and a
 joining client is told two numbers and builds the identical world. Selection is
