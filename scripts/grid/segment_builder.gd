@@ -120,9 +120,13 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 				continue
 			var h: int = seg.height_at(cx, z) + h_offset
 			var top2: float = _surface_y(kind2, h)
+			# The same thickness the collision uses, or the two disagree and a
+			# player stands on a slab they can see under.
+			var under2: float = cell_underside(seg, cx, z, h_offset)
+			var thick2: float = maxf(GridConfig.DECK_THICKNESS, top2 - under2)
 			var cell_centre := Vector3(
 				GridConfig.cell_origin_x(cx, width) + GridConfig.CELL_SIZE * 0.5,
-				top2 - GridConfig.DECK_THICKNESS * 0.5,
+				top2 - thick2 * 0.5,
 				GridConfig.cell_z_world(z + z_offset)
 			)
 			var lit: bool = (cx + z + z_offset) % 2 == 0
@@ -136,7 +140,7 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 			else:
 				material = palette["light"] if lit else palette["dark"]
 			_add_mesh_box(meshes, cell_centre,
-				Vector3(GridConfig.CELL_SIZE, GridConfig.DECK_THICKNESS, GridConfig.CELL_SIZE), material)
+				Vector3(GridConfig.CELL_SIZE, thick2, GridConfig.CELL_SIZE), material)
 
 # Water sits a little below its cell's nominal top so it reads as a channel
 # rather than as deck of a different colour. The flow that makes it dangerous is
@@ -166,16 +170,20 @@ static func _merge_deck_collision(seg, z_offset: int, h_offset: int,
 			if kind != GridConfig.Kind.DECK and kind != GridConfig.Kind.WATER:
 				continue
 			var height: int = seg.height_at(x, z) + h_offset
+			# THE MERGE KEY GAINS THE UNDERSIDE. Cells of the same kind and height
+			# no longer necessarily have the same THICKNESS, so a plateau's edge
+			# cannot merge with its interior. More boxes, but only ever at a height
+			# change, which is where the merge was going to break anyway.
+			var under: float = cell_underside(seg, x, z, h_offset)
 
 			var run := 1
-			while x + run < width and not covered.has(Vector2i(x + run, z)) 					and _same_cell(seg, x + run, z, kind, height, h_offset):
+			while x + run < width and not covered.has(Vector2i(x + run, z)) and _same_cell(seg, x + run, z, kind, height, h_offset) and is_equal_approx(cell_underside(seg, x + run, z, h_offset), under):
 				run += 1
 
 			# The whole run pushed down Z. It stops at the first row where ANY
 			# column disagrees -- a rectangle, never a staircase.
 			var depth := 1
-			while z + depth < seg.length and _row_matches(seg, x, run, z + depth,
-					kind, height, h_offset, covered):
+			while z + depth < seg.length and _row_matches(seg, x, run, z + depth, kind, height, h_offset, covered) and _row_underside_matches(seg, x, run, z + depth, h_offset, under):
 				depth += 1
 
 			for dz in depth:
@@ -183,19 +191,76 @@ static func _merge_deck_collision(seg, z_offset: int, h_offset: int,
 					covered[Vector2i(x + dx, z + dz)] = true
 
 			var top: float = _surface_y(kind, height)
+			var thickness: float = maxf(GridConfig.DECK_THICKNESS, top - under)
 			var size := Vector3(
 				float(run) * GridConfig.CELL_SIZE,
-				GridConfig.DECK_THICKNESS,
+				thickness,
 				float(depth) * GridConfig.CELL_SIZE)
 			# Midway between the first and last cell centres, which is right whichever
 			# way world Z runs against cell z.
 			var mid_z: float = (GridConfig.cell_z_world(z + z_offset) 				+ GridConfig.cell_z_world(z + depth - 1 + z_offset)) * 0.5
 			var centre := Vector3(
 				GridConfig.cell_origin_x(x, width) + float(run) * GridConfig.CELL_SIZE * 0.5,
-				top - GridConfig.DECK_THICKNESS * 0.5,
+				top - thickness * 0.5,
 				mid_z)
 			_add_collision_box(body, centre, size)
 			out.deck_box_count += 1
+
+# THE ADJACENCY THICKNESS RULE (M17 phase 2).
+#
+#     underside(cell) = min(own_top - DECK_THICKNESS,
+#                           lowest top face among its EIGHT neighbours)
+#
+# A deck cell is otherwise a slab hanging DECK_THICKNESS below its top face, so a
+# cell at height 4 beside one at height 0 floats seven metres up with an open
+# void under it: you see straight under the raised section, and a body walking
+# beneath it walks through empty air where a cliff face should be. That is the
+# ramp-skirt bug of 2026-08-13, whose symptom was "sometimes I fall through" and
+# which a walking test passed for months.
+#
+# ONLY CELLS AT A HEIGHT CHANGE GET THICK. A plateau's interior matches its
+# neighbours, so it stays exactly as thin as it is today, and the hollow under it
+# is sealed by the thick perimeter — there is no sightline in. The geometry
+# grows only where the terrain actually steps.
+#
+# EIGHT-WAY AND NOT FOUR. A four-way rule leaves a vertical slit at a DIAGONAL
+# height change, and the camera looks down the bridge at 45 degrees, which is
+# exactly the angle that catches it.
+#
+# A CELL WITH NO SOLID NEIGHBOUR STAYS THIN, deliberately: there is no floor
+# beneath it to stand on, so there is nothing to hide, and a thin platform over
+# nothing is what it actually is.
+#
+# Off the ENDS of a segment there is no neighbour to ask about — that row
+# belongs to the next segment and is not loaded here. Heights are stacked so a
+# join meets at a matching height; a mismatch there is the one place this rule
+# cannot close a slot.
+static func cell_underside(seg, x: int, z: int, h_offset: int) -> float:
+	var kind: int = seg.kind_at(x, z)
+	var top: float = _surface_y(kind, seg.height_at(x, z) + h_offset)
+	var lowest: float = top - GridConfig.DECK_THICKNESS
+	for dz in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dz == 0:
+				continue
+			var nx: int = x + dx
+			var nz: int = z + dz
+			if not seg.in_bounds(nx, nz):
+				continue
+			if not seg.is_solid(nx, nz):
+				continue
+			var ntop: float = _surface_y(seg.kind_at(nx, nz), seg.height_at(nx, nz) + h_offset)
+			lowest = minf(lowest, ntop)
+	return lowest
+
+# Every column of a candidate row shares the run's underside. Split out rather
+# than folded into _row_matches so "is this the same deck" and "is it the same
+# THICKNESS of deck" stay separate questions.
+static func _row_underside_matches(seg, x: int, run: int, z: int, h_offset: int, under: float) -> bool:
+	for dx in run:
+		if not is_equal_approx(cell_underside(seg, x + dx, z, h_offset), under):
+			return false
+	return true
 
 static func _same_cell(seg, x: int, z: int, kind: int, height: int,
 		h_offset: int) -> bool:
