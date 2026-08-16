@@ -124,81 +124,133 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	#
 	# THE FIRST VERSION HAD NO ASCENDERS AT ALL, which meant every height change
 	# had to be a single unit -- SOLO_RISE is 1, so anything taller is a wall a
-	# lone player cannot pass and the validator rejects the whole attempt. The
-	# terrain came out as a gentle staircase and could never be anything else.
-	# Caught by a playtest question rather than by a test: everything validated,
-	# because "accessible" was true and "interesting" is not something the flood
-	# has an opinion about.
+	# lone player cannot pass and the validator rejects the attempt. The terrain
+	# came out as a gentle staircase and could never be anything else. Caught by a
+	# playtest question rather than by a test: everything validated, because
+	# "accessible" was true and "interesting" is not something a flood has an
+	# opinion about.
 	#
 	# UP NEEDS A RAMP; DOWN NEEDS NOTHING. That asymmetry is the whole trick.
 	# Falling is free, so a DROP can be as tall as it likes and is a real cliff --
 	# which is where split level comes from, and what the thickness rule of phase
 	# 2 exists to make solid. A CLIMB gets a ramp row per unit, each rising one,
-	# which is inside the solo budget however tall the climb is.
+	# which stays inside the solo budget however tall the climb is.
+	#
+	# A RAMP IS NARROW, AND THAT IS THE POINT. The second version ramped the FULL
+	# WIDTH, which reads as a staircase: the whole bridge tilts and there is no
+	# decision in it. Two or three cells of a fifteen-wide deck makes the climb a
+	# PLACE -- a choke the party has to converge on, with a cliff either side that
+	# the thickness rule turns into a real face. Occasionally one (a scramble) or
+	# four (a broad approach), never more.
 	#
 	# LADDERS ARE DELIBERATELY NOT USED, and this is a trap worth naming. The
 	# validator counts LADDER as an ascender (ASCENDER_CONTENTS, since M2) but
-	# THERE IS NO CLIMB MECHANIC YET -- playtest_bridge's own header says so. A
-	# generator that placed ladders would produce runs that VALIDATE and cannot be
-	# walked, which is the worst possible failure for a rejection oracle. Ladders
-	# become available to this file in phase 6, and not before.
-	var heights: Array = []
-	var ramps: Array = []
-	var height := 0
-	var row := 0
-	while row < length:
-		# A flat run to stand on and fight in.
-		var flat: int = 2 + _mix(salt + row * 3301) % 3
-		for _f in flat:
-			if row >= length:
-				break
-			heights.append(height)
-			ramps.append(false)
-			row += 1
-		if row >= length:
-			break
-		var roll: int = _mix(salt + row * 7717) % 10
-		if roll < 6:
-			# CLIMB. One ramp row per unit, so the slope is always walkable
-			# regardless of how far it goes up.
-			var rise: int = 1 + _mix(salt + row * 911) % 3
-			for _r in rise:
-				if row >= length:
-					break
-				height += 1
-				heights.append(height)
-				ramps.append(true)
-				row += 1
-		elif roll < 8 and height > 0:
-			# A DROP, and no ramp: falling is free. This is the cliff that makes a
-			# split level, and it is the one thing hand authoring almost never does
-			# because it looks like a mistake in a text file.
-			height -= mini(height, 1 + _mix(salt + row * 577) % 3)
-		# roll 8-9: nothing, a longer flat.
-
-	while heights.size() < length:
-		heights.append(height)
-		ramps.append(false)
-
-	# THE LANE SPLIT. Narrowness is drawn as HOLES in the outer columns, never as
-	# a width change: the loader refuses a width mismatch, and a fiction is
-	# cheaper than a format. Interior holes carry no parapet by a deliberate M2
-	# decision, so a thin section is unrailed and dangerous for free.
+	# there is no climb mechanic yet -- playtest_bridge's own header says so. A
+	# generator placing ladders would produce runs that VALIDATE and cannot be
+	# walked, the worst possible failure for a rejection oracle. Phase 6, not
+	# before.
+	#
+	# THE NARROWING IS DECIDED FIRST, because a ramp has to be placed somewhere
+	# the deck still exists two rows later. Narrowness is drawn as HOLES in the
+	# outer columns rather than a width change: the loader refuses a width
+	# mismatch, a fiction is cheaper than a format, and interior holes carry no
+	# parapet by a deliberate M2 decision, so a thin section is unrailed and
+	# dangerous for free.
 	var narrow_from: int = 3 + salt % 4
 	var narrow_len: int = 3 + (salt / 3) % 5
 	var margin: int = 1 + (salt / 5) % maxi(1, width / 4)
 	var split: bool = (salt / 11) % 3 == 0
+	# The columns that are solid EVERYWHERE in this segment. A ramp must land in
+	# these or it climbs into a hole -- measured 2026-08-16, 40 of 231 ramp tops
+	# led nowhere because the ramp was placed before the narrowing was known and
+	# the row above it had been cut away.
+	var safe: Array = []
+	for x in range(margin, width - margin):
+		if split and absi(x - width / 2) < 1:
+			continue
+		safe.append(x)
+	if safe.is_empty():
+		safe.append(width / 2)
+
+	# Per row: the height for ordinary cells, and (for a transition row) the ramp
+	# columns and the height those columns climb to.
+	var low: Array = []            # height of the non-ramp part of the row
+	var ramp_h: Array = []         # height of the ramp columns, or -1
+	var ramp_x0: Array = []
+	var ramp_w: Array = []
+
+	var height := 0
+	var row := 0
+	while row < length:
+		var flat: int = 2 + _mix(salt + row * 3301) % 3
+		for _f in flat:
+			if row >= length:
+				break
+			low.append(height)
+			ramp_h.append(-1)
+			ramp_x0.append(0)
+			ramp_w.append(0)
+			row += 1
+		if row >= length:
+			break
+
+		var roll: int = _mix(salt + row * 7717) % 10
+		if roll < 6:
+			var rise: int = 1 + _mix(salt + row * 911) % 3
+			# A CLIMB MUST FINISH WITH ROOM TO SPARE, or its top row is the EXIT
+			# ROW -- which the fixup below stamps flat at `low`, the height of the
+			# plateau BELOW. The ramp then climbs to h5 and its own top is reset to
+			# h3, which is a ramp leading to nothing. Reported from a playtest and
+			# measured at 23 of 239 ramp tops.
+			#
+			# Two rows of margin: one so the climb lands on real ground, one so the
+			# exit row is flat deck at the height the climb reached.
+			rise = mini(rise, length - 2 - row)
+			if rise < 1:
+				continue
+			var w: int = _ramp_width(salt + row * 4093)
+			# ANCHORED IN THE SAFE CORRIDOR, and clamped to a run of it that is
+			# actually contiguous -- landing half a ramp on a hole is the same bug
+			# as landing all of it there.
+			var x0: int = _safe_ramp_x0(safe, w, _mix(salt + row * 1543))
+			w = mini(w, _safe_run_from(safe, x0))
+			for k in rise:
+				if row >= length:
+					break
+				# The ordinary cells stay DOWN at the plateau below; only the ramp
+				# columns climb. What that leaves either side of the ramp is a
+				# cliff, which is exactly what it should be.
+				low.append(height)
+				ramp_h.append(height + k + 1)
+				ramp_x0.append(x0)
+				ramp_w.append(w)
+				row += 1
+			height += rise
+		elif roll < 8 and height > 0:
+			# A DROP, and no ramp: falling is free. The cliff that makes a split
+			# level, and the thing hand authoring almost never does because in a
+			# text file it looks like a mistake.
+			height -= mini(height, 1 + _mix(salt + row * 577) % 3)
+
+	while low.size() < length:
+		low.append(height)
+		ramp_h.append(-1)
+		ramp_x0.append(0)
+		ramp_w.append(0)
 
 	for z in length:
 		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
-		var is_ramp: bool = bool(ramps[z])
+		var is_transition: bool = int(ramp_h[z]) >= 0
 		for x in width:
-			seg.heights[z][x] = int(heights[z])
+			var on_ramp: bool = is_transition \
+				and x >= int(ramp_x0[z]) and x < int(ramp_x0[z]) + int(ramp_w[z])
+			seg.heights[z][x] = int(ramp_h[z]) if on_ramp else int(low[z])
+
 			var solid := true
-			# A RAMP ROW IS NEVER NARROWED. A wedge with a hole in it is a wedge
-			# somebody falls off the side of while climbing, and the climb is the
-			# one place a player has no lateral control to spare.
-			if narrow and not is_ramp:
+			# A TRANSITION ROW IS NEVER NARROWED. A wedge with a hole beside it is
+			# a wedge somebody falls off while climbing, and a climb is the one
+			# place a player has no lateral control to spare.
+			if narrow and not is_transition:
 				if x < margin or x >= width - margin:
 					solid = false
 				elif split and absi(x - width / 2) < 1:
@@ -207,25 +259,22 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 					# be anywhere on them -- each lane is an ordinary route from
 					# one band to the next.
 					solid = false
+
 			if not solid:
 				seg.kinds[z][x] = GridConfig.Kind.HOLE
-			elif is_ramp:
+			elif on_ramp:
 				seg.kinds[z][x] = GridConfig.Kind.RAMP
 			else:
 				seg.kinds[z][x] = GridConfig.Kind.DECK
 
-	# THE ENTRY AND EXIT ROWS ARE ALWAYS FULL WIDTH AND FLAT. That is the join
-	# contract's easiest possible satisfaction -- any neighbour overlaps -- and it
-	# is also what makes the height profile safe, since a segment is stacked on
-	# the one before by its exit height.
 	# THE ENTRY AND EXIT ROWS ARE FLAT DECK, never a ramp: a segment is stacked on
 	# the one before it by its exit HEIGHT, and joining a wedge to a flat row
 	# leaves a step nobody authored.
 	for x in width:
 		seg.kinds[0][x] = GridConfig.Kind.DECK
 		seg.kinds[length - 1][x] = GridConfig.Kind.DECK
-		seg.heights[0][x] = int(heights[0])
-		seg.heights[length - 1][x] = int(heights[length - 1])
+		seg.heights[0][x] = int(low[0])
+		seg.heights[length - 1][x] = int(low[length - 1])
 	return seg
 
 # --- Helpers ------------------------------------------------------------------
@@ -254,6 +303,41 @@ static func _blank(seg_name: String, width: int, length: int):
 		seg.contents.append(crow)
 		seg.no_wall.append(wrow)
 	return seg
+
+# Where a ramp of width `w` can start so every one of its columns survives the
+# narrowing. Falls back to the middle of the corridor, which is always solid.
+static func _safe_ramp_x0(safe: Array, w: int, salt: int) -> int:
+	var starts: Array = []
+	for i in safe.size():
+		var x0: int = int(safe[i])
+		var run := 0
+		for k in w:
+			if safe.has(x0 + k):
+				run += 1
+		if run == w:
+			starts.append(x0)
+	if starts.is_empty():
+		return int(safe[safe.size() / 2])
+	return int(starts[salt % starts.size()])
+
+# How many contiguous safe columns follow x0, so a ramp is never wider than the
+# ground it lands on.
+static func _safe_run_from(safe: Array, x0: int) -> int:
+	var run := 0
+	while safe.has(x0 + run):
+		run += 1
+	return maxi(1, run)
+
+# TWO OR THREE, MOSTLY. One is a scramble and four is a broad approach; both are
+# worth having occasionally and neither should be the norm. Never more, because a
+# ramp wider than that stops being a place and becomes the whole deck tilting.
+static func _ramp_width(salt: int) -> int:
+	var roll: int = _mix(salt) % 10
+	if roll == 0:
+		return 1
+	if roll == 9:
+		return 4
+	return 2 + roll % 2
 
 static func _mix(value: int) -> int:
 	var x: int = value

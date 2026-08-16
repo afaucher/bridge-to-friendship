@@ -155,32 +155,104 @@ func _check_variation() -> void:
 	# staircase and could never be anything else. Everything validated the whole
 	# time: "accessible" was true, and "interesting" is not something a flood has
 	# an opinion about.
-	var ramp_rows := 0
+	#
+	# MEASURED PER CELL, NOT DOWN COLUMN ZERO. The first version sampled x = 0 and
+	# broke the moment ramps stopped spanning the full width -- it read the cliff
+	# BESIDE a ramp as "a three-unit step up", which is exactly what a cliff is
+	# and exactly what this claim is not about.
+	var ramp_cells := 0
+	var widths := {}
+	var narrow_ramps := 0
+	var total_ramps := 0
 	var biggest_drop := 0
-	var biggest_climb := 0
+	var worst_ramp_rise := 0
 	for seed_value in [3, 11, 777, 20260816, 424242]:
 		for index in range(1, 6):
 			var seg = SegmentGen.section(WIDTH, seed_value, index)
-			var prev: int = seg.height_at(0, 0)
 			for z in seg.length:
-				var h: int = seg.height_at(0, z)
-				biggest_drop = maxi(biggest_drop, prev - h)
-				biggest_climb = maxi(biggest_climb, h - prev)
-				prev = h
-				if seg.kind_at(0, z) == GridConfig.Kind.RAMP:
-					ramp_rows += 1
+				var run := 0
+				for x in seg.width:
+					if seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+						ramp_cells += 1
+						run += 1
+						# A RAMP NEVER RISES MORE THAN ONE UNIT over the cell
+						# behind it: 27 degrees, inside the walk angle. That is the
+						# claim the solo budget rests on, and it is about the ramp
+						# rather than about the cliff next to it.
+						if z > 0 and seg.is_solid(x, z - 1):
+							worst_ramp_rise = maxi(worst_ramp_rise, seg.height_at(x, z) - seg.height_at(x, z - 1))
+						continue
+					if run > 0:
+						widths[run] = int(widths.get(run, 0)) + 1
+						total_ramps += 1
+						if run >= 2 and run <= 3:
+							narrow_ramps += 1
+						run = 0
+				if run > 0:
+					widths[run] = int(widths.get(run, 0)) + 1
+					total_ramps += 1
+					if run >= 2 and run <= 3:
+						narrow_ramps += 1
+				if z > 0:
+					for x in seg.width:
+						if seg.is_solid(x, z) and seg.is_solid(x, z - 1):
+							biggest_drop = maxi(biggest_drop, seg.height_at(x, z - 1) - seg.height_at(x, z))
 
-	check(ramp_rows > 20,
-		"climbs are made of RAMPS (%d ramp rows) -- without them a generated "
-			% ramp_rows
-		+ "section can only ever be a one-unit staircase")
-	eq(biggest_climb, 1,
-		"and no single step UP is more than one unit, ramp or not: SOLO_RISE is 1 "
-		+ "and a taller step is a wall a lone player cannot pass")
+	print("[gen] ramp widths seen: %s" % str(widths))
+	check(ramp_cells > 40, "climbs are made of RAMPS (%d ramp cells)" % ramp_cells)
+	eq(worst_ramp_rise, 1,
+		"and a ramp never rises more than one unit per cell, which is what makes a "
+		+ "climb solo-passable however tall it is")
 	check(biggest_drop > 1,
 		"while DROPS are real cliffs (%d units) -- falling is free, which is the "
 			% biggest_drop
 		+ "asymmetry that makes split level possible at all")
+
+	# EVERY RAMP LEADS SOMEWHERE. Reported from a playtest as "one ramp that led
+	# to nothing", and it was two separate faults that both produced it:
+	#
+	#   the ramp was placed BEFORE the narrowing was decided, so it could climb
+	#   into a column that gets cut away two rows later -- 40 of 231 tops;
+	#   and a climb could run into the EXIT ROW, which the generator stamps flat
+	#   at the height of the plateau BELOW, resetting the ramp's own top -- 23 of
+	#   239 after the first fix.
+	#
+	# Neither was visible to the validator: a ramp into a hole is still a
+	# perfectly crossable segment as long as some OTHER route exists, and one
+	# usually did. Reachability says the party can get through; it has no opinion
+	# on whether a thing you can see and walk up is a lie.
+	var dead_tops := 0
+	var tops := 0
+	for seed_value in [3, 11, 777, 20260816, 424242, 8, 64, 5150]:
+		for index in range(1, 6):
+			var seg = SegmentGen.section(WIDTH, seed_value, index)
+			for z in seg.length:
+				for x in seg.width:
+					if seg.kind_at(x, z) != GridConfig.Kind.RAMP:
+						continue
+					# Only the TOP of a ramp run: the cell up-bridge is not ramp.
+					if z + 1 < seg.length and seg.kind_at(x, z + 1) == GridConfig.Kind.RAMP:
+						continue
+					tops += 1
+					var lands: bool = z + 1 < seg.length 						and seg.is_solid(x, z + 1) 						and seg.height_at(x, z + 1) >= seg.height_at(x, z)
+					if not lands:
+						dead_tops += 1
+	check(tops > 50, "there are ramps to check (%d tops)" % tops)
+	eq(dead_tops, 0,
+		"and every one of them LANDS -- on solid ground, at least as high as the "
+		+ "ramp reached (%d of %d led nowhere)" % [dead_tops, tops])
+
+	# A RAMP IS NARROW, WHICH IS THE POINT. A full-width ramp reads as the whole
+	# bridge tilting: a staircase with no decision in it. Two or three cells of a
+	# fifteen-wide deck makes the climb a PLACE the party converges on, with a
+	# cliff either side that phase 2 turns into a real face.
+	for w in widths.keys():
+		check(int(w) >= 1 and int(w) <= 4,
+			"no ramp is wider than four cells or narrower than one (saw %d)" % int(w))
+	check(float(narrow_ramps) / float(maxi(1, total_ramps)) > 0.5,
+		"and most are two or three wide (%d of %d) -- one is a scramble, four is a "
+			% [narrow_ramps, total_ramps]
+		+ "broad approach, and neither should be the norm")
 
 	# LADDERS ARE NOT USED, and this is the assertion that keeps it that way.
 	# ASCENDER_CONTENTS has counted LADDER since M2 but there is no climb mechanic

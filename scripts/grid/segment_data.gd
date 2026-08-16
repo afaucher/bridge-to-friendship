@@ -100,6 +100,16 @@ func has_wall(x: int, z: int, dir: int) -> bool:
 		return false
 	if no_wall_at(x, z):
 		return false
+	# NO PARAPET ON A RAMP, for now. A parapet is a box placed at a fixed height
+	# above its cell's top face, and a ramp's top face is a SLOPE -- so the box
+	# either floats off the low end or buries itself in the high one, and there is
+	# no single height that is right along its length. Suppressed rather than
+	# faked: an unrailed ramp is honest about being a slope you can fall off,
+	# which is a fair thing to ask of a climb. A wall that follows the slope needs
+	# a sheared box or a run of short ones, and that is a rendering job nobody has
+	# asked for yet.
+	if kind_at(x, z) == GridConfig.Kind.RAMP:
+		return false
 	var step: Vector2i = GridConfig.DIR_CELLS[dir]
 	# Only the sides. The Z ends join the neighbouring segment, and walling them
 	# would seal every segment shut.
