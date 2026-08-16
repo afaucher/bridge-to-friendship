@@ -36,6 +36,12 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes", "cover", "specials", "hearts",
 	"crumble", "timed"]
 
+# The kinds that can take health off somebody who is not free to move. `cover`,
+# `specials` and `hearts` are deliberately absent: a lift with cover beside it is
+# a BETTER lift, and the whole complaint is that a rider has nothing.
+const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes",
+	"crumble", "timed"]
+
 # THE FOUR THEMES, from the hazard mixes wanted for M17. They are budgets over
 # the same ground, and the differences between them are meant to be legible in
 # this table rather than in any code.
@@ -195,6 +201,10 @@ static func _candidates(seg, kind: String) -> Array:
 	return out
 
 static func _wants(seg, kind: String, x: int, z: int) -> bool:
+	# Checked up front and for every dangerous kind at once rather than repeated
+	# inside each branch: the next hazard added would not have remembered.
+	if kind in DANGEROUS_KINDS and _near_lift(seg, x, z):
+		return false
 	match kind:
 		"shooters", "turrets":
 			# A LANE TO SHOOT DOWN, and something to hide behind on the way in.
@@ -250,6 +260,30 @@ static func _beside_a_gap(seg, x: int, z: int) -> bool:
 		var step: Vector2i = GridConfig.DIR_CELLS[dir]
 		if not seg.is_solid(x + step.x, z + step.y):
 			return true
+	return false
+
+# NOTHING THAT HURTS YOU GOES BESIDE A LIFT (playtest 2026-08-16).
+#
+# The sharpest instance of a rule this pass did not have: a dressing budget is
+# spent without knowing what the SKELETON asks of the player at that spot. A
+# generated run put a skirmisher two cells from its only elevator, and riding one
+# is three and a half seconds of standing still, elevated, with no cover and no
+# verbs — you cannot dodge, dash or take cover, because stepping off is a
+# four-metre drop. Measured: health 5 to 4 and a tumble on the ride; with that one
+# gunner removed, the identical ride is untouched.
+#
+# So it reads as "the elevator hurts you", and the elevator has nothing to do with
+# it. A LIFT IS A PLACE WHERE THE PLAYER HAS NO ANSWERS, and this pass has to know
+# that the way it already knows a rusher wants open ground.
+const LIFT_CLEARANCE := 3
+
+static func _near_lift(seg, x: int, z: int) -> bool:
+	for dz in range(-LIFT_CLEARANCE, LIFT_CLEARANCE + 1):
+		for dx in range(-LIFT_CLEARANCE, LIFT_CLEARANCE + 1):
+			if not seg.in_bounds(x + dx, z + dz):
+				continue
+			if seg.content_at(x + dx, z + dz) == GridConfig.Content.ELEVATOR:
+				return true
 	return false
 
 static func _near_content(seg, x: int, z: int, radius: int) -> bool:

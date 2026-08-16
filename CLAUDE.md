@@ -387,6 +387,14 @@ the moment it is written.
   which is the opposite of the truth. **Lift the control clear of everything else
   before believing it**, the same rule as measuring on a fixture with nothing else
   moving in it.
+- **A TEST RUN ON THE WRONG OBJECT CANNOT FAIL, HOWEVER MANY SEEDS IT SWEEPS.**
+  Observed 2026-08-16 asserting that no hazard sits beside a lift. It passed with
+  its own rule DELETED, at 40 seeds and again at 250 {D} because hazards are
+  placed by `BridgeGrid` at LOAD, and the test was inspecting the raw output of
+  `SegmentGen.section()`, which has no hazards in it at all. Widening the sweep
+  made it slower and no more able to fail. **A/B a new assertion before believing
+  it**, and when it survives its own rule being removed, suspect the OBJECT before
+  the sample size.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

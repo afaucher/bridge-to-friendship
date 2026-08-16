@@ -24,6 +24,7 @@ extends "res://scripts/test_support/test_case.gd"
 #      client rides.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
@@ -306,11 +307,23 @@ func _check_lifts() -> void:
 	var lifts: int = 0
 	var bad_rise: int = 0
 	var narrowed: int = 0
+	var armed: int = 0
 
-	for i in 40:
-		var seg = SegmentGen.section(WIDTH, 9100 + i * 37, i)
+	# A WIDE SWEEP, because the narrow one could not fail. At 40 seeds the
+	# clearance assertion passed with the rule REMOVED -- none of those sections
+	# happened to place a hazard near their lift, so the test was asserting
+	# nothing. The bug was found at a seed this loop never visited.
+	for i in 250:
+		var seed_i: int = 9100 + i * 37
+		var seg = SegmentGen.section(WIDTH, seed_i, i)
 		if seg == null:
 			continue
+		# DRESSED FIRST, and the first version of this was not. Hazards are placed
+		# by BridgeGrid at LOAD, not inside section() -- so a check run on the raw
+		# section is a check run on a map with no hazards in it, and the clearance
+		# assertion below passed with its rule deleted. A test on the wrong object
+		# cannot fail, however many seeds it sweeps.
+		HazardDressing.dress(seg, HazardDressing.theme_for(seed_i, i), seed_i, i)
 		sections += 1
 		var here: int = 0
 		for z in seg.length:
@@ -331,6 +344,21 @@ func _check_lifts() -> void:
 					if not seg.is_solid(wx, z):
 						narrowed += 1
 						break
+				# AND NOTHING THAT HURTS YOU IS NEXT TO IT. Riding is seconds of
+				# standing still, elevated, with no cover and no verbs -- a
+				# skirmisher in range of that is shooting something that cannot
+				# leave. Reported from playtest as "the elevator hurts you", and
+				# the elevator had nothing to do with it.
+				var r: int = HazardDressing.LIFT_CLEARANCE
+				for dz in range(-r, r + 1):
+					for dx in range(-r, r + 1):
+						if not seg.in_bounds(x + dx, z + dz):
+							continue
+						var what: int = seg.content_at(x + dx, z + dz)
+						if what in [GridConfig.Content.SKIRMISHER,
+								GridConfig.Content.TURRET, GridConfig.Content.MOUND,
+								GridConfig.Content.SHOOTER, GridConfig.Content.SPIKES]:
+							armed += 1
 		if here > 0:
 			with_lift += 1
 
@@ -352,6 +380,11 @@ func _check_lifts() -> void:
 	eq(narrowed, 0,
 		"and no lift row is narrowed -- waiting beside a hole is falling off "
 		+ "while standing still")
+	eq(armed, 0,
+		"and nothing that can hurt you is within %d cells of one: a rider has no "
+			% HazardDressing.LIFT_CLEARANCE
+		+ "dodge, no dash and no cover, so a hazard in range of a lift is a "
+		+ "hazard aimed at somebody who cannot answer it")
 
 func _check_deterministic() -> void:
 	var a = SegmentGen.section(WIDTH, 4242, 2)

@@ -101,7 +101,18 @@ const CLIMB_EXIT_LIFT := 0.35
 # VERTICAL ONLY, which is what makes this the cheap version of the phase the plan
 # feared. See BridgeGrid._spawn_elevator.
 const ELEVATOR_RISE_TICKS := 100
-const ELEVATOR_DWELL_TICKS := 70
+# HOW LONG IT WAITS AT EACH END, and it is the number a rider can FAIL.
+#
+# Playtest 2026-08-16: "you can't walk over the lip at the top to the next
+# block." At 70 ticks the platform stopped for 1.17 s, and crossing a 2 m cell
+# at WALK_SPEED takes 0.33 s of that — so the window was fine for somebody
+# already moving and unforgiving of anybody who had to notice they had arrived
+# first. Miss it and the platform is descending, which turns the step off into a
+# climb up a lip that is not climbable, because there is no step-up in this game.
+#
+# 2.5 s instead. A lift is the slow way up by design; the part that is supposed
+# to cost time is the WAIT, not a reaction test at the end of it.
+const ELEVATOR_DWELL_TICKS := 150
 
 # MUTABLE TERRAIN (M17 phase 8). One mechanism — a cell stops being solid —
 # with two triggers, which is what makes "destroyable squares" and "timed blocks"
