@@ -369,6 +369,10 @@ func load_segment(seg) -> void:
 		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), true)
 	for local_cell in built.half_wall_cells:
 		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), false)
+	for local_cell in built.elevator_cells:
+		var ec := Vector2i(local_cell.x, local_cell.y + z_offset)
+		elevator_cells.append(ec)
+		_spawn_elevator(ec)
 	for entry in built.mutable_cells:
 		var mc := Vector2i(entry[0].x, entry[0].y + z_offset)
 		mutable_cells.append(mc)
@@ -709,6 +713,125 @@ func _spawn_mound(cell: Vector2i) -> void:
 	_mound_root.add_child(mound)
 	_mounds[cell] = mound
 
+# --- Elevators (M17 phase 9) --------------------------------------------------
+#
+# THE PHASE THE PLAN CALLED THE WORST NETCODE CASE IN THE DOCUMENT, and the
+# reason it is not is one restriction: AN ELEVATOR MOVES ONLY VERTICALLY.
+#
+# The warning was real and is in CLAUDE.md: Godot transports a rider on a moving
+# body using engine-internal state that `capture_state()` cannot restore, so a
+# client replaying a correction while riding would replay it with the wrong
+# carry. A vertical platform needs no carry at all. Going up it PUSHES the body
+# standing on it, which is ordinary collision and rewinds like any other; going
+# down, gravity keeps the body in contact. There is nothing horizontal to
+# transport, so there is no engine state to fail to rewind.
+#
+# AND ITS POSITION IS A PURE FUNCTION OF THE TICK. No wire, no host authority, no
+# join catch-up: a client that agrees about the tick agrees about where every
+# platform in the world is, INCLUDING at a tick it is replaying. That is the
+# opposite of mutable terrain next door, which had to be broadcast precisely
+# because its rule has an authoritative exception. The difference is worth
+# stating: an elevator never has to refuse to move, so nothing about it is a
+# decision.
+func _spawn_elevator(cell: Vector2i) -> void:
+	if _mutable_root == null:
+		_mutable_root = Node3D.new()
+		_mutable_root.name = "Mutable"
+		add_child(_mutable_root)
+
+	var high: float = cell_surface(cell).y
+	# THE DECK IT SERVES is the lowest solid neighbour: an elevator is authored at
+	# the height it RISES TO, and where it comes back down to is read off the
+	# terrain rather than authored twice and allowed to disagree with it.
+	var low: float = high
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if is_solid(side):
+			low = minf(low, cell_surface(side).y)
+
+	var thick: float = GridConfig.DECK_THICKNESS
+	# ANIMATABLE, NOT STATIC. A StaticBody3D moved by hand does not push what is
+	# standing on it -- it teleports through it -- and the whole point of this slab
+	# is that it carries somebody.
+	var body := AnimatableBody3D.new()
+	body.name = "Elevator_%d_%d" % [cell.x, cell.y]
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.sync_to_physics = true
+	body.position = Vector3(cell_surface(cell).x, low - thick * 0.5, cell_surface(cell).z)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	# OVERSIZED BY A HAIR, and the first version had it INSET by one -- which is
+	# the same seam trap CLAUDE.md carries from the ramps, except this box moves.
+	#
+	# Measured: with a 4 cm gap between the platform and the deck beside it, a body
+	# walking on at full stick STOPPED DEAD at the boundary and stayed there, with
+	# the platform level and nothing above foot height in the way. A flat-bottomed
+	# cylinder does not cross a gap, it catches the far lip of one — and two boxes
+	# placed exactly face to face are the same problem with the gap set to zero.
+	# Overlapping buries the platform's vertical face INSIDE the deck box, so a
+	# body crossing at deck height never meets an exposed edge at all.
+	box.size = Vector3(GridConfig.CELL_SIZE + 0.06, thick, GridConfig.CELL_SIZE + 0.06)
+	shape.shape = box
+	body.add_child(shape)
+	_mutable_root.add_child(body)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.ELEVATOR_COLOUR
+	mat.metallic = 0.5
+	mat.roughness = 0.4
+	var mesh := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = box.size
+	mesh.mesh = cube
+	mesh.material_override = mat
+	body.add_child(mesh)
+
+	_elevators[cell] = {"body": body, "low": low, "high": high}
+
+# WHERE A PLATFORM'S SURFACE IS AT TICK `t`. Rise, dwell, fall, dwell -- and the
+# dwells are not decoration: a platform that reverses the instant it arrives is
+# one you cannot step onto, because stepping on takes longer than nothing.
+#
+# The phase comes off the CELL so neighbours are not synchronised, the same way
+# timed blocks are, and for the same reason.
+func elevator_surface_y(cell: Vector2i, at_tick: int) -> float:
+	if not _elevators.has(cell):
+		return 0.0
+	var record: Dictionary = _elevators[cell]
+	var low: float = record["low"]
+	var high: float = record["high"]
+	if is_equal_approx(low, high):
+		return high
+	var rise: int = SimConfig.ELEVATOR_RISE_TICKS
+	var dwell: int = SimConfig.ELEVATOR_DWELL_TICKS
+	var period: int = (rise + dwell) * 2
+	var phase: int = absi(cell.x * 11 + cell.y * 17) % period
+	var at: int = (at_tick + phase) % period
+	if at < rise:
+		return lerpf(low, high, float(at) / float(rise))
+	at -= rise
+	if at < dwell:
+		return high
+	at -= dwell
+	if at < rise:
+		return lerpf(high, low, float(at) / float(rise))
+	return low
+
+# Called once per sim tick, on BOTH machines, because there is nothing to agree
+# about beyond the tick itself.
+func step_elevators(at_tick: int) -> void:
+	for cell in _elevators:
+		var body: Node = _elevators[cell]["body"]
+		if not is_instance_valid(body):
+			continue
+		body.position.y = elevator_surface_y(cell, at_tick) - GridConfig.DECK_THICKNESS * 0.5
+
+func elevator_low_high(cell: Vector2i) -> Vector2:
+	if not _elevators.has(cell):
+		return Vector2.ZERO
+	return Vector2(_elevators[cell]["low"], _elevators[cell]["high"])
+
 # --- Mutable terrain (M17 phase 8) -------------------------------------------
 #
 # A cell that stops being solid at runtime, and comes back. Two authored triggers
@@ -833,6 +956,9 @@ var mutable_cells: Array = []          # Vector2i, run space, in load order
 var _mutable_root: Node3D = null
 var _mutable: Dictionary = {}          # Vector2i -> {"body":, "mesh":, "content":}
 var _open_cells: Dictionary = {}       # Vector2i -> true while the slab is GONE
+# ELEVATORS (M17 phase 9).
+var elevator_cells: Array = []         # Vector2i, run space
+var _elevators: Dictionary = {}        # Vector2i -> {"body":, "mesh":, "low":, "high":}
 var _cover_root: Node3D = null
 var _ladder_root: Node3D = null
 var _spike_root: Node3D = null

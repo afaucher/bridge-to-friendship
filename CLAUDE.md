@@ -252,6 +252,17 @@ the moment it is written.
   lateral position will pass a single-lane test forever. **Merge co-planar
   geometry into ONE shape**, and when a bug is intermittent, ask what varies
   between the times it happens.
+  **And where you CANNOT merge, OVERLAP -- a gap and a flush join are the same
+  bug.** Observed 2026-08-16 on the elevator, whose slab cannot be merged into the
+  deck because it moves. Inset by 4 cm "so it does not scrape", it stopped a body
+  walking onto it DEAD at the boundary, with the platform level and a ray at chest
+  height finding nothing: a flat-bottomed cylinder does not cross a 4 cm gap, it
+  catches the far lip of one, and two boxes placed exactly face to face are that
+  with the gap set to zero. Sizing the platform 3 cm PROUD on each side buries its
+  vertical face inside the deck box, so a body crossing at deck height never meets
+  an exposed edge. **Ray at FOOT height when a walk stops for no reason** -- the
+  chest-height ray said "nothing there" and was the reason two rounds went
+  looking for the wrong collider.
 - **A DISTANCE ASSERTION HAS NO OPINION ABOUT DIRECTION, and this project has now
   shipped three sign errors.** Observed 2026-08-14: the grenade throw built its
   own forward vector as `Vector3(sin(f), 0, cos(f))`, which is the exact NEGATION

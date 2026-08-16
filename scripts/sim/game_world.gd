@@ -384,6 +384,13 @@ func _build_camera(bridge_width: int) -> void:
 func _physics_process(_delta: float) -> void:
 	if not running:
 		return
+	# BEFORE EITHER TICK, AND ON BOTH SIDES. A platform's position is a pure
+	# function of the tick, so a client derives it rather than being told it — it
+	# does not belong inside _host_tick with the things that are decided. Moved
+	# first because a body stepping this tick must find the deck where it will BE,
+	# not where it was.
+	if grid != null:
+		grid.step_elevators(tick)
 	if is_host:
 		_host_tick()
 	else:

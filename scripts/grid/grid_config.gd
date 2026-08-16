@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -112,6 +112,10 @@ const CONTENT_GLYPHS := {
 	# `t` is the tree and `T` the turret, so the timed block takes `%` -- a shape
 	# rather than a letter, because a grid of them is read as a picture.
 	"%": Content.TIMED,
+	# AN ELEVATOR (M17 phase 9). Uppercase, like every other fixed structure that
+	# is part of the terrain rather than dropped on it: L is a ladder, B a bouncer,
+	# E is the platform that does their job while you stand still.
+	"E": Content.ELEVATOR,
 	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,
@@ -167,6 +171,7 @@ const MUTABLE_CONTENTS := [Content.CRUMBLE, Content.TIMED]
 # READABLE AT A GLANCE OR THEY ARE A TRAP RATHER THAN A HAZARD. A cell that is
 # about to stop existing has to LOOK different from the deck beside it before you
 # stand on it; the checkerboard is deliberately uniform, so these two break it.
+const ELEVATOR_COLOUR := Color(0.78, 0.66, 0.24)   # brass, and it moves
 const CRUMBLE_COLOUR := Color(0.72, 0.45, 0.22)   # cracked earth
 const TIMED_COLOUR := Color(0.30, 0.62, 0.78)     # cold, and it blinks
 

@@ -62,6 +62,10 @@ class Built:
 	# deck that must NOT be merged, because merging is what makes removal cost a
 	# rebuild.
 	var mutable_cells: Array = []
+	# ELEVATOR cells (M17 phase 9). Excluded from the merge for the same reason
+	# mutable cells are, and one better: this slab is not where the merge would
+	# have put it for most of every cycle.
+	var elevator_cells: Array = []
 	# ROWS, NOT CELLS. A round boundary is a line across the bridge; the cells are
 	# how it is authored and the row is what it MEANS. Everything downstream asks
 	# "is this row a boundary", never "is this cell one" -- a party crosses a line.
@@ -125,6 +129,9 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 				continue
 			# Collected for the grid to build as its own body-and-mesh pair. Skipped
 			# here so the checker square does not outlive the slab under it.
+			if seg.content_at(cx, z) == GridConfig.Content.ELEVATOR:
+				out.elevator_cells.append(Vector2i(cx, z))
+				continue
 			if is_mutable(seg, cx, z):
 				out.mutable_cells.append([Vector2i(cx, z), seg.content_at(cx, z)])
 				continue
@@ -291,7 +298,7 @@ static func _same_cell(seg, x: int, z: int, kind: int, height: int,
 # The cost is honest and bounded: one extra box per authored mutable cell, at a
 # seam that was going to exist anyway because the cell is a hole half the time.
 static func is_mutable(seg, x: int, z: int) -> bool:
-	return seg.content_at(x, z) in GridConfig.MUTABLE_CONTENTS
+	return seg.content_at(x, z) in GridConfig.MUTABLE_CONTENTS 		or seg.content_at(x, z) == GridConfig.Content.ELEVATOR
 
 static func _row_matches(seg, x: int, run: int, z: int, kind: int, height: int,
 		h_offset: int, covered: Dictionary) -> bool:

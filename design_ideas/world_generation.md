@@ -631,6 +631,26 @@ Last, because it is the only item whose failure mode is a netcode bug rather tha
 a level bug: Godot's platform transport is engine state `capture_state()` cannot
 restore. Consider making a rider host-only cargo.
 
+**BUILT 2026-08-16, and the netcode problem was answered by a RESTRICTION rather
+than by machinery. An elevator moves only VERTICALLY.** Going up it pushes the
+body standing on it, which is ordinary collision and rewinds like any other
+contact; going down, gravity keeps the body in contact. There is nothing
+horizontal to carry, so there is no engine transport state to fail to restore and
+host-only cargo was never needed. Its position is a pure function of the tick, so
+there is no wire format, no host authority and no join catch-up either — a
+client that agrees about the tick agrees about every platform in the world,
+including at a tick it is replaying.
+
+Worth contrasting with phase 8 next door, which had to be broadcast: **an
+elevator never has to refuse to move.** Mutable terrain does (a slab must not
+close around a body), and one authoritative exception is what makes a rule
+something only the host can evaluate.
+
+There is no call button, deliberately. 2b counts an elevator as "always available
+with a time cost", and a called elevator is only that if the call is free; a
+button turns a time cost into a STATE, and a state can be left in the wrong one by
+somebody who has already gone.
+
 ### What four planning decisions did to this order
 
 Recorded because the order moved more from THINKING than it will from any single

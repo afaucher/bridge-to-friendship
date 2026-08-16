@@ -218,6 +218,13 @@ static func _can_step(seg, from: Vector2i, to: Vector2i, party: Dictionary) -> b
 	var rise: int = seg.height_at(to.x, to.y) - seg.height_at(from.x, from.y)
 	if rise <= 0:
 		return true   # falling or level is always allowed
+	# AN ELEVATOR IS AN ASCENDER NOBODY NEEDS A CAPABILITY FOR (M17 phase 9). It
+	# asks for no verb, no teammate and no item — only for the party to WAIT,
+	# which 2b already counts as a cost paid in round time rather than in
+	# reachability. That is why it is checked BEFORE can_climb and outside it: a
+	# ladder is a thing you must be able to do, a lift is a thing that happens.
+	if seg.content_at(to.x, to.y) == GridConfig.Content.ELEVATOR:
+		return true
 	if bool(party.get("can_climb", false)) and seg.content_at(to.x, to.y) in GridConfig.ASCENDER_CONTENTS:
 		return true
 	# A BARE STEP UP IS A WALL. No mantle, no step-up, no exceptions.

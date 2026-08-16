@@ -89,6 +89,20 @@ const CLIMB_REACH := 1.7
 # so a climber steps ONTO the landing rather than into its edge.
 const CLIMB_EXIT_LIFT := 0.35
 
+# ELEVATORS (M17 phase 9). A platform that runs between the deck it stands on and
+# the deck it serves, forever, on its own clock.
+#
+# THERE IS NO BUTTON, and that is the design rather than a shortcut. 2b treats an
+# elevator as "always available with a time cost" for completability -- a party
+# can WAIT -- and a called elevator is only that if the call is free. A button
+# turns a time cost into a state, and a state can be left in the wrong one by
+# somebody who has already gone.
+#
+# VERTICAL ONLY, which is what makes this the cheap version of the phase the plan
+# feared. See BridgeGrid._spawn_elevator.
+const ELEVATOR_RISE_TICKS := 100
+const ELEVATOR_DWELL_TICKS := 70
+
 # MUTABLE TERRAIN (M17 phase 8). One mechanism — a cell stops being solid —
 # with two triggers, which is what makes "destroyable squares" and "timed blocks"
 # one feature rather than two.
