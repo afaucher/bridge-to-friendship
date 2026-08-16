@@ -25,6 +25,7 @@ extends "res://scripts/test_support/test_case.gd"
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
+const SetPieces = preload("res://scripts/grid/set_pieces.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
@@ -38,6 +39,7 @@ func setup(_main) -> void:
 	_check_variation()
 	_check_joins()
 	_check_lifts()
+	_check_pieces()
 	_check_deterministic()
 	finish()
 
@@ -385,6 +387,108 @@ func _check_lifts() -> void:
 			% HazardDressing.LIFT_CLEARANCE
 		+ "dodge, no dash and no cover, so a hazard in range of a lift is a "
 		+ "hazard aimed at somebody who cannot answer it")
+
+# --- Set-pieces stamped into sections (M18 phase 1) ---------------------------
+#
+# THE MATCH IS THE ASSERTION. Rather than trusting a flag, every row of a
+# suspected placement is compared against the piece's own cells: kinds and
+# contents identical, heights identical after ONE constant offset. That is what
+# "reserve, then stamp" claims — the piece owns those rows outright — and a
+# partial overwrite is exactly the failure it exists to prevent.
+static func _piece_at(seg, piece, at: int) -> bool:
+	if at < 0 or at + piece.length > seg.length:
+		return false
+	var offset: int = seg.height_at(0, at) - piece.height_at(0, 0)
+	for pz in piece.length:
+		for x in piece.width:
+			if seg.kind_at(x, at + pz) != piece.kind_at(x, pz):
+				return false
+			if seg.content_at(x, at + pz) != piece.content_at(x, pz):
+				return false
+			if seg.height_at(x, at + pz) != piece.height_at(x, pz) + offset:
+				return false
+	return true
+
+func _check_pieces() -> void:
+	var sections: int = 0
+	var with_piece: int = 0
+	var stray_content: int = 0
+	var too_late: int = 0
+	var bad_exit: int = 0
+	# AT THE WIDTH THE GAME ACTUALLY RUNS. The rest of this file sweeps a narrower
+	# WIDTH to keep the other checks cheap, and a piece is SKIPPED rather than
+	# stretched when the widths differ -- so sweeping 13 here asked whether pieces
+	# turn up in sections no piece is eligible for, and got the honest answer.
+	var w: int = GridConfig.DEFAULT_WIDTH
+	var library: Array = SetPieces.for_width(w)
+	check(not library.is_empty(),
+		"the library has pieces for the run width (%d)" % w)
+
+	for i in 250:
+		var seed_i: int = 7700 + i * 53
+		var seg = SegmentGen.section(w, seed_i, i)
+		if seg == null:
+			continue
+		sections += 1
+
+		var found_at: int = -1
+		var found = null
+		for piece in library:
+			for at in seg.length:
+				if _piece_at(seg, piece, at):
+					found_at = at
+					found = piece
+					break
+			if found != null:
+				break
+		if found == null:
+			# NO PIECE HERE MEANS NO CONTENT AT ALL. A raw generated section places
+			# no content of its own -- hazards arrive later, from the dressing pass
+			# at load -- so anything in the cells came from a piece, and a section
+			# with content but no MATCH is a piece that was stamped wrong.
+			for z in seg.length:
+				for x in seg.width:
+					var what: int = seg.content_at(x, z)
+					# AN ELEVATOR IS THE GENERATOR'S OWN. Lifts are skeleton, placed
+					# by the profile loop in M17 phase 9, so they are the one content
+					# a raw section carries without a piece. Anything else in the
+					# cells arrived from one.
+					if what != GridConfig.Content.NONE 							and what != GridConfig.Content.ELEVATOR:
+						stray_content += 1
+			continue
+
+		with_piece += 1
+		# ROOM TO SPARE AT BOTH ENDS. A piece running into the exit row is the
+		# ramp-leading-nowhere bug of M17 wearing a composition: the fixup stamps
+		# the exit row flat and takes the top of the piece with it.
+		if found_at < 1 or found_at + found.length > seg.length - 1:
+			too_late += 1
+		# AND THE DECLARED EXIT IS WHAT THE SECTION CARRIED ON FROM.
+		var after: int = seg.height_at(0, found_at + found.length)
+		var before: int = seg.height_at(0, found_at)
+		if after - before != int(found.piece_exit):
+			bad_exit += 1
+
+	print("[gen pieces] %d of %d sections carry a piece" % [with_piece, sections])
+
+	check(with_piece > 0,
+		"the generator stamps pieces (%d of %d) -- they existed for a whole phase "
+			% [with_piece, sections]
+		+ "as files nothing placed")
+	check(with_piece < sections,
+		"and not into every section (%d of %d): a section is 16 rows and a piece "
+			% [with_piece, sections]
+		+ "is 4 to 8 of them, so mostly-generated terrain is the point")
+	eq(stray_content, 0,
+		"every content cell in a raw section belongs to a matched piece -- a "
+		+ "section with content that matches no piece is one that was stamped "
+		+ "partially, which is the exact failure reserve-then-stamp prevents")
+	eq(too_late, 0,
+		"no piece runs into the entry or exit row -- that is the M17 ramp bug "
+		+ "wearing a composition, and the fixup would take the top off it")
+	eq(bad_exit, 0,
+		"and the section carries on from the height the piece DECLARED, so there "
+		+ "is no step on the seam behind it")
 
 func _check_deterministic() -> void:
 	var a = SegmentGen.section(WIDTH, 4242, 2)

@@ -24,6 +24,7 @@ extends RefCounted
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const SetPieces = preload("res://scripts/grid/set_pieces.gd")
 
 # THE LOBBY'S OWN FLOOR, independent of its neighbours. A lobby that merely fits
 # the section either side could come out three cells wide, and that is not a
@@ -36,6 +37,11 @@ const LOBBY_LENGTH := 12
 # Two rows deep at each end, per M16: one row is 2 m, and a party of four told to
 # gather on it is four players jostling on a strip narrower than they are.
 const GATE_DEPTH := 2
+
+# The longest a piece may be, mirrored from SetPieces so the profile loop can
+# reserve room before it has picked one. Checked again against the actual pick,
+# because a mirrored constant is a constant that can drift.
+const MAX_PIECE_ROWS := SetPieces.MAX_ROWS
 
 # --- The lobby ----------------------------------------------------------------
 
@@ -184,6 +190,20 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	# column an elevator stands in, or -1.
 	var lift_x: Array = []
 	var lift_h: Array = []
+	# A SET-PIECE OWNS ITS ROWS OUTRIGHT (M18 phase 1). Per row: the piece
+	# stamped there (or null), which of its rows this is, and the plateau height
+	# it was stamped at.
+	#
+	# RESERVE FIRST, STAMP SECOND. When the loop decides to spend N rows on a
+	# piece, those rows are the piece's -- it writes their heights, kinds and
+	# contents. Building a skeleton and overwriting part of it afterwards leaves
+	# every cell with two authors and no rule about which wins, and the first bug
+	# out of that is a ramp whose top row was eaten by a piece that starts flat.
+	var piece_ref: Array = []
+	var piece_row: Array = []
+	var piece_base: Array = []
+	var pieces: Array = SetPieces.for_width(width)
+	var placed = null
 
 	var height := 0
 	var row := 0
@@ -198,9 +218,43 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			ramp_w.append(0)
 			lift_x.append(-1)
 			lift_h.append(0)
+			piece_ref.append(null)
+			piece_row.append(0)
+			piece_base.append(0)
 			row += 1
 		if row >= length:
 			break
+
+		# A PIECE IS THE OTHER THING THE PROFILE CAN DECIDE TO DO, beside a ramp, a
+		# lift, a drop and staying flat. Offered before the climb roll because a
+		# piece may itself BE a climb -- `piece_exit` says so -- and rolling the
+		# terrain first would be deciding the same question twice.
+		#
+		# ONE PER SECTION. A section is 16 rows and a piece is 4 to 8 of them, so
+		# two would leave almost no generated terrain between them and the section
+		# would be an authored level with a seam down the middle.
+		#
+		# ROOM TO SPARE, and this is the margin M17 already paid for once: a climb
+		# whose top row IS the exit row gets stamped flat by the fixup below, and a
+		# ramp leading nowhere was measured at 23 of 239 before it was fixed. A
+		# piece running into the exit row is that bug wearing a composition.
+		if placed == null and not pieces.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and _mix(salt + row * 3571) % 4 == 0:
+			var pick = pieces[_mix(salt + row * 5023) % pieces.size()]
+			if row + pick.length + 2 <= length:
+				for pz in pick.length:
+					low.append(height)
+					ramp_h.append(-1)
+					ramp_x0.append(0)
+					ramp_w.append(0)
+					lift_x.append(-1)
+					lift_h.append(0)
+					piece_ref.append(pick)
+					piece_row.append(pz)
+					piece_base.append(height)
+					row += 1
+				height += int(pick.piece_exit)
+				placed = pick
+				continue
 
 		var roll: int = _mix(salt + row * 7717) % 10
 		if roll < 6:
@@ -238,6 +292,9 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				# falls off while standing still waiting.
 				lift_x.append(_safe_ramp_x0(safe, 1, _mix(salt + row * 2087)))
 				lift_h.append(height + rise)
+				piece_ref.append(null)
+				piece_row.append(0)
+				piece_base.append(0)
 				row += 1
 				height += rise
 				continue
@@ -260,6 +317,9 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				ramp_w.append(w)
 				lift_x.append(-1)
 				lift_h.append(0)
+				piece_ref.append(null)
+				piece_row.append(0)
+				piece_base.append(0)
 				row += 1
 			height += rise
 		elif roll < 8 and height > 0:
@@ -275,8 +335,24 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		ramp_w.append(0)
 		lift_x.append(-1)
 		lift_h.append(0)
+		piece_ref.append(null)
+		piece_row.append(0)
+		piece_base.append(0)
 
 	for z in length:
+		# STAMPED WHOLE, and before anything else looks at the row. The piece wrote
+		# its own heights, kinds and contents; narrowing, ramps and lifts have
+		# nothing to say about rows that are not theirs.
+		if piece_ref[z] != null:
+			var piece = piece_ref[z]
+			var pz: int = int(piece_row[z])
+			var base: int = int(piece_base[z])
+			for x in width:
+				seg.heights[z][x] = base + piece.height_at(x, pz)
+				seg.kinds[z][x] = piece.kind_at(x, pz)
+				seg.contents[z][x] = piece.content_at(x, pz)
+			continue
+
 		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
 		# A LIFT ROW IS A TRANSITION ROW TOO, so it is never narrowed: a shaft
 		# with a hole beside it is somewhere a player falls while standing still.

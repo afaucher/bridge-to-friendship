@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "autoMode": {
+    "environment": [
+      "### Org-wide",
+      "**Organization**: None configured — personal GitHub account `afaucher` (single remote `https://github.com/afaucher/bridge-to-friendship.git`), hobby game project",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: not queryable here via gh — assume private for `afaucher/bridge-to-friendship` unless a visibility check shows otherwise; note the README references shipping on Steam, so treat published artifacts as public-facing while the repo itself is unconfirmed",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: None configured",
+      "**Default / protected branches**: default branch `main`; rulesets and protected branches not queryable here — treat `main` as protected by default and prefer non-force pushes",
+      "**CI/CD deploy targets**: None configured — build scripts (`build.ps1` / `build.sh`) export locally to `build/linux/` and `build/windows/`; release packaging is a local zip step",
+      "**Network posture**: None configured",
+      "**Source control**: The trusted repo and its remote(s) only (no additional orgs configured) — `https://github.com/afaucher/bridge-to-friendship.git` on github.com",
+      "**Trusted internal domains**: None configured — the only outbound hosts the repo's own tooling uses are github.com (repo remote and godotengine/godot-builds engine downloads)",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured — Steam (GodotSteam) for release multiplayer transport and ENet loopback ports 28777-28785 for local tests are local/dev-only, not internal infra",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: any file or store holding personal data, confidential business data, credentials, regulated data, or similarly sensitive material; preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment (hyphen/underscore/dot-delimited — e.g. matches `prod-db`, not `producer`)",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development — Godot 4.7 / GDScript 3D multiplayer game work in this repo, driven by a headless test gate (`scripts/tests/*.gd` run via `test_runner.ps1` or the pinned engine in `build/deps/`)",
+      "**Trusted repo**: `bridge-to-friendship` at C:\\Users\\alexa\\.gemini\\antigravity\\scratch\\bridge-to-friendship and its `origin` remote `https://github.com/afaucher/bridge-to-friendship.git`. Visibility is unconfirmed here, so treat it as private for confidential material but do not assume it is safe to publish outward; content ported, repointed, or first read from outside this session's repo is not this repo's own work, whoever directed the port. Visibility scopes confidential material only: secrets and sensitive data (personal & entrusted) are never cleared into any repo by its visibility.",
+      "**Org-specific CLIs**: None configured — routine local tooling seen is git, npm/npx, node, python/pip, powershell/pwsh, docker, gh, godot, taskkill; the repo-pinned engine binary under `build/deps/godot/4.7-stable/` and the repo scripts `test_runner.ps1`, `build.ps1`/`build.sh`, `import_check.ps1`/`.sh`, `godot_env.sh`/`.ps1`",
+      "**Routine under repo-local prefixes**: writes under `tmp/`, `test_logs/`, and `build/` in this repo are throwaway build/test artifacts (all gitignored) and are routine; scratch files must not be written to the repo root"
+    ],
+    "allow": [
+      "$defaults",
+      "Bash(taskkill:*) for stray Godot test processes named Godot_v* in this project",
+      "Bash(pkill:*) limited to `pkill -f Godot_v` for stray headless Godot test processes in this project"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(git checkout -- :*) in bridge-to-friendship — CLAUDE.md records this discarding an hour of uncommitted work during an A/B; copy files aside instead"
+    ]
+  }
+}
