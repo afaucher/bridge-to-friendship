@@ -192,6 +192,19 @@ const RUN_INITIAL_SEGMENTS := 7
 # for the sim and looks like the bridge being built in front of you.
 const RUN_LOOKAHEAD_SEGMENTS := 6
 
+# SPIKE BLOCKS (M17). A full cycle, and how much of it the spikes are OUT for.
+#
+# A THIRD OUT, TWO THIRDS SAFE, on a two-second cycle. The number that matters is
+# the SAFE window, not the dangerous one: it has to be long enough to walk a cell
+# through, or the block is not a hazard with a rhythm, it is a wall that
+# occasionally lets you past. Two thirds of two seconds is four times what a walk
+# across a cell costs, which is room to hesitate.
+const SPIKE_PERIOD := 2.0
+const SPIKE_OUT_FRACTION := 0.34
+const SPIKE_DAMAGE := 1
+# How far from the neighbouring cell's centre still counts as standing in it.
+const SPIKE_REACH := 1.3
+
 # THE ROUND BARRIER (M16). Two metres, matching the parapet: it has to stop a
 # dash, which is the only verb that could otherwise carry a player through, and
 # it must not be so tall that the party cannot see the lobby they are waiting to

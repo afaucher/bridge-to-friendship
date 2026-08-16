@@ -86,10 +86,17 @@ static func _check_gates(seg, problems: Array) -> void:
 # Flood from every solid cell in the entry row, stepping only where a player with
 # the given rise budget could go. Returns the set of reachable cells.
 static func _flood(seg, max_rise: int) -> Dictionary:
+	return _flood_from(seg, solid_columns(seg, 0), max_rise)
+
+# The same flood from a CHOSEN set of entry columns, which is what a run needs: a
+# party arriving from the previous segment does not get to start from the whole
+# entry row, only from the cells that were solid on both sides of the join.
+static func _flood_from(seg, entry_columns: Array, max_rise: int) -> Dictionary:
 	var seen := {}
 	var queue: Array = []
-	for x in seg.width:
-		if seg.is_solid(x, 0):
+	for col in entry_columns:
+		var x: int = int(col)
+		if x >= 0 and x < seg.width and seg.is_solid(x, 0):
 			var c := Vector2i(x, 0)
 			seen[c] = true
 			queue.append(c)
@@ -123,6 +130,80 @@ static func _exit_reached(seg, seen: Dictionary) -> bool:
 		if seg.is_solid(x, seg.length - 1) and seen.has(Vector2i(x, seg.length - 1)):
 			return true
 	return false
+
+# --- The join contract (M17 phase 0) ------------------------------------------
+
+# Which columns of `row` are solid.
+static func solid_columns(seg, row: int) -> Array:
+	var out: Array = []
+	for x in seg.width:
+		if seg.is_solid(x, row):
+			out.append(x)
+	return out
+
+# Which columns of the EXIT row a party can stand on, having entered on
+# `entry_columns`. This is the whole contract in one function: it is what a
+# segment hands to the next one.
+static func reachable_exit_columns(seg, entry_columns: Array, max_rise: int) -> Array:
+	var seen: Dictionary = _flood_from(seg, entry_columns, max_rise)
+	var last: int = seg.length - 1
+	var out: Array = []
+	for x in seg.width:
+		if seg.is_solid(x, last) and seen.has(Vector2i(x, last)):
+			out.append(x)
+	return out
+
+# WALK A WHOLE RUN, CARRYING THE SET OF CELLS THE PARTY CAN OCCUPY.
+#
+# `SegmentValidator.validate` checks a segment ALONE, and until 2026-08-16 that
+# was the only check there was -- so nothing anywhere asked whether a run's
+# segments CONNECT. Segment A can exit solid only on the left while B enters
+# solid only on the right, and the party stops at a seam no authoring pass looked
+# at. It worked by luck: the pool segments are near-solid across their full width
+# at both ends. Thin paths and variable width are both requests to spend that
+# luck, and M16 turned one join per round into six.
+#
+# WHY A RUN PASS AND NOT A PER-SEGMENT PROPERTY. The plan hoped this could be
+# induction: prove something per segment, check overlaps, done. It cannot, and
+# the reason is the feature that made dual path cheap. A segment that splits into
+# lanes cannot promise "from ANY entry cell you reach EVERY exit cell" -- entering
+# left means exiting left -- so what a segment offers depends on where you came
+# in. Carrying the set forward is the exact answer and costs one flood per
+# segment, which is what validating them individually already costs.
+static func validate_run(segments: Array, max_rise: int) -> Array:
+	var problems: Array[String] = []
+	if segments.is_empty():
+		return problems
+
+	var occupiable: Array = solid_columns(segments[0], 0)
+	if occupiable.is_empty():
+		problems.append("segment 0 ('%s') has no solid cell to start on"
+			% segments[0].name)
+		return problems
+
+	for i in segments.size():
+		var seg = segments[i]
+		# THE JOIN. Where the party could be, intersected with where this segment
+		# can be entered.
+		var entered: Array = []
+		for col in occupiable:
+			if int(col) < seg.width and seg.is_solid(int(col), 0):
+				entered.append(int(col))
+		if entered.is_empty():
+			problems.append(
+				("no way into segment %d ('%s'): the party can be at columns %s and its "
+					% [i, seg.name, str(occupiable)])
+				+ "entry row is solid at %s" % str(solid_columns(seg, 0)))
+			return problems
+
+		occupiable = reachable_exit_columns(seg, entered, max_rise)
+		if occupiable.is_empty():
+			problems.append(
+				("segment %d ('%s') cannot be crossed: entered at columns %s, and no cell "
+					% [i, seg.name, str(entered)])
+				+ "of its exit row is reachable from there")
+			return problems
+	return problems
 
 # Solid cells nothing can ever touch. Usually a mistake; occasionally decoration,
 # in which case the author should have drawn a hole.

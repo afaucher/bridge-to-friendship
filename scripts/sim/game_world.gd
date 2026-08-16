@@ -467,6 +467,7 @@ func _host_tick() -> void:
 		body.collision_mask = restore_mask
 
 	_process_run()
+	_process_spikes()
 	_process_plinko()
 	# Before the rescue pass: a rusher can tumble someone into a hole, and the
 	# rescue pass is what notices they left the world. Running it after means the
@@ -743,6 +744,58 @@ func _apply_leash() -> void:
 func _extend_run_to(seed_value: int, wanted: int) -> void:
 	if grid != null:
 		grid.build_run(seed_value, wanted)
+
+# --- Spike blocks (M17) -------------------------------------------------------
+#
+# A block that drives spikes into the cells AROUND it, on a fixed cycle.
+#
+# THE PHASE COMES FROM THE TICK AND NOTHING ELSE, which is what makes this free
+# to replicate: every machine computes the same phase from the same tick, so
+# there is nothing to send and nothing to get out of step. It is also why the
+# offset is derived from the CELL -- a row of blocks that all fire in unison is
+# one obstacle, and a row that fires out of phase is a rhythm to move through.
+#
+# THE BLOCK ITSELF IS SAFE TO STAND ON. What hurts is being beside it, so it is
+# authored where a player must pass alongside something -- a corridor, a ledge,
+# the gap between two holes.
+func _process_spikes() -> void:
+	if grid == null or grid.spike_cells.is_empty():
+		return
+	var now: float = float(tick) * SimConfig.TICK_DELTA
+	for cell in grid.spike_cells:
+		var offset: float = float((int(cell.x) * 5 + int(cell.y) * 3) % 7) / 7.0
+		var phase: float = fmod(now / SimConfig.SPIKE_PERIOD + offset, 1.0)
+		var out: bool = phase < SimConfig.SPIKE_OUT_FRACTION
+		grid.set_spikes_out(cell, out)
+		if not out or not is_host:
+			continue
+		_spike_hits(cell)
+
+func _spike_hits(cell: Vector2i) -> void:
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if not grid.is_solid(side):
+			continue
+		var at: Vector3 = grid.cell_surface_world(side)
+		for peer_key in players.keys():
+			var body: Node = players[int(peer_key)]
+			if body == null or not is_instance_valid(body):
+				continue
+			if body.is_awaiting_rescue():
+				continue
+			var to: Vector3 = body.position - at
+			# Flat distance: a spike reaches the cell, not a sphere around it, and
+			# a player standing on a step above should not be caught by one below.
+			if absf(to.y) > GridConfig.CELL_SIZE or Vector2(to.x, to.z).length() > SimConfig.SPIKE_REACH:
+				continue
+			var hit = Hit.new()
+			# CRUSH: reserved by the damage model on the day it was written for
+			# "a saw-blade, something falling", and this is the first thing to
+			# use it. A shield does not stop the floor.
+			hit.kind = Hit.Kind.CRUSH
+			hit.amount = SimConfig.SPIKE_DAMAGE
+			hit.from = at
+			body.receive_hit(hit)
 
 # --- Plinko -------------------------------------------------------------------
 #

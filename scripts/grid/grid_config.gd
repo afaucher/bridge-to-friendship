@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -105,6 +105,25 @@ const CONTENT_GLYPHS := {
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,
 	"T": Content.TURRET,
+	# COVER (M17). Two shapes, and the difference between them is the whole
+	# design: a TREE is thin and tall, so it hides one player and is trivially
+	# walked around; a HALF WALL is wide and low, so it hides a crouching line of
+	# fire and has to be gone AROUND rather than through.
+	#
+	# Neither needs a new system. SIGHT_BLOCKERS is `world | stones` and
+	# _clear_line already uses it, so a collider on the world layer blocks a
+	# gunner's line of sight the moment it exists. Cover is a glyph and a box.
+	#
+	# WHAT THIS IS NOT, named so nobody assumes it: a half wall you can SHOOT OVER
+	# but WALK THROUGH. That needs a layer that is in SIGHT_BLOCKERS and not in
+	# the player mask, and it is a real idea -- it is just not this one. These
+	# both stop a body.
+	"t": Content.TREE,
+	"h": Content.HALF_WALL,
+	# A SPIKE BLOCK: dormant deck that periodically drives spikes into the cells
+	# around it. Lowercase `v` for the shape of a spike, and lowercase because it
+	# is a thing that happens rather than a thing that is built.
+	"v": Content.SPIKES,
 	# THE ROUND BOUNDARY (M16). A black-and-white checker strip across the full
 	# width of the bridge, marking where one round ends and the lobby begins.
 	#
@@ -248,6 +267,18 @@ const STONE_COLOUR := Color(0.56, 0.38, 0.20)
 # surface.
 const GATE_LIGHT := Color(0.93, 0.93, 0.94)
 const GATE_DARK := Color(0.12, 0.12, 0.14)
+
+# COVER. Green for a tree so it reads as the one thing on this bridge that grew
+# rather than being built, and a grey for the half wall close to the parapet
+# — it IS a parapet, standing in the middle of the deck instead of at the edge.
+const TREE_COLOUR := Color(0.24, 0.45, 0.22)
+const TREE_TRUNK_COLOUR := Color(0.34, 0.26, 0.18)
+const HALF_WALL_COLOUR := Color(0.46, 0.42, 0.38)
+
+# A spike block is deck-coloured while dormant and reads only by its spikes,
+# which are the one thing on the bridge that is nearly white: they have to be
+# legible against brown deck from across a 60 m span, at the moment they matter.
+const SPIKE_COLOUR := Color(0.86, 0.87, 0.90)
 
 # Parapets go grey-brown so they read as structure, not as more deck.
 const WALL_COLOUR := Color(0.42, 0.36, 0.30)

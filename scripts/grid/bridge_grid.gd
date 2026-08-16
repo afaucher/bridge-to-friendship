@@ -271,6 +271,26 @@ func load_segment(seg) -> void:
 			" cells wide but the bridge is ", width, " -- refusing to join a step into the deck")
 		return
 
+	# THE JOIN CONTRACT (M17). Refused here for the same reason a width mismatch is
+	# refused two lines up: a segment that cannot be entered from the one before it
+	# is a dead end, and a dead end nobody printed is an unfinishable run that
+	# looks like a bug in the player's own movement.
+	#
+	# Overlap only, which is the weakest rule that works -- ONE cell solid on both
+	# sides. Whether the party can then CROSS the segment is SegmentValidator's
+	# question and is checked in the gate over many seeds; this is the cheap guard
+	# that runs on every real assembly.
+	if not _segments.is_empty():
+		var prev = _segments[-1]["data"]
+		var overlap := 0
+		for x in mini(prev.width, seg.width):
+			if prev.is_solid(x, prev.length - 1) and seg.is_solid(x, 0):
+				overlap += 1
+		if overlap == 0:
+			printerr("[BridgeGrid] segment '", seg.name, "' cannot be entered from '",
+				prev.name, "' -- no column is solid on both sides of the join")
+			return
+
 	var z_offset := next_z()
 	# Every pool segment is authored starting at its own height 0 and climbing.
 	# The run stacks them: each one is raised by wherever the previous one
@@ -297,6 +317,15 @@ func load_segment(seg) -> void:
 
 	for local_cell in built.mound_cells:
 		_spawn_mound(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.tree_cells:
+		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), true)
+	for local_cell in built.half_wall_cells:
+		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), false)
+	for local_cell in built.spike_cells:
+		var sc := Vector2i(local_cell.x, local_cell.y + z_offset)
+		spike_cells.append(sc)
+		_spawn_spikes(sc)
 
 	# Authored hats are recorded, not spawned here. A hat is a free sim body owned
 	# by the world's hat pool, not grid-resident data like a stone or a heart --
@@ -611,6 +640,96 @@ func _spawn_mound(cell: Vector2i) -> void:
 	mound.position = cell_surface(cell) + Vector3(0.0, 0.17, 0.0)
 	_mound_root.add_child(mound)
 	_mounds[cell] = mound
+
+# --- Cover and spikes (M17) ---------------------------------------------------
+#
+# Grid-resident scenery, like a shooter's pillar: authored in a cell, owned here,
+# and doing its job purely by existing. A collider on the WORLD layer is in
+# SIGHT_BLOCKERS, so cover breaks a gunner's line of sight with no code in the
+# gunner at all.
+var spike_cells: Array = []            # Vector2i, run space
+var _cover_root: Node3D = null
+var _spike_root: Node3D = null
+var _spikes: Dictionary = {}           # Vector2i -> the spike mesh, so the world can raise it
+
+func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
+	if _cover_root == null:
+		_cover_root = Node3D.new()
+		_cover_root.name = "Cover"
+		add_child(_cover_root)
+
+	var body := StaticBody3D.new()
+	body.name = ("Tree_%d_%d" if is_tree else "HalfWall_%d_%d") % [cell.x, cell.y]
+	body.collision_layer = 1        # world: solid, and a sight blocker for free
+	body.collision_mask = 0
+	body.position = cell_surface(cell)
+
+	# THIN AND TALL versus WIDE AND LOW. A tree hides one player and is walked
+	# around in a step; a half wall hides a line of fire and has to be flanked.
+	var size := Vector3(0.5, 3.0, 0.5) if is_tree else Vector3(1.7, 1.1, 0.35)
+	var shape := BoxShape3D.new()
+	shape.size = size
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	col.position = Vector3(0.0, size.y * 0.5, 0.0)
+	body.add_child(col)
+
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	mesh.mesh = box
+	mesh.position = col.position
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.TREE_TRUNK_COLOUR if is_tree else GridConfig.HALF_WALL_COLOUR
+	mat.roughness = 0.9
+	mesh.material_override = mat
+	body.add_child(mesh)
+
+	if is_tree:
+		# A canopy, purely so a tree reads as a tree from the fixed camera rather
+		# than as a thin brown post. No collider: the trunk is the cover.
+		var crown := MeshInstance3D.new()
+		var ball := SphereMesh.new()
+		ball.radius = 0.85
+		ball.height = 1.7
+		crown.mesh = ball
+		crown.position = Vector3(0.0, 3.0, 0.0)
+		var leaf := StandardMaterial3D.new()
+		leaf.albedo_color = GridConfig.TREE_COLOUR
+		leaf.roughness = 0.95
+		crown.material_override = leaf
+		body.add_child(crown)
+
+	_cover_root.add_child(body)
+
+# THE BLOCK ITSELF IS NOT THE HAZARD. It is ordinary deck you can stand on; what
+# hurts is the spikes it drives into the cells AROUND it, which is why it is
+# authored where a player must pass BESIDE something rather than over it.
+func _spawn_spikes(cell: Vector2i) -> void:
+	if _spike_root == null:
+		_spike_root = Node3D.new()
+		_spike_root.name = "Spikes"
+		add_child(_spike_root)
+	var prop := MeshInstance3D.new()
+	prop.name = "Spikes_%d_%d" % [cell.x, cell.y]
+	var box := BoxMesh.new()
+	box.size = Vector3(GridConfig.CELL_SIZE * 0.9, 0.7, GridConfig.CELL_SIZE * 0.9)
+	prop.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.SPIKE_COLOUR
+	mat.roughness = 0.4
+	prop.material_override = mat
+	prop.position = cell_surface(cell) + Vector3(0.0, 0.35, 0.0)
+	prop.visible = false
+	_spike_root.add_child(prop)
+	_spikes[cell] = prop
+
+# Raised or withdrawn. The WORLD decides, from the tick, so every machine agrees
+# without anything being sent.
+func set_spikes_out(cell: Vector2i, out: bool) -> void:
+	var prop: Node = _spikes.get(cell)
+	if prop != null and is_instance_valid(prop):
+		prop.visible = out
 
 func mound_count() -> int:
 	return _mounds.size()

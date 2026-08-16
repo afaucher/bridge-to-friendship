@@ -52,6 +52,11 @@ class Built:
 	var special_cells: Array = []
 	# Enemies that shoot. Authored where they stand, like a shooter pillar.
 	var gunner_cells: Array = []       # [[cell, kind], ...]
+	# Cover, and spike blocks. Collected like every other authored prop: the grid
+	# owns the bodies, the builder only says where the author put one.
+	var tree_cells: Array = []
+	var half_wall_cells: Array = []
+	var spike_cells: Array = []
 	# ROWS, NOT CELLS. A round boundary is a line across the bridge; the cells are
 	# how it is authored and the row is what it MEANS. Everything downstream asks
 	# "is this row a boundary", never "is this cell one" -- a party crosses a line.
@@ -447,6 +452,12 @@ static func _collect_content(seg, out: Built) -> void:
 					out.gunner_cells.append([Vector2i(x, z), 0])
 				GridConfig.Content.TURRET:
 					out.gunner_cells.append([Vector2i(x, z), 1])
+				GridConfig.Content.TREE:
+					out.tree_cells.append(Vector2i(x, z))
+				GridConfig.Content.HALF_WALL:
+					out.half_wall_cells.append(Vector2i(x, z))
+				GridConfig.Content.SPIKES:
+					out.spike_cells.append(Vector2i(x, z))
 				GridConfig.Content.GATE:
 					# Once per ROW however many cells carry the glyph. The
 					# validator has already refused a strip that does not span
