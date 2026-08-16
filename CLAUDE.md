@@ -522,6 +522,23 @@ the moment it is written.
 These are the expensive lessons from a sibling project, kept because they are
 about *method*, not about that game.
 
+- **A CEILING IS NOT A BUDGET, AND MEASURING ONE DOES NOT LICENSE A CONCLUSION
+  ABOUT THE OTHER.** Observed 2026-08-15 answering "how far can you walk in five
+  minutes": the probe correctly measured 5.88 m/s on clear deck, correctly
+  reported that the demo level is ten seconds of walking, and then concluded that
+  sections must be twenty-nine times longer or the target was wrong. A playtest
+  said the same level takes five minutes to actually play. Both numbers were
+  right, and reconciling them the first time produced a THIRD wrong answer,
+  because "the demo level" is not a level: solo builds an ENDLESS assembled run
+  and `playtest_bridge` is merely its first segment, so the five-minute report
+  covered many segments and was never about the 60 m at all. **Check what the
+  thing you are comparing against actually IS before doing arithmetic on it** —
+  the units were fine, the object was wrong.
+  **The measurement was also of an unobstructed straight line, and no metre of
+  this game is one.** When a probe measures an idealised case, the honest report
+  is the ratio it establishes, never a recommendation about the real one — and
+  where a human has played the thing, THEIR number is the evidence and the probe
+  is the proxy. Say which is which.
 - **MEASURE THE STAGE YOU CHANGED, not the end of the funnel.** A change built
   to raise stage-2 throughput, judged on the stage-5 outcome, reads as null: a
   funnel's end sums every failure mode, so a real gain at one stage is invisible
