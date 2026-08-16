@@ -1,0 +1,47 @@
+# SET-PIECE (M18 phase 0): crossfire.
+#
+# A composition, which is the whole reason layer 2 exists: two gaps split the
+# deck into three lanes, a half wall stands where somebody crossing the middle
+# lane can use it, and a turret past the gaps covers all three. No distribution
+# over "gap density" produces that -- the interesting part is the RELATIONSHIP
+# between the cover and the thing it is cover from, and a relationship has to be
+# authored once and then reused.
+#
+# Solo-crossable by any of the three lanes. The outer two are longer and out of
+# the turret's best angle; the middle one is short and watched. That IS the
+# decision the piece is for.
+#
+# The entry and exit rows are full-width solid deck, which is the join contract
+# one level down: the generator stamps this at whatever plateau it has reached,
+# and both ends have to meet ordinary ground.
+
+name = piece_crossfire
+base_height = 0
+width = 15
+length = 6
+piece_exit = 0
+tags = foot, piece, firefight
+
+[deck]
+...............
+....___..___...
+....___..___...
+....___..___...
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+.......h.......
+...............
+...............
+.......T.......
+...............

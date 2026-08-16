@@ -1,0 +1,50 @@
+# SET-PIECE (M18 phase 0): the ladder shelf.
+#
+# A two-unit cliff with two ladders up it and a heart on the shelf above. The
+# piece is also a CLIMB -- `piece_exit = 2` -- so the generator carries on from
+# two units higher, exactly as it would after a ramp.
+#
+# TWO LADDERS, NOT ONE, and that is the composition rather than decoration: one
+# ladder is a queue, and a queue is four players standing still in a game whose
+# threat model is being moved somewhere you did not choose. Two means the party
+# arrives together.
+#
+# NOTHING THAT SHOOTS AT THE TOP, deliberately. A climber has no verbs -- no
+# dodge, no dash, no cover -- which is the same argument that got hazards banned
+# from beside a lift in M17 phase 9, and it was learned there from a playtest that
+# read as "the elevator hurts you". The reward for the climb is the heart; the
+# cost is the time, and the time is paid somewhere you cannot answer back.
+#
+# Cover on the shelf, because the piece AFTER this one does not know it is being
+# stamped behind a climb and may well point something down at the landing.
+
+name = piece_ladder_shelf
+base_height = 0
+width = 15
+length = 6
+piece_exit = 2
+tags = foot, piece, quiet
+
+[deck]
+...............
+...............
+...............
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+222222222222222
+222222222222222
+222222222222222
+
+[content]
+...............
+...............
+...............
+....L.....L....
+.......+.......
+....h.....h....

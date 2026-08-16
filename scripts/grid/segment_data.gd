@@ -19,6 +19,31 @@ var width: int = GridConfig.DEFAULT_WIDTH
 var length: int = 0
 var tags: Array[String] = []
 
+# --- Set-pieces (M18) ---------------------------------------------------------
+#
+# Both OPTIONAL, and a file without them parses exactly as it did before: a
+# set-piece is a `.seg` with a `piece` tag, not a second format. See
+# implementation_plans/m18_set_pieces.md.
+
+# The height a piece leaves you at, relative to the height it was entered at. 0
+# for a flat composition, +2 for one that is also a climb. It is what lets the
+# generator carry on from the right plateau — the same contract the join between
+# two segments already uses, one level down.
+#
+# DECLARED RATHER THAN DERIVED, and the test checks the declaration against the
+# geometry. Deriving it would make a piece that says one thing and does another
+# impossible to catch; a mismatch is an authoring mistake worth being told about.
+var piece_exit: int = 0
+
+# The smallest party that can cross it. RECORDED, NOT ENFORCED: 2a-ii of the
+# world-generation doc says solo-crossable is a policy the assembler applies, not
+# an invariant the oracle bakes in, so a two-player piece is a legitimate thing to
+# author on the day rounds have a lose condition.
+var piece_min_party: int = 1
+
+func is_piece() -> bool:
+	return tags.has("piece")
+
 # Row-major, indexed [z][x].
 var kinds: Array = []      # GridConfig.Kind
 var heights: Array = []    # int, in HEIGHT_UNITs above base_height
@@ -172,6 +197,8 @@ func _set_header(key: String, value: String) -> void:
 		"base_height": base_height = int(value)
 		"width": width = int(value)
 		"length": length = int(value)
+		"piece_exit": piece_exit = int(value)
+		"piece_min_party": piece_min_party = maxi(1, int(value))
 		"tags":
 			for t in value.split(","):
 				var tag := t.strip_edges()
