@@ -81,6 +81,11 @@ radial_segments = 12
 [sub_resource type="BoxMesh" id="Shield_1"]
 size = Vector3(0.46, 0.6, 0.08)
 
+; LEGS: a tall thin box, read as a pair of stilts stood on end. The only special
+; whose silhouette is vertical, which is the whole hint about what it does.
+[sub_resource type="BoxMesh" id="Legs_1"]
+size = Vector3(0.16, 0.62, 0.16)
+
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(0.3, 0.25, 0.7)
 
@@ -138,6 +143,11 @@ visible = false
 
 [node name="Shield" type="MeshInstance3D" parent="."]
 mesh = SubResource("Shield_1")
+material_override = SubResource("Mat_2")
+visible = false
+
+[node name="Legs" type="MeshInstance3D" parent="."]
+mesh = SubResource("Legs_1")
 material_override = SubResource("Mat_2")
 visible = false
 

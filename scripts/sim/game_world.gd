@@ -1501,6 +1501,8 @@ func _fire_specials() -> void:
 				spent_a_use = _step_shield(peer, body, weapon, held)
 			SpecialBody.Kind.ROCKET:
 				spent_a_use = _step_rocket(body, weapon, held)
+			SpecialBody.Kind.LEGS:
+				spent_a_use = _step_legs(body, weapon)
 		weapon.was_held = held
 
 		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
@@ -1531,6 +1533,23 @@ func _step_machine_gun(body: Node, weapon: Node, held: bool) -> bool:
 # gun, not a thrown thing. The cadence does all the work of making it feel
 # different: at ROCKET_FIRE_INTERVAL two shots take three seconds, so holding the
 # button is not a strategy.
+# THE BODY LAUNCHED; THIS IS THE BILL. Legs are the one special whose effect is
+# NOT applied out here, because the effect is on the player's own vertical
+# velocity and a client predicts that — see PlayerBody._step_walk. So the
+# condition lives there, in the function a replay re-runs, and the world reads the
+# flag it raised rather than re-deriving "did they launch" from the inputs. Two
+# copies of that predicate is two things that have to agree forever, and this
+# project has already paid for that shape more than once.
+#
+# `held` is deliberately not a parameter: whether the button is down is exactly
+# the question the body already answered.
+func _step_legs(body: Node, weapon: Node) -> bool:
+	if not body.legs_fired:
+		return false
+	body.legs_fired = false
+	weapon.ammo -= 1
+	return true
+
 func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
 	if not held or weapon.fire_timer > 0.0:
 		return false
@@ -1734,6 +1753,11 @@ func _deployable_by_id(id: int) -> Node:
 func _refresh_shield_flag(peer: int, body: Node) -> void:
 	var weapon: Node = _specials.held_by(peer)
 	body.has_shield = weapon != null and int(weapon.kind) == SpecialBody.Kind.SHIELD
+	# THE AMMO IS FOLDED IN HERE, not tested at the launch. "Can I launch" has to
+	# be ONE question asked in ONE place, or the client predicts a hop the host
+	# refuses and the correction lands on the player's own body. The slot is
+	# replicated, so both machines read the same weapon and the same count.
+	body.has_legs = weapon != null 		and int(weapon.kind) == SpecialBody.Kind.LEGS 		and int(weapon.ammo) > 0
 
 # ONE USE PER DEPLOYMENT, spent when it goes up. There is no timer on the shield:
 # standing still IS the timer, on a bridge that has to be crossed and with things

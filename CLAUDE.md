@@ -611,6 +611,15 @@ about *method*, not about that game.
 - **`git log --grep` BEFORE proposing a change to load-bearing behaviour.**
   Behaviour that looks wrong in one context is often deliberate in another, and
   the commit message is where that reasoning lives.
+- **A VALUE THAT IS DESTROYED WHEN IT REACHES ITS TERMINAL STATE IS NEVER
+  OBSERVED IN IT.** Observed 2026-08-16 measuring legs: a special is destroyed on
+  the tick its ammo hits zero, so a test looping "until ammo == 0" never sees
+  zero and runs to its frame cap, then reports the last count it did see (1)
+  alongside four launches -- which reads as a launch that failed to bill. Watch
+  for the OBJECT going away, not for the number bottoming out. Its twin, from the
+  same run: a flag refreshed at the top of a world tick and invalidated further
+  down it is STALE FOR ONE TICK, so an assertion fired on the tick of the change
+  fails against correct code.
 - **Prefer a DIRECT COUNT at the line that does the thing.** Counting where the
   event happens cannot be argued with; eliminating candidates by reading can be,
   and often wrongly.

@@ -180,6 +180,25 @@ var has_shield: bool = false
 var shielding: bool = false
 var shield_yaw: float = 0.0
 
+# LEGS (M17 phase 6). `has_legs` is an input exactly as `has_shield` is, and set
+# by the same refresh — with the ammo folded in, because "can I launch" is one
+# question and asking it in two places is how the two machines end up disagreeing
+# about whether a launch happened.
+var has_legs: bool = false
+# THE PRESS EDGE, and it IS state: it persists across ticks, so it rides
+# capture_state or a replaying client re-launches on a tick the host did not.
+# One button serves every special (see the four-meanings note in GameWorld); legs
+# are the one that fires on the way DOWN and must not repeat while held, or four
+# charges are gone in four ticks.
+var special_was_held: bool = false
+# Raised by the launch, lowered by the host when it charges for it. NOT in
+# capture_state deliberately: it is written on the tick it happens and read on the
+# next, so a client that replays it writes a flag nothing on that machine reads.
+# THE BODY DECIDES, THE WORLD BILLS — one predicate, in one place. A world that
+# re-derived "did they launch" from the inputs would be a second copy of a
+# condition that has to match this one forever.
+var legs_fired: bool = false
+
 # Is this hit refused? `hit.from` is a POINT for exactly this reason -- a shield
 # gates by where something CAME FROM, which no direction-only hit could answer.
 func shield_blocks(hit) -> bool:
@@ -200,6 +219,11 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	ledge_cooldown = maxf(0.0, ledge_cooldown - SimConfig.TICK_DELTA)
 
 	invulnerable = maxf(0.0, invulnerable - SimConfig.TICK_DELTA)
+
+	# Tracked for EVERY state, not just walking. Being tumbled while holding the
+	# button and coming back up still holding it must not launch you: the edge is
+	# the press, and you did not press it again.
+	var special_held: bool = (actions & SimConfig.ACTION_SPECIAL_HELD) != 0
 
 	match state:
 		State.WALK:
@@ -245,6 +269,10 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	_point_nose()
 	_sync_mesh()
 
+	# Lowered LAST, after the state that read it has run. A press held across a
+	# tumble is still one press.
+	special_was_held = special_held
+
 # Turn the facing marker to where the player is pointing. Driven from `facing`,
 # which is captured state, so it survives a reconciliation replay rather than
 # being animated independently on each machine.
@@ -261,6 +289,7 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 #
 # `state_timer` rides capture_state(), so a remote body already carries the right
 # number and this only has to read it.
+
 func _process(_delta: float) -> void:
 	sync_downed_timer()
 
@@ -508,6 +537,23 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	# are standing against" is a button nobody presses, and the stick already says
 	# everything the move needs.
 	if _try_grab_ladder(move):
+		return
+
+	# LEGS: STRAIGHT UP, ON THE PRESS. Decided here, in the function a client
+	# replays, for the same reason the shield is — an impulse applied from outside
+	# would be missing on every replayed tick, and a correction on your own body's
+	# vertical velocity is the most visible kind there is.
+	#
+	# GROUNDED ONLY. Not a fuel tank: two launches stacked would clear anything the
+	# generator can build, and an edge that clears ANY height is not a shortcut past
+	# geometry, it is a way to ignore geometry.
+	var wants_legs: bool = has_legs 		and (actions & SimConfig.ACTION_SPECIAL_HELD) != 0
+	if wants_legs and not special_was_held and grounded:
+		velocity.y = SimConfig.LEGS_LAUNCH
+		grounded = false
+		legs_fired = true
+		special_was_held = true
+		move_and_slide()
 		return
 
 	# ANCHORED. Raised on the tick the trigger goes down and dropped when it comes
@@ -1196,7 +1242,7 @@ func _find_carrier() -> Node:
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
-		shielding, shield_yaw]
+		shielding, shield_yaw, special_was_held]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1214,6 +1260,8 @@ func apply_state(s: Array) -> void:
 	ledge_cooldown = float(s[12])
 	# Tolerated short, so a blob from before the shield existed still applies
 	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 15:
+		special_was_held = bool(s[15])
 	if s.size() > 14:
 		shielding = bool(s[13])
 		shield_yaw = float(s[14])

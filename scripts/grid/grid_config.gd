@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -101,6 +101,10 @@ const CONTENT_GLYPHS := {
 	# A rocket launcher. `r` for rocket, and lowercase like every other thing
 	# that is picked up rather than fought.
 	"r": Content.PICKUP_ROCKET,
+	# LEGS (M17 phase 6). `j` for jump {D} `l` is the one letter nobody should ever
+	# have to tell apart from a 1 in a grid of them, and `L` is already the ladder
+	# this thing is an alternative to.
+	"j": Content.PICKUP_LEGS,
 	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,

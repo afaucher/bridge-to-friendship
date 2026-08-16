@@ -59,12 +59,12 @@ static func lobby(width: int, run_seed: int, index: int):
 			seg.contents[seg.length - 1 - z][x] = GridConfig.Content.GATE
 
 	# THE RACK: one of each special, spread the full width so it reads as a CHOICE
-	# rather than a conveyor you walk down collecting all four. You leave with
+	# rather than a conveyor you walk down collecting all six. You leave with
 	# one, because the slot holds one.
 	var rack: Array = [
 		GridConfig.Content.PICKUP, GridConfig.Content.PICKUP_GRENADE,
 		GridConfig.Content.PICKUP_ROCKET, GridConfig.Content.PICKUP_MINE,
-		GridConfig.Content.PICKUP_SHIELD,
+		GridConfig.Content.PICKUP_SHIELD, GridConfig.Content.PICKUP_LEGS,
 	]
 	_spread(seg, GATE_DEPTH + 2, rack)
 

@@ -30,7 +30,7 @@ enum Mode { HELD, FLYING, LOOSE }
 # WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
 # a new special is a different resolve function rather than a different object --
 # what differs between them is what the BUTTON means, and that lives in the world.
-enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET }
+enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -104,6 +104,8 @@ func kind_name() -> String:
 			return "SHLD"
 		Kind.ROCKET:
 			return "RKT"
+		Kind.LEGS:
+			return "LEGS"
 	return "?"
 
 # WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
@@ -119,7 +121,7 @@ func kind_name() -> String:
 # a scene, so tinting one in place would repaint every special in the world --
 # including the ones already in somebody's hands.
 # The node that IS this kind. Every silhouette exists in the scene from the start
-# and four of the five are hidden -- see special.tscn for why they are not built
+# and five of the six are hidden -- see special.tscn for why they are not built
 # on demand.
 const SHAPE_NODES := {
 	Kind.MACHINE_GUN: "Body",
@@ -127,6 +129,7 @@ const SHAPE_NODES := {
 	Kind.GRENADE: "Nade",
 	Kind.MINE: "Mine",
 	Kind.SHIELD: "Shield",
+	Kind.LEGS: "Legs",
 }
 
 func apply_kind_look() -> void:
@@ -156,6 +159,8 @@ func _kind_colour() -> Color:
 			return Color(0.25, 0.52, 0.88)
 		Kind.ROCKET:
 			return Color(0.55, 0.62, 0.30)   # olive, the only military thing here
+		Kind.LEGS:
+			return Color(0.35, 0.85, 0.70)   # spring green, and the only mobility one
 	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per

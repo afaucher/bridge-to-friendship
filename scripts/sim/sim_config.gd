@@ -89,6 +89,34 @@ const CLIMB_REACH := 1.7
 # so a climber steps ONTO the landing rather than into its edge.
 const CLIMB_EXIT_LIFT := 0.35
 
+# LEGS (M17 phase 6). A special that launches you straight up.
+#
+# ITS WHOLE JOB IS TO BE A SHORTCUT AND NEVER A ROUTE. Legs are expendable, and
+# per 2a-i of design_ideas/world_generation.md an edge gated by a consumable may
+# only ever be a shortcut — a section that REQUIRED one would become impossible
+# at the moment the last charge is spent, with the party stuck in it and nothing
+# telling them why. That rule is enforced by an absence: SegmentValidator.party_of
+# has no `has_legs` field, so the crossability flood cannot see this at all.
+#
+# CLEARS THREE HEIGHT UNITS. Chosen against what the deck is made of rather than
+# for feel: a bare step up is a wall at ANY height (there is no mantle in this
+# game), so anything that clears more than one is already a shortcut past
+# geometry that otherwise needs a ramp, a ladder or a teammate. Three is enough
+# to be worth carrying and short of the tallest thing the generator builds.
+# TUNED FOR DWELL, NOT FOR APEX, and the first pass got that wrong: sqrt(2gh) for
+# h = 3.25 puts the apex a hand's width over a three-unit step and leaves 0.29 s
+# above the lip -- barely enough to travel the metre needed to land ON it, and a
+# rise that only just clears something is a rise that mostly does not. At 13.9 the
+# apex is 4.0 m and the feet spend 0.58 s above 3.0, which is what actually gets
+# you across. It is also why FOUR units is out of reach: the apex is exactly 4 and
+# the dwell there is zero.
+const LEGS_LAUNCH := 13.9
+const LEGS_AMMO := 4
+# Airborne steering is the walk step's business and unchanged, so a player who
+# holds the stick carries WALK_SPEED through the arc — about 3 m forward by the
+# apex, which is a cell and a half. That is what lands you ON the deck rather
+# than against its face, and it is why there is no forward impulse here.
+
 # A BOOST UP A SLOPE, as distinct from a shove into open air. Slower and with
 # more lift than a tumble: the point is to ARRIVE somewhere, not to be launched,
 # and the receiving player keeps control the whole way. See

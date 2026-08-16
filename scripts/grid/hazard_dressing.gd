@@ -159,7 +159,7 @@ static func _content_for(kind: String, salt: int) -> int:
 		var pool: Array = [
 			GridConfig.Content.PICKUP, GridConfig.Content.PICKUP_GRENADE,
 			GridConfig.Content.PICKUP_MINE, GridConfig.Content.PICKUP_SHIELD,
-			GridConfig.Content.PICKUP_ROCKET,
+			GridConfig.Content.PICKUP_ROCKET, GridConfig.Content.PICKUP_LEGS,
 		]
 		return int(pool[salt % pool.size()])
 	return int(CONTENT_FOR.get(kind, GridConfig.Content.NONE))
