@@ -112,6 +112,19 @@ the moment it is written.
   gravity — it is not; it is two things in the same place. Spawn points are a
   ring for this reason, and **any future code that places a body — the M5 drone
   return most of all — must not place it exactly on another one.**
+- **A PEER ID IS NOT AN INDEX, and locally it looks exactly like one.** Observed
+  2026-08-15: a straggler respawn passed `peer` to `entry_spawn_cell(index)`,
+  whose lane maths is `width/2 - 3 + index*2` CLAMPED. Peers are 1 and 2 in a
+  local game, so it produced lanes 1 and 2 and played perfectly; over the network
+  Godot hands out large random ints, every straggler folded onto the outer
+  column, and two of them onto the SAME CELL — coincident bodies, driven through
+  the floor by the trap above, catching the deck lip on the way past. The report
+  was "teleported to the lobby and left hanging off the outside of the bridge".
+  **Any test with hand-picked peer ids of 1 and 2 cannot see this**, and every
+  test in this repo used exactly those; `test_straggler_return` now uses ids of
+  Godot's own shape. **And a CLAMP is the wrong response to an out-of-range
+  index anywhere a body is placed** — it folds distinct callers onto one cell,
+  which is not "somebody spawns oddly" but the through-the-floor trap. Wrap.
 - **`is_on_floor()` is derived state that survives `apply_state()`.** It lives
   inside the `CharacterBody3D` and rewinding cannot touch it, so a client that
   corrects to an airborne authoritative frame would replay its first tick still

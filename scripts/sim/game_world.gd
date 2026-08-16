@@ -555,6 +555,18 @@ func _settle_round_transition() -> void:
 	# immediately -- no drone, no ceremony. They have already lost the round;
 	# making them watch a three-second flight as well is a punishment on top of a
 	# punishment, and it would play out over the scoreboard.
+	# A LANE INDEX, COUNTED -- never the peer id. It was `_lobby_point(peer)` until
+	# 2026-08-15, and peer ids are 1 and 2 locally but LARGE RANDOM INTS over the
+	# network: entry_spawn_cell computes `width/2 - 3 + index*2` and clamps, so
+	# every straggler resolved to the outermost column and two of them to the SAME
+	# CELL. Coincident bodies depenetrate into a degenerate normal and are driven
+	# down through the floor (CLAUDE.md's oldest trap), and on the way past the
+	# deck the ledge catch grabs the lip -- which is the reported "teleported into
+	# the lobby and left hanging off the outside of the bridge".
+	#
+	# It played fine locally for exactly the reason it was never noticed: peers 1
+	# and 2 give lanes 1 and 2.
+	var lane := 0
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
 		if round_machine.reached.has(peer):
@@ -563,7 +575,8 @@ func _settle_round_transition() -> void:
 		if body == null or not is_instance_valid(body):
 			continue
 		_returning.erase(peer)
-		body.respawn_at(_lobby_point(peer), maxi(body.health, SimConfig.REVIVE_HEALTH))
+		body.respawn_at(_lobby_point(lane), maxi(body.health, SimConfig.REVIVE_HEALTH))
+		lane += 1
 
 # The bridge is endless; it is just built lazily. Keep a couple of segments ahead
 # of whoever is furthest up, and tell clients so they build the same thing.

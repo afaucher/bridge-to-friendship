@@ -212,8 +212,21 @@ func _rebuild_gate_bands() -> void:
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
+# TWO INDICES MUST NEVER GIVE ONE CELL, which is why this wraps rather than
+# clamps. A clamp folds every out-of-range index onto the last column, and the
+# thing that then happens is not "somebody spawns at the edge" -- it is TWO
+# BODIES IN ONE PLACE, which depenetrate into a degenerate normal and are driven
+# down through the floor (CLAUDE.md). Observed 2026-08-15 when a caller passed a
+# peer id here: over the network those are large random ints, so every straggler
+# folded onto the outer column together.
+#
+# The caller was fixed too. This is the half that means the next caller to get it
+# wrong produces a player standing somewhere odd rather than a party falling
+# through the bridge.
 func entry_spawn_cell(index: int) -> Vector2i:
-	var lane: int = clampi(width / 2 - 3 + index * 2, 0, width - 1)
+	var lanes: int = maxi(1, width / 2)
+	var slot: int = posmod(index, lanes)
+	var lane: int = clampi(width / 2 - 3 + slot * 2, 0, width - 1)
 	return Vector2i(lane, _first_standable_row())
 
 # ROW 1 UNLESS ROW 1 IS A BOUNDARY. It was a flat `1` until the round bands went
