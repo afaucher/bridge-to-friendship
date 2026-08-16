@@ -66,7 +66,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -105,6 +105,13 @@ const CONTENT_GLYPHS := {
 	# have to tell apart from a 1 in a grid of them, and `L` is already the ladder
 	# this thing is an alternative to.
 	"j": Content.PICKUP_LEGS,
+	# MUTABLE TERRAIN (M17 phase 8). Two triggers on one mechanism: a cell that
+	# stops being solid at runtime. `c` crumbles under the weight of whoever stands
+	# on it; `%` is on a timer and asks you to cross in rhythm.
+	"c": Content.CRUMBLE,
+	# `t` is the tree and `T` the turret, so the timed block takes `%` -- a shape
+	# rather than a letter, because a grid of them is read as a picture.
+	"%": Content.TIMED,
 	# The two enemies that shoot. Lowercase for the one on legs, uppercase for
 	# the one bolted down -- the same convention `m` already set for a mound.
 	"k": Content.SKIRMISHER,
@@ -147,6 +154,22 @@ const CONTENT_GLYPHS := {
 
 # Contents that get a player up a layer. Every elevation change needs at least
 # one of these or a ramp; see the validator.
+# CELLS THAT COME AND GO (M17 phase 8). Deck while they are there, a hole while
+# they are not, and the difference between the two is only WHEN.
+#
+# THEY ARE SOLID TO THE FLOOD, deliberately. 2b of the design doc: an edge that
+# exists periodically is "always available with a time cost", because a party can
+# WAIT -- and the round clock is where that cost is paid. The alternative, an
+# oracle that refuses to route through anything temporary, would reject every
+# segment built out of these and there would be no point having them.
+const MUTABLE_CONTENTS := [Content.CRUMBLE, Content.TIMED]
+
+# READABLE AT A GLANCE OR THEY ARE A TRAP RATHER THAN A HAZARD. A cell that is
+# about to stop existing has to LOOK different from the deck beside it before you
+# stand on it; the checkerboard is deliberately uniform, so these two break it.
+const CRUMBLE_COLOUR := Color(0.72, 0.45, 0.22)   # cracked earth
+const TIMED_COLOUR := Color(0.30, 0.62, 0.78)     # cold, and it blinks
+
 const ASCENDER_CONTENTS := [Content.LADDER, Content.BOUNCER]
 
 # --- Directions ---------------------------------------------------------------

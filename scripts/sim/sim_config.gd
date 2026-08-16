@@ -89,6 +89,24 @@ const CLIMB_REACH := 1.7
 # so a climber steps ONTO the landing rather than into its edge.
 const CLIMB_EXIT_LIFT := 0.35
 
+# MUTABLE TERRAIN (M17 phase 8). One mechanism — a cell stops being solid —
+# with two triggers, which is what makes "destroyable squares" and "timed blocks"
+# one feature rather than two.
+#
+# THE DELAY IS THE WHOLE MECHANIC. A cell that vanished the instant it was touched
+# would be an invisible instant-death line; half a second is long enough to see it
+# start to go, decide, and run. What a crumble asks is "commit", not "guess".
+const CRUMBLE_DELAY := 0.5
+# AND IT COMES BACK, which is not politeness. 2b: an edge that exists ONCE makes a
+# run completable once, and a party of four where the first across drops the floor
+# strands the other three with nothing to tell them why. Restoring turns it back
+# into what the flood already assumes it is: available, at a cost in time.
+const CRUMBLE_RESTORE := 4.0
+# A timed block on its own clock. Solid for most of the cycle, so a row of them
+# is a rhythm to cross rather than a coin flip.
+const TIMED_PERIOD_TICKS := 180
+const TIMED_SOLID_TICKS := 115
+
 # LEGS (M17 phase 6). A special that launches you straight up.
 #
 # ITS WHOLE JOB IS TO BE A SHORTCUT AND NEVER A ROUTE. Legs are expendable, and

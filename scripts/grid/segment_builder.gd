@@ -57,6 +57,11 @@ class Built:
 	var tree_cells: Array = []
 	var half_wall_cells: Array = []
 	var spike_cells: Array = []
+	# MUTABLE CELLS (M17 phase 8) — [[cell, content], ...]. Collected rather than
+	# built here for the reason in _merge_deck_collision: they are the one kind of
+	# deck that must NOT be merged, because merging is what makes removal cost a
+	# rebuild.
+	var mutable_cells: Array = []
 	# ROWS, NOT CELLS. A round boundary is a line across the bridge; the cells are
 	# how it is authored and the row is what it MEANS. Everything downstream asks
 	# "is this row a boundary", never "is this cell one" -- a party crosses a line.
@@ -118,6 +123,11 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 			var kind2: int = seg.kind_at(cx, z)
 			if kind2 != GridConfig.Kind.DECK and kind2 != GridConfig.Kind.WATER:
 				continue
+			# Collected for the grid to build as its own body-and-mesh pair. Skipped
+			# here so the checker square does not outlive the slab under it.
+			if is_mutable(seg, cx, z):
+				out.mutable_cells.append([Vector2i(cx, z), seg.content_at(cx, z)])
+				continue
 			var h: int = seg.height_at(cx, z) + h_offset
 			var top2: float = _surface_y(kind2, h)
 			# The same thickness the collision uses, or the two disagree and a
@@ -168,6 +178,8 @@ static func _merge_deck_collision(seg, z_offset: int, h_offset: int,
 				continue
 			var kind: int = seg.kind_at(x, z)
 			if kind != GridConfig.Kind.DECK and kind != GridConfig.Kind.WATER:
+				continue
+			if is_mutable(seg, x, z):
 				continue
 			var height: int = seg.height_at(x, z) + h_offset
 			# THE MERGE KEY GAINS THE UNDERSIDE. Cells of the same kind and height
@@ -264,7 +276,22 @@ static func _row_underside_matches(seg, x: int, run: int, z: int, h_offset: int,
 
 static func _same_cell(seg, x: int, z: int, kind: int, height: int,
 		h_offset: int) -> bool:
+	if is_mutable(seg, x, z):
+		return false
 	return seg.kind_at(x, z) == kind and seg.height_at(x, z) + h_offset == height
+
+# A CELL THAT CAN STOP BEING SOLID MUST NOT BE MERGED INTO ANYTHING (M17 phase 8).
+#
+# The merge is the whole reason mutable terrain looked expensive: deck collision
+# is greedy rectangles, so deleting one cell out of a 15x30 box means re-merging
+# the segment and re-uploading the shape. Leave the removable cells OUT of the
+# merge and each one is its own little slab — removal is then freeing a node,
+# and the 30-boxes-to-one win still applies to all the deck that never moves.
+#
+# The cost is honest and bounded: one extra box per authored mutable cell, at a
+# seam that was going to exist anyway because the cell is a hole half the time.
+static func is_mutable(seg, x: int, z: int) -> bool:
+	return seg.content_at(x, z) in GridConfig.MUTABLE_CONTENTS
 
 static func _row_matches(seg, x: int, run: int, z: int, kind: int, height: int,
 		h_offset: int, covered: Dictionary) -> bool:

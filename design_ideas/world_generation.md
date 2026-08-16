@@ -610,6 +610,21 @@ depends on it.** It is a self-contained feature with real replication cost, and
 its position should be decided by how much it is wanted rather than by what it
 unblocks.
 
+**BUILT 2026-08-16, and it was the cheap one rather than the expensive one.** The
+cost this entry was budgeting for — "deck collision is MERGED into greedy
+rectangles, so removing one cell means re-merging that segment's shape" — is
+avoided rather than paid: **the removable cells are kept OUT of the merge.** Each
+is its own slab, removal is freeing a node, and the 30-boxes-to-one win still
+applies to every cell that never moves. The cost is one extra box per authored
+mutable cell, at a seam that had to exist anyway.
+
+The replication guess was wrong in the other direction. A timed block looked like
+it needed no wire at all — a pure function of the tick, derived identically on
+both machines. That fails on the RESTORE: a slab must not re-appear inside a body
+standing in its volume, so a close has to be deferrable, and a rule with an
+authoritative exception is not one two machines can each compute. Both triggers
+are host-owned and broadcast as the whole open set.
+
 ### Phase 9 — elevators
 
 Last, because it is the only item whose failure mode is a netcode bug rather than

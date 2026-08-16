@@ -476,6 +476,7 @@ func _host_tick() -> void:
 
 	_process_run()
 	_process_spikes()
+	_process_mutable()
 	_process_plinko()
 	# Before the rescue pass: a rusher can tumble someone into a hole, and the
 	# rescue pass is what notices they left the world. Running it after means the
@@ -772,6 +773,109 @@ func _extend_run_to(seed_value: int, wanted: int) -> void:
 # THE BLOCK ITSELF IS SAFE TO STAND ON. What hurts is being beside it, so it is
 # authored where a player must pass alongside something -- a corridor, a ledge,
 # the gap between two holes.
+# --- Mutable terrain (M17 phase 8) -------------------------------------------
+#
+# HOST-AUTHORITATIVE, and the reason is the RESTORE rather than the removal. A
+# slab that comes back inside a body standing in its volume is the coincident-body
+# trap in CLAUDE.md with a wall instead of a player, so a close has to be
+# DEFERRABLE -- and a rule with an exception cannot also be a pure function of the
+# tick that a client derives for itself.
+var _crumble_timer: Dictionary = {}    # Vector2i -> seconds until it goes
+var _restore_timer: Dictionary = {}    # Vector2i -> seconds until it comes back
+
+func _process_mutable() -> void:
+	if grid == null or not is_host or grid.mutable_cells.is_empty():
+		return
+	var changed: bool = false
+	for cell in grid.mutable_cells:
+		match grid.mutable_content(cell):
+			GridConfig.Content.CRUMBLE:
+				changed = _step_crumble(cell) or changed
+			GridConfig.Content.TIMED:
+				changed = _step_timed(cell) or changed
+	if changed and networked:
+		_sync_open_cells.rpc(grid.open_cell_layout())
+
+# TRIGGERED BY WEIGHT, and it keeps going once it has started. A crumble you can
+# cancel by stepping back off is a crumble that never costs anything: the moment
+# of decision is the moment you step ON, and taking it back afterwards would move
+# that moment to wherever the player happens to be when the timer runs out.
+func _step_crumble(cell: Vector2i) -> bool:
+	if grid.is_cell_open(cell):
+		return _step_restore(cell)
+	if not _crumble_timer.has(cell):
+		if not _stood_on(cell):
+			return false
+		_crumble_timer[cell] = SimConfig.CRUMBLE_DELAY
+		return false
+	var left: float = float(_crumble_timer[cell]) - SimConfig.TICK_DELTA
+	if left > 0.0:
+		_crumble_timer[cell] = left
+		return false
+	_crumble_timer.erase(cell)
+	_restore_timer[cell] = SimConfig.CRUMBLE_RESTORE
+	return grid.set_cell_open(cell, true)
+
+# ITS OWN CLOCK, out of phase with its neighbours, so a row of them is a rhythm
+# to read rather than a wall that blinks in unison. The phase is derived from the
+# CELL, not from a counter -- a counter would depend on load order, and two
+# machines load the same segments in the same order today and that is not a thing
+# worth depending on.
+func _step_timed(cell: Vector2i) -> bool:
+	if grid.is_cell_open(cell) and _occupied(cell):
+		return false        # never re-solidify around somebody; wait a tick
+	var phase: int = absi(cell.x * 7 + cell.y * 13) % SimConfig.TIMED_PERIOD_TICKS
+	var at: int = (tick + phase) % SimConfig.TIMED_PERIOD_TICKS
+	return grid.set_cell_open(cell, at >= SimConfig.TIMED_SOLID_TICKS)
+
+func _step_restore(cell: Vector2i) -> bool:
+	if not _restore_timer.has(cell):
+		return false
+	# STORED CLAMPED, so a timer that has run out READS as run out. Leaving the
+	# last positive value in place while the close waits made the state say "0.4
+	# seconds to go" for eight seconds, and anything asking whether the cell was
+	# overdue -- a test, a HUD, the next person to read this -- got a no.
+	var left: float = maxf(0.0, float(_restore_timer[cell]) - SimConfig.TICK_DELTA)
+	_restore_timer[cell] = left
+	if left > 0.0:
+		return false
+	# THE ONE CASE THAT MUST NOT FIRE ON TIME. Waiting is free; a slab built around
+	# a player is the fall-through-the-floor trap with the roles swapped.
+	if _occupied(cell):
+		return false
+	_restore_timer.erase(cell)
+	return grid.set_cell_open(cell, false)
+
+# STANDING ON IT: in the cell, on the ground, and at its height rather than under
+# it. The height test is what stops a player walking BENEATH a raised crumble cell
+# from bringing it down on nobody.
+func _stood_on(cell: Vector2i) -> bool:
+	var surface: float = grid.cell_surface_world(cell).y
+	for peer_key in players:
+		var body: Node = players[peer_key]
+		if not is_instance_valid(body) or not body.grounded:
+			continue
+		if grid.cell_of_world(body.position) != cell:
+			continue
+		if absf(body.position.y - PlayerBody.HALF_HEIGHT - surface) < 0.6:
+			return true
+	return false
+
+# Anything of ours inside the volume the slab would occupy. Wider than _stood_on:
+# a body FALLING through the hole is exactly what must not have a slab built
+# around it, and it is neither grounded nor at the surface.
+func _occupied(cell: Vector2i) -> bool:
+	var surface: float = grid.cell_surface_world(cell).y
+	for peer_key in players:
+		var body: Node = players[peer_key]
+		if not is_instance_valid(body):
+			continue
+		if grid.cell_of_world(body.position) != cell:
+			continue
+		if body.position.y - surface < PlayerBody.HALF_HEIGHT * 2.0 			and body.position.y - surface > -(GridConfig.DECK_THICKNESS + PlayerBody.HALF_HEIGHT * 2.0):
+			return true
+	return false
+
 func _process_spikes() -> void:
 	if grid == null or grid.spike_cells.is_empty():
 		return
@@ -2137,6 +2241,18 @@ func _sync_spent_mounds(layout: PackedInt32Array) -> void:
 	if grid != null:
 		grid.apply_spent_mounds(layout)
 
+# MUTABLE TERRAIN (M17 phase 8). The WHOLE open set, not a single toggle.
+#
+# It is a handful of ints and it is idempotent, so a lost packet costs one cell
+# looking wrong for a fraction of a second rather than forever. A per-cell
+# "cell 4,7 is now open" message is smaller and is the kind of thing that goes
+# permanently wrong when one of them is dropped -- and the floor being solid on
+# one machine and not the other is the worst disagreement this game can have.
+@rpc("authority", "call_remote", "reliable")
+func _sync_open_cells(layout: PackedInt32Array) -> void:
+	if grid != null:
+		grid.apply_open_cells(layout)
+
 # --- Rescue: one countdown, two states, one drone -----------------------------
 #
 # LEDGE_HANG and DOWNED are the same situation wearing different hats -- immobile,
@@ -3258,6 +3374,7 @@ func host_add_peer(peer: int) -> void:
 		# order they are sent in is the order they arrive in.
 		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
 		_sync_spent_shooters.rpc_id(peer, grid.spent_shooter_layout())
+		_sync_open_cells.rpc_id(peer, grid.open_cell_layout())
 	# Who is wearing what. The loose hats arrive on the next snapshot; a worn hat
 	# is not in that list by design, so it has to be told.
 	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())

@@ -369,6 +369,10 @@ func load_segment(seg) -> void:
 		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), true)
 	for local_cell in built.half_wall_cells:
 		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), false)
+	for entry in built.mutable_cells:
+		var mc := Vector2i(entry[0].x, entry[0].y + z_offset)
+		mutable_cells.append(mc)
+		_spawn_mutable(mc, int(entry[1]))
 	for local_cell in built.spike_cells:
 		var sc := Vector2i(local_cell.x, local_cell.y + z_offset)
 		spike_cells.append(sc)
@@ -446,6 +450,13 @@ func height_at(cell: Vector2i) -> int:
 	return r[0].height_at(cell.x, r[1]) + int(r[2])
 
 func is_solid(cell: Vector2i) -> bool:
+	# A CELL THAT IS CURRENTLY GONE IS A HOLE, and every caller downstream — the
+	# ledge catch, the ladder foot, the carrier probe — has to be told so. This is
+	# the only place mutable terrain touches the rest of the game, which is what
+	# makes it a small feature: the deck answers a different question, and nothing
+	# else changes.
+	if _open_cells.has(cell):
+		return false
 	var r := _resolve(cell)
 	if r.is_empty():
 		return false
@@ -698,6 +709,116 @@ func _spawn_mound(cell: Vector2i) -> void:
 	_mound_root.add_child(mound)
 	_mounds[cell] = mound
 
+# --- Mutable terrain (M17 phase 8) -------------------------------------------
+#
+# A cell that stops being solid at runtime, and comes back. Two authored triggers
+# on one mechanism: CRUMBLE goes when somebody stands on it, TIMED goes on a
+# clock. The design doc lists "destroyable squares" and "timed blocks" as separate
+# wishes; they are the same sentence with a different subject.
+#
+# WHY THIS IS CHEAP, when the doc expected it to be the expensive one: deck
+# collision is merged into greedy rectangles, so removing a cell from a merged
+# box means re-merging a segment and re-uploading its shape. The answer is not to
+# make the re-merge fast — it is to keep these cells OUT of the merge in the
+# first place. Each is its own slab, removal is `queue_free`, and the merge still
+# does its 30-boxes-to-one job on all the deck that never moves.
+#
+# THE HOST OWNS THE STATE, and it is broadcast rather than derived. A timed block
+# could be a pure function of the tick, and that was the first design: no traffic
+# at all. It was dropped because the RESTORE cannot be — a slab must not
+# re-appear inside a body standing in its volume (the coincident-body trap in
+# CLAUDE.md is exactly this, one body inside another), so the host has to be able
+# to DEFER a close. A rule with one authoritative exception is not deterministic,
+# and two mechanisms agreeing most of the time is worse than one that always does.
+func _spawn_mutable(cell: Vector2i, content: int) -> void:
+	if _mutable_root == null:
+		_mutable_root = Node3D.new()
+		_mutable_root.name = "Mutable"
+		add_child(_mutable_root)
+
+	var top: Vector3 = cell_surface(cell)
+	var thick: float = GridConfig.DECK_THICKNESS
+
+	var body := StaticBody3D.new()
+	body.name = "Mutable_%d_%d" % [cell.x, cell.y]
+	body.collision_layer = 1     # world, like the deck it stands in for
+	body.collision_mask = 0
+	body.position = top - Vector3(0.0, thick * 0.5, 0.0)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(GridConfig.CELL_SIZE, thick, GridConfig.CELL_SIZE)
+	shape.shape = box
+	body.add_child(shape)
+	_mutable_root.add_child(body)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.CRUMBLE_COLOUR if content == GridConfig.Content.CRUMBLE 		else GridConfig.TIMED_COLOUR
+	var mesh := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = box.size
+	mesh.mesh = cube
+	mesh.material_override = mat
+	mesh.position = body.position
+	_mutable_root.add_child(mesh)
+
+	_mutable[cell] = {"body": body, "mesh": mesh, "content": content}
+
+func mutable_content(cell: Vector2i) -> int:
+	if not _mutable.has(cell):
+		return GridConfig.Content.NONE
+	return int(_mutable[cell]["content"])
+
+func is_cell_open(cell: Vector2i) -> bool:
+	return _open_cells.has(cell)
+
+# Returns whether anything CHANGED, so the caller knows when to spend a packet.
+# The nodes are hidden and disabled rather than freed: a cell that comes back has
+# to come back identical, and rebuilding it would be a second construction path
+# for a thing that already exists.
+func set_cell_open(cell: Vector2i, open: bool) -> bool:
+	if not _mutable.has(cell):
+		return false
+	if open == _open_cells.has(cell):
+		return false
+	if open:
+		_open_cells[cell] = true
+	else:
+		_open_cells.erase(cell)
+	var record: Dictionary = _mutable[cell]
+	var body: Node = record["body"]
+	var mesh: Node = record["mesh"]
+	if is_instance_valid(body):
+		# DISABLED DEFERRED. Godot forbids changing a body's collision state from
+		# inside the physics step, and this is called from the sim tick.
+		body.set_deferred("process_mode", Node.PROCESS_MODE_DISABLED if open else Node.PROCESS_MODE_INHERIT)
+		body.set_deferred("collision_layer", 0 if open else 1)
+	if is_instance_valid(mesh):
+		mesh.visible = not open
+
+	return true
+
+# The open set as flat x,z pairs, the same shape as spent_mound_layout() and for
+# the same reason: a joining client rebuilds the bridge from the seed, which
+# gives it every mutable cell CLOSED. One compact message reconciles that.
+func open_cell_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _open_cells:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+func apply_open_cells(layout: PackedInt32Array) -> void:
+	var wanted: Dictionary = {}
+	var i := 0
+	while i + 1 < layout.size():
+		wanted[Vector2i(layout[i], layout[i + 1])] = true
+		i += 2
+	# BOTH DIRECTIONS. A layout is the whole truth about the open set, so a cell
+	# this machine thinks is open and the host does not has to CLOSE — a
+	# one-directional apply would leave a client standing on air the host filled in.
+	for cell in _mutable:
+		set_cell_open(cell, wanted.has(cell))
+
 # --- Cover and spikes (M17) ---------------------------------------------------
 #
 # Grid-resident scenery, like a shooter's pillar: authored in a cell, owned here,
@@ -705,6 +826,13 @@ func _spawn_mound(cell: Vector2i) -> void:
 # SIGHT_BLOCKERS, so cover breaks a gunner's line of sight with no code in the
 # gunner at all.
 var spike_cells: Array = []            # Vector2i, run space
+# MUTABLE TERRAIN (M17 phase 8). One slab per authored cell, deliberately NOT
+# merged into the deck rectangles — see SegmentBuilder.is_mutable for why that
+# is the whole reason this feature is cheap.
+var mutable_cells: Array = []          # Vector2i, run space, in load order
+var _mutable_root: Node3D = null
+var _mutable: Dictionary = {}          # Vector2i -> {"body":, "mesh":, "content":}
+var _open_cells: Dictionary = {}       # Vector2i -> true while the slab is GONE
 var _cover_root: Node3D = null
 var _ladder_root: Node3D = null
 var _spike_root: Node3D = null

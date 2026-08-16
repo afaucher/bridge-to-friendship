@@ -33,7 +33,8 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 # WHAT A THEME CAN ASK FOR. Named rather than free-form so a typo is a missing
 # key rather than a silently empty budget, and so the set of things a theme can
 # vary is a list somebody can read.
-const KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes", "cover", "specials", "hearts"]
+const KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes", "cover", "specials", "hearts",
+	"crumble", "timed"]
 
 # THE FOUR THEMES, from the hazard mixes wanted for M17. They are budgets over
 # the same ground, and the differences between them are meant to be legible in
@@ -46,18 +47,24 @@ const THEMES := {
 	"firefight": {
 		"shooters": 5, "turrets": 2, "rushers": 1, "plinko": 0,
 		"spikes": 0, "cover": 10, "specials": 2, "hearts": 1,
+		"crumble": 0, "timed": 0,
 	},
 	"environmental": {
 		"shooters": 0, "turrets": 0, "rushers": 1, "plinko": 0,
 		"spikes": 14, "cover": 2, "specials": 1, "hearts": 1,
+		# THE GROUND ITSELF IS THE HAZARD HERE, which is what separates this theme
+		# from "firefight with the shooters turned off".
+		"crumble": 5, "timed": 4,
 	},
 	"survival": {
 		"shooters": 1, "turrets": 1, "rushers": 6, "plinko": 4,
 		"spikes": 2, "cover": 5, "specials": 3, "hearts": 2,
+		"crumble": 2, "timed": 0,
 	},
 	"quiet": {
 		"shooters": 1, "turrets": 0, "rushers": 2, "plinko": 0,
 		"spikes": 3, "cover": 4, "specials": 1, "hearts": 1,
+		"crumble": 1, "timed": 1,
 	},
 }
 
@@ -68,6 +75,8 @@ const CONTENT_FOR := {
 	"plinko": GridConfig.Content.SHOOTER,
 	"spikes": GridConfig.Content.SPIKES,
 	"hearts": GridConfig.Content.HEART,
+	"crumble": GridConfig.Content.CRUMBLE,
+	"timed": GridConfig.Content.TIMED,
 }
 
 static func theme_names() -> Array:
@@ -207,6 +216,18 @@ static func _wants(seg, kind: String, x: int, z: int) -> bool:
 			# In front of something that shoots, or where a lane is long enough
 			# that crossing it unprotected is the problem cover solves.
 			return _open_run(seg, x, z, 2)
+		"crumble", "timed":
+			# ON THE DESIRE LINE, which is the opposite of everything else here and
+			# is the point: a temporary floor beside the route is scenery. It goes
+			# in the middle of a clear lane, where it is the ground you were going
+			# to walk on anyway.
+			#
+			# NEVER BESIDE A GAP — unlike spikes, whose whole job is to pinch a
+			# route. A crumble at the edge of a hole widens that hole for four
+			# seconds, and a pinch that widens is how a section stops being
+			# crossable while the flood still says it is (2b counts these as solid
+			# BECAUSE they come back and BECAUSE there is deck either side).
+			return x >= 2 and x < seg.width - 2 and _open_run(seg, x, z, 2) 				and not _beside_a_gap(seg, x, z)
 		"specials", "hearts":
 			# Off the desire line: the interesting place for a pickup is PAST
 			# something, never beside the safe spot.

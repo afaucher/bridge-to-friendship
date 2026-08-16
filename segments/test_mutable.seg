@@ -1,0 +1,47 @@
+# MUTABLE TERRAIN (M17 phase 8). A fixture.
+#
+# A three-cell isthmus across a hole, and it is the ONLY way from the entry rows
+# to the exit rows: a crumble in the middle lane, a timed block either side of it.
+# Everything else on row 4 is a gap.
+#
+# That shape is deliberate. The flood must route THROUGH a temporary cell, which
+# is the claim 2b makes and the one that would be silently wrong if the oracle
+# treated a mutable cell as a hole -- every segment built from these would be
+# rejected and nobody would find out why. A fixture with a safe way round could
+# not tell the difference.
+
+name = test_mutable
+base_height = 0
+width = 5
+length = 8
+tags = foot, test, mutable
+
+[deck]
+.....
+.....
+.....
+.....
+_..._
+.....
+.....
+.....
+
+[height]
+00000
+00000
+00000
+00000
+00000
+00000
+00000
+00000
+
+[content]
+.....
+.....
+.....
+.....
+.%c%.
+.....
+.....
+.....
