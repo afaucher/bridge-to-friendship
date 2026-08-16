@@ -186,11 +186,22 @@ func _build_round_panel() -> void:
 	_round_panel.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(_round_panel)
 
-	_round_label = _label("", 22, COLOR_TEXT)
+	# DOUBLED FROM 22 (2026-08-16). This line is the only thing on screen that
+	# says what the round is DOING -- "everyone onto the checker to begin", the
+	# closing countdown, who won -- and it was set at the size of a status caption
+	# rather than of an announcement. It is read from across the room, once, while
+	# somebody is also trying to play.
+	#
+	# The scoreboard rows and the peer panel are deliberately NOT scaled with it:
+	# those are lists you look AT, and this is a line you catch out of the corner
+	# of your eye.
+	_round_label = _label("", 44, COLOR_TEXT)
 	_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_round_panel.add_child(_round_label)
 
-	_round_clock = _label("", 30, COLOR_ALERT)
+	# The clock goes with it, or the countdown becomes the small print under the
+	# headline it is the whole point of.
+	_round_clock = _label("", 60, COLOR_ALERT)
 	_round_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_round_panel.add_child(_round_clock)
 
@@ -440,6 +451,39 @@ func _label(text: String, size: int, colour: Color) -> Label:
 	label.text = text
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", colour)
+
+	# AN OUTLINE, BECAUSE THERE IS NO BACKGROUND TO DESIGN AGAINST (2026-08-16,
+	# reported as "the white text for the game phase at the top is almost
+	# unreadable").
+	#
+	# This HUD draws straight over the world, and the world under the top of the
+	# screen is the bridge deck: a CHECKERBOARD, so half of every glyph sits on a
+	# light square. White on white is the worst case and it is guaranteed to
+	# happen somewhere in any line of text.
+	#
+	# The alternative is a panel behind the text, and it was not taken: a solid
+	# strip across the top of the screen is a permanent occlusion bought to fix an
+	# occasional one, and this game is played by looking at things in the middle
+	# distance. An outline costs nothing when the background is already dark and
+	# saves the line when it is not.
+	#
+	# SCALED WITH THE FONT so a 34 px clock and an 18 px scoreboard row get the
+	# same weight of edge rather than the same number of pixels; a fixed outline
+	# reads as a heavy smudge on small text and as nothing on large.
+	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
+	# THE RATIO IS THE KNOB, and it was cut from 0.22 when the banner doubled: at
+	# 22 px that gave a 5 px edge, which is chunky but fine, and at 44 px it gives
+	# 10 px, which is a black halo rather than an outline. 0.14 lands at 3 px on
+	# the small rows and 6 px on the banner, which is the usual weight for text
+	# over an arbitrary background.
+	label.add_theme_constant_override("outline_size",
+		maxi(3, int(round(float(size) * 0.14))))
+	# And a soft shadow under it, which is what separates the glyph from a
+	# background of the SAME brightness -- an outline alone still disappears
+	# against mid grey.
+	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.5))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 2)
 	return label
 
 func _bar(size: Vector2) -> ColorRect:

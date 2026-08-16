@@ -25,7 +25,26 @@ var hud: CanvasLayer = null
 var phase: int = 0
 var phase_frame: int = 0
 
+# THE OUTLINE KEYS ARE REAL ONES (2026-08-16). add_theme_*_override stores
+# whatever name it is given and never complains, so a typo or a Godot 3 name is
+# silently a no-op — which is how `tint_progress` got into this file once and
+# only surfaced at runtime. Asked of a BARE Label, before any override, so what
+# is being checked is that Godot's own Label theme defines these keys rather than
+# that we managed to write into a dictionary.
+func _check_outline_keys() -> void:
+	var probe := Label.new()
+	check(probe.has_theme_constant("outline_size"),
+		"Label defines `outline_size` -- the HUD draws over a checkerboard and an "
+		+ "outline is the only thing keeping white text readable on a light square")
+	check(probe.has_theme_color("font_outline_color"),
+		"and `font_outline_color`")
+	check(probe.has_theme_constant("shadow_offset_y"),
+		"and `shadow_offset_y`, which is what separates a glyph from a background "
+		+ "of the same brightness")
+	probe.free()
+
 func setup(main) -> void:
+	_check_outline_keys()
 	world = Node3D.new()
 	world.name = "HudViewWorld"
 	world.set_script(GameWorldScript)
