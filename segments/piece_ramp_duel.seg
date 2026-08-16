@@ -1,0 +1,47 @@
+# SET-PIECE: the ramp duel.
+#
+# A full-width ramp climbing two units with a turret at the top and cover
+# halfway. The relationship is the piece: the turret owns the high ground and
+# you are on a slope in the open, but the half walls are exactly far enough up
+# that reaching them is a commitment and staying below them is not.
+#
+# A TURRET HERE IS FAIR AND ON A LADDER IT WOULD NOT BE. On a ramp you keep every
+# verb -- you can walk, dash, take cover and back off -- which is precisely what
+# a climber on a ladder or a rider on a lift does not have. The plan for this
+# milestone originally sketched "a ladder shaft with a turret covering the top";
+# that was written before M17 phase 9, and it is the shape that reached playtest
+# as "the elevator hurts you".
+
+name = piece_ramp_duel
+base_height = 0
+width = 15
+length = 7
+piece_exit = 2
+tags = foot, piece, firefight
+
+[deck]
+...............
+...............
+///////////////
+///////////////
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+111111111111111
+222222222222222
+222222222222222
+222222222222222
+222222222222222
+
+[content]
+...............
+....t.....t....
+...............
+...............
+...h.......h...
+.......T.......
+...............

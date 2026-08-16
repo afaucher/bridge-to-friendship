@@ -1,0 +1,41 @@
+# SET-PIECE: the spike gallery.
+#
+# Two staggered rows of spike blocks in open ground, with a heart past them. The
+# blocks are on their own clocks and out of phase, so the gallery is a rhythm to
+# read rather than a wall -- and since 2026-08-16 a spike hurts the cell it is
+# DRAWN in and nothing around it, which is what makes weaving between them a real
+# line instead of a guess.
+#
+# The heart is the point of going through rather than the reward for surviving:
+# it is on the far side, in the open, where you can see it from the entry row.
+
+name = piece_spike_gallery
+base_height = 0
+width = 15
+length = 6
+piece_exit = 0
+tags = foot, piece, environmental
+
+[deck]
+...............
+...............
+...............
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+..v..v..v..v...
+...............
+....v..v..v....
+...............
+.......+.......

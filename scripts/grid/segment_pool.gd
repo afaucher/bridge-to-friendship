@@ -120,10 +120,21 @@ static func is_lobby_slot(i: int) -> bool:
 static func section_for(run_seed: int, i: int) -> String:
 	if POOL.is_empty():
 		return LOBBY
-	# THE FIRST SECTION IS ALWAYS THE AUTHORED ONE, so every run opens on ground
-	# somebody designed. After that the generator takes over, with the pool still
-	# in the mix -- an authored section every few slots is what keeps a run from
-	# feeling uniformly synthetic, and is where set-pieces will land.
+	# UNPINNING THIS IS BLOCKED ON A REAL BUG (2026-08-16), not on the argument.
+	#
+	# The argument is settled: pinning meant every run opened on the one section
+	# guaranteed to contain none of the generator's work, and a playtest had to
+	# walk past a whole authored level to reach what it was for.
+	#
+	# Removing the pin failed test_checkpoint_return, and NOT on a margin. From
+	# row 110 the return landed at row 11 -- the FIRST lobby, ignoring every lobby
+	# between -- which is precisely the failure that assertion was written to
+	# catch: "a return that has lost track of the lobby entirely". The pin was
+	# hiding it, because with slot 0 fixed the lookup happened to agree.
+	#
+	# Left pinned until the lookup is fixed. Unpinning is one line and the bug is
+	# not; shipping them together would have been a level-layout change that
+	# silently sends fallen players 99 rows back.
 	if i <= 1:
 		return String(POOL[0]["path"])
 	if _mix(run_seed + i * 104729) % 3 == 0:

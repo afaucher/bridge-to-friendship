@@ -1018,20 +1018,41 @@ func _spawn_ladder(cell: Vector2i) -> void:
 
 	var rungs := Node3D.new()
 	rungs.name = "Ladder_%d_%d" % [cell.x, cell.y]
-	rungs.position = cell_surface(cell)
 
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = GridConfig.LADDER_COLOUR
 	mat.roughness = 0.8
 
-	# Down the FACE of the drop it serves, not up out of the deck: a ladder is
-	# climbed from below, so it hangs from the lip toward the ground beneath.
+	# ON THE FACE OF THE DROP, NOT AT THE CELL CENTRE (fixed 2026-08-16, reported
+	# from playtest as "the ladder is inside a solid block, you can't see it").
+	#
+	# A ladder is authored on the HIGH cell — the deck it delivers you to — and
+	# the first version hung its rails straight down from that cell's middle,
+	# which is the inside of a solid deck column. Invisible, and the climb worked
+	# anyway, because PlayerBody._step_climb had already been fixed to hold the
+	# body on the cliff FACE: the state and the art disagreed about where the
+	# ladder was, and only the art was wrong.
+	#
+	# Same face, same arithmetic, one place each. If _ladder_face ever changes,
+	# this has to change with it or the disagreement comes straight back.
 	var drop: float = 0.0
+	var face: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_SOUTH]
+	var lowest: float = cell_surface(cell).y
 	for dir in 4:
 		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if is_solid(side):
-			drop = maxf(drop, cell_surface(cell).y - cell_surface(side).y)
-	drop = maxf(drop, GridConfig.HEIGHT_UNIT)
+		if not is_solid(side):
+			continue
+		var y: float = cell_surface(side).y
+		if y < lowest:
+			lowest = y
+			face = GridConfig.DIR_VECTORS[dir]
+	drop = maxf(cell_surface(cell).y - lowest, GridConfig.HEIGHT_UNIT)
+	# Half a cell out, plus a hair so the rails stand PROUD of the face rather
+	# than z-fighting with it.
+	rungs.position = cell_surface(cell) + face * (GridConfig.CELL_SIZE * 0.5 + 0.06)
+	# Turned to lie flat against the wall it is bolted to, so the rails are the
+	# width of the ladder rather than its depth.
+	rungs.rotation.y = atan2(face.x, face.z)
 
 	for side in [-0.28, 0.28]:
 		var rail := MeshInstance3D.new()

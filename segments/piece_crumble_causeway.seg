@@ -1,0 +1,41 @@
+# SET-PIECE: the crumbling causeway.
+#
+# Two narrow crossings over a full-width gap, and every cell of both is CRUMBLE:
+# they hold you for half a second and then go. The composition is that there are
+# TWO of them -- one party crossing single file down one causeway loses it under
+# the second player, and the answer is to split. It restores after four seconds,
+# so nothing here is permanent, which is what lets the flood count it as solid.
+#
+# No shooters. The ground is the hazard; adding somebody firing at people who are
+# already committed to a collapsing line is two hazards where one was the idea.
+
+name = piece_crumble_causeway
+base_height = 0
+width = 15
+length = 6
+piece_exit = 0
+tags = foot, piece, environmental
+
+[deck]
+...............
+____..___..____
+____..___..____
+____..___..____
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+....cc...cc....
+....cc...cc....
+....cc...cc....
+...............
+...............

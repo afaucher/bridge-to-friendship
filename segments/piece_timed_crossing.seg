@@ -1,0 +1,34 @@
+# SET-PIECE: the timed crossing.
+#
+# One row of timed blocks over a full-width gap. Each is on its own clock and
+# neighbours are deliberately out of phase, so the crossing is never all-open or
+# all-shut: there is always a way over and it is never the same way twice.
+#
+# FOUR ROWS, the shortest a piece may be. A crossing is one decision and it does
+# not need a room around it -- the entry and exit rows are the ground you stand
+# on to read the rhythm.
+
+name = piece_timed_crossing
+base_height = 0
+width = 15
+length = 4
+piece_exit = 0
+tags = foot, piece, environmental
+
+[deck]
+...............
+_____....._____
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+.....%%%%%.....
+...............
+...............

@@ -1,0 +1,41 @@
+# SET-PIECE: the plinko funnel.
+#
+# A line of pillars splits the deck into two lanes and a shooter sits past them,
+# firing back down. The pillars are the composition: they are cover from the
+# balls AND the thing that stops you simply walking wide around the whole
+# problem, so the choice is which lane rather than whether to engage.
+#
+# A ball is a rigid body and rolls where the pitch takes it, so the lanes do not
+# play the same twice. That is the argument for authoring the SHAPE and letting
+# the physics fill it in.
+
+name = piece_plinko_funnel
+base_height = 0
+width = 15
+length = 6
+piece_exit = 0
+tags = foot, piece, survival
+
+[deck]
+...............
+...............
+...............
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+.......#.......
+.......#.......
+.......#.......
+....O.....O....
+...............

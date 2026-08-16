@@ -1,0 +1,39 @@
+# SET-PIECE: the pit.
+#
+# Two mounds in open ground with a set of LEGS on the far side. Everything here
+# says run: rushers need line of sight and open floor, there is no cover
+# anywhere, and the reward for crossing is the one special that is purely
+# movement.
+#
+# THE LEGS ARE PAST THE MOUNDS, not before them, and that is the whole joke: the
+# thing that would have got you across quickly is what you get for having got
+# across. It is a shortcut for the section AFTER this one, which is the only way
+# a consumable is ever allowed to matter (2a-i).
+
+name = piece_rusher_pit
+base_height = 0
+width = 15
+length = 5
+piece_exit = 0
+tags = foot, piece, survival
+
+[deck]
+...............
+...............
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+...............
+...m.......m...
+...............
+.......j.......

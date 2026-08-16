@@ -35,6 +35,12 @@ const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const LIBRARY: Array[String] = [
 	"res://segments/piece_crossfire.seg",
 	"res://segments/piece_ladder_shelf.seg",
+	"res://segments/piece_crumble_causeway.seg",
+	"res://segments/piece_spike_gallery.seg",
+	"res://segments/piece_timed_crossing.seg",
+	"res://segments/piece_ramp_duel.seg",
+	"res://segments/piece_plinko_funnel.seg",
+	"res://segments/piece_rusher_pit.seg",
 ]
 
 # SMALLER THAN A SEGMENT IS THE POINT. Today a `.seg` is 16 to 30 rows and is a
