@@ -546,6 +546,9 @@ func _round_sync(state: int, rear: int, target: int, closing: float,
 # WHAT A TRANSITION DOES TO BODIES. Only the host runs this; clients see the
 # result as ordinary replicated positions.
 func _settle_round_transition() -> void:
+	if round_machine.state == RoundMachine.State.LOBBY:
+		_restock_lobby()
+		return
 	if round_machine.state != RoundMachine.State.SCORING:
 		return
 	# THE STRAGGLERS. Anyone who did not get over the line is put in the lobby
@@ -2160,6 +2163,27 @@ func _drone_drop_point(peer: int) -> Vector3:
 		return grid.cell_surface_world(grid.entry_spawn_cell(0)) + Vector3(0.0, 1.2, 0.0)
 	return spawn_point(0)
 
+# THE LOBBY IS WHERE YOU GET PUT BACK TOGETHER. Full health, for everybody,
+# every time -- asked for after the first playtest.
+#
+# NOT A REWARD AND NOT A DIFFICULTY DIAL: a round is scored on what you carried
+# through it, so arriving at the next one on two hit points would mean the
+# previous round's damage silently deciding the next round's score. Health
+# carrying over would make a bad round compound into a worse one, which is the
+# opposite of what a lobby between rounds is for.
+#
+# The hats and specials restock by AUTHORING rather than by code -- every lobby
+# segment carries its own rack and its own hats (see segments/lobby.seg), and
+# each lobby in a run is a new segment with its own. There is deliberately no
+# "refill the pickups" pass: a pickup that respawns under you is a pickup you
+# cannot spend, and the one-slot rule is the whole economy.
+func _restock_lobby() -> void:
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body == null or not is_instance_valid(body):
+			continue
+		body.health = SimConfig.MAX_HEALTH
+
 # WHERE THE LOBBY IS, in world space, spread across lanes.
 #
 # The lobby is the stretch immediately up-bridge of the strip the party last came
@@ -2210,13 +2234,16 @@ func _place_wall(wall: StaticBody3D, wall_name: String, row: int,
 	if wall == null or not is_instance_valid(wall):
 		wall = _build_wall(wall_name)
 		grid.add_child(wall)
+	# The band, not the row: a two-deep strip has to be standable end to end, so
+	# the front wall goes past its far edge rather than into the middle of it.
+	var span: int = grid.gate_band_end(row) - row + 1
 	# LOCAL to the grid, so the four-degree pitch comes for free. A world-space
 	# placement would have to redo it and would be wrong on every segment above
 	# the first.
 	wall.position = Vector3(0.0,
 		float(grid.height_at(Vector2i(grid.width / 2, row))) * GridConfig.HEIGHT_UNIT
 			+ SimConfig.ROUND_WALL_HEIGHT * 0.5,
-		RoundMachine.wall_z_local(row, up_bridge))
+		RoundMachine.wall_z_local(row, up_bridge, span))
 	return wall
 
 func _build_wall(wall_name: String) -> StaticBody3D:
@@ -2236,8 +2263,13 @@ func _build_wall(wall_name: String) -> StaticBody3D:
 	wall.collision_layer = 1 << 7
 	wall.collision_mask = 0
 
+	# EXACTLY AS WIDE AS THE BRIDGE. It was 128 m before -- wide enough to be
+	# unflankable, and also a slab of blue hanging out over the drop on both
+	# sides, which reads as scenery rather than as a rule about this deck. The
+	# parapet already stops anyone going round the end.
+	var width: float = float(grid.width) * GridConfig.CELL_SIZE
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(GridConfig.CELL_SIZE * 64.0, SimConfig.ROUND_WALL_HEIGHT, 0.4)
+	shape.size = Vector3(width, SimConfig.ROUND_WALL_HEIGHT, 0.4)
 	var col := CollisionShape3D.new()
 	col.shape = shape
 	wall.add_child(col)
@@ -2246,15 +2278,50 @@ func _build_wall(wall_name: String) -> StaticBody3D:
 	var box := BoxMesh.new()
 	box.size = shape.size
 	mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = SimConfig.ROUND_WALL_COLOUR
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	# Unshaded, so it reads as a field rather than as a pane of painted glass that
-	# happens to catch the light differently at each end of a 30 m bridge.
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mesh.material_override = mat
+	mesh.material_override = _wall_material()
 	wall.add_child(mesh)
 	return wall
+
+# SOLID AT THE FEET, GONE AT THE TOP. A uniformly translucent slab is a window
+# you keep trying to look through; a gradient reads as a field that is DENSE
+# WHERE IT STOPS YOU -- at knee height, where the body actually meets it -- and
+# thins out of the way of the thing you are trying to see, which is the lobby or
+# the section on the far side.
+#
+# A SHADER RATHER THAN STACKED BOXES, which was the alternative: several slabs of
+# decreasing alpha is several materials, several draw calls and a visible banding
+# artefact at every seam. One material, one quad's worth of maths.
+#
+# The gradient is driven by LOCAL VERTEX Y rather than by UV, because a BoxMesh's
+# UVs differ per face -- the two ends would gradient sideways.
+func _wall_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
+
+uniform vec4 tint : source_color;
+uniform float height;
+
+varying float local_y;
+
+void vertex() {
+	local_y = VERTEX.y;
+}
+
+void fragment() {
+	// VERTEX.y runs -height/2 (bottom) to +height/2 (top) on a centred BoxMesh,
+	// so this is 1 at the feet and 0 at the top edge.
+	float lift = clamp(0.5 - local_y / height, 0.0, 1.0);
+	ALBEDO = tint.rgb;
+	ALPHA = tint.a * lift;
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("tint", SimConfig.ROUND_WALL_COLOUR)
+	mat.set_shader_parameter("height", SimConfig.ROUND_WALL_HEIGHT)
+	return mat
 
 # --- Hearts -------------------------------------------------------------------
 #

@@ -138,44 +138,98 @@ func take_authored_gunner_cells() -> Array:
 
 # --- Round boundaries (M16) ---------------------------------------------------
 #
-# The rows carrying a checker strip, in RUN space, ascending. Kept rather than
-# taken: unlike hats and specials, nothing consumes a boundary -- it is a
-# permanent feature of the bridge and the round machine asks about it every tick.
+# A boundary is a BAND of rows, not one row. Two deep as authored, which is a
+# playtest decision (2026-08-15): one row is 2 m, and a party of four told to
+# stand on it together is a party jostling on a strip narrower than they are,
+# with the barrier in their faces. Two rows gives them somewhere to be.
+#
+# STORED AS BANDS RATHER THAN LOOSE ROWS, because every question about a boundary
+# is about its EDGES: the target is where the band begins, the front wall stands
+# past where it ends, and the rear wall behind where it begins. A flat list of
+# rows would make each of those a scan with an off-by-one in it.
 #
 # THE ROUND MACHINE ASKS THE GRID, AND NEVER DOES ARITHMETIC ON A POSITION. The
 # bridge is assembled from a seed and segments vary in length, so the only stable
-# name for a place is the cell an author drew it in. A hardcoded row would be
-# wrong the first time the pool put a different segment first.
-var gate_rows: Array = []          # int, run-space z, ascending
+# name for a place is the cell an author drew it in.
+var gate_rows: Array = []          # int, run-space z, ascending -- every marked row
+var gate_bands: Array = []         # [[first_row, last_row], ...] ascending
 
 func is_gate_row(row: int) -> bool:
 	return gate_rows.has(row)
 
-# The next boundary strictly up-bridge of `row`, or -1 if the bridge does not
-# have one yet. -1 rather than a guess: "there is no next boundary" is a real
-# state during a run whose next segment has not been appended, and a caller that
-# gets a plausible wrong number cannot tell.
+# The band containing `row`, or an empty array.
+func gate_band_at(row: int) -> Array:
+	for band in gate_bands:
+		if row >= int(band[0]) and row <= int(band[1]):
+			return band
+	return []
+
+# Where the next boundary BEGINS, strictly up-bridge of `row`. -1 rather than a
+# guess: "there is no next boundary" is a real state during a run whose next
+# segment has not been appended, and a caller handed a plausible wrong number
+# cannot tell.
 func gate_after(row: int) -> int:
-	for r in gate_rows:
-		if int(r) > row:
-			return int(r)
+	for band in gate_bands:
+		if int(band[0]) > row:
+			return int(band[0])
 	return -1
 
-# The last boundary at or below `row`, or -1. This is "which side of the line are
-# you on" asked from the other direction, and the lobby uses it.
+# The last row of the band that BEGINS at `row`. The front wall stands past this,
+# so the whole band is standable.
+func gate_band_end(row: int) -> int:
+	for band in gate_bands:
+		if int(band[0]) == row:
+			return int(band[1])
+	return row
+
 func gate_at_or_before(row: int) -> int:
 	var best := -1
-	for r in gate_rows:
-		if int(r) <= row:
-			best = int(r)
+	for band in gate_bands:
+		if int(band[0]) <= row:
+			best = int(band[0])
 	return best
+
+# Contiguous marked rows collapse into one band. Rebuilt from scratch each time a
+# segment lands, because a band can SPAN A SEGMENT JOIN -- a lobby whose last row
+# is marked butted against a section whose first row is marked is one boundary,
+# not two, and treating it as two would put a wall in the middle of it.
+func _rebuild_gate_bands() -> void:
+	gate_bands.clear()
+	if gate_rows.is_empty():
+		return
+	var start: int = int(gate_rows[0])
+	var prev: int = start
+	for i in range(1, gate_rows.size()):
+		var r: int = int(gate_rows[i])
+		if r == prev + 1:
+			prev = r
+			continue
+		gate_bands.append([start, prev])
+		start = r
+		prev = r
+	gate_bands.append([start, prev])
 
 # Where players enter the bridge. Taken from authored SPAWN cells when a segment
 # has them; otherwise a spread across the entry row, which is what every segment
 # so far relies on.
 func entry_spawn_cell(index: int) -> Vector2i:
 	var lane: int = clampi(width / 2 - 3 + index * 2, 0, width - 1)
-	return Vector2i(lane, 1)
+	return Vector2i(lane, _first_standable_row())
+
+# ROW 1 UNLESS ROW 1 IS A BOUNDARY. It was a flat `1` until the round bands went
+# two deep (2026-08-15), at which point a lobby's entry band covered rows 0 and 1
+# and the whole party spawned STANDING ON THE LINE they are supposed to walk up
+# to. Harmless to the machine -- the target is the band ahead either way -- and
+# wrong for the player, who is told to gather on a strip they are already on.
+#
+# Walked rather than assumed to be band-length + 1: a segment may open with no
+# band at all (every test fixture does), and a fixed offset would push those
+# spawns a row up the bridge for no reason.
+func _first_standable_row() -> int:
+	var row := 1
+	while row < 8 and is_gate_row(row):
+		row += 1
+	return row
 
 func _ready() -> void:
 	# Pitch the whole bridge so up-bridge is uphill. Rotating by +pitch about X
@@ -255,6 +309,7 @@ func load_segment(seg) -> void:
 		if not gate_rows.has(run_row):
 			gate_rows.append(run_row)
 	gate_rows.sort()
+	_rebuild_gate_bands()
 
 func next_z() -> int:
 	var total := 0

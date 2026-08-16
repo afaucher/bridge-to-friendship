@@ -60,10 +60,26 @@ static func _mix(value: int) -> int:
 # The ordered list of segment paths for a run. Same seed and same index always
 # give the same segment, on every machine, forever.
 #
-# LOBBY, SECTION, LOBBY, SECTION (M16). A run OPENS on a lobby, because the first
-# thing that should happen in a session is the party standing together deciding
-# to start -- and because the lobby's entry strip is what gives the round machine
-# a rear boundary to hang the first corridor off.
+# HOW MANY SEGMENTS OF BRIDGE ARE IN ONE ROUND.
+#
+# FIVE, up from one on 2026-08-15: the first build put a single pool segment
+# between lobbies and it played about five times too short. The pool's segments
+# are 16 to 30 rows -- 32 to 60 m -- so a round is now roughly 200 m of bridge
+# and, more to the point, five segments' worth of the things IN them, which is
+# what a round's length is actually made of.
+#
+# A KNOB RATHER THAN A RESHAPED SEGMENT, deliberately. The alternative was
+# authoring five-times-longer segments, which would have thrown away the three
+# that exist and made every future one a bigger commitment. The pool stays a set
+# of small pieces and the ROUND decides how many to string together -- so this
+# number is the length dial for the whole game, and re-tuning it after a playtest
+# costs one edit rather than a re-authoring pass.
+const SECTIONS_PER_ROUND := 5
+
+# LOBBY, then SECTIONS_PER_ROUND sections, then LOBBY (M16). A run OPENS on a
+# lobby, because the first thing that should happen in a session is the party
+# standing together deciding to start -- and because the lobby's entry band is
+# what gives the round machine a rear boundary to hang the first corridor off.
 #
 # THE SECTION IS A SLOT FILLED BY NAME. `section_for` is the only thing that
 # decides which level comes next, and it is a pure function of (seed, index)
@@ -74,9 +90,15 @@ static func plan(run_seed: int, count: int) -> Array:
 	var out: Array = []
 	if POOL.is_empty():
 		return out
+	var cycle: int = SECTIONS_PER_ROUND + 1
 	for i in count:
-		out.append(LOBBY if i % 2 == 0 else section_for(run_seed, i))
+		out.append(LOBBY if i % cycle == 0 else section_for(run_seed, i))
 	return out
+
+# True if slot `i` of a plan is a lobby. The cycle length lives in one place so
+# a caller never re-derives it from SECTIONS_PER_ROUND and gets it off by one.
+static func is_lobby_slot(i: int) -> bool:
+	return i % (SECTIONS_PER_ROUND + 1) == 0
 
 # Which section fills slot `i`. The first one is always the same, so every run
 # opens on familiar ground and nobody is dropped straight into the hardest thing

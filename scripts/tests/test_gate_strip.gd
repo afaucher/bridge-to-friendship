@@ -35,9 +35,13 @@ const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
-# The rows the fixture draws its strips on.
+# The BANDS the fixture draws, two rows deep each (2026-08-15). One row is 2 m,
+# and a party of four told to gather on it is four players jostling on a strip
+# narrower than they are with the barrier in their faces.
 const FIRST_GATE := 2
+const FIRST_GATE_END := 3
 const SECOND_GATE := 10
+const SECOND_GATE_END := 11
 
 var world: Node3D = null
 
@@ -61,12 +65,22 @@ func setup(main) -> void:
 
 func _check_parsed() -> void:
 	var grid: Node = world.grid
-	eq(grid.gate_rows.size(), 2,
-		"a segment with two strips reports two boundaries, not two per cell")
-	check(grid.is_gate_row(FIRST_GATE), "the first is on row %d" % FIRST_GATE)
-	check(grid.is_gate_row(SECOND_GATE), "the second on row %d" % SECOND_GATE)
-	check(not grid.is_gate_row(FIRST_GATE + 1),
-		"and the row after one is not one -- a strip is a line, not a region")
+	eq(grid.gate_bands.size(), 2,
+		"a segment with two strips reports two BOUNDARIES, however many rows deep")
+	eq(grid.gate_rows.size(), 4, "made of four marked rows -- two bands of two")
+	check(grid.is_gate_row(FIRST_GATE), "the first band starts at row %d" % FIRST_GATE)
+	check(grid.is_gate_row(FIRST_GATE_END), "and covers row %d as well" % FIRST_GATE_END)
+	check(not grid.is_gate_row(FIRST_GATE_END + 1),
+		"but stops there -- a band is a band, not everything after it")
+	eq(grid.gate_band_end(FIRST_GATE), FIRST_GATE_END,
+		"and the grid can say where it ENDS, which is where the wall goes")
+
+	# CONTIGUOUS ROWS COLLAPSE INTO ONE BAND, which is what stops a two-deep strip
+	# reading as two boundaries a metre apart -- and what lets a band span a
+	# segment join, where a lobby's last marked row butts against the next
+	# segment's first.
+	eq(int(grid.gate_bands[0][0]), FIRST_GATE, "the first band begins where it is drawn")
+	eq(int(grid.gate_bands[0][1]), FIRST_GATE_END, "and ends where it stops")
 
 # --- 2. Solid ground, measured ------------------------------------------------
 
@@ -132,8 +146,8 @@ func _check_colours() -> void:
 			continue
 		if mat.albedo_color == GridConfig.GATE_LIGHT or mat.albedo_color == GridConfig.GATE_DARK:
 			painted += 1
-	eq(painted, 20,
-		"the builder paints exactly the two strips -- 20 cells of a 140-cell deck")
+	eq(painted, 40,
+		"the builder paints exactly the two bands -- 40 cells of a 140-cell deck")
 
 func _meshes(root: Node) -> Array:
 	var out: Array = []
@@ -153,11 +167,13 @@ func _check_queries() -> void:
 	eq(grid.gate_after(0), FIRST_GATE, "from the start, the next boundary is the first")
 	eq(grid.gate_after(FIRST_GATE), SECOND_GATE,
 		"STANDING ON ONE, the next is the one after it -- not the one underfoot")
+	eq(grid.gate_after(FIRST_GATE_END), SECOND_GATE,
+		"and that holds from the band's far row too, not just its first")
 	eq(grid.gate_after(SECOND_GATE), -1,
 		"and past the last, there is no next: -1, never a plausible guess")
 
 	eq(grid.gate_at_or_before(FIRST_GATE), FIRST_GATE, "the one you are standing on counts")
-	eq(grid.gate_at_or_before(FIRST_GATE + 3), FIRST_GATE, "and the one you came over")
+	eq(grid.gate_at_or_before(FIRST_GATE + 4), FIRST_GATE, "and the one you came over")
 	eq(grid.gate_at_or_before(0), -1, "before any of them, there is none")
 
 # --- 5. A gap is refused ------------------------------------------------------

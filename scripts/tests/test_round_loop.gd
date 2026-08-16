@@ -40,13 +40,27 @@ func setup(main) -> void:
 
 	# THE PLAN ITSELF, before a single body exists. A pure function, so it is
 	# asserted as one.
-	var plan: Array = SegmentPool.plan(RUN_SEED, 6)
-	eq(plan.size(), 6, "a six-slot plan has six segments")
+	# A ROUND IS SECTIONS_PER_ROUND SEGMENTS LONG, so the cycle is that plus the
+	# lobby. Asserted through `is_lobby_slot` rather than against hardcoded
+	# indices: the length of a round is a tuning dial and this test should survive
+	# it being turned.
+	var slots: int = (SegmentPool.SECTIONS_PER_ROUND + 1) * 2 + 1
+	var plan: Array = SegmentPool.plan(RUN_SEED, slots)
+	eq(plan.size(), slots, "the plan is as long as it was asked for")
 	eq(String(plan[0]), SegmentPool.LOBBY, "a run OPENS on a lobby")
-	eq(String(plan[2]), SegmentPool.LOBBY, "and every other slot is one")
-	eq(String(plan[4]), SegmentPool.LOBBY, "all the way up")
-	check(String(plan[1]) != SegmentPool.LOBBY, "with a section between them")
-	check(String(plan[3]) != SegmentPool.LOBBY, "and another after that")
+	var lobbies := 0
+	var sections := 0
+	for i in plan.size():
+		var is_lobby: bool = String(plan[i]) == SegmentPool.LOBBY
+		eq(is_lobby, SegmentPool.is_lobby_slot(i),
+			"slot %d is %s exactly when the cycle says so" % [i, plan[i]])
+		if is_lobby:
+			lobbies += 1
+		else:
+			sections += 1
+	eq(lobbies, 3, "three lobbies across two full rounds")
+	eq(sections, SegmentPool.SECTIONS_PER_ROUND * 2,
+		"and a whole round of sections between each pair")
 
 	world = Node3D.new()
 	world.name = "LoopWorld"

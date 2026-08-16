@@ -1,46 +1,52 @@
 # THE LOBBY. The place between rounds (M16).
 #
-# A CHECKER STRIP AT BOTH ENDS, and that is the whole reason this segment is
-# shaped the way it is. The party is always in a corridor between two boundaries;
-# the lobby's own two strips are its entry and its exit, so a section is bounded
-# by the exit strip of one lobby and the entry strip of the next. Every rule the
-# round machine has -- both walls, "is everyone across", who lived -- is expressed
-# against those two rows and nothing else.
+# A CHECKER BAND AT BOTH ENDS, TWO ROWS DEEP EACH. The party is always in a
+# corridor between two boundaries; the lobby's own two bands are its entry and
+# its exit, so a section is bounded by the exit band of one lobby and the entry
+# band of the next. Every rule the round machine has -- both walls, "is everyone
+# across", who lived -- is expressed against those two bands and nothing else.
 #
-# TEN ROWS, WHICH IS 20 m. Long enough that four players can spread out and not be
-# standing on each other while they pick a hat, short enough that walking its
-# length between rounds is a breath rather than a commute. The first and last rows
-# are the strips, so eight rows are actually livable.
+# TWO DEEP AND NOT ONE, from the first playtest: one row is 2 m, and four players
+# told to stand on it together is four players jostling on a strip narrower than
+# they are with the barrier in their faces. Two rows is somewhere to be.
+#
+# TWELVE ROWS, which is 24 m, of which eight are livable. Long enough that four
+# players can spread out and not stand on each other while they pick a hat, short
+# enough that walking its length between rounds is a breath rather than a commute.
 #
 # NO PARAPET SUPPRESSION AND NO HOLES. The lobby is the one place on this bridge
 # where falling off is not a design element: the whole point is that it is
 # somewhere to stand around. A player who walks off the edge here is a player
-# taken away from the thing the lobby is for, and the drone return would put them
-# back seconds later anyway -- so the walls are left on and the deck is solid all
-# the way across. It is the only segment in the pool that can say that.
+# taken away from the thing the lobby is for, and the drone would put them back
+# seconds later anyway. It is the only segment in the pool that can say that.
 #
-# THE RACK. One of each special at z3, spread the full width so it reads as a
-# CHOICE rather than a conveyor you walk down collecting all four: a machine gun
-# at x2, a grenade at x5, a mine at x9 and a shield at x12, with a rocket at x7 on
-# the centre line. You leave with ONE, because the slot holds one -- see
-# special_pool.
+# THE RESTOCK. This is where a round is prepared for, so everything a player can
+# arrive without is here:
 #
-# HATS at z6, past the rack, four of them across the width. Hats are the score
-# (see the round scorer), so which one you take is not a decision -- how many you
-# can carry out is, and that is a question about the section, not about here.
+#   HEALTH comes back in full, and that is code rather than authoring
+#   (game_world._restock_lobby) -- a round is scored on what you carried through
+#   it, so arriving on two hit points would let the last round's damage silently
+#   decide the next round's score.
+#   ONE OF EACH SPECIAL at z4, spread the full width so it reads as a CHOICE
+#   rather than a conveyor you walk down collecting all four. You leave with one,
+#   because the slot holds one.
+#   HATS at z7, four across, past the rack. Hats ARE the score, so how many you
+#   can carry out is the question the section asks.
 #
 # The rack deliberately breaks the rule playtest_bridge.seg states in its own
 # header about not opening with a free armoury. A lobby IS the armoury; the cost
 # is not scarcity, it is that everything you are carrying is gone the moment you
-# fail to reach the next strip.
+# fail to reach the next band.
 
 name = lobby
 base_height = 0
 width = 15
-length = 10
+length = 12
 tags = foot, lobby, safe
 
 [deck]
+...............
+...............
 ...............
 ...............
 ...............
@@ -63,8 +69,11 @@ tags = foot, lobby, safe
 000000000000000
 000000000000000
 000000000000000
+000000000000000
+000000000000000
 
 [content]
+===============
 ===============
 ...............
 ...............
@@ -74,4 +83,5 @@ tags = foot, lobby, safe
 ..^..^...^..^..
 ...............
 ...............
+===============
 ===============

@@ -183,8 +183,14 @@ const HEART_HEAL := 1
 
 # How many segments a run starts with, and how far ahead of the party it keeps
 # building. The bridge is endless; it is simply built lazily.
-const RUN_INITIAL_SEGMENTS := 3
-const RUN_LOOKAHEAD_SEGMENTS := 2
+# ENOUGH FOR A WHOLE ROUND PLUS THE LOBBY IT ENDS ON, or the party walks into a
+# boundary that has not been appended yet and the round machine has no target.
+# SegmentPool.SECTIONS_PER_ROUND + 2 is that, and the +1s are the two lobbies.
+const RUN_INITIAL_SEGMENTS := 7
+# The run extends by a whole round at a time for the same reason: a lookahead
+# smaller than a round means the far boundary appears mid-round, which is fine
+# for the sim and looks like the bridge being built in front of you.
+const RUN_LOOKAHEAD_SEGMENTS := 6
 
 # THE ROUND BARRIER (M16). Two metres, matching the parapet: it has to stop a
 # dash, which is the only verb that could otherwise carry a player through, and

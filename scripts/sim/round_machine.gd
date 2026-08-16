@@ -127,7 +127,12 @@ func _step_closing(world) -> void:
 	if _everyone_is_out(world):
 		_begin_scoring(world)
 		return
-	if close_timer > 0.0:
+	# EVERYBODY IS HERE, SO STOP COUNTING. The thirty seconds exist to give
+	# stragglers a chance, and once there are no stragglers the clock is only
+	# making the people who made it stand and watch it. Asked for after the first
+	# playtest, and it is the same predicate the lobby opens on -- a round both
+	# begins and ends the moment the party is together on a strip.
+	if close_timer > 0.0 and not _all_at_or_past(world, target_row):
 		return
 	_cross(world)
 	_begin_scoring(world)
@@ -262,18 +267,23 @@ func rank(world) -> Array:
 
 # --- Where the walls stand ----------------------------------------------------
 
-# A boundary has two edges and the wall uses both, one at a time:
+# A boundary is a BAND and the wall uses its two outer edges, one at a time:
 #
-#   THE FRONT WALL is on the UP-BRIDGE edge of the target strip, so the party can
-#   stand ON the checker -- which is the whole gesture -- and not pass it.
-#   THE REAR WALL is on the DOWN-BRIDGE edge of the strip they came through, so
-#   it appears immediately behind them the moment they cross rather than a strip
-#   back.
+#   THE FRONT WALL is past the UP-BRIDGE end of the target band, so the party can
+#   stand anywhere ON the checker -- which is the whole gesture -- and not pass.
+#   THE REAR WALL is on the DOWN-BRIDGE edge of the band they came through, so it
+#   appears immediately behind them the moment they cross rather than a band back.
+#
+# `row` is the band's first row and `span` how many rows it covers, so a two-deep
+# strip puts the front wall two metres further up than a one-deep one and the
+# party gets the room the band was widened to give them.
 #
 # Returned in GRID-LOCAL space. The bridge is pitched four degrees and everything
 # built as a child of the grid inherits that for free; a world-space answer would
 # have to redo it and would be subtly wrong on every segment above the first.
-static func wall_z_local(row: int, up_bridge: bool) -> float:
+static func wall_z_local(row: int, up_bridge: bool, span: int = 1) -> float:
 	# cell_z_world(row) is the CENTRE of the row and up-bridge is -Z.
 	var half: float = GridConfig.CELL_SIZE * 0.5
-	return GridConfig.cell_z_world(row) + (-half if up_bridge else half)
+	if up_bridge:
+		return GridConfig.cell_z_world(row + maxi(span, 1) - 1) - half
+	return GridConfig.cell_z_world(row) + half

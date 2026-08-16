@@ -30,8 +30,9 @@ const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudModel = preload("res://scripts/ui/hud_model.gd")
 
-# The fixture's two strips.
+# The fixture's two boundary BANDS, two rows deep each.
 const FIRST_GATE := 2
+const FIRST_GATE_END := 3
 const SECOND_GATE := 10
 
 var world: Node3D = null
@@ -40,6 +41,8 @@ var b: CharacterBody3D = null
 var phase: int = 0
 var phase_frame: int = 0
 var closing_ticks: int = 0
+var early_at: float = 0.0
+var stepped_up_tick: int = 0
 
 func setup(main) -> void:
 	timeout_seconds = 90.0
@@ -131,9 +134,12 @@ func _phase_lobby_holds() -> void:
 		return
 	if phase_frame == 8:
 		var row: int = world.grid.cell_of_world(a.position).y
-		check(row <= FIRST_GATE,
-			"a player driven into the barrier does NOT cross it (row %d, strip %d)"
-				% [row, FIRST_GATE])
+		# AT OR INSIDE THE BAND, never past it. The band is standable end to end --
+		# that is what it was widened for -- so the claim is about the wall past
+		# its far edge, not about the first row of it.
+		check(row <= FIRST_GATE_END,
+			"a player driven into the barrier does NOT cross it (row %d, band ends %d)"
+				% [row, FIRST_GATE_END])
 		return
 	if phase_frame == 10:
 		eq(machine().state, RoundMachine.State.LOBBY,
@@ -194,7 +200,14 @@ func _phase_first_over_starts_the_close() -> void:
 	if phase_frame == 2:
 		_park(a, 3, SECOND_GATE)
 		return
-	if phase_frame < 6:
+	if phase_frame == 5:
+		# STRAIGHT BACK OFF THE LINE. The close has started and A is recorded; if
+		# they STAYED on it then the party would be complete the moment B arrives
+		# and the early close would fire, which is a different claim tested below.
+		# This phase is about the window RUNNING, so the window has to be able to.
+		_park(a, 3, SECOND_GATE - 4)
+		return
+	if phase_frame < 8:
 		return
 	eq(machine().state, RoundMachine.State.CLOSING,
 		"the FIRST player over the next strip starts the close")
@@ -234,16 +247,43 @@ func _phase_the_window_records_arrivals() -> void:
 	if closing_ticks == int(RoundMachine.CLOSE_SECONDS * 60.0 * 0.66) + 6:
 		check(machine().reached.has(2),
 			"somebody arriving DURING the window is recorded, not just the first")
-		# And back off the strip again before it expires, to prove the record is
-		# what was DONE rather than where the body ended up.
+		# And back off the strip again, to prove the record is what was DONE rather
+		# than where the body ended up.
 		_park(b, 6, SECOND_GATE - 3)
+		return
+	if closing_ticks == int(RoundMachine.CLOSE_SECONDS * 60.0 * 0.66) + 12:
+		check(machine().state == RoundMachine.State.CLOSING,
+			"with nobody on the line the window keeps running (%.1f s left)"
+				% machine().close_timer)
+		check(machine().close_timer > 1.0,
+			"and there is real time left on it, so what follows is not the timer "
+			+ "quietly expiring (%.1f s)" % machine().close_timer)
+		early_at = machine().close_timer
+		stepped_up_tick = closing_ticks
+
+		# NOW EVERYBODY STEPS UP. The thirty seconds exist for stragglers; with no
+		# stragglers left they are only making the people who made it stand and
+		# watch a clock. Asked for after the first playtest.
+		_park(a, 3, SECOND_GATE)
+		_park(b, 6, SECOND_GATE)
 		return
 	if machine().state == RoundMachine.State.CLOSING:
 		return
 
 	eq(machine().state, RoundMachine.State.SCORING, "the window closes into the board")
+
+	# MEASURED AS THE GAP, not as the clock reading when they stepped up. The
+	# first version of this asserted "there was time left on the clock", which is
+	# true whether the round closed immediately or waited the full ten seconds out
+	# -- and it PASSED with the early close deleted. The honest quantity is how
+	# long the round took to notice.
+	var waited: int = closing_ticks - stepped_up_tick
+	check(waited < 20,
+		"and it closed the moment the last player stepped up -- %d ticks, with "
+			% waited
+		+ "%.1f s still on the clock" % early_at)
 	check(machine().reached.has(2),
-		"and somebody who touched the strip and walked back off STILL counts -- "
+		"with somebody who touched the strip and walked back off STILL counted -- "
 		+ "made-it is recorded when it happens, never re-derived from where a body is")
 	_advance(5)
 
