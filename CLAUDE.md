@@ -631,6 +631,22 @@ about *method*, not about that game.
   same run: a flag refreshed at the top of a world tick and invalidated further
   down it is STALE FOR ONE TICK, so an assertion fired on the tick of the change
   fails against correct code.
+- **A TEST THAT HAND-BUILDS ITS OWN INPUT HAS NOT TESTED THE CALLER, AND THE
+  CALLER IS USUALLY WHERE THE BUG IS.** Observed 2026-08-16 from a playtest report
+  that the shield "doesn't block shots very well": it blocked none, ever, and
+  `test_shield` was green the whole time because it constructed its own `Hit` with
+  a source six metres away -- what a bullet OUGHT to look like. The real
+  construction passed the round's IMPACT POINT as `hit.from`, which is the surface
+  of the body it just hit, so every round arrived from 40 cm away: inside
+  `SHIELD_MIN_BLOCK_DISTANCE`, unblockable, at every angle. The shield's own
+  arithmetic was correct and correctly tested. **Where a field means "where did
+  this come from", test it from something that really came from somewhere.**
+- **TWO FIXES THAT A TEST CANNOT TELL APART ARE ONE FIX AND ONE GUESS.** Same day:
+  the shield needed an honest origin AND the proximity rule scoped to blasts, and
+  reverting EITHER left the new test green, because either alone saves a square-on
+  shot. It took a case per half -- a grazing hit for the origin, a 0.9 m shot for
+  the proximity rule -- before the A/B could fail twice. **A/B each half
+  separately**; a pair reverted together only proves the pair.
 - **Prefer a DIRECT COUNT at the line that does the thing.** Counting where the
   event happens cannot be argued with; eliminating candidates by reading can be,
   and often wrongly.

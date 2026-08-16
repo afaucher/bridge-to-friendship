@@ -2022,7 +2022,7 @@ func _process_bullets() -> void:
 					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS)
 				else:
 					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
-						to_local(hit["position"]))
+						to_local(hit["position"]), bullet.origin)
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -2127,7 +2127,12 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 				out.append(stone)
 	return out
 
-func _resolve_round_hit(target, direction: Vector3, at: Vector3) -> void:
+# `at` is where the round STOPPED; `origin` is where it came from. They are two
+# different questions and passing the first as the answer to the second is what
+# made the shield useless against gunfire (playtest 2026-08-16, "the shield
+# doesn't block shots very well").
+func _resolve_round_hit(target, direction: Vector3, at: Vector3,
+		origin: Vector3 = Vector3.INF) -> void:
 	if target == null:
 		return
 	# THE CHAIN OF "WHAT ARE YOU?" QUESTIONS IS GONE. This used to ask
@@ -2137,7 +2142,14 @@ func _resolve_round_hit(target, direction: Vector3, at: Vector3) -> void:
 	# answers now lives on the thing being hit, next to the reason for it.
 	if not target.has_method("receive_hit"):
 		return                    # deck, parapet, a shooter's pillar: cover works
-	target.receive_hit(Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, at,
+	# THE MUZZLE, NOT THE IMPACT POINT. `hit.from` means "where did this come
+	# from", and every consumer of it — the shield's arc most of all — is asking
+	# a question about a BEARING. The impact point of a round is roughly the
+	# surface of the thing it hit, so passing it made every bullet in the game
+	# arrive from a point 40 cm away: inside SHIELD_MIN_BLOCK_DISTANCE, therefore
+	# unblockable, at every angle, always.
+	var came_from: Vector3 = origin if is_finite(origin.x) else at - direction * SimConfig.MG_RANGE
+	target.receive_hit(Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, came_from,
 		SimConfig.MG_KNOCKBACK, SimConfig.MG_KNOCKBACK_LIFT))
 
 # Under the holder's Facing pivot, which player_body already rotates to match

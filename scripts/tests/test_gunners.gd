@@ -134,9 +134,19 @@ func _phase_turret_ignores_a_dash() -> void:
 	if phase_frame == 1:
 		_park(Vector2i(15, 9))
 		recorded["id"] = _spawn(Vector2i(15, 7), GunnerBody.Kind.TURRET).gunner_id
+		return
+	# RECORDED ONCE IT HAS LANDED, not on the frame it was created. A gunner is
+	# spawned a metre above the deck and drops onto it, so "where it was" taken at
+	# frame 1 is a point in mid-air — and the assertion three frames later was
+	# measuring the last of that fall, passing only because the remaining drop
+	# happened to be under the margin. It stopped being under the margin the day an
+	# unrelated change upstream moved the timeline by a frame, which is the tell
+	# that the sample was never isolated. Same note as CLAUDE.md's ramp sweep.
+	if phase_frame == 20:
+		if _lost(): return
 		recorded["at"] = _tracked().position
 		return
-	if phase_frame == 4:
+	if phase_frame == 24:
 		if _lost(): return
 		var g: Node = _tracked()
 		# A dash arriving, built as the hit a dash actually makes.

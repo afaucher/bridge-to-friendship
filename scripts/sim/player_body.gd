@@ -205,7 +205,13 @@ func shield_blocks(hit) -> bool:
 	if not shielding:
 		return false
 	var flat := Vector2(position.x - hit.from.x, position.z - hit.from.z)
-	if flat.length() < SimConfig.SHIELD_MIN_BLOCK_DISTANCE:
+	# THE PROXIMITY RULE IS ABOUT BLASTS, and now says so. Its own reasoning always
+	# was — "a blast beneath your feet has no direction to be in, and a mine is
+	# how you answer somebody who has decided to stop moving" — but it was applied
+	# to every kind, and a SHOOTER standing next to you is not a mine. Being
+	# flanked is the counter to a shield; walking up close is not, or a skirmisher
+	# beats the answer to skirmishers by taking one step forward.
+	if hit.kind == Hit.Kind.EXPLOSIVE 			and flat.length() < SimConfig.SHIELD_MIN_BLOCK_DISTANCE:
 		return false
 	# The yaw pointing FROM the player TOWARD the source, against the yaw the
 	# shield was raised at.
