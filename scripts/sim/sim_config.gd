@@ -69,6 +69,26 @@ const SHOVE_DURATION := 0.1
 # shoving each other decays instead of accelerating forever.
 const SHOVE_TRANSFER_SPEED := 11.0
 
+# CLIMBING A LADDER (M17 phase 6).
+#
+# SLOWER THAN WALKING, deliberately. A ladder is the compact way up -- it climbs
+# any height in one cell where a ramp needs a cell per unit -- and the price of
+# that compactness is TIME, spent somewhere you cannot dodge, shove or shoot.
+# That is what makes a ladder a decision rather than a free shortcut, and it is
+# why a ladder is the right answer for a tall climb in a tight space and the
+# wrong one under fire.
+const CLIMB_SPEED := 3.0
+# How close to the ladder's cell centre counts as being on it. Generous: fumbling
+# for a ladder you are standing next to is not the interesting kind of difficulty.
+# A body pressed against the cliff stops one radius short of the face, which is
+# already 1.4 m from the ladder cell's CENTRE -- so a tighter reach than this
+# means walking at a ladder and bouncing off it, which is the fumbling that is
+# not the interesting kind of difficulty.
+const CLIMB_REACH := 1.7
+# Cleared this far above the deck at the top before the climb hands back to WALK,
+# so a climber steps ONTO the landing rather than into its edge.
+const CLIMB_EXIT_LIFT := 0.35
+
 # A BOOST UP A SLOPE, as distinct from a shove into open air. Slower and with
 # more lift than a tumble: the point is to ARRIVE somewhere, not to be launched,
 # and the receiving player keeps control the whole way. See

@@ -280,6 +280,11 @@ const HALF_WALL_COLOUR := Color(0.46, 0.42, 0.38)
 # legible against brown deck from across a 60 m span, at the moment they matter.
 const SPIKE_COLOUR := Color(0.86, 0.87, 0.90)
 
+# A ladder is the one built thing on the bridge that is not part of the deck, so
+# it takes a warmer wood than the parapet's grey-brown -- it reads as something
+# somebody put there rather than as more structure.
+const LADDER_COLOUR := Color(0.62, 0.44, 0.24)
+
 # Parapets go grey-brown so they read as structure, not as more deck.
 const WALL_COLOUR := Color(0.42, 0.36, 0.30)
 const RAMP_COLOUR := Color(0.75, 0.62, 0.45)

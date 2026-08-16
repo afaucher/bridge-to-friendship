@@ -59,7 +59,13 @@ const ASSISTED_RISE := 4
 # and the party would walk up to it and stop. Turned off here rather than left as
 # a comment somebody has to remember, and it is ONE LINE to flip on the day M17
 # phase 6 builds the climb.
-const LADDERS_CLIMBABLE := false
+# FLIPPED TRUE 2026-08-16, when PlayerBody.State.CLIMB was built (M17 phase 6).
+# It sat false from the day the step-up fiction was found: the flood had counted
+# ladders as a way up since M2 while nothing could climb one, so it certified
+# segments whose only route was a wall. Kept as a flag rather than deleted --
+# it is the switch that says whether the game's claim and the validator's claim
+# agree, and one of them can regress.
+const LADDERS_CLIMBABLE := true
 
 # --- The party, and what it can do (M17 phase 6) ------------------------------
 #

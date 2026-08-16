@@ -362,6 +362,9 @@ func load_segment(seg) -> void:
 	for local_cell in built.mound_cells:
 		_spawn_mound(Vector2i(local_cell.x, local_cell.y + z_offset))
 
+	for local_cell in built.ladder_cells:
+		_spawn_ladder(Vector2i(local_cell.x, local_cell.y + z_offset))
+
 	for local_cell in built.tree_cells:
 		_spawn_cover(Vector2i(local_cell.x, local_cell.y + z_offset), true)
 	for local_cell in built.half_wall_cells:
@@ -423,6 +426,16 @@ func kind_at(cell: Vector2i) -> int:
 	if r.is_empty():
 		return GridConfig.Kind.HOLE
 	return r[0].kind_at(cell.x, r[1])
+
+# What the AUTHOR put in a cell, in run space. The pools take their contents at
+# load and clear them, so this answers about the segment's record rather than
+# about anything alive -- which is exactly what a ladder is: a fixed feature, not
+# a body.
+func content_at(cell: Vector2i) -> int:
+	var r := _resolve(cell)
+	if r.is_empty():
+		return GridConfig.Content.NONE
+	return r[0].content_at(cell.x, r[1])
 
 func height_at(cell: Vector2i) -> int:
 	var r := _resolve(cell)
@@ -693,9 +706,63 @@ func _spawn_mound(cell: Vector2i) -> void:
 # gunner at all.
 var spike_cells: Array = []            # Vector2i, run space
 var _cover_root: Node3D = null
+var _ladder_root: Node3D = null
 var _spike_root: Node3D = null
 var _spikes: Dictionary = {}           # Vector2i -> the spike prop, so the world can raise it
 var spike_lift: Dictionary = {}        # Vector2i -> 0..1, how far out they are
+
+# A LADDER, AT LAST GIVEN A BODY. The glyph has been authorable since M2 and the
+# loader has collected it since M2, and until M17 phase 6 nothing was ever built
+# from it -- playtest_bridge's header has said "today it is a 2 m wall" the whole
+# time.
+#
+# NO COLLIDER. The climb is a player STATE driven by the grid's cell record, so a
+# ladder that also had a body would be a second, disagreeing description of the
+# same thing -- and the one you collided with would fight the one you climbed.
+# This is scenery that tells you where the state can be entered.
+func _spawn_ladder(cell: Vector2i) -> void:
+	if _ladder_root == null:
+		_ladder_root = Node3D.new()
+		_ladder_root.name = "Ladders"
+		add_child(_ladder_root)
+
+	var rungs := Node3D.new()
+	rungs.name = "Ladder_%d_%d" % [cell.x, cell.y]
+	rungs.position = cell_surface(cell)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GridConfig.LADDER_COLOUR
+	mat.roughness = 0.8
+
+	# Down the FACE of the drop it serves, not up out of the deck: a ladder is
+	# climbed from below, so it hangs from the lip toward the ground beneath.
+	var drop: float = 0.0
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if is_solid(side):
+			drop = maxf(drop, cell_surface(cell).y - cell_surface(side).y)
+	drop = maxf(drop, GridConfig.HEIGHT_UNIT)
+
+	for side in [-0.28, 0.28]:
+		var rail := MeshInstance3D.new()
+		var post := BoxMesh.new()
+		post.size = Vector3(0.09, drop, 0.09)
+		rail.mesh = post
+		rail.material_override = mat
+		rail.position = Vector3(side, -drop * 0.5, 0.0)
+		rungs.add_child(rail)
+
+	var count: int = maxi(2, int(drop / 0.4))
+	for i in count:
+		var rung := MeshInstance3D.new()
+		var bar := BoxMesh.new()
+		bar.size = Vector3(0.64, 0.07, 0.07)
+		rung.mesh = bar
+		rung.material_override = mat
+		rung.position = Vector3(0.0, -drop * (float(i) + 0.5) / float(count), 0.0)
+		rungs.add_child(rung)
+
+	_ladder_root.add_child(rungs)
 
 func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
 	if _cover_root == null:

@@ -35,6 +35,11 @@ enum State {
 	# the same physical situation only ever drift apart.
 	TUMBLE,
 	LEDGE_HANG,  # M5 -- caught a lip; cannot mantle unaided, can while pulled
+	# M17 phase 6. On a ladder: vertical control, no gravity, and no verbs. The
+	# glyph has been authorable since M2 and the validator has counted it as a way
+	# up ever since -- with nothing to climb it, which is why SegmentValidator
+	# carried LADDERS_CLIMBABLE = false until this state existed.
+	CLIMB,
 	DOWNED,      # M5
 	BUS_DRIVER,  # M11 -- steering only
 	BUS_RIDER,   # M11 -- verbs but no movement
@@ -205,6 +210,8 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 			_step_tumble()
 		State.LEDGE_HANG:
 			_step_hang()
+		State.CLIMB:
+			_step_climb(move)
 		State.DOWNED:
 			pass          # immobile; the world runs the countdown and the rescue
 		_:
@@ -497,6 +504,12 @@ func _aim_yaw(move: Vector2, aim: float) -> float:
 func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	var dt := SimConfig.TICK_DELTA
 
+	# PUSHING INTO A LADDER CLIMBS IT. No dedicated button: "climb the thing you
+	# are standing against" is a button nobody presses, and the stick already says
+	# everything the move needs.
+	if _try_grab_ladder(move):
+		return
+
 	# ANCHORED. Raised on the tick the trigger goes down and dropped when it comes
 	# up; while it is up the body does not move and does not turn, so the direction
 	# chosen at the moment of raising is the direction committed to.
@@ -669,6 +682,123 @@ func _boosted_up_a_ramp(axis: Vector3) -> bool:
 			return true           # a step up counts too, even a bare one
 		return false
 	return false
+
+# --- Climbing (M17 phase 6) ---------------------------------------------------
+#
+# NO GRAVITY, NO VERBS, VERTICAL CONTROL. A climbing body is doing one thing, and
+# the cost of a ladder is that it is the only thing: you cannot dash, shoot or
+# dodge while on one, which is what pays for it being the compact way up.
+#
+# THE LADDER IS A CELL, NOT A BODY. It is grid-resident like a shooter's pillar,
+# so climbing asks the GRID where it is rather than tracking a node -- and that
+# means a client replaying a correction reaches the same answer from the same
+# position, with nothing extra to capture.
+func _step_climb(move: Vector2) -> void:
+	var cell: Vector2i = _ladder_cell()
+	if cell.x < 0:
+		state = State.WALK
+		grounded = false
+		return
+
+	var grid: Node = world.grid
+	var post: Vector3 = grid.cell_surface_world(cell)
+	var face: Vector3 = _ladder_face(cell)
+
+	# HELD ON THE FACE OF THE CLIFF, not on the ladder's cell. The first version
+	# pinned the body to the cell centre and it stuck at y 1.50 against a top of
+	# 2.62 -- because the ladder's cell IS the raised deck, so pinning to it puts
+	# the body inside a solid column and the solver refuses to lift it. A ladder
+	# is climbed on the outside of the thing it is bolted to.
+	var stand: Vector3 = post + face * (GridConfig.CELL_SIZE * 0.5 + RADIUS + 0.05)
+	position.x = stand.x
+	position.z = stand.z
+
+	# FORWARD ON THE STICK CLIMBS, BACK DESCENDS -- "away from the camera is up",
+	# the same convention the whole game walks by.
+	#
+	# Position is set directly rather than swept. There is nothing above a climber
+	# to collide with, and a sweep against the wall they are pressed to is a fight
+	# with the solver that can only lose ground.
+	position.y += -move.y * SimConfig.CLIMB_SPEED * SimConfig.TICK_DELTA
+	velocity = Vector3.ZERO
+	grounded = false
+
+	# OFF THE TOP: over the lip and onto the deck the ladder serves.
+	if position.y - HALF_HEIGHT >= post.y - 0.05:
+		position = Vector3(post.x, post.y + HALF_HEIGHT + SimConfig.CLIMB_EXIT_LIFT, post.z)
+		state = State.WALK
+		grounded = true
+		return
+	# OFF THE BOTTOM: back on the ground, back to walking.
+	var foot: float = _ladder_foot(cell)
+	if position.y - HALF_HEIGHT <= foot:
+		position.y = foot + HALF_HEIGHT
+		state = State.WALK
+		grounded = true
+
+# Which way the cliff FACES: from the ladder's cell toward the lowest ground
+# beside it, which is the side a climber arrives on.
+func _ladder_face(cell: Vector2i) -> Vector3:
+	var grid: Node = world.grid
+	var best: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_SOUTH]
+	var lowest: float = grid.cell_surface_world(cell).y
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if not grid.is_solid(side):
+			continue
+		var y: float = grid.cell_surface_world(side).y
+		if y < lowest:
+			lowest = y
+			best = GridConfig.DIR_VECTORS[dir]
+	return best
+
+# The ladder cell within reach, or (-1, -1). Asked of the GRID every tick rather
+# than remembered, so nothing about a climb has to ride capture_state beyond the
+# state enum itself.
+func _ladder_cell() -> Vector2i:
+	if world == null or world.grid == null:
+		return Vector2i(-1, -1)
+	var grid: Node = world.grid
+	var here: Vector2i = grid.cell_of_world(position)
+	for dz in [0, -1, 1]:
+		for dx in [0, -1, 1]:
+			var cell := Vector2i(here.x + dx, here.y + dz)
+			if grid.content_at(cell) != GridConfig.Content.LADDER:
+				continue
+			var at: Vector3 = grid.cell_surface_world(cell)
+			if Vector2(position.x - at.x, position.z - at.z).length() <= SimConfig.CLIMB_REACH:
+				return cell
+	return Vector2i(-1, -1)
+
+# The deck a ladder is climbed FROM: the lowest solid neighbour, which is the
+# bottom of the drop it serves.
+func _ladder_foot(cell: Vector2i) -> float:
+	var grid: Node = world.grid
+	var lowest: float = grid.cell_surface_world(cell).y
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if grid.is_solid(side):
+			lowest = minf(lowest, grid.cell_surface_world(side).y)
+	return lowest
+
+# Grab a ladder from WALK. Called from the walk step: pushing INTO a ladder is
+# the whole input, because a dedicated button for "climb the thing you are
+# standing against" is a button nobody presses.
+func _try_grab_ladder(move: Vector2) -> bool:
+	if move.length_squared() < 0.04:
+		return false
+	var cell: Vector2i = _ladder_cell()
+	if cell.x < 0:
+		return false
+	# Only from BELOW. A ladder is not a handrail: standing on the deck it serves
+	# and pushing at it should walk, not drop you onto a climb.
+	var top: float = world.grid.cell_surface_world(cell).y
+	if position.y - HALF_HEIGHT >= top - 0.1:
+		return false
+	state = State.CLIMB
+	state_timer = 0.0
+	velocity = Vector3.ZERO
+	return true
 
 # --- Tumble -------------------------------------------------------------------
 
