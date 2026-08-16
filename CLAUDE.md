@@ -395,6 +395,18 @@ the moment it is written.
   made it slower and no more able to fail. **A/B a new assertion before believing
   it**, and when it survives its own rule being removed, suspect the OBJECT before
   the sample size.
+- **A HIT TEST THAT DISAGREES WITH THE ART IS A HAZARD PLAYERS LEARN BY DYING TO,
+  and a test can lock the disagreement in.** Observed 2026-08-16. Spikes are drawn
+  as nine cones standing straight up out of ONE cell; the hit test measured from
+  that cell's four NEIGHBOURS, so the safe spot was the middle of the spikes and
+  the danger was a ring from 0.7 m to 3.3 m out. It was deliberate, and
+  `test_cover_and_spikes` asserted it in as many words — "standing ON the block
+  never hurt: it is deck, and being BESIDE it is the hazard" — which is why it
+  survived. It reached playtest twice: once as "the elevator hurts you" (a lift
+  two cells away put the rider inside the invisible ring) and once as "visually
+  that is not at all what we show". **When a hazard is reported in the wrong
+  place, sample its damage as a MAP and compare it against the mesh**; and when a
+  test states a rule the art contradicts, the test is the thing that is wrong.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach
@@ -682,6 +694,20 @@ about *method*, not about that game.
   shot. It took a case per half -- a grazing hit for the origin, a 0.9 m shot for
   the proximity rule -- before the A/B could fail twice. **A/B each half
   separately**; a pair reverted together only proves the pair.
+- **A PLAYTEST REPORT NAMES WHAT THE PLAYER WAS DOING, NOT WHAT HIT THEM — and
+  that is a correct report, not a vague one.** Observed 2026-08-16: "every time
+  you stand on the elevator, it hurts you when it moves." The elevator never
+  touched them. A SPIKE BLOCK two cells away was hurting anyone inside a 3.3 m
+  ring it drew nothing to advertise, so the damage arrived exactly when the
+  platform carried them into it, every time. Three probe rounds went into the
+  platform before anything scanned what was AROUND it — and the first thing the
+  scan found, a skirmisher, was a real bug and the wrong answer, which cost
+  another round. **When a report blames a mechanism, ask what else is in range
+  while that mechanism has the player, and keep asking after the first plausible
+  culprit.** Be slow to reject the reporter: their correlation was perfect and
+  their attribution was the only one available from inside the game. The general
+  form: a hazard aimed at somebody who cannot answer it, or one whose reach is
+  invisible, reads as the TERRAIN being the hazard.
 - **Prefer a DIRECT COUNT at the line that does the thing.** Counting where the
   event happens cannot be argued with; eliminating candidates by reading can be,
   and often wrongly.

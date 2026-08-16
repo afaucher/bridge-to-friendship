@@ -301,8 +301,29 @@ const RUN_LOOKAHEAD_SEGMENTS := 6
 const SPIKE_PERIOD := 2.0
 const SPIKE_OUT_FRACTION := 0.34
 const SPIKE_DAMAGE := 1
-# How far from the neighbouring cell's centre still counts as standing in it.
-const SPIKE_REACH := 1.3
+# HOW FAR FROM THE BLOCK'S OWN CENTRE, and until 2026-08-16 it was measured from
+# the block's four NEIGHBOURS instead — which put the one safe spot in the
+# middle of the spikes and a hurt ring from 0.7 m to 3.3 m out. Measured, sampling
+# every 25 cm along a line out from the centre:
+#
+#   0.0m ...XXXXXXXXXXX... 4.0m        X = hurt
+#
+# So the game drew spikes standing up out of one cell and hurt you everywhere
+# except on them, out to more than a cell and a half beyond the block. Reported
+# from playtest as an elevator injury: a lift two cells away put a rider inside
+# that ring with no threat visible anywhere near them.
+#
+# Half a cell: a body whose centre is over the block. It is deliberately NOT the
+# body's radius added on — clipping the edge of a spike square with your
+# shoulder should not cost health when the whole point is that the danger is a
+# thing you can see and stand off.
+const SPIKE_REACH := 1.0
+# And how far ABOVE the deck they reach: the spikes themselves (0.8) plus a
+# standing body's half height, so somebody stood on the block is caught and
+# somebody carried over it — on a lift, or mid-launch on legs — is not.
+# Passing over a hazard whose whole silhouette is below your feet should be
+# exactly as safe as it looks.
+const SPIKE_TOP_REACH := 1.7
 
 # THE ROUND BARRIER (M16). Two metres, matching the parapet: it has to stop a
 # dash, which is the only verb that could otherwise carry a player through, and

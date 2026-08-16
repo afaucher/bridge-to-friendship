@@ -905,31 +905,42 @@ func _process_spikes() -> void:
 			continue
 		_spike_hits(cell)
 
+# DIRECTLY ABOVE THE BLOCK, and nowhere else.
+#
+# This used to iterate the block's four NEIGHBOURS and hurt anybody near one of
+# them, which made the middle of the spikes the safest place to stand and put the
+# danger in a ring reaching 3.3 m out. It is drawn as nine cones coming straight
+# up out of one cell; that is what it should do.
+#
+# The alternative shape — a solid block with spikes fanning out of its sides
+# down to the floor around it — would justify the old rule, and is a different
+# model with a different silhouette. If that is ever wanted, the MESH moves first
+# and this follows it. A hit test that disagrees with the art is a hazard players
+# learn by dying to.
 func _spike_hits(cell: Vector2i) -> void:
-	for dir in 4:
-		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if not grid.is_solid(side):
+	var at: Vector3 = grid.cell_surface_world(cell)
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body == null or not is_instance_valid(body):
 			continue
-		var at: Vector3 = grid.cell_surface_world(side)
-		for peer_key in players.keys():
-			var body: Node = players[int(peer_key)]
-			if body == null or not is_instance_valid(body):
-				continue
-			if body.is_awaiting_rescue():
-				continue
-			var to: Vector3 = body.position - at
-			# Flat distance: a spike reaches the cell, not a sphere around it, and
-			# a player standing on a step above should not be caught by one below.
-			if absf(to.y) > GridConfig.CELL_SIZE or Vector2(to.x, to.z).length() > SimConfig.SPIKE_REACH:
-				continue
-			var hit = Hit.new()
-			# CRUSH: reserved by the damage model on the day it was written for
-			# "a saw-blade, something falling", and this is the first thing to
-			# use it. A shield does not stop the floor.
-			hit.kind = Hit.Kind.CRUSH
-			hit.amount = SimConfig.SPIKE_DAMAGE
-			hit.from = at
-			body.receive_hit(hit)
+		if body.is_awaiting_rescue():
+			continue
+		var to: Vector3 = body.position - at
+		# Above the deck, not below it: a player under an overhang with spikes on
+		# top is not being stabbed by them.
+		if to.y < -0.5 or to.y > SimConfig.SPIKE_TOP_REACH:
+			continue
+		if Vector2(to.x, to.z).length() > SimConfig.SPIKE_REACH:
+			continue
+		var hit = Hit.new()
+		# CRUSH: reserved by the damage model on the day it was written for
+		# "a saw-blade, something falling", and this is the first thing to
+		# use it. A shield does not stop the floor -- see shield_blocks, which
+		# refuses this kind outright rather than by distance.
+		hit.kind = Hit.Kind.CRUSH
+		hit.amount = SimConfig.SPIKE_DAMAGE
+		hit.from = at
+		body.receive_hit(hit)
 
 # --- Plinko -------------------------------------------------------------------
 #

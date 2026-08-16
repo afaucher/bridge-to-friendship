@@ -44,6 +44,7 @@ var phase_frame: int = 0
 var out_ticks: int = 0
 var in_ticks: int = 0
 var hurt_beside: bool = false
+var hurt_above: bool = false
 var telegraph_ticks: int = 0
 
 func setup(main) -> void:
@@ -106,6 +107,7 @@ func _physics_process(_delta: float) -> void:
 	match phase:
 		0: _phase_on_the_block()
 		1: _phase_beside_the_block()
+		2: _phase_carried_over()
 
 # HOW FAR OUT, not whether the mesh is visible. Those are different windows now:
 # the spikes are SEEN rising before they are DANGEROUS, which is the whole point
@@ -117,8 +119,18 @@ func _lift() -> float:
 func _dangerous() -> bool:
 	return _lift() >= 0.6
 
-# STANDING ON IT IS SAFE. The block is ordinary deck; what hurts is being next to
-# it, which is what makes it a thing to walk past rather than a thing to avoid.
+# STANDING ON IT HURTS, and this assertion is the exact inverse of what it said
+# until 2026-08-16.
+#
+# The old rule measured from the block's four NEIGHBOURS, so the safe spot was
+# the middle of the spikes and the danger was a ring reaching 3.3 m out. It was
+# deliberate and it was tested, which is why it survived — but it disagreed with
+# the ART, and the art is the only thing a player has. Nine cones stand straight
+# up out of one cell; that cell is what they hurt.
+#
+# From playtest, twice: once as "the elevator hurts you" (a lift two cells from a
+# block, the rider inside the invisible ring), and once as "visually that is not
+# at all what we show".
 func _phase_on_the_block() -> void:
 	if phase_frame == 1:
 		_park(SPIKE_CELL)
@@ -148,12 +160,17 @@ func _phase_on_the_block() -> void:
 		"and are safe for most of the cycle (%.0f%% out) -- the safe window is the "
 			% (100.0 * float(out_ticks) / float(out_ticks + in_ticks))
 		+ "number that matters, because it has to be long enough to walk through")
-	eq(body.health, SimConfig.MAX_HEALTH,
-		"and standing ON the block never hurt: it is deck, and being BESIDE it "
-		+ "is the hazard")
+	check(body.health < SimConfig.MAX_HEALTH,
+		"and standing ON the block HURT (%d) -- it is drawn as spikes coming "
+			% body.health
+		+ "straight up out of that cell, so that cell is what they hurt; a hit "
+		+ "test that disagrees with the art is a hazard players learn by dying to")
 	phase = 1
 	phase_frame = 0
 
+# AND THE CELL NEXT DOOR IS SAFE. The half that stops "hurt me" being satisfied
+# by a hazard that hurts everywhere: the old reach was 3.3 m, which is more than
+# a cell and a half of bridge threatened by a block a metre wide.
 func _phase_beside_the_block() -> void:
 	if phase_frame == 1:
 		_park(SPIKE_CELL + Vector2i(1, 0))
@@ -164,5 +181,35 @@ func _phase_beside_the_block() -> void:
 		hurt_beside = true
 	if phase_frame < int(SimConfig.SPIKE_PERIOD * 60.0) + 10:
 		return
-	check(hurt_beside, "and standing BESIDE it does hurt, within one cycle")
+	check(not hurt_beside,
+		"and standing in the NEXT CELL does not -- the danger is the block you "
+		+ "can see, not a ring around something a metre away")
+	phase = 2
+	phase_frame = 0
+
+# AND NOT FROM ABOVE. The case the playtest actually met: a lift, or legs,
+# carrying somebody over a block whose whole silhouette is below their feet.
+func _phase_carried_over() -> void:
+	if phase_frame == 1:
+		_park(SPIKE_CELL)
+		# Held a clear body's height above the spikes, which is where a platform
+		# passing over one puts you.
+		body.position.y += SimConfig.SPIKE_TOP_REACH + 0.5
+		body.velocity = Vector3.ZERO
+		body.health = SimConfig.MAX_HEALTH
+		body.invulnerable = 0.0
+		return
+	# Held there: gravity would drop the body onto the spikes and the phase would
+	# be measuring the landing rather than the fly-over.
+	body.position.y = world.grid.cell_surface_world(SPIKE_CELL).y 		+ SimConfig.SPIKE_TOP_REACH + 0.5
+	body.velocity = Vector3.ZERO
+	if body.health < SimConfig.MAX_HEALTH:
+		hurt_above = true
+	if phase_frame < int(SimConfig.SPIKE_PERIOD * 60.0) + 10:
+		return
+	check(not hurt_above,
+		"and being carried OVER them does not hurt either -- passing above a "
+		+ "hazard whose whole silhouette is below your feet should be exactly as "
+		+ "safe as it looks, which is how a lift beside one read as the LIFT "
+		+ "hurting you")
 	finish()
