@@ -610,6 +610,106 @@ the design and becomes part of it. The consequence is that reaching the next
 strip is the only way forward, which promotes "does a round end when everyone is
 out?" from an open question to a required transition.
 
+## M17 — World generation
+
+**Added 2026-08-15.** Design in `design_ideas/world_generation.md`.
+
+**Proves: a bridge nobody authored is still crossable.** Three hand-authored
+segments is the whole world today; this is how that becomes a much larger variety
+of environments without shipping a run that cannot be finished.
+
+The load-bearing split is not "how procedural should this be" but WHAT KIND OF
+CLAIM each part has to make. The ground being crossable is a proof and a machine
+can guarantee it; the fight being interesting is a judgement and only a person
+can. So: a GENERATED terrain skeleton (width, height profile, gap density, level
+splits), AUTHORED set-pieces slotted into it (a shooter behind a gap with cover
+halfway across is a composition, and a generator that scatters those parts
+randomly produces texture rather than design), and a GENERATED dressing pass
+driven by a budget. That third layer is what makes "the same map, enemy-dense or
+hazard-dense" a swap of one table rather than two maps.
+
+Completability becomes a REJECTION ORACLE: generate, flood, reject, reroll --
+never construct-and-hope. `SegmentValidator` already floods at two rise budgets
+and is the right shape; what it gains is party CAPABILITY (a boost is an edge
+that needs two players, legs an edge onto a second layer), a bounded
+keys-and-doors product flood for buttons, and a per-party-size answer, because
+"completable" is not one bit and a solo player must never be handed a segment
+that needs a boost.
+
+Multi-level is the one real data model change: `height_at` returns ONE height per
+cell, so the deck is a heightfield and cannot express a surface above a surface.
+Two layers, capped at three, keeps cells as records and leaves every existing
+segment byte-identical.
+
+**LAYERS ARE CUT, on one line of design.** The camera problem was "anything above
+a player hides them", and the escape that costs nothing is to vary height but
+never put one surface over another. That looked like it would cost Legs, the one
+idea that wanted to walk ON TOP of the level -- until the obvious point that LEGS
+LET YOU JUMP UP, and nothing ever needs to go UNDER. If no solid cell has
+walkable space beneath it there is no second surface anywhere, and the
+heightfield covers the entire wish list.
+
+What replaces the layer data model is a rule about how thick a deck cell is: its
+underside drops to meet the lowest of its eight neighbours, so a cell at a height
+CHANGE is thick and everything else stays exactly as it is. The middle of a
+plateau is never thickened -- the perimeter seals it, and the hollow interior has
+no sightline into it. That also generalises the ramp skirt of 2026-08-13, which
+was this same rule applied to one shape, and it is the first thing to build:
+every split-level idea produces a tall step, and the fault is invisible until
+somebody walks under one.
+
+The remaining risk is DUAL PATH, which asks the session for the opposite of what
+the leash, the single camera and the streaming window are all built for -- a
+camera problem before it is a generation one, and probably "two lanes a few
+metres apart" rather than "two routes".
+
+Ten phases, reordered by walking the dependencies rather than the wish list. A
+MULTIPLIER GOES AFTER THE CHEAP THINGS IT MULTIPLIES -- the dressing pass is
+layouts times content types, and counting settles its position rather than
+reasoning about plumbing: today it would have four hazard types and no cover,
+which expresses ONE of the four themes wanted, so cover, spikes and the
+split-level segment go first. It does NOT wait for the generator, though the same
+argument seems to point there -- the generator is not cheap, and Layers 1 and 3
+are separate on purpose, so the pass has to exist for generated terrain to be
+handed TO. NOTHING IS BUILT WITHOUT A
+CONSUMER -- the thickness rule ships alongside a hand-authored split-level
+segment, since the rule alone is untestable and the segment alone falls through.
+And PRESENT RISK BEATS FUTURE RISK, which is Phase 0: SegmentValidator runs only
+in tests, and its flood starts at row 0 of ONE segment and stays inside it, so
+NOTHING CHECKS THAT A RUN'S SEGMENTS CONNECT. It works today by luck -- the three
+pool segments are near-solid at both ends -- and thin paths and variable width
+both spend that luck, while M16 turned one join per round into six.
+
+THE FIX IS A CONTRACT RATHER THAN A SEARCH, and the weakest one that works: ANY
+OVERLAP IS ENOUGH -- segment B may follow A if one cell is solid on both sides.
+That is bought by strengthening what a segment proves about itself, from "some
+exit cell is reachable" (which is all _exit_reached checks today, so a segment
+can pass with one corner reachable while the next enters from the other) to "from
+ANY entry cell, EVERY exit cell is reachable". Run connectivity then follows by
+INDUCTION and holds for runs nobody has generated, where a soak only ever reports
+on the runs it sampled. The one design it forbids is dual path, correctly, and
+such a segment would declare connectivity GROUPS instead.
+
+THE REGROUP ROW MAKES DUAL PATH FREE, and M16 already enforces one: _check_gates
+refuses a boundary strip with a gap, so a round begins and ends on a full-width
+standable band. Between two such bands the deck may split, braid and rejoin as it
+likes -- each lane is entered from the band behind it and delivers to the band
+ahead, and neither lane needs to know the other exists. That RETIRES the
+two-token flood an earlier draft called the hardest item here; it was only ever a
+consequence of trying to prove connectivity without a regroup row. What is left
+of the two-player question is genuinely two-player -- a button on one lane
+opening a door on the other -- and that is the same (cell, switches) product
+flood Phase 7 builds anyway.
+
+TWO THINGS THAT DELETES.
+
+The generator itself is fifth, and the LOBBY is generated fourth as the pilot:
+trivially parametric, and the one piece of content where a generation bug costs a
+strange-looking room rather than a run nobody can finish, so the whole
+generate-validate-assemble loop is proven somewhere cheap before it meets terrain
+full of holes and shooters. Phases 0 to 3 make the game more varied than it is
+today with no generated terrain at all.
+
 ## Later
 
 Real Steam appid and store presence. Audio. More than four players. Progression
