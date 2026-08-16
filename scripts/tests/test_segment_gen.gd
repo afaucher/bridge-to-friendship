@@ -284,7 +284,7 @@ func _check_joins() -> void:
 		SegmentGen.section(w, 5, 3),
 		SegmentGen.lobby(w, 5, 4),
 	]
-	var problems: Array = SegmentValidator.validate_run(run, SegmentValidator.SOLO_RISE)
+	var problems: Array = SegmentValidator.validate_run(run, SegmentValidator.party_of(1))
 	check(problems.is_empty(),
 		"a run of generated and authored segments connects end to end (%s)"
 			% ("" if problems.is_empty() else problems[0]))

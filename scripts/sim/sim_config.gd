@@ -68,6 +68,14 @@ const SHOVE_DURATION := 0.1
 # What a shoved PLAYER receives. Lower than the dash itself so a chain of players
 # shoving each other decays instead of accelerating forever.
 const SHOVE_TRANSFER_SPEED := 11.0
+
+# A BOOST UP A SLOPE, as distinct from a shove into open air. Slower and with
+# more lift than a tumble: the point is to ARRIVE somewhere, not to be launched,
+# and the receiving player keeps control the whole way. See
+# PlayerBody.receive_shove -- the same dash produces both, and which one you get
+# is decided by what is in front of you.
+const BOOST_CARRY_SPEED := 7.0
+const BOOST_LIFT := 7.5
 const SHOVE_TRANSFER_LIFT := 2.5   # a little upward, so a hit reads as a launch
 # Cooldown after a dash ends, so shove is a committed decision rather than a
 # faster way to walk.

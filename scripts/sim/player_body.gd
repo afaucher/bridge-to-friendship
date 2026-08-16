@@ -616,6 +616,31 @@ func receive_shove(yaw: float) -> void:
 	if state == State.DOWNED or state == State.LEDGE_HANG:
 		return
 	var axis: Vector3 = GridConfig.yaw_vector(yaw)
+
+	# A BOOST UP A SLOPE IS NOT A SHOVE OFF A BRIDGE, and the same impulse cannot
+	# serve both. Reported as "we implemented dashing into players to knock them
+	# up a steep rise but it was janky": measured, it CLEARS the ramp 25 times out
+	# of 26 -- the unreliability was never the problem. The problem is that it
+	# arrives as a TUMBLE, so the player who has just been helped up loses control
+	# at the top and goes wherever the bridge sends them.
+	#
+	# That is exactly right when somebody dashes you into open air, which is where
+	# the comedy lives and stays. It is exactly wrong for the one move the design
+	# calls a co-op gate (MVP A4), and it gets worse the moment a section REQUIRES
+	# two players: a climb you cannot land is a climb you cannot rely on.
+	#
+	# So the shove asks what it is pushing you INTO. Up a ramp, you keep control
+	# and get carried; anywhere else, you tumble as before.
+	if _boosted_up_a_ramp(axis):
+		state = State.WALK
+		state_timer = 0.0
+		grounded = false
+		velocity = Vector3(
+			axis.x * SimConfig.BOOST_CARRY_SPEED,
+			SimConfig.BOOST_LIFT,
+			axis.z * SimConfig.BOOST_CARRY_SPEED)
+		return
+
 	# A dash arrives at 56 m/s. That is not a nudge -- it TUMBLES you, which is
 	# where the comedy lives: the shoved player loses control and goes wherever
 	# the bridge sends them.
@@ -623,6 +648,27 @@ func receive_shove(yaw: float) -> void:
 		axis.x * SimConfig.SHOVE_TRANSFER_SPEED,
 		SimConfig.SHOVE_TRANSFER_LIFT,
 		axis.z * SimConfig.SHOVE_TRANSFER_SPEED))
+
+# Is the shove pushing this body INTO a climb? Asked of the cell ahead along the
+# shove axis rather than the one underfoot: at the foot of a ramp you are still
+# standing on flat deck, which is precisely where a boost is asked for.
+func _boosted_up_a_ramp(axis: Vector3) -> bool:
+	if world == null or world.grid == null:
+		return false
+	var grid: Node = world.grid
+	var here: Vector2i = grid.cell_of_world(position)
+	for step in [1.0, 2.0]:
+		var ahead: Vector2i = grid.cell_of_world(position + axis * (GridConfig.CELL_SIZE * step))
+		if ahead == here:
+			continue
+		if not grid.is_solid(ahead):
+			return false          # being shoved at a hole is a shove, not a boost
+		if grid.kind_at(ahead) == GridConfig.Kind.RAMP:
+			return true
+		if grid.height_at(ahead) > grid.height_at(here):
+			return true           # a step up counts too, even a bare one
+		return false
+	return false
 
 # --- Tumble -------------------------------------------------------------------
 

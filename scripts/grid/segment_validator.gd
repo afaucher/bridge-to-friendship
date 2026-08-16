@@ -61,13 +61,51 @@ const ASSISTED_RISE := 4
 # phase 6 builds the climb.
 const LADDERS_CLIMBABLE := false
 
+# --- The party, and what it can do (M17 phase 6) ------------------------------
+#
+# Reachability used to be a function of a RISE BUDGET. It is now a function of
+# what the party can actually DO, because the budget was only ever a stand-in for
+# that and the stand-in stopped stretching the moment there were three different
+# ways up.
+#
+# `size` is the only field that changes what is REQUIRED. The others are things a
+# party may or may not have, and per 2a-i of the design doc they are not
+# interchangeable:
+#
+#   PRESENCE — a boost needs a second player, and a player comes back. A route
+#   may legitimately require one.
+#   CONSUMABLE — legs run out. A route requiring one becomes impossible the
+#   moment the last charge is spent, with the party stuck and no way to know why.
+#
+# WHICH IS WHY THERE IS NO `has_legs` FIELD HERE. It is not an oversight: an edge
+# gated by a consumable may only ever be a SHORTCUT, so the crossability flood
+# must never see one. Adding the field is how somebody would accidentally let a
+# generated section require a special.
+static func party_of(size: int, can_climb: bool = LADDERS_CLIMBABLE) -> Dictionary:
+	return {"size": maxi(1, size), "can_climb": can_climb}
+
+# What a rise budget MEANT, now derived rather than passed. One player gets what
+# they can do unaided; two or more get what a shove up a steep ramp buys, which
+# is a real mechanic (MVP A4, test_shove_up_ramp) and not a hypothetical.
+static func rise_budget(party: Dictionary) -> int:
+	return ASSISTED_RISE if int(party.get("size", 1)) >= 2 else SOLO_RISE
+
+# THE SMALLEST PARTY THAT CAN CROSS, or -1 if nobody can. This is the reporting
+# half of "solo-crossable is a policy, not an invariant": it answers, and the
+# caller decides what a run is allowed to contain.
+static func min_party_size(segments: Array, most: int = 4) -> int:
+	for size in range(1, most + 1):
+		if validate_run(segments, party_of(size)).is_empty():
+			return size
+	return -1
+
 static func validate(seg) -> Array:
 	var problems: Array[String] = []
 	if not seg.is_valid():
 		return seg.errors.duplicate()
 
-	var solo := _flood(seg, SOLO_RISE)
-	var assisted := _flood(seg, ASSISTED_RISE)
+	var solo := _flood(seg, party_of(1))
+	var assisted := _flood(seg, party_of(2))
 
 	if not _exit_reached(seg, assisted):
 		problems.append(
@@ -121,13 +159,13 @@ static func _check_gates(seg, problems: Array) -> void:
 
 # Flood from every solid cell in the entry row, stepping only where a player with
 # the given rise budget could go. Returns the set of reachable cells.
-static func _flood(seg, max_rise: int) -> Dictionary:
-	return _flood_from(seg, solid_columns(seg, 0), max_rise)
+static func _flood(seg, party: Dictionary) -> Dictionary:
+	return _flood_from(seg, solid_columns(seg, 0), party)
 
 # The same flood from a CHOSEN set of entry columns, which is what a run needs: a
 # party arriving from the previous segment does not get to start from the whole
 # entry row, only from the cells that were solid on both sides of the join.
-static func _flood_from(seg, entry_columns: Array, max_rise: int) -> Dictionary:
+static func _flood_from(seg, entry_columns: Array, party: Dictionary) -> Dictionary:
 	var seen := {}
 	var queue: Array = []
 	for col in entry_columns:
@@ -146,7 +184,7 @@ static func _flood_from(seg, entry_columns: Array, max_rise: int) -> Dictionary:
 				continue
 			if not seg.is_solid(next.x, next.y) or seg.has_wall(cell.x, cell.y, dir):
 				continue
-			if not _can_step(seg, cell, next, max_rise):
+			if not _can_step(seg, cell, next, party):
 				continue
 			seen[next] = true
 			queue.append(next)
@@ -170,16 +208,18 @@ static func _flood_from(seg, entry_columns: Array, max_rise: int) -> Dictionary:
 #   degrees and walkable, two is 45 and needs a shove, which is exactly what
 #   SOLO_RISE and ASSISTED_RISE have always meant on a ramp.
 #   AN ASCENDER, once one is actually implemented. See below.
-static func _can_step(seg, from: Vector2i, to: Vector2i, max_rise: int) -> bool:
+static func _can_step(seg, from: Vector2i, to: Vector2i, party: Dictionary) -> bool:
 	var rise: int = seg.height_at(to.x, to.y) - seg.height_at(from.x, from.y)
 	if rise <= 0:
 		return true   # falling or level is always allowed
-	if LADDERS_CLIMBABLE and seg.content_at(to.x, to.y) in GridConfig.ASCENDER_CONTENTS:
+	if bool(party.get("can_climb", false)) and seg.content_at(to.x, to.y) in GridConfig.ASCENDER_CONTENTS:
 		return true
 	# A BARE STEP UP IS A WALL. No mantle, no step-up, no exceptions.
 	if seg.kind_at(to.x, to.y) != GridConfig.Kind.RAMP:
 		return false
-	return rise <= max_rise
+	# On a ramp the budget is a SLOPE limit: one unit per cell is 27 degrees and
+	# walkable alone, two is 45 and needs somebody to shove you.
+	return rise <= rise_budget(party)
 
 static func _exit_reached(seg, seen: Dictionary) -> bool:
 	for x in seg.width:
@@ -200,8 +240,8 @@ static func solid_columns(seg, row: int) -> Array:
 # Which columns of the EXIT row a party can stand on, having entered on
 # `entry_columns`. This is the whole contract in one function: it is what a
 # segment hands to the next one.
-static func reachable_exit_columns(seg, entry_columns: Array, max_rise: int) -> Array:
-	var seen: Dictionary = _flood_from(seg, entry_columns, max_rise)
+static func reachable_exit_columns(seg, entry_columns: Array, party: Dictionary) -> Array:
+	var seen: Dictionary = _flood_from(seg, entry_columns, party)
 	var last: int = seg.length - 1
 	var out: Array = []
 	for x in seg.width:
@@ -226,7 +266,7 @@ static func reachable_exit_columns(seg, entry_columns: Array, max_rise: int) -> 
 # left means exiting left -- so what a segment offers depends on where you came
 # in. Carrying the set forward is the exact answer and costs one flood per
 # segment, which is what validating them individually already costs.
-static func validate_run(segments: Array, max_rise: int) -> Array:
+static func validate_run(segments: Array, party: Dictionary) -> Array:
 	var problems: Array[String] = []
 	if segments.is_empty():
 		return problems
@@ -252,7 +292,7 @@ static func validate_run(segments: Array, max_rise: int) -> Array:
 				+ "entry row is solid at %s" % str(solid_columns(seg, 0)))
 			return problems
 
-		occupiable = reachable_exit_columns(seg, entered, max_rise)
+		occupiable = reachable_exit_columns(seg, entered, party)
 		if occupiable.is_empty():
 			problems.append(
 				("segment %d ('%s') cannot be crossed: entered at columns %s, and no cell "

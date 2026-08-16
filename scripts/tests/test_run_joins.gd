@@ -57,7 +57,7 @@ func _check_pool_runs() -> void:
 		# SOLO, the tighter budget. A run only a cooperating pair can cross is a
 		# run a lone player is stranded in, and drop-in makes that a real case.
 		var problems: Array = SegmentValidator.validate_run(
-			segments, SegmentValidator.SOLO_RISE)
+			segments, SegmentValidator.party_of(1))
 		if problems.size() > 0:
 			check(false, "seed %d builds a run a solo player cannot cross: %s"
 				% [seed_value, problems[0]])
@@ -89,7 +89,7 @@ func _check_a_broken_join_is_refused() -> void:
 	check(SegmentValidator.validate(b).is_empty(),
 		"and so is the second (%s)" % ", ".join(SegmentValidator.validate(b)))
 
-	var problems: Array = SegmentValidator.validate_run([a, b], SegmentValidator.SOLO_RISE)
+	var problems: Array = SegmentValidator.validate_run([a, b], SegmentValidator.party_of(1))
 	check(problems.size() > 0,
 		"but PUT TOGETHER they are refused -- a fault neither segment can see")
 	if problems.size() > 0:
@@ -99,7 +99,7 @@ func _check_a_broken_join_is_refused() -> void:
 	# AND THE SAME TWO WITH AN OVERLAP ARE ACCEPTED, which is the half that stops
 	# this passing by refusing everything.
 	_solid_only(b, 0, [2, 3, 4, 5, 6, 7])
-	eq(SegmentValidator.validate_run([a, b], SegmentValidator.SOLO_RISE).size(), 0,
+	eq(SegmentValidator.validate_run([a, b], SegmentValidator.party_of(1)).size(), 0,
 		"while ONE overlapping column is enough to join them")
 
 # --- 3. Uncrossable is a different fault from unenterable ---------------------
@@ -109,7 +109,7 @@ func _check_an_uncrossable_segment_is_refused() -> void:
 	# exit row can never be reached.
 	var a = _blank("walled_off", 8, 5)
 	_solid_only(a, 2, [])
-	var problems: Array = SegmentValidator.validate_run([a], SegmentValidator.SOLO_RISE)
+	var problems: Array = SegmentValidator.validate_run([a], SegmentValidator.party_of(1))
 	check(problems.size() > 0, "a segment cut in half is refused")
 	if problems.size() > 0:
 		check(str(problems[0]).contains("cannot be crossed"),

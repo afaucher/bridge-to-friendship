@@ -97,4 +97,15 @@ func _physics_process(_delta: float) -> void:
 		near(victim.position.y, world.grid.cell_surface_world(cell).y + 0.9, 0.4,
 			"and comes to rest on it (y = %.2f)" % victim.position.y)
 		check(victim.grounded, "standing, not still in the air")
-		finish()
+		# AND THEY ARRIVED IN CONTROL. The boost used to land as a TUMBLE -- the same
+	# impulse a shove into open air gives -- so the player who had just been helped
+	# up lost control at the top and went wherever the bridge sent them. Measured
+	# 2026-08-16: the climb itself succeeded 25 times out of 26, so reliability was
+	# never the complaint; arriving unable to steer was.
+	#
+	# Tumbling everywhere ELSE is deliberate and stays. What decides which you get
+	# is what the shove is pushing you INTO, not how hard it was.
+	check(victim.state != PlayerBody.State.TUMBLE,
+		"and arrives IN CONTROL rather than tumbling -- a climb you cannot land is "
+		+ "a climb a section cannot require (state %d)" % victim.state)
+	finish()
