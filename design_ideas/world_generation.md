@@ -207,19 +207,62 @@ Reachability today is a function of rise budget. It becomes a function of
 **capability**:
 
 ```
-can_traverse(edge, party) where party = {size, has_legs, has_boost, can_climb}
+can_traverse(edge, party) where party = {size, can_climb, has_boost, has_legs}
 ```
 
-- a ladder is a vertical edge, available always (`ASCENDER_CONTENTS` already
-  lists it — the flood has known about ladders since M2; only the player's verb
-  is missing)
-- a boost is a vertical edge available only when `size >= 2`
-- legs are an edge onto layer 2, available only while that special is held
+- a ladder is a vertical edge, available always (`ASCENDER_CONTENTS` has listed
+  it since M2 — the flood has known about ladders for months; only the player's
+  verb is missing, and `LADDERS_CLIMBABLE` is `false` until it exists)
+- a BOOST is a vertical edge available when `size >= 2`. **This already exists**:
+  dashing into a teammate lifts them up a steep ramp, it is MVP criterion A4,
+  and `test_shove_up_ramp` gates it. `ASSISTED_RISE` is not a hypothetical
+  budget, it is a mechanic that works and reads as janky. Phase 6 makes it good;
+  it does not invent it.
+- LEGS are an edge onto raised deck, available only while that special is held
 
-**And the answer must be reported per party size**, because "completable" is not
-one bit. A segment can be solo-completable, two-player-completable, or
-neither — and the run assembler needs to know, because a party of one must never
-be handed a segment that needs a boost.
+### 2a-i. TWO KINDS OF DEPENDENCY, AND THEY ARE NOT INTERCHANGEABLE
+
+The single most important distinction in the capability model, and the reason
+"what does the party have" cannot be one flat set:
+
+**A PRESENCE dependency** — a boost needs a second player. It is recoverable:
+somebody who is downed comes back, somebody who disconnected rejoins. A route
+that needs one is a route the party can always eventually take, and it is
+therefore legitimate for a route to REQUIRE it.
+
+**A CONSUMABLE dependency** — legs are expendable. Run out and you cannot do it
+again, and nothing brings them back inside a round. **A route that requires a
+consumable is a route that becomes impossible**, silently, at the moment the last
+charge is spent — and the party is then stuck in a section with no way forward
+and no way to know why.
+
+So:
+
+> **AN EDGE GATED BY A CONSUMABLE MAY ONLY EVER BE A SHORTCUT.** The flood must
+> never count one toward a segment being crossable. Legs open a faster or
+> better-rewarded line; they are never the line.
+
+That rule is written for legs and applies to everything expendable that comes
+after it. It is also why legs are cheap to add: an edge that can only ever be a
+shortcut cannot make a segment unfinishable, so it needs no new guarantee —
+only a promise that the oracle ignores it.
+
+### 2a-ii. SOLO-CROSSABLE IS A POLICY, NOT AN INVARIANT
+
+Every route must be crossable by one player TODAY, because a party can be one
+person at any moment and nothing yet ends a round that cannot be finished.
+
+**That is a policy and must not be baked into the validator.** Cooperation-
+REQUIRED sections are wanted later: rounds are short, and a lose condition is an
+acceptable price for a section that genuinely needs two people. The machinery
+must be ready for that day.
+
+Concretely: `validate_run` REPORTS per party size, and the ASSEMBLER decides what
+to do with the answer. A segment that is two-player-only is not invalid — it is
+a segment with a requirement, and whether a run may contain one is a question for
+the round plan, not for the flood. Writing "solo-crossable or reject" into the
+oracle would make the later feature a rewrite of the thing everything else
+depends on.
 
 ### 2b. Conditional edges: doors, timed blocks, elevators
 
@@ -537,10 +580,23 @@ planning rather than by work:
 
 ### Phase 6 — conditional access
 
-The capability-aware flood, then ladders (a climb state), the teammate boost, and
-Legs. The assembler starts filtering by party size. **The flood work comes first
-within this phase**: authoring a boost-only route before the flood understands
-boosts is how an unfinishable segment ships.
+**The flood first, then the verbs**, and the order inside the phase matters more
+than usual: authoring a boost-only route before the flood understands boosts is
+how an unfinishable segment ships, and this project has now produced that exact
+failure twice — a step-up the validator believed in, and a ladder it counted as
+a way up for four months.
+
+1. **The capability-aware flood** (2a), reporting PER PARTY SIZE rather than
+   pass/fail, with the consumable rule of 2a-i and the policy split of 2a-ii.
+   Nothing else in this phase is safe before it.
+2. **The teammate boost.** It exists and is janky; this is a feel job on a
+   shipped mechanic, not a new one. It is also the cheapest way to make a
+   two-player run structurally different from a solo one.
+3. **Ladders** — a climb state on the player, which per CLAUDE.md must be in
+   `capture_state()` or client replays diverge. Flipping `LADDERS_CLIMBABLE`
+   inverts an assertion in `test_segment_format` that was written against the
+   flag, and lifts the generator's ban on emitting them.
+4. **Legs**, last, and ONLY as a shortcut (2a-i).
 
 ### Phase 7 — buttons and doors
 

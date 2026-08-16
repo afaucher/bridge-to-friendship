@@ -23,7 +23,30 @@ const SOLO_RISE := 1
 
 # What a shove up a steep ramp or a rope from above is worth. Not a physics
 # result -- a design statement about how much cooperation buys.
+#
+# BACKED BY A REAL MECHANIC: dashing into a teammate lifts them up a steep ramp,
+# it is MVP criterion A4, and test_shove_up_ramp gates it.
 const ASSISTED_RISE := 4
+
+# SOLO-CROSSABLE IS A POLICY, NOT AN INVARIANT, and this note exists so nobody
+# writes it into the flood.
+#
+# Every route must be crossable by one player TODAY, because a party can be one
+# person at any moment and nothing yet ends a round that cannot be finished. But
+# cooperation-REQUIRED sections are wanted: rounds are short, and a lose
+# condition is an acceptable price for a section that genuinely needs two people.
+#
+# So validate_run REPORTS, and the caller decides. A two-player-only segment is
+# not invalid -- it is a segment with a requirement, and whether a run may
+# contain one belongs to the round plan. Baking "solo or reject" in here would
+# make that feature a rewrite of the thing everything else depends on.
+#
+# AND A CONSUMABLE MAY NEVER BE REQUIRED. When Legs arrive (M17 phase 6) they
+# open an edge only while held, and they run out. A route that requires one
+# becomes impossible the moment the last charge is spent, with the party stuck
+# and no way to know why -- so the flood must never count a consumable-gated edge
+# toward a segment being crossable. A boost is different in kind: it needs a
+# PERSON, and a person comes back.
 
 # LADDERS AND BOUNCERS ARE AUTHORABLE AND NOT YET CLIMBABLE.
 #
