@@ -603,6 +603,13 @@ a way up for four months.
 Product-graph reachability over `(cell, switches)`, bounded at four switches per
 segment.
 
+**DEFERRED 2026-08-16, behind M18 (set-pieces).** Not merely reordered: a
+button-and-door is a COMPOSITION — the door in front of you, the button on the
+far side of a drop — and shipping it as two new content types for the dressing
+pass to scatter produces exactly the texture-instead-of-design that layer 2 exists
+to prevent. It wants a set-piece format to be authored into, so it gets cheaper by
+waiting. See `implementation_plans/m18_set_pieces.md`.
+
 ### Phase 8 — mutable terrain
 
 Destroyable squares, then timed blocks. Moved late from second: **nothing
@@ -691,9 +698,13 @@ because in each case a cheaper structure made the problem not exist.
 
 ## What this does not decide
 
-- **Whether generated terrain is FUN.** The oracle proves crossable; nothing
+- **Whether generated terrain is FUN.** *(Answered by scheduling it: M18 builds
+  layer 2, which is what this bullet says the fix has to be.)* The oracle proves crossable; nothing
   proves interesting. Expect the first generated runs to be correct and dull, and
   expect the fix to be more and better set-pieces rather than better parameters.
+  **Confirmed by playtest 2026-08-16 and now scheduled** — layer 2 was described
+  in this document at the top and then never given a phase, which is the one gap
+  in the plan that the plan itself predicted would matter.
 - **How many segments a round should be.** M16 left that open and it interacts
   with everything here: a five-segment round of generated terrain is a lot of
   bridge to get wrong at once.
