@@ -471,6 +471,11 @@ const PLINKO_HIT_RADIUS := 1.1
 # Tall enough to read as absurd from across a 60 m bridge, short enough that the
 # top hat is still on screen.
 const HAT_MAX_STACK := 5
+
+# HOW WIDE A HAT IS TO A BULLET (2026-08-16). Between the crown's collider radius
+# (0.26) and the brim's (0.42): a round that clips the brim of a hat you can see
+# should take it, and one that passes a hand's width clear should not.
+const HAT_HIT_RADIUS := 0.4
 const HAT_HEIGHT := 0.35
 
 # How long after a hat lands before it can be picked up again.

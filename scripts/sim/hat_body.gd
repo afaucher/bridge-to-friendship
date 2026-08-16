@@ -24,6 +24,12 @@ const HatStyle = preload("res://scripts/sim/hat_style.gd")
 
 enum Mode { WORN, FLYING, LOOSE }
 
+# TWO LAYERS, because a hat means two different things depending on where it is.
+# A hat ON A HEAD is a target the round sweep masks; one on the DECK is not, or a
+# dropped pile would be cover nobody built. Both are named in project.godot.
+const LOOSE_LAYER := 1 << 5      # 6: "hats"
+const WORN_LAYER := 1 << 8       # 9: "worn_hats"
+
 # Host-assigned and monotonic, NEVER a creation-order index. Stones get away with
 # list indices because both machines load the same segments in the same order; a
 # hat can be created mid-run by a player joining, so creation order is not agreed
@@ -217,12 +223,61 @@ func wear(peer: int, index: int) -> void:
 func _set_simulated(simulated: bool) -> void:
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not simulated
-	# A worn hat must not be in the contact graph at all -- see the plan: a hat
-	# you can stand on is a ladder, and a stack of hats is a staircase past an
-	# authored ascender gate.
 	var shape := get_node_or_null("Shape") as CollisionShape3D
-	if shape != null:
+	if shape == null:
+		return
+	if mode == Mode.WORN:
+		# A WORN HAT IS A TARGET AND NOTHING ELSE.
+		#
+		# M8.5 gave it no collider at all, and the argument was sound: a hat you
+		# can stand on is a ladder, and a stack of hats is a staircase past an
+		# authored ascender gate. But "not in the contact graph" was a bigger
+		# answer than that question needed. What must not happen is that a BODY
+		# collides with it; a raycast asking what is in front of a bullet is not
+		# a body.
+		#
+		# So the collider exists, on its own layer, MASKING NOTHING. No player
+		# mask includes this layer, so a stack is still not a staircase, and the
+		# only thing in the game that looks at it is the round sweep.
+		shape.disabled = false
+		collision_layer = WORN_LAYER
+		collision_mask = 0
+		# A UNIFORM HIT SHAPE, WHATEVER SHAPE THE HAT IS. This is the part that is
+		# not obvious and is the whole difference between "a tower is a target" and
+		# "a tower is a target sometimes".
+		#
+		# HatStyle sizes every hat's collider from its style id, so a stack is a
+		# column of mismatched discs -- measured on one four-stack: heights of
+		# 0.233, 0.101, 0.342 and 0.191, each starting at its own node origin,
+		# leaving gaps of a hand's width BETWEEN the hats of a tower. A round
+		# threads them, and what a player sees is "I shot him in the hat and
+		# nothing happened", intermittently, depending on which hats they happened
+		# to be wearing.
+		#
+		# A hat's own shape is for LANDING on the deck, where its real size is what
+		# should decide how it settles. What it is worth as a TARGET is the slot it
+		# occupies in the tower, which is the same for every hat: exactly
+		# HAT_HEIGHT tall, centred on the node origin, so the slots tile with no
+		# seam. Restored to the style's own shape the moment it comes off.
+		var column := shape.shape as CylinderShape3D
+		if column != null:
+			shape.position = Vector3.ZERO
+			column.height = SimConfig.HAT_HEIGHT
+			column.radius = SimConfig.HAT_HIT_RADIUS
+	else:
+		# On the deck or in the air: layer 6, world only, exactly as before -- and
+		# the style's own collider back, because how a hat SETTLES should depend on
+		# how big it actually is.
+		HatStyle.apply(self)
 		shape.disabled = not simulated
+		collision_layer = LOOSE_LAYER
+		collision_mask = 1
+
+# Can a round hit this? The answer lives on the thing being hit, which is the
+# rule _resolve_round_hit was rewritten around: the machine gun does not get to
+# decide what everything else in the game is.
+func takes_rounds() -> bool:
+	return mode == Mode.WORN
 
 # Clients are TOLD where a loose hat is; they never simulate one.
 func apply_remote(new_mode: int, at: Vector3) -> void:

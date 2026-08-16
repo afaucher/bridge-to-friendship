@@ -98,7 +98,11 @@ func pose_stack(peer: int, body: Node, mount_y: float, dt: float) -> void:
 		kick = Vector2(dv.x, dv.z) * -SimConfig.HAT_LEAN_KICK
 
 	var frame := Basis()
-	var base := Vector3(0.0, mount_y, 0.0)
+	# GLOBAL, not local to a head. Worn hats stay at the pool root and are driven
+	# by global transform: a RigidBody3D parented under the player is invisible to
+	# a raycast, which cost this game the whole "shoot a hat off" verb until
+	# 2026-08-16. See GameWorld._wear_hat.
+	var base: Vector3 = body.global_position + Vector3(0.0, mount_y, 0.0)
 	for hat in worn:
 		if not is_instance_valid(hat):
 			continue
@@ -108,7 +112,7 @@ func pose_stack(peer: int, body: Node, mount_y: float, dt: float) -> void:
 		hat.lean_step(kick, dt)
 		frame = frame * hat.lean_basis()
 		var up: Vector3 = frame.y
-		hat.transform = Transform3D(frame, base + up * (SimConfig.HAT_HEIGHT * 0.5))
+		hat.global_transform = Transform3D(frame, base + up * (SimConfig.HAT_HEIGHT * 0.5))
 		base += up * SimConfig.HAT_HEIGHT
 
 # A wearer who is gone stops being tracked. Without this the dictionary is a slow

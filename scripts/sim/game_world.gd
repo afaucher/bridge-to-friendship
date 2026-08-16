@@ -1419,18 +1419,23 @@ func _wear_hat(id: int, peer: int, index: int) -> void:
 	# ACQUIRING A HAT MAKES IT YOURS, TOMORROW TOO. Steal one and you keep it.
 	if peer == local_peer:
 		_remember_hat(hat.style_id)
-	var attach := body.get_node_or_null("Hats") as Node3D
-	if attach != null:
-		# REPARENTED, not tracked. Sitting under the head means it follows for
-		# free -- no per-tick transform copy to get one frame late.
-		if hat.get_parent() != attach:
-			hat.get_parent().remove_child(hat)
-			attach.add_child(hat)
-		# Posed through the same function the per-tick lean uses, with dt = 0 for
-		# "upright, now". Two formulas for where a hat sits would drift apart, and
-		# the one that drifted would be this one -- it runs once per pickup, so a
-		# mistake here shows up as a single wrong frame nobody catches.
-		_hats.pose_stack(peer, body, PlayerBody.HALF_HEIGHT, 0.0)
+	# NOT REPARENTED ONTO THE HEAD, which is what M8.5 did and what 2026-08-16
+	# had to undo. Sitting under the player followed it for free, but A
+	# RIGIDBODY3D THAT IS A CHILD OF ANOTHER PHYSICS BODY IS NOT RETURNED BY A
+	# QUERY — measured, with the shape enabled, the mask set to every bit and the
+	# physics server holding the correct transform. So a worn hat could not be
+	# shot, which is a whole verb lost to a parenting convenience.
+	#
+	# It stays at the pool root and is driven by GLOBAL transform instead. The
+	# "one frame late" the old comment worried about does not happen: pose_worn
+	# runs after every body has stepped, on both machines, which is later than
+	# any parent transform would have propagated anyway.
+	#
+	# Posed through the same function the per-tick lean uses, with dt = 0 for
+	# "upright, now". Two formulas for where a hat sits would drift apart, and
+	# the one that drifted would be this one -- it runs once per pickup, so a
+	# mistake here shows up as a single wrong frame nobody catches.
+	_hats.pose_stack(peer, body, PlayerBody.HALF_HEIGHT, 0.0)
 
 # The whole stack, fanned. Called by PlayerBody on entering TUMBLE or LEDGE_HANG.
 #
@@ -1490,6 +1495,54 @@ func destroy_worn_hats(peer: int) -> void:
 	_forget_hat_if_bare(peer)
 	if networked and ids.size() > 0:
 		_hats_destroyed.rpc(ids)
+
+# SHOT OFF YOUR HEAD (playtest 2026-08-16). A round that hits a HAT takes that
+# hat and every hat above it. The player is untouched: this is not armour, it is
+# a second thing to aim at.
+#
+# THE STACK IS A SILHOUETTE, and that is the entire design. Aim in this game is
+# 2D yaw, so a round travels flat at the height of the muzzle that fired it —
+# which means a shooter on your level hits your BODY and a shooter above you, on a
+# ramp or a raised deck or a turret on a pillar, meets your TOWER first. Carrying
+# five hats does not protect you and does not endanger you; it puts a metre and a
+# half of score above your head where high ground can reach it. M8.5's whole bet
+# was that carrying more is louder, and this is what makes it literally so.
+#
+# THAT ONE AND EVERYTHING ABOVE IT. A tower is stacked, so a round through its
+# middle takes the top off; the hats below it are still under the impact and stay.
+# Anything else needs the tower to close up around a hole, which is both odd to
+# look at and a rule nobody could read off the screen.
+func knock_off_hat_stack_from(hat: Node, from_point: Vector3) -> void:
+	if not is_host:
+		return
+	var peer: int = int(hat.owner_peer)
+	var worn: Array = _hats.worn_by(peer)
+	var index: int = worn.find(hat)
+	if index < 0:
+		return
+	var body: Node = players.get(peer, null)
+	var away := Vector3(0.0, 0.0, 1.0)
+	if is_instance_valid(body):
+		away = body.global_position - from_point
+		away.y = 0.0
+		if away.length_squared() < 0.01:
+			away = GridConfig.yaw_vector(body.facing)
+	away = away.normalized()
+
+	var ids: Array = []
+	for i in range(index, worn.size()):
+		var going: Node = worn[i]
+		# FANNED, so a tower that comes off does not land in one pile. The higher
+		# the hat, the further it goes -- it had further to fall and more of the
+		# round's line to travel along.
+		var spread: float = 1.0 + 0.35 * float(i - index)
+		_release_hat(going, going.global_position,
+			away * SimConfig.HAT_SCATTER_SPEED * spread
+			+ Vector3(0.0, SimConfig.HAT_SCATTER_LIFT, 0.0))
+		ids.append(going.hat_id)
+	_forget_hat_if_bare(peer)
+	if networked:
+		_hats_released.rpc(ids)
 
 func _release_hat(hat: Node, from: Vector3, velocity: Vector3) -> void:
 	if hat.get_parent() != _hats_root:
@@ -2006,11 +2059,15 @@ func _process_bullets() -> void:
 			# Balls were deliberately absent, on the argument that a ball stopping a
 			# round makes the plinko field cover. Playtest asked for rounds to push
 			# them, and that IS the trade: the field is now partial cover, and it is
-			# also something you can shoot at somebody. Hats stay out -- knocking a
-			# friend's hat off with gunfire is a joke nobody asked for, and it would
-			# put the whole M8.5 reward curve at the mercy of a stray round.
+			# also something you can shoot at somebody.
+			#
+			# AND WORN HATS, on their own layer (2026-08-16). A hat on a head is a
+			# target; one on the DECK is not, or a dropped pile would be cover
+			# nobody built. Two layers, because a hat means two different things
+			# depending on where it is.
 			var query := PhysicsRayQueryParameters3D.create(
-				to_global(from_local), to_global(bullet.position), 1 | 2 | 4 | 8 | 16)
+				to_global(from_local), to_global(bullet.position),
+				1 | 2 | 4 | 8 | 16 | HatBody.WORN_LAYER)
 			query.exclude = [bullet.shooter_rid]
 			var hit := space.intersect_ray(query)
 			if not hit.is_empty():
@@ -2022,7 +2079,7 @@ func _process_bullets() -> void:
 					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS)
 				else:
 					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
-						to_local(hit["position"]), bullet.origin)
+						to_local(hit["position"]), bullet.origin, int(bullet.owner_peer))
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -2132,7 +2189,7 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 # made the shield useless against gunfire (playtest 2026-08-16, "the shield
 # doesn't block shots very well").
 func _resolve_round_hit(target, direction: Vector3, at: Vector3,
-		origin: Vector3 = Vector3.INF) -> void:
+		origin: Vector3 = Vector3.INF, shooter: int = -1) -> void:
 	if target == null:
 		return
 	# THE CHAIN OF "WHAT ARE YOU?" QUESTIONS IS GONE. This used to ask
@@ -2142,6 +2199,21 @@ func _resolve_round_hit(target, direction: Vector3, at: Vector3,
 	# answers now lives on the thing being hit, next to the reason for it.
 	if not target.has_method("receive_hit"):
 		return                    # deck, parapet, a shooter's pillar: cover works
+	# A HAT ON A HEAD IS ITS OWN TARGET, and the round is spent on it rather than
+	# on the person under it. Asked of the hat rather than decided here:
+	# `takes_rounds` lives on HatBody next to the reason for it, which is the rule
+	# this function was rewritten around.
+	if target.has_method("takes_rounds") and target.takes_rounds():
+		# NOT YOUR OWN. The muzzle is a metre in front of your face and your tower
+		# is above it; shooting your own hats off by firing would be a tax on
+		# holding the trigger.
+		if int(target.owner_peer) != shooter:
+			knock_off_hat_stack_from(target, origin if is_finite(origin.x) else at)
+		return
+	# A HAT ON A HEAD IS ITS OWN TARGET, and the round is spent on it rather than
+	# on the person under it. Asked of the hat, not decided here: `takes_rounds`
+	# lives on HatBody next to the reason for it, which is the rule this function
+	# was rewritten around.
 	# THE MUZZLE, NOT THE IMPACT POINT. `hit.from` means "where did this come
 	# from", and every consumer of it — the shield's arc most of all — is asking
 	# a question about a BEARING. The impact point of a round is roughly the

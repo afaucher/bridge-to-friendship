@@ -441,3 +441,62 @@ are what items 1–6 deliver.
 - **Hats on anything but players.** No hats on stones, no hats on the bus.
 - **Trading, throwing, or giving.** You get a hat off someone's head by tumbling
   them, which is a verb the game already has.
+
+
+## Follow-up, 2026-08-16: a hat is a TARGET
+
+Playtest asked what happens when hats get shot. Nothing did: rounds sweep layers
+1 to 5 and a worn hat has no collider at all, deliberately — "a hat you can
+stand on is a ladder, and a stack of hats is a staircase past an authored
+ascender gate".
+
+**A round that hits a hat takes that hat and every hat above it, and does not
+touch the player underneath.** A round that hits the PLAYER does exactly what it
+always did: damage, knockback, a tumble, and the tumble pops the whole stack.
+
+The first attempt made hats ABSORB rounds aimed at the player, which is a second
+health bar wearing a hat and was rejected. **A hat is a target, not armour.**
+
+### The stack is a silhouette
+
+This is the whole design, and it is why the feature needs no balance lever. Aim
+is 2D yaw, so a round travels flat at the height of the muzzle that fired it:
+
+- a shooter **on your level** meets your body — unchanged
+- a shooter **above you** — a ramp, a raised deck, a turret on a pillar — meets
+  your tower first
+
+Five hats neither protect you nor endanger you. They put a metre and a half of
+score above your head, where high ground can reach it. Carrying more was always
+meant to be louder; now it is literally so.
+
+### It is a collider, and getting there took two wrong turns
+
+Both were invisible to every property you can print, and the second was a real
+gameplay bug rather than a plumbing one.
+
+**A worn hat used to be REPARENTED onto the player.** A `RigidBody3D` that is a
+child of another physics body is not returned by a query — shape enabled, mask
+set to every bit, physics server holding the correct transform, ray straight
+through it, nothing. Worn hats now stay at the pool root and are driven by GLOBAL
+transform. `pose_stack` runs after every body has stepped, so nothing is a frame
+late.
+
+**And `HatStyle` sizes every hat's collider from its style id.** Correct for how a
+hat settles on the deck; wrong for a tower, because the stack spaces hats a fixed
+`HAT_HEIGHT` apart. Measured on one four-stack: heights of 0.233, 0.101, 0.342 and
+0.191, each starting at its own origin, with **gaps between them a round goes
+straight through**. That is not a test artefact — it is "I shot him in the hat
+and nothing happened", intermittently, depending on which hats the victim drew.
+
+A worn hat now gets a **uniform hit column**, exactly `HAT_HEIGHT` tall and
+centred on its origin, so the slots tile with no seam. It gets its own shape back
+the moment it comes off, because how a hat SETTLES should still depend on how big
+it really is. **Where things tile, the hit shape is a property of the slot, not of
+the thing in it.**
+
+An analytic segment-versus-sphere test was written first and worked, and was
+thrown away when this landed. Worth recording that it would have shipped the
+gappy-tower bug INVISIBLY: a uniform sphere per hat papers over exactly the
+inconsistency that a real collider exposed.
+

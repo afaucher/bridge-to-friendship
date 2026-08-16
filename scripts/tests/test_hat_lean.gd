@@ -113,9 +113,15 @@ func _phase_upright_at_rest() -> void:
 				% [i, _tilt(worn[i])])
 	# And still spaced correctly, which is what says the pose function did not
 	# quietly start shortening the tower to pay for the lean.
-	near(worn[1].position.y - worn[0].position.y, SimConfig.HAT_HEIGHT, 0.01,
+	near(worn[1].global_position.y - worn[0].global_position.y, SimConfig.HAT_HEIGHT, 0.01,
 		"spaced by HAT_HEIGHT")
-	near(worn[0].position.x, 0.0, 0.001, "and sits over the middle of the head")
+	# GLOBAL, not local. Worn hats used to be children of the player, so "over the
+	# middle of the head" was `position.x == 0`. They now live at the pool root and
+	# are driven by global transform (a RigidBody3D parented under another physics
+	# body is invisible to the round sweep, which cost the shoot-a-hat verb), so
+	# the same claim is a DIFFERENCE between two globals.
+	near(worn[0].global_position.x - a.global_position.x, 0.0, 0.001,
+		"and sits over the middle of the head")
 	_advance(2)
 
 # --- 2, 3, 4. A standing start --------------------------------------------------

@@ -78,7 +78,23 @@ func _phase_walk_over_one() -> void:
 		var cyl := shape.shape as CylinderShape3D
 		near(cyl.radius, float(recorded["radius"]), 0.0001, "the player's collider is unchanged")
 		near(cyl.height, float(recorded["height"]), 0.0001, "in height as well as radius")
-		check(hat.get_node("Shape").disabled, "and the worn hat's own shape is disabled")
+
+		# AND THE HAT'S OWN SHAPE IS ENABLED NOW, which is not a relaxation of the
+		# rule above -- it is the same rule stated properly.
+		#
+		# Until 2026-08-16 a worn hat had NO collider, and this line asserted the
+		# mechanism ("the shape is disabled") rather than the guarantee ("you
+		# cannot stand on it"). Making hats shootable needed the collider back, and
+		# the guarantee survives because the layer it is on is masked by the round
+		# sweep and by nothing else. Assert the guarantee: a mechanism can be
+		# replaced, and this one was.
+		check(not hat.get_node("Shape").disabled,
+			"the worn hat has a collider, so a round can hit it")
+		eq(hat.collision_layer, HatBody.WORN_LAYER,
+			"on the worn-hat layer, which is its own")
+		check(a.collision_mask & HatBody.WORN_LAYER == 0,
+			"and NO PLAYER MASKS THAT LAYER -- a stack is still not a staircase, "
+			+ "which is the thing the old assertion was really about")
 		_advance(1)
 
 # --- 2. Three stack, bottom-first ---------------------------------------------

@@ -29,9 +29,17 @@ roughness = 0.8
 ; The collision shape is the CROWN only, not the brim. A hat is meant to land and
 ; settle, not to balance on its edge -- and a wide thin collider catches on deck
 ; seams, which is exactly the "sometimes" bug CLAUDE.md warns about.
+;
+; HEIGHT IS EXACTLY SimConfig.HAT_HEIGHT (2026-08-16), and that is a constraint
+; rather than a coincidence. A worn stack spaces hats HAT_HEIGHT apart, so a
+; collider any shorter leaves a gap BETWEEN the hats of a tower -- and a round can
+; thread it. Measured: at 0.3 on a 0.35 pitch there was a 5 cm slot per hat, and a
+; shot fired from six metres drops about 5 cm on the way, so aiming at a hat's
+; centre reliably arrived in the gap under it. A tower has to be a solid column or
+; "I shot him in the hat and nothing happened" is a real thing players will see.
 [sub_resource type="CylinderShape3D" id="Shape_1"]
-radius = 0.26
-height = 0.3
+radius = 0.3
+height = 0.35
 
 [node name="Hat" type="RigidBody3D"]
 ; Layer 32 = hats. Mask 1 = WORLD ONLY, and that is load-bearing rather than

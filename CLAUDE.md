@@ -360,6 +360,33 @@ the moment it is written.
   ladder "is not climbable yet, so today it is a 2 m wall" while the flood
   counted ladders as a way up. `LADDERS_CLIMBABLE` is now a flag rather than a
   comment somebody has to remember.
+- **A PER-INSTANCE COLLIDER SIZED FROM COSMETIC DATA MAKES A ROW OF THINGS FULL
+  OF HOLES.** Observed 2026-08-16 making worn hats shootable. `HatStyle` sizes
+  every hat's collision shape from its style id {D} correct for how a hat SETTLES
+  on the deck, and quietly wrong for a stack, because the stack spaces hats a
+  fixed `HAT_HEIGHT` apart. Measured on one four-stack: collider heights of 0.233,
+  0.101, 0.342 and 0.191, each starting at its own origin, leaving gaps a round
+  goes straight through. The symptom is "I shot him in the hat and nothing
+  happened", INTERMITTENTLY, depending on which hats the victim was wearing {D}
+  and a test with one hat, or with fixed styles, never sees it. **Where things
+  tile, the hit shape is a property of the SLOT, not of the thing in it.**
+- **A RIGIDBODY3D THAT IS A CHILD OF ANOTHER PHYSICS BODY IS NOT RAYCASTABLE,
+  and every property you can print about it looks correct.** Measured 2026-08-16
+  making worn hats shootable. A worn hat is a `RigidBody3D` reparented under the
+  player. With its shape enabled, its layer set, the query mask `0xFFFFFFFF`, and
+  `PhysicsServer3D.body_get_state(TRANSFORM).origin` EQUAL to the node's
+  `global_position`, a ray straight through it returned null -- six frames after
+  enabling the shape, so not a deferred write either. The identical hat parented
+  to the pool root is hit every time, frozen or not. **Do not hang a physics body
+  off another physics body and expect queries to see it**; either keep it at the
+  root and drive it by global transform, or test it analytically.
+- **AND THE CONTROL HAS TO BE ABLE TO SUCCEED.** The first run of that probe
+  "showed" a loose hat was unhittable too -- the hat was resting on the deck, the
+  ray at its centre height also crossed the deck, and the DECK was returned. One
+  more step and the conclusion would have been "hats cannot be shot at all",
+  which is the opposite of the truth. **Lift the control clear of everything else
+  before believing it**, the same rule as measuring on a fixture with nothing else
+  moving in it.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

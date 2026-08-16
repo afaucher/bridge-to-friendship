@@ -151,6 +151,10 @@ system_exit={
 3d_physics/layer_6="hats"
 3d_physics/layer_7="specials"
 3d_physics/layer_8="barrier"
+; A hat ON A HEAD, and a SEPARATE layer from layer 6 on purpose: a loose hat must
+; not stop a round (dropped hats would be cover), and a worn one must not be
+; standable. One layer that only the bullet sweep masks is both.
+3d_physics/layer_9="worn_hats"
 
 [physics]
 
