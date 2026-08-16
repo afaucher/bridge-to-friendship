@@ -4,10 +4,15 @@
 # piece is also a CLIMB -- `piece_exit = 2` -- so the generator carries on from
 # two units higher, exactly as it would after a ramp.
 #
-# TWO LADDERS, NOT ONE, and that is the composition rather than decoration: one
-# ladder is a queue, and a queue is four players standing still in a game whose
-# threat model is being moved somewhere you did not choose. Two means the party
-# arrives together.
+# ONE LADDER, AND THE QUEUE IS THE POINT. The first draft used two, on the
+# reasoning that a queue is four players standing still in a game whose threat
+# model is being moved somewhere you did not choose. Overruled at playtest, and
+# rightly: a queue is not dead time, it is an ORDER — who climbs first, who
+# holds the ground below, who is last and most exposed. Two ladders delete that
+# decision to save three seconds.
+#
+# It also makes the shelf a place the party is briefly split across two heights,
+# which is the only moment this piece has.
 #
 # NOTHING THAT SHOOTS AT THE TOP, deliberately. A climber has no verbs -- no
 # dodge, no dash, no cover -- which is the same argument that got hazards banned
@@ -45,6 +50,6 @@ tags = foot, piece, quiet
 ...............
 ...............
 ...............
-....L.....L....
+.......L.......
 .......+.......
 ....h.....h....

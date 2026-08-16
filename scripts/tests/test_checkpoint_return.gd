@@ -53,6 +53,8 @@ var worst_ahead: int = -9999
 var worst_ahead_at: int = 0
 var worst_behind: int = 0
 var worst_behind_at: int = 0
+var off_lobby: int = 0
+var off_lobby_at: int = -1
 
 func setup(main) -> void:
 	timeout_seconds = 90.0
@@ -127,6 +129,16 @@ func _record(landed: int) -> void:
 	if -delta > worst_behind:
 		worst_behind = -delta
 		worst_behind_at = reached_row
+
+	# WHERE IT LANDED HAS TO BE SOMEWHERE YOU CAN STAND. Deliberately NOT compared
+	# against _lobby_point: doing that asks the function under test what the right
+	# answer is and then checks it against its own output, which passes with the
+	# lookup hardcoded to row 1 — measured, this exact test did.
+	if not world.grid.is_solid(Vector2i(world.grid.entry_spawn_cell(0).x, landed)):
+		off_lobby += 1
+		if off_lobby_at < 0:
+			off_lobby_at = reached_row
+
 	print("[checkpoint] stood row %3d (seg %d)  lobby %3d  ->  landed %3d  (%+d)"
 		% [reached_row, world.grid.segment_index_of_row(reached_row),
 			world.round_machine.rear_row + 1, landed, delta])
@@ -151,13 +163,39 @@ func _report() -> void:
 	# in a section and you go back to its lobby. Generous on purpose -- this
 	# catches a return that has lost track of the lobby entirely, which is the
 	# failure that actually happened, not one that is a few rows out.
-	var interval_rows: int = _longest_segment() * 2
-	check(worst_behind <= interval_rows * 2,
-		"and never rewinds more than a section -- worst back was "
-		+ "%d rows against an allowance of %d" % [worst_behind, interval_rows * 2])
+	# 2. AND ON GROUND YOU CAN STAND ON. WEAK, AND LABELLED WEAK: A/B'd by deleting
+	# _lobby_point's own solid-ground fallback, and it still passed, because the
+	# cell it picks happens to be solid in this run anyway. It is here as a
+	# tripwire for a return that starts landing in a gap, not as evidence that the
+	# fallback works.
+	eq(off_lobby, 0,
+		"every return lands on solid deck (first miss at row %d)" % off_lobby_at)
+
+	# WHAT THIS TEST CANNOT ASSERT, stated so nobody adds it back thinking they
+	# have. The rule the design actually makes is "you go back to the lobby of the
+	# round you are in", and _lobby_point derives that from the round machine's
+	# REAR STRIP. This test teleports its body from row to row, so it never
+	# crosses a strip and the round never advances — rear_row stays at the first
+	# one for all 37 samples, and every landing is correctly the first lobby.
+	#
+	# That makes the interesting claim untestable HERE, and two attempts to test
+	# it anyway both failed in instructive ways. A distance allowance (rewind no
+	# more than two segment lengths) is not what bounds a return at all, and broke
+	# the day the segment layout changed while every landing was still correct. An
+	# equality against _lobby_point is worse: it asks the function under test for
+	# the expected answer, and passes with that function hardcoded to row 1.
+	#
+	# The honest version needs a body that PLAYS through a strip so the round
+	# advances, and then asserts the landing follows it. That is a different test
+	# and it is the one worth writing.
+	#
+	# Until it exists this file is THIN, and saying so is the point of this note.
+	# Claim 1 discriminates; claim 2 did not when it was A/B'd. Neither of them
+	# can see the rule the file is named after. A test whose weakness is written
+	# down is a test somebody can fix; one that merely looks green is not.
 	finish()
 
-func _longest_segment() -> int:
+func _unused_longest_segment() -> int:
 	var longest := 1
 	for i in world.grid.segment_count():
 		var rows: int = world.grid.first_row_of_segment(i + 1) \

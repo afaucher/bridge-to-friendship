@@ -135,8 +135,13 @@ back.
 
 ### Small mercies that came from play
 
-- **Two ladders, not one.** One ladder is a queue, and a queue is a party
-  standing still.
+- **One ladder, not two.** A queue is not dead time — it is an order: who
+  climbs first, who holds the ground below, who is last and most exposed. Two
+  ladders delete that decision to save three seconds. (This one was authored the
+  other way round first and overruled at playtest, which is worth knowing: the
+  argument for two was "a party standing still is a party being shot at", and it
+  lost because standing still TOGETHER while somebody climbs is a thing players
+  organise around.)
 - **A reward you can see from the entry row** pulls a player through a hazard;
   one they discover afterwards was just a tax.
 - **Nothing lethal on the entry or exit row** — a party meets it with no warning.

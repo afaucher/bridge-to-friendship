@@ -120,23 +120,27 @@ static func is_lobby_slot(i: int) -> bool:
 static func section_for(run_seed: int, i: int) -> String:
 	if POOL.is_empty():
 		return LOBBY
-	# UNPINNING THIS IS BLOCKED ON A REAL BUG (2026-08-16), not on the argument.
+	# THE PLAYTEST BRIDGE IS NO LONGER PINNED TO THE FIRST SLOT (2026-08-16).
 	#
-	# The argument is settled: pinning meant every run opened on the one section
-	# guaranteed to contain none of the generator's work, and a playtest had to
-	# walk past a whole authored level to reach what it was for.
+	# It was, so every run opened on ground somebody designed. That was right
+	# while generated terrain was new and bare, and stopped being right once the
+	# generator had ramps, lifts, mutable ground and SET-PIECES in it: pinning
+	# meant the first thing anybody saw was the one section guaranteed to contain
+	# none of the work, and a playtest had to walk past a whole authored level to
+	# reach what it was for.
 	#
-	# Removing the pin failed test_checkpoint_return, and NOT on a margin. From
-	# row 110 the return landed at row 11 -- the FIRST lobby, ignoring every lobby
-	# between -- which is precisely the failure that assertion was written to
-	# catch: "a return that has lost track of the lobby entirely". The pin was
-	# hiding it, because with slot 0 fixed the lookup happened to agree.
+	# The pool is still in the mix at the same rate, so an authored section still
+	# turns up every few slots -- what changed is that it is no longer ALWAYS the
+	# opener, and `playtest_bridge` is still loadable directly as a fixture.
 	#
-	# Left pinned until the lookup is fixed. Unpinning is one line and the bug is
-	# not; shipping them together would have been a level-layout change that
-	# silently sends fallen players 99 rows back.
-	if i <= 1:
-		return String(POOL[0]["path"])
+	# THIS WAS BLOCKED FOR AN HOUR BY A TEST, NOT BY A BUG. Removing the pin
+	# failed test_checkpoint_return at 99 rows against an allowance of 84, which
+	# read as "the return has lost track of the lobby". It had not: that
+	# assertion allowed a rewind of two segment lengths, and a return is not
+	# bounded by a segment -- it goes to the ROUND's rear strip, so the distance
+	# back is however far the party has walked since the last strip they crossed.
+	# The test teleports its body and never completes a round, so the answer was
+	# correctly the first lobby every time. See the note on that assertion.
 	if _mix(run_seed + i * 104729) % 3 == 0:
 		return String(POOL[_mix(run_seed + i * 7919) % POOL.size()]["path"])
 	return GENERATED_SECTION
