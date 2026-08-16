@@ -22,6 +22,7 @@ const HeartScene = preload("res://scenes/heart.tscn")
 const ShooterScene = preload("res://scenes/shooter.tscn")
 const MoundScene = preload("res://scenes/mound.tscn")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 enum PushResult { BLOCKED, MOVED, FELL }
@@ -87,7 +88,27 @@ func build_run(seed_value: int, segment_count_wanted: int) -> void:
 	run_seed = seed_value
 	var plan: Array = SegmentPool.plan(seed_value, segment_count_wanted)
 	for i in range(_segments.size(), plan.size()):
-		load_segment_file(String(plan[i]))
+		var path: String = String(plan[i])
+		# GENERATED SLOTS ARE NAMED, NOT PATHS. The plan is still a list of
+		# strings so everything that reads it is unchanged; a slot the generator
+		# fills carries a marker instead of a file name.
+		if path == SegmentPool.GENERATED_LOBBY:
+			_load_generated(SegmentGen.lobby(width, seed_value, i), i)
+		elif path == SegmentPool.GENERATED_SECTION:
+			_load_generated(SegmentGen.section(width, seed_value, i), i)
+		else:
+			load_segment_file(path)
+
+# A segment that was never a file. Everything after parsing is identical, which
+# is the point of generating SegmentData rather than text: the validator, the
+# builder, the dressing pass and the join contract cannot tell the difference.
+func _load_generated(seg, index: int) -> void:
+	if seg == null:
+		printerr("[BridgeGrid] the generator produced nothing for slot ", index)
+		return
+	if dress_hazards and not seg.tags.has("lobby"):
+		HazardDressing.dress(seg, HazardDressing.theme_for(run_seed, index), run_seed, index)
+	load_segment(seg)
 
 # Loaded segments, each with the z at which it starts.
 var _segments: Array = []          # [{data, z_offset}]

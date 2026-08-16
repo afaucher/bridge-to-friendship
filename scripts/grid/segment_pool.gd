@@ -29,6 +29,17 @@ const SegmentData = preload("res://scripts/grid/segment_data.gd")
 # index by construction rather than by a dice roll that might not come up.
 const LOBBY := "res://segments/lobby.seg"
 
+# GENERATED SLOTS, named rather than pathed. The plan stays a list of strings so
+# nothing that reads it changes; these two markers say "the generator fills this"
+# and BridgeGrid.build_run is the only place that knows the difference.
+#
+# The lobby is generated ALWAYS (M17 phase 4): it is trivially parametric and it
+# is the one piece of content where a generation bug is cheap. Sections are
+# generated for every slot but the FIRST, so a run still opens on the authored
+# playtest bridge -- familiar ground before anything nobody has seen.
+const GENERATED_LOBBY := "@lobby"
+const GENERATED_SECTION := "@section"
+
 const POOL := [
 	{
 		"path": "res://segments/playtest_bridge.seg",
@@ -92,7 +103,10 @@ static func plan(run_seed: int, count: int) -> Array:
 		return out
 	var cycle: int = SECTIONS_PER_ROUND + 1
 	for i in count:
-		out.append(LOBBY if i % cycle == 0 else section_for(run_seed, i))
+		if i % cycle == 0:
+			out.append(GENERATED_LOBBY)
+		else:
+			out.append(section_for(run_seed, i))
 	return out
 
 # True if slot `i` of a plan is a lobby. The cycle length lives in one place so
@@ -106,8 +120,15 @@ static func is_lobby_slot(i: int) -> bool:
 static func section_for(run_seed: int, i: int) -> String:
 	if POOL.is_empty():
 		return LOBBY
-	var index: int = 0 if i <= 1 else _mix(run_seed + i * 7919) % POOL.size()
-	return String(POOL[index]["path"])
+	# THE FIRST SECTION IS ALWAYS THE AUTHORED ONE, so every run opens on ground
+	# somebody designed. After that the generator takes over, with the pool still
+	# in the mix -- an authored section every few slots is what keeps a run from
+	# feeling uniformly synthetic, and is where set-pieces will land.
+	if i <= 1:
+		return String(POOL[0]["path"])
+	if _mix(run_seed + i * 104729) % 3 == 0:
+		return String(POOL[_mix(run_seed + i * 7919) % POOL.size()]["path"])
+	return GENERATED_SECTION
 
 static func entry_for(path: String) -> Dictionary:
 	for entry in POOL:

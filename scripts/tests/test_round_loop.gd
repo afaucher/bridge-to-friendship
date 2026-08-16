@@ -47,11 +47,13 @@ func setup(main) -> void:
 	var slots: int = (SegmentPool.SECTIONS_PER_ROUND + 1) * 2 + 1
 	var plan: Array = SegmentPool.plan(RUN_SEED, slots)
 	eq(plan.size(), slots, "the plan is as long as it was asked for")
-	eq(String(plan[0]), SegmentPool.LOBBY, "a run OPENS on a lobby")
+	eq(String(plan[0]), SegmentPool.GENERATED_LOBBY,
+		"a run OPENS on a lobby -- generated since M17 phase 4, which is why the "
+		+ "slot carries a marker rather than a path")
 	var lobbies := 0
 	var sections := 0
 	for i in plan.size():
-		var is_lobby: bool = String(plan[i]) == SegmentPool.LOBBY
+		var is_lobby: bool = String(plan[i]) == SegmentPool.GENERATED_LOBBY
 		eq(is_lobby, SegmentPool.is_lobby_slot(i),
 			"slot %d is %s exactly when the cycle says so" % [i, plan[i]])
 		if is_lobby:

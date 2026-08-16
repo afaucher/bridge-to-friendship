@@ -27,6 +27,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 
 func setup(_main) -> void:
 	timeout_seconds = 60.0
@@ -42,10 +43,14 @@ func _check_pool_runs() -> void:
 	for seed_value in [1, 7, 4242, 20260816, 99991]:
 		var plan: Array = SegmentPool.plan(seed_value, 8)
 		var segments: Array = []
-		for path in plan:
-			var seg = SegmentData.from_file(String(path))
-			if not seg.is_valid():
-				check(false, "%s failed to parse: %s" % [path, ", ".join(seg.errors)])
+		for i in plan.size():
+			# MATERIALISED THE WAY BridgeGrid DOES IT, generated slots included --
+			# since M17 phase 5 most of a run is generated, and a soak that only
+			# checked the authored segments would be checking the part that was
+			# never in doubt.
+			var seg = _materialise(String(plan[i]), seed_value, i)
+			if seg == null or not seg.is_valid():
+				check(false, "slot %d (%s) did not materialise" % [i, plan[i]])
 				return
 			segments.append(seg)
 
@@ -59,6 +64,13 @@ func _check_pool_runs() -> void:
 			return
 		checked += 1
 	check(checked == 5, "every sampled run is crossable end to end (%d seeds)" % checked)
+
+func _materialise(path: String, seed_value: int, index: int):
+	if path == SegmentPool.GENERATED_LOBBY:
+		return SegmentGen.lobby(GridConfig.DEFAULT_WIDTH, seed_value, index)
+	if path == SegmentPool.GENERATED_SECTION:
+		return SegmentGen.section(GridConfig.DEFAULT_WIDTH, seed_value, index)
+	return SegmentData.from_file(path)
 
 # --- 2. A broken join is refused ----------------------------------------------
 
