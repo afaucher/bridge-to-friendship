@@ -78,6 +78,11 @@ const STATS := {
 	"healed": {"label": "Most health picked up", "best": MOST},
 	"rescued": {"label": "Most often rescued", "best": MOST},
 	"self_damage": {"label": "Most self-inflicted", "best": MOST},
+	# A PEAK, so it is written by _bump_max rather than accumulated. Deliberately
+	# NOT the same number as the hats you finish with -- that one is the ranking
+	# key, and "carried six, kept one" is a better story than either half.
+	"hats_worn": {"label": "Tallest tower", "best": MOST},
+	"boosts": {"label": "Most boosts given", "best": MOST},
 	"hats_lost": {"label": "Most hats lost", "best": MOST},
 	# STORED AS TICKS, SHOWN AS TIME. The table is ints throughout -- one type on
 	# the wire, one type in the comparison -- so a duration is counted in the unit

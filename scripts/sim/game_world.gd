@@ -532,6 +532,22 @@ func _bump(peer: int, key: String, amount: int = 1) -> void:
 	var row: Dictionary = round_stats[peer]
 	row[key] = int(row.get(key, 0)) + amount
 
+# A PEAK, NOT A TOTAL, and the registry needs both because they answer different
+# questions. "How many hats did you pick up" sums; "how tall did your tower get"
+# does not -- summing it would count the same hat on every tick you carried it.
+#
+# Polled rather than hooked, which is safe HERE and would not be for a death: the
+# size of a stack is persistent state, so sampling it every tick cannot miss a
+# peak that lasted longer than a frame. CLAUDE.md's warning is about values
+# DESTROYED on reaching their terminal state, and a tower is not one.
+func _bump_max(peer: int, key: String, value: int) -> void:
+	if not is_host or peer <= 0:
+		return
+	if not round_stats.has(peer):
+		round_stats[peer] = {}
+	var row: Dictionary = round_stats[peer]
+	row[key] = maxi(int(row.get(key, 0)), value)
+
 func stats_of(peer: int) -> Dictionary:
 	return (round_stats.get(peer, {}) as Dictionary).duplicate()
 
@@ -674,6 +690,11 @@ func _count_edges() -> void:
 		if dashing and not bool(_was_dashing.get(peer, false)):
 			_bump(peer, "dashes")
 		_was_dashing[peer] = dashing
+
+		# THE TALLEST TOWER THIS PLAYER GOT TO. Distinct from the hats they FINISH
+		# with, which is the ranking key -- you can carry six and lose five, and
+		# that is a better story than the one either number tells alone.
+		_bump_max(peer, "hats_worn", hats_worn_by(peer).size())
 
 		# TIME ALIVE, IN TICKS, and only while the round is actually running --
 		# otherwise it counts the lobby, and the badge goes to whoever stood
@@ -3098,6 +3119,18 @@ func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 		return
 	if other.has_method("receive_shove"):
 		other.receive_shove(yaw)
+		# A BOOST. `receive_shove` is on PlayerBody and nothing else, so reaching
+		# this line is one player launching another -- the verb this whole game is
+		# named after, and the one thing nothing measured.
+		#
+		# EVERY PLAYER-TO-PLAYER SHOVE COUNTS, including the ones that were not
+		# kind. A boost up a steep ramp and a shove off the side of the bridge are
+		# the same call at the same instant, and which one it was is decided
+		# afterwards by where they land -- so nothing here can tell them apart
+		# without guessing. It reads fine either way: a big boost count beside a
+		# teammate's death count is a story the board tells by itself.
+		if "peer_id" in shover:
+			_bump(int(shover.peer_id), "boosts")
 		return
 	if grid != null and other.has_method("slide_to"):
 		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))

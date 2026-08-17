@@ -57,6 +57,8 @@ func _physics_process(_delta: float) -> void:
 	_test_scenery_is_not_a_hit()
 	_test_your_own_grenade()
 	_test_distance_ignores_teleports()
+	_test_a_peak_is_not_a_total()
+	_test_a_boost()
 	_test_the_reset()
 	finish()
 
@@ -198,6 +200,37 @@ func _test_distance_ignores_teleports() -> void:
 		"and far under any teleport in the game (%.2f m) -- the nearest is a lobby "
 			% cap
 		+ "return, and no round is ten metres long")
+
+# --- A peak is not a total ------------------------------------------------------
+#
+# The tallest tower is sampled every tick, so the failure mode if it were written
+# with the ordinary `_bump` is not "slightly wrong" -- it would ADD the stack size
+# sixty times a second and a player standing still with two hats would score
+# thousands. Fed a falling sequence on purpose: the answer has to be the high
+# water mark rather than the last thing seen.
+func _test_a_peak_is_not_a_total() -> void:
+	world.clear_round_stats()
+	for value in [1, 4, 2, 3, 2]:
+		world._bump_max(SHOOTER, "hats_worn", value)
+	eq(_stat(SHOOTER, "hats_worn"), 4,
+		"the tallest tower is the HIGHEST the stack ever got (4), not the last "
+		+ "reading (2) and not the sum (12) -- which is what a per-tick sample "
+		+ "through the ordinary counter would have produced")
+
+# --- The verb the game is named after -------------------------------------------
+
+func _test_a_boost() -> void:
+	world.clear_round_stats()
+	world.resolve_shove_contact(shooter, victim, 0.0)
+	eq(_stat(SHOOTER, "boosts"), 1, "shoving a teammate is a boost, on the shover")
+	eq(_stat(VICTIM, "boosts"), 0, "and not on the person who was launched")
+
+	# NOT EVERY SHOVE IS A BOOST. Dashing into a stone rearranges the bridge and is
+	# a different verb; only a body that can BE launched counts, which is what
+	# `receive_shove` being on PlayerBody and nothing else already says.
+	world.clear_round_stats()
+	world.resolve_shove_contact(shooter, shooter, 0.0)
+	eq(_stat(SHOOTER, "boosts"), 0, "and you cannot boost yourself")
 
 # --- One round, one scoreboard --------------------------------------------------
 
