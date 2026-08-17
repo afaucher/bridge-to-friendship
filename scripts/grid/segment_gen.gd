@@ -104,8 +104,30 @@ static func _spread(seg, row: int, items: Array) -> void:
 # the bar an authored one does -- and `attempts` is bounded, because a generator
 # that cannot satisfy its own constraints must say so rather than spin.
 static func section(width: int, run_seed: int, index: int, attempts: int = 24):
+	# THE FIRST SECTION *KIND*. Until now "generated section" meant exactly one
+	# algorithm with knobs on it -- plateaus, ramps, lifts, drops, a narrowing band
+	# -- so every generated section in the game had the same silhouette however
+	# much the numbers varied. A maze is a different KIND of place, and it cannot
+	# ride the profile loop: that loop's whole vocabulary is height, and a maze
+	# wants the section end to end.
+	#
+	# WHY THIS ONE IS GENERATED AND A SET-PIECE IS NOT. A piece is authored because
+	# it is a RELATIONSHIP -- cover and the thing it is cover from -- and no
+	# distribution produces one. A maze has no relationship in it; it is a graph,
+	# which is the one thing an algorithm is strictly better at than a person. And
+	# it is the only content in this game whose value is DESTROYED by repetition: a
+	# plinko field is re-fought every time, a maze you have walked twice is a
+	# corridor. segments/run_maze.seg stays as the fixture test_maze measures on,
+	# because a fixture that changes under its test is not one.
+	#
+	# ONE IN FIVE, and decided from (seed, index) rather than from `attempt` so a
+	# rejected maze rerolls into another MAZE rather than quietly becoming a ramp
+	# section. A rarity: the maze is the section with no hazard in it at all, and
+	# a run that keeps serving them is a run with no threat in it.
+	var want_maze: bool = _mix(run_seed + index * 3298541) % 5 == 0
 	for attempt in attempts:
-		var seg = _section_attempt(width, run_seed, index, attempt)
+		var seg = _maze_attempt(width, run_seed, index, attempt) if want_maze \
+			else _section_attempt(width, run_seed, index, attempt)
 		# THE SAME BAR AS AN AUTHORED SEGMENT, including the solo flood: a section
 		# only a cooperating pair can cross strands a lone player, and drop-in
 		# makes that a real case rather than a hypothetical.
@@ -409,6 +431,223 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		seg.heights[0][x] = int(low[0])
 		seg.heights[length - 1][x] = int(low[length - 1])
 	return seg
+
+# --- The maze section ---------------------------------------------------------
+
+# THE LATTICE. Corridors sit on ODD columns and EVEN rows; everything between
+# them starts as wall and gets carved. So the maze's own coordinates (i, j) map
+# to grid cells (1 + 2i, 2 + 2j), and the cell halfway between two neighbours is
+# the wall that separates them -- carving a link is writing one cell.
+const MAZE_MIN_ROWS := 7
+const MAZE_MAX_ROWS := 10
+
+# TWO UNITS, AND THE NUMBER IS A SIGHTLINE RATHER THAN A CLIMB. There is no
+# step-up in this game, so ANY height blocks and one unit would block just as
+# well. At the camera's 45 degrees a wall of height h hides exactly h metres of
+# ground behind it and a cell is 2 m, so two units hides the FLOOR of the cell
+# beyond and one unit would hide half of it and read as a kerb. A player is
+# 1.8 m, so heads still clear it: you lose track of what is on the ground, never
+# of where your friends are. Three would start swallowing people.
+const MAZE_WALL_HEIGHT := 2
+
+# HOW HARD TO BRAID, as a fraction of the cell count added back as extra links.
+#
+# A PERFECT MAZE IS THE WRONG SHAPE HERE. The camera is fixed top-down, so the
+# whole maze is on screen and nobody is discovering anything -- a single-solution
+# maze read from above is not a puzzle, it is a queue, and four players walk it in
+# single file. Loops are what make it a co-op section: two routes that both arrive
+# means splitting up is a real choice rather than a mistake.
+#
+# The authored run_maze.seg was carved by dead-end removal alone and came out at
+# five loops across seventy cells, which is close to single-file. This adds loops
+# DIRECTLY instead of hoping the dead ends supply them.
+const MAZE_BRAID := 6      # one extra link per this many cells
+
+# A few dead ends survive to hold the rewards. From above you can SEE the hat, so
+# a detour is a decision about time -- which is the only way a dead end earns its
+# place in a maze you can see all of.
+const MAZE_DEAD_ENDS := 4
+
+static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
+	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
+	var cols: int = (width - 1) / 2
+	# Below three columns it is a corridor with kinks in it, not a maze.
+	if cols < 3:
+		return null
+	var rows: int = MAZE_MIN_ROWS + salt % (MAZE_MAX_ROWS - MAZE_MIN_ROWS + 1)
+	# Entry deck, a wall row with the door, the lattice, the far wall row, then two
+	# rows of deck to arrive on. Derived rather than picked so the two ends cannot
+	# disagree with the lattice between them.
+	var length: int = rows * 2 + 4
+
+	var seg = _blank("section_%d_maze" % index, width, length)
+	var maze_tags: Array[String] = ["foot", "generated", "maze"]
+	seg.tags = maze_tags
+	seg.no_dress = true
+
+	# EVERYTHING IS WALL UNTIL SOMETHING CARVES IT. Building the solid and cutting
+	# passages out of it is the only order that cannot leave a stray open cell: the
+	# opposite -- start open, add walls -- has to be right everywhere at once.
+	for z in range(1, length - 2):
+		for x in width:
+			seg.kinds[z][x] = GridConfig.Kind.WALL
+			seg.heights[z][x] = MAZE_WALL_HEIGHT
+
+	var open_cells: Dictionary = {}
+	for j in rows:
+		for i in cols:
+			open_cells[Vector2i(1 + 2 * i, 2 + 2 * j)] = true
+
+	# DEPTH-FIRST CARVE. A spanning tree over the lattice, so every cell is
+	# reachable from every other before a single loop is added -- which is what
+	# makes the braid below free to be as aggressive as it likes without any risk
+	# of cutting the maze in two.
+	var visited: Dictionary = {Vector2i(0, 0): true}
+	var stack: Array = [Vector2i(0, 0)]
+	var step: int = 0
+	while not stack.is_empty():
+		var cell: Vector2i = stack[stack.size() - 1]
+		var options: Array = []
+		for d in 4:
+			var n: Vector2i = cell + GridConfig.DIR_CELLS[d]
+			if n.x < 0 or n.x >= cols or n.y < 0 or n.y >= rows:
+				continue
+			if not visited.has(n):
+				options.append(n)
+		if options.is_empty():
+			stack.pop_back()
+			continue
+		step += 1
+		var pick: Vector2i = options[_mix(salt + step * 2749) % options.size()]
+		open_cells[_maze_between(cell, pick)] = true
+		visited[pick] = true
+		stack.append(pick)
+
+	# BRAID. Extra links between neighbours that are not yet linked, taken at
+	# scattered positions rather than by walking the lattice in order -- an
+	# in-order pass concentrates every loop in the first rows it visits.
+	var extra: int = (cols * rows) / MAZE_BRAID
+	for k in extra:
+		var i: int = _mix(salt + k * 7523) % cols
+		var j: int = _mix(salt + k * 8161) % rows
+		var here := Vector2i(i, j)
+		var dirs: Array = []
+		for d in 4:
+			var n: Vector2i = here + GridConfig.DIR_CELLS[d]
+			if n.x < 0 or n.x >= cols or n.y < 0 or n.y >= rows:
+				continue
+			if not open_cells.has(_maze_between(here, n)):
+				dirs.append(n)
+		if dirs.is_empty():
+			continue
+		open_cells[_maze_between(here, dirs[_mix(salt + k * 6421) % dirs.size()])] = true
+
+	# THEN OPEN THE DEAD ENDS THAT ARE LEFT, past the few kept for rewards. A dead
+	# end with nothing in it is a wrong turn the player can see is a wrong turn,
+	# which is a walk they take for no reason.
+	var dead: Array = []
+	for j in rows:
+		for i in cols:
+			if _maze_degree(open_cells, Vector2i(i, j)) == 1:
+				dead.append(Vector2i(i, j))
+	for n in dead.size():
+		if n < MAZE_DEAD_ENDS:
+			continue
+		var here: Vector2i = dead[n]
+		# Re-checked: opening one dead end can raise a neighbour's degree, so the
+		# list goes stale as it is walked.
+		if _maze_degree(open_cells, here) != 1:
+			continue
+		var shut: Array = []
+		for d in 4:
+			var nb: Vector2i = here + GridConfig.DIR_CELLS[d]
+			if nb.x < 0 or nb.x >= cols or nb.y < 0 or nb.y >= rows:
+				continue
+			if not open_cells.has(_maze_between(here, nb)):
+				shut.append(nb)
+		if not shut.is_empty():
+			open_cells[_maze_between(here, shut[_mix(salt + n * 4133) % shut.size()])] = true
+
+	# ONE DOOR EACH END. A full-width mouth would let the party fan out before the
+	# maze had asked them anything; a single opening makes the entrance a PLACE,
+	# and puts everybody in the same corridor for the first moment.
+	var in_door: int = 1 + 2 * (_mix(salt + 1811) % cols)
+	var out_door: int = 1 + 2 * (_mix(salt + 3181) % cols)
+	open_cells[Vector2i(in_door, 1)] = true
+	open_cells[Vector2i(out_door, length - 3)] = true
+
+	for cell in open_cells:
+		seg.kinds[cell.y][cell.x] = GridConfig.Kind.DECK
+		seg.heights[cell.y][cell.x] = 0
+
+	# THE REWARDS, in whichever dead ends survived.
+	#
+	# A HAT FIRST, AND AT LEAST ONE ALWAYS. Hats are the score, so the hat is what
+	# makes a maze worth entering rather than a delay between the sections that
+	# have something in them -- every other section pays in hats and this one has
+	# no hazard to drop them. The heart comes second because it is the reward that
+	# only matters on a bad run, and a maze with nothing but hearts in it is a maze
+	# a healthy party walks straight through.
+	var kept: Array = []
+	for j in rows:
+		for i in cols:
+			if _maze_degree(open_cells, Vector2i(i, j)) == 1:
+				kept.append(Vector2i(i, j))
+	for n in mini(kept.size(), MAZE_DEAD_ENDS):
+		var at: Vector2i = kept[n]
+		seg.contents[2 + 2 * at.y][1 + 2 * at.x] = \
+			GridConfig.Content.HEART if n == 1 else GridConfig.Content.HAT
+
+	# AND IF THE BRAID LEFT NO DEAD END AT ALL, the hat goes at the DEEPEST point
+	# instead -- the cell furthest from the entrance by actual walking distance
+	# through the maze, not by straight line.
+	#
+	# IT DOES NOT FIRE AT THE CURRENT TUNING, and that is written down rather than
+	# assumed: A/B'd 2026-08-16 by deleting this branch, and 250 sections stayed
+	# green -- no maze at MAZE_BRAID = 6 came out with zero dead ends. So it is
+	# insurance against the dial moving, not a path the sweep exercises, and
+	# `_maze_deepest` is unit-tested directly in test_segment_gen for that reason.
+	# An untested branch that only runs after somebody retunes a constant is the
+	# branch most likely to be wrong on the day it matters.
+	if kept.is_empty():
+		var deep: Vector2i = _maze_deepest(open_cells, cols, rows,
+			Vector2i((in_door - 1) / 2, 0))
+		seg.contents[2 + 2 * deep.y][1 + 2 * deep.x] = GridConfig.Content.HAT
+	return seg
+
+# The lattice cell furthest from `from` by walking distance. A breadth-first walk
+# over the carved links, which is the only measure that means anything in a maze:
+# the cell across the wall from the entrance may be a two-minute detour away.
+static func _maze_deepest(open_cells: Dictionary, cols: int, rows: int,
+		from: Vector2i) -> Vector2i:
+	var seen: Dictionary = {from: true}
+	var queue: Array = [from]
+	var last: Vector2i = from
+	while not queue.is_empty():
+		var cell: Vector2i = queue.pop_front()
+		last = cell
+		for d in 4:
+			var n: Vector2i = cell + GridConfig.DIR_CELLS[d]
+			if n.x < 0 or n.x >= cols or n.y < 0 or n.y >= rows or seen.has(n):
+				continue
+			if not open_cells.has(_maze_between(cell, n)):
+				continue
+			seen[n] = true
+			queue.append(n)
+	return last
+
+# The grid cell between two lattice neighbours -- the wall that separates them,
+# and the single cell that carving a link writes.
+static func _maze_between(a: Vector2i, b: Vector2i) -> Vector2i:
+	return Vector2i(1 + a.x + b.x, 2 + a.y + b.y)
+
+# How many of a lattice cell's four walls have been carved.
+static func _maze_degree(open_cells: Dictionary, cell: Vector2i) -> int:
+	var n: int = 0
+	for d in 4:
+		if open_cells.has(_maze_between(cell, cell + GridConfig.DIR_CELLS[d])):
+			n += 1
+	return n
 
 # --- Helpers ------------------------------------------------------------------
 

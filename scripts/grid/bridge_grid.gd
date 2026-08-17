@@ -106,7 +106,7 @@ func _load_generated(seg, index: int) -> void:
 	if seg == null:
 		printerr("[BridgeGrid] the generator produced nothing for slot ", index)
 		return
-	if dress_hazards and not seg.tags.has("lobby"):
+	if dress_hazards and not seg.tags.has("lobby") and not seg.no_dress:
 		HazardDressing.dress(seg, HazardDressing.theme_for(run_seed, index), run_seed, index)
 	load_segment(seg)
 

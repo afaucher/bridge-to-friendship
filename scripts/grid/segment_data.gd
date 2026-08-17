@@ -41,6 +41,26 @@ var piece_exit: int = 0
 # author on the day rounds have a lose condition.
 var piece_min_party: int = 1
 
+# LAYER 3 KEEPS OUT OF THIS SEGMENT ENTIRELY (2026-08-16, for generated mazes).
+#
+# `piece_rows` says "these rows belong to a composition"; this says it of the
+# whole thing. Set-pieces got the row-level version because they are stamped into
+# generated terrain that SHOULD be dressed around them. A section that is one
+# composition end to end has no around.
+#
+# A MAZE IS WHY, and the reason is sharper than "I generated it carefully". A
+# dressing budget is a COUNT over candidate cells and it has no concept of a
+# corridor: the environmental theme spends 14 spike blocks, and a maze's walkable
+# cells are almost all one-cell-wide passages, so those land where there is no
+# room to step around them. The flood cannot see it either -- a spike is content,
+# not terrain -- so a maze with every route spiked still validates as crossable.
+# That is the oracle-certifies-a-broken-thing shape the step-up bug had.
+#
+# Set by the generator, not parsed from a header: authored files are already
+# never dressed (BridgeGrid.load_segment_file), so a header key would be one more
+# thing that does nothing. Add the parse the day an authored file needs it.
+var no_dress: bool = false
+
 func is_piece() -> bool:
 	return tags.has("piece")
 

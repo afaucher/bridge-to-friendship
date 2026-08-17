@@ -40,6 +40,7 @@ func setup(_main) -> void:
 	_check_joins()
 	_check_lifts()
 	_check_pieces()
+	_check_mazes()
 	_check_dressing_keeps_out()
 	_check_deterministic()
 	finish()
@@ -420,6 +421,148 @@ static func _piece_at(seg, piece, at: int) -> bool:
 # MEASURED AS A DIFF, not as a content scan. Every cell is recorded before
 # dressing and compared after: any change inside a piece's rows is layer 3
 # editing somebody else's composition, whatever it put there.
+# --- The maze section kind ----------------------------------------------------
+#
+# THE CLAIM THAT MATTERS IS THE BRAID, not that a maze appears. A spanning tree
+# over n cells has exactly n-1 links and ONE route between any two of them; every
+# link past that is a loop. With a fixed top-down camera a single-route maze is
+# not a puzzle, it is a queue -- the whole party walks it in single file and the
+# section asks nothing. So the loop count is measured, and it is the assertion
+# here that can actually go red on a bad tuning.
+func _check_mazes() -> void:
+	var w: int = GridConfig.DEFAULT_WIDTH
+	var sections: int = 0
+	var mazes: int = 0
+	var invalid: int = 0
+	var undressed: int = 0
+	var bad_doors: int = 0
+	var wall_cells: int = 0
+	var rewards: int = 0
+	var hatless: int = 0
+	var cells: int = 0
+	var links: int = 0
+
+	for i in 250:
+		var seed_i: int = 6400 + i * 71
+		var seg = SegmentGen.section(w, seed_i, i)
+		if seg == null:
+			continue
+		sections += 1
+		if not seg.tags.has("maze"):
+			continue
+		mazes += 1
+
+		# THE SAME BAR AS EVERY OTHER SECTION. A carve that isolated a pocket shows
+		# up here as marooned deck, and one that sealed the exit as no way through
+		# -- both are things a braid can do and neither is visible by eye.
+		if SegmentValidator.validate(seg).size() > 0:
+			invalid += 1
+		if not seg.no_dress:
+			undressed += 1
+
+		# ONE DOOR EACH END. The two rows that are wall-with-an-opening.
+		for row in [1, seg.length - 3]:
+			var doors: int = 0
+			for x in seg.width:
+				if seg.is_solid(x, row):
+					doors += 1
+			if doors != 1:
+				bad_doors += 1
+
+		# EVERY MAZE PAYS. Hats are the score, and this is the one section with no
+		# hazard in it to drop any -- so a maze with no hat is a section that costs
+		# the party time and gives nothing back. It is also the claim most likely to
+		# rot silently: the rewards go in the dead ends the braid LEFT, and the
+		# braid's whole job is removing dead ends.
+		var has_hat := false
+		for z in seg.length:
+			for x in seg.width:
+				if seg.content_at(x, z) == GridConfig.Content.HAT:
+					has_hat = true
+		if not has_hat:
+			hatless += 1
+
+		var cols: int = (seg.width - 1) / 2
+		var rows: int = (seg.length - 4) / 2
+		for j in rows:
+			for i2 in cols:
+				cells += 1
+				var at := Vector2i(1 + 2 * i2, 2 + 2 * j)
+				if seg.content_at(at.x, at.y) != GridConfig.Content.NONE:
+					rewards += 1
+				# Counted EAST and SOUTH only, so each link is counted once.
+				if i2 + 1 < cols and seg.is_solid(at.x + 1, at.y):
+					links += 1
+				if j + 1 < rows and seg.is_solid(at.x, at.y + 1):
+					links += 1
+		for z in seg.length:
+			for x in seg.width:
+				if seg.kind_at(x, z) == GridConfig.Kind.WALL:
+					wall_cells += 1
+
+	var loops: int = links - (cells - mazes)      # n-1 links per maze is a tree
+	print("[gen maze] %d of %d sections, %d cells, %d links, %d loops, %d rewards"
+		% [mazes, sections, cells, links, loops, rewards])
+
+	check(mazes > 0,
+		"the generator emits maze sections at all (%d of %d)" % [mazes, sections])
+	# A MINORITY. The maze is the one section with no hazard in it, so a run that
+	# keeps serving them is a run with nothing in it to survive.
+	check(mazes < sections / 2,
+		"and they are a minority (%d of %d) -- a maze has no hazard in it, and a "
+			% [mazes, sections]
+		+ "run made of them is a run with no threat")
+	eq(invalid, 0, "every generated maze validates: no marooned pocket, no sealed exit")
+	eq(undressed, 0,
+		"and every one is marked no_dress -- a hazard budget cannot see a corridor, "
+		+ "and the flood cannot see a spike, so a maze with every route spiked "
+		+ "would validate as crossable")
+	eq(bad_doors, 0, "and has exactly one door at each end")
+	check(wall_cells > 0, "mazes are made of WALL cells (%d)" % wall_cells)
+	check(rewards > 0, "and the dead ends that survive hold something (%d)" % rewards)
+	eq(hatless, 0,
+		"and EVERY maze holds at least one hat: it is the only section with no "
+		+ "hazard in it, so nothing else in it drops one -- a maze that pays "
+		+ "nothing is time the party spent for no reason")
+
+	# THE BRAID ITSELF. Above one loop per ten cells the maze has real forks;
+	# a spanning tree scores exactly zero, which is what this is protecting
+	# against -- and it is the number to move if a playtest says single file.
+	_check_maze_deepest()
+
+	check(float(loops) / float(maxi(1, cells)) > 0.1,
+		"and the carve is BRAIDED rather than a tree: %d loops over %d cells. A "
+			% [loops, cells]
+		+ "tree is one route between any two points, which under a top-down camera "
+		+ "is a queue rather than a decision")
+
+# THE HAT FALLBACK, TESTED DIRECTLY BECAUSE THE SWEEP CANNOT REACH IT.
+#
+# `_maze_attempt` drops a hat at the deepest cell when the braid leaves no dead
+# end at all. A/B'd 2026-08-16 by deleting that branch: 250 sections stayed green,
+# because at MAZE_BRAID = 6 every maze keeps at least one dead end. So the branch
+# is insurance against the dial moving, and insurance nothing exercises is the
+# code most likely to be wrong on the day it is needed.
+#
+# `_maze_deepest` is the only non-trivial part of it, so it gets a lattice with
+# one unambiguous answer: a five-cell L carved through a 3x3, with the rest walled
+# off. Furthest from (0,0) is (2,2) at four steps -- and the unreachable cells are
+# there to catch a walk that goes through walls, which would answer (0,2).
+func _check_maze_deepest() -> void:
+	var open_cells: Dictionary = {}
+	var path: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2)]
+	for n in range(1, path.size()):
+		var a: Vector2i = path[n - 1]
+		var b: Vector2i = path[n]
+		open_cells[Vector2i(1 + a.x + b.x, 2 + a.y + b.y)] = true
+
+	var deep: Vector2i = SegmentGen._maze_deepest(open_cells, 3, 3, Vector2i(0, 0))
+	eq(deep, Vector2i(2, 2),
+		"the deepest cell is measured by WALKING distance through the carve, not "
+		+ "by straight line: (0,2) is one cell from the entrance across a wall and "
+		+ "is not reachable at all")
+
 func _check_dressing_keeps_out() -> void:
 	var dressed_sections: int = 0
 	var with_piece: int = 0
@@ -487,6 +630,14 @@ func _check_pieces() -> void:
 		var seed_i: int = 7700 + i * 53
 		var seg = SegmentGen.section(w, seed_i, i)
 		if seg == null:
+			continue
+		# A MAZE IS THE OTHER SECTION KIND, and it places its own content -- a heart
+		# and hats in whichever dead ends the braid left. The stray-content claim
+		# below reads "a raw section places nothing of its own, so anything here
+		# came from a piece", which was true while there was one kind of section.
+		# Excluded rather than the claim weakened: that claim is what catches a
+		# piece stamped halfway, and it is worth keeping sharp.
+		if seg.tags.has("maze"):
 			continue
 		sections += 1
 
