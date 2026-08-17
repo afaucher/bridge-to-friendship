@@ -39,10 +39,22 @@ That separation is the point: the rank is what the round was for, and the stats
 are what happened during it. A game where "most shots fired" moves your position
 is a game about shooting.
 
-**One decision to make before phase 3** (see Open questions): `rank_entries`
-breaks a genuine tie by peer id, so two players with identical hats and identical
-survival get 1st and 2nd rather than joint 1st. On a screen that prints "1st"
-next to a face, that reads as a claim rather than an arbitrary sort.
+**A genuine tie shows as a joint rank** (decided 2026-08-17). `rank_entries`
+breaks ties by peer id so that the ORDER is the same on every machine; that
+tie-break exists to make the list deterministic, not to invent a winner, and
+printing "1st" and "2nd" beside two identical rows states something untrue.
+
+So the ordering function is left exactly as it is — untouched, with its existing
+tests still passing — and the **displayed rank is a separate step** over the
+already-ordered list: walk it, and give a row the same number as the row above
+whenever their ranking keys (hats, made_it) are equal. Standard competition
+numbering, so two joint firsts are followed by **3rd**, not 2nd; the gap is what
+says the tie happened.
+
+Keeping these two apart is the whole trick. Ordering is a total order and must
+be; rank is a function of the SCORE and is allowed to repeat. Folding ties into
+`rank_entries` would have meant a sort that returns equal for two rows, which is
+where two clients start showing different boards.
 
 ---
 
@@ -161,9 +173,16 @@ returns an ordering, testable as a table of cases rather than by playing a round
 3. **Drop a win on a default value, unless the direction is LEAST.** Nobody wants
    "most dashes: 0". But "fewest deaths: 0" is the best score available and is
    exactly the thing worth saying.
-4. **Drop a win the whole party shares.** If all four players tied at the same
-   value, nothing distinguishes anybody and four identical badges is noise. *(This
-   is the one rule not stated in the ask — see Open questions.)*
+4. **Drop a win the whole party shares** (confirmed 2026-08-17). If everybody
+   tied at the same value then nothing distinguishes anybody, and four identical
+   badges is noise wearing the costume of an achievement. A badge is a
+   *comparison*; with no one to compare against there is nothing to say.
+
+   **Its consequence is that a SOLO scoreboard shows no badges at all**, which is
+   correct and is stated here so the next person does not read it as a bug and
+   "fix" it. A lone player wins every stat in the game by default; the common
+   block still shows them their numbers, which is the part that means anything
+   when there is nobody to beat.
 5. Each player keeps **up to three**, ordered **rarest first**: a stat won
    outright beats one tied two ways, which beats one tied three ways. Registry
    order is the stable tie-break, for the same reason `rank_entries` falls back to
@@ -235,6 +254,9 @@ deliberate consequence of phase 2's shape:
   dropped.
 - `rank_entries` unchanged — it has tests; they should still pass untouched, which
   is itself the assertion that rank did not quietly grow a stat input.
+- **Display ranks, as their own table:** two equal rows both read 1st and the
+  next reads 3rd; four equal rows all read 1st; no tie reads 1/2/3/4. Cheap, and
+  it is the assertion that stops somebody "simplifying" it back into the sort.
 - **Shots > hits when firing into cover.** The one test that catches the
   attempted-versus-delivered bug, and it has to be a played scenario rather than a
   table, because the whole claim is about *where* the counter sits.
@@ -247,18 +269,31 @@ deliberate consequence of phase 2's shape:
 
 ---
 
-## Open questions — worth deciding before phase 2
+## Decisions — settled 2026-08-17, before any code
 
-1. **Joint ranks.** Two players on identical hats and identical survival are
-   ordered by peer id today. On a screen printing "1st" and "2nd" beside faces,
-   should a genuine tie show as joint 1st? *(Recommendation: yes — the tie-break
-   exists to make the ORDER deterministic, not to invent a winner.)*
-2. **Party-wide ties as badges.** Rule 4 above drops a superlative everybody
-   shares. With two players that fires often — "fewest deaths: 0" for both. *(This
-   is the rule I added that the ask did not state; it is the one most likely to be
-   wrong, and it is a one-line change either way.)*
-3. **Does a wiped round still show a full board?** It does today, and the stats
-   would be real. Worth confirming that is wanted rather than a blank "you lost".
-4. **Solo.** Every superlative is won by the only player, and every one is a
-   party-wide tie. Rule 4 makes a solo scoreboard show no badges at all, which is
-   probably right and is worth saying out loud.
+Recorded here rather than in a commit message because these are the four places
+this milestone could reasonably have gone either way, and a later reader finding
+one of them surprising should find the answer next to the design rather than in
+the history.
+
+1. **Ties show as joint ranks.** Two identical rows are both 1st, and the next is
+   3rd. The ordering function keeps its total order and its peer-id tie-break;
+   the displayed rank is a separate pass over the ordered list. See the ranking
+   section above for why those two must not be the same function.
+2. **A superlative the whole party shares is dropped.** Rule 4 above.
+3. **A solo scoreboard therefore shows no badges** — the common block only. This
+   is the intended consequence of (2), not an edge case that slipped through.
+4. **A wiped round shows the full board.** Not a blank "you lost". The party
+   played that round: they fired, they took damage, they picked things up, and
+   one of them probably did something worth a badge on the way down. Losing the
+   ground back is the cost of a wipe; being told nothing about the round is a
+   second cost nobody asked for. It is also what the code already does, so this
+   is a decision to *not* add a special case.
+
+### Still genuinely undecided, and cheap to defer
+
+- **Whether stats persist across a run** (a career board, "this session") or are
+  only ever per-round. Everything here is per-round; a run total is a second
+  dictionary summed at the same moment and changes nothing in phases 0–3.
+- **What a badge looks like** — a row of text under the name, or an icon. That is
+  phase 3 and wants a picture before it wants a paragraph.
