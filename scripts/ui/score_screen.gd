@@ -36,9 +36,21 @@ var _signature: String = ""
 
 func _ready() -> void:
 	name = "ScoreScreen"
-	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
+	# SIZED FROM THE VIEWPORT, NOT BY ANCHORS. A Control whose parent is a
+	# CanvasLayer is not laid out by anything: there is no parent Control to take a
+	# rect from, so PRESET_FULL_RECT sets four correct numbers against a parent
+	# area of zero and the node stays 0x0 at the origin. Everything anchored INSIDE
+	# it then collapses too, and a PanelContainer with nothing to fill falls back
+	# to its content's minimum size in the top-left corner -- which is exactly what
+	# this looked like.
+	#
+	# Reported from play as "the score screen is top left", and the reason it got
+	# there is worth keeping: the test asserted the ANCHORS, which were right the
+	# whole time. Asserting the input to a layout is not asserting the layout.
+	get_viewport().size_changed.connect(_fit)
+	_fit()
 
 	var scrim := ColorRect.new()
 	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -75,6 +87,14 @@ func _ready() -> void:
 	_grid.add_theme_constant_override("h_separation", 26)
 	_grid.add_theme_constant_override("v_separation", 8)
 	column.add_child(_grid)
+
+# Full screen, and kept there through a resize -- this is a floating layer over a
+# game that changes resolution. The panel inside it is anchored, so three quarters
+# stays three quarters once this rect is right.
+func _fit() -> void:
+	var view: Vector2 = get_viewport_rect().size
+	position = Vector2.ZERO
+	size = view
 
 # `board` is the array RoundMachine.rank builds: already ordered, each entry
 # carrying its display rank, its stats and its badges. Nothing is computed here --

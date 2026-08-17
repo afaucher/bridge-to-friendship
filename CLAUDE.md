@@ -516,6 +516,21 @@ the moment it is written.
   runtime: `ProgressBar.tint_progress` is Godot 3 and raises on the first frame
   and nowhere earlier. If nothing in the gate ever instantiates a UI script, it
   ships having never been executed once (see `test_hud_view`).
+- **A CONTROL PARENTED TO A CanvasLayer IS NOT LAID OUT BY ANYTHING, and its
+  anchors are four correct numbers about a rect of zero.** Observed 2026-08-17,
+  reported from play as "the score screen is top left". `PRESET_FULL_RECT` on a
+  Control whose parent is a CanvasLayer leaves it 0x0 at the origin -- there is no
+  parent CONTROL to take an area from -- so everything anchored inside it
+  collapses too, and a `PanelContainer` with nothing to fill falls back to its
+  content's minimum size in the corner. Size such a Control from
+  `get_viewport_rect()` and reconnect on `size_changed`; anchors then work
+  normally for everything nested INSIDE it.
+  **And the reason it shipped is the general lesson: THE TEST ASSERTED THE
+  ANCHORS, WHICH WERE RIGHT THE WHOLE TIME.** Asserting the input to a layout is
+  not asserting the layout -- measure `size` and `position`, which is what the
+  player is looking at. The same shape as the collision-mask notes: a property
+  that is set correctly and has no effect.
+
 - **THE HEADLESS VIEWPORT IS 64x64, so screen-space UI cannot be tested through a
   camera.** Measured 2026-08-14 building the offscreen teammate marker: a point
   dead ahead of a `Camera3D` unprojects to (32, 32) -- correct, and also within

@@ -231,12 +231,41 @@ func _phase_score_screen() -> void:
 		return
 	check(screen.visible, "which is shown while the board is up")
 
-	# THREE QUARTERS, ON BOTH AXES, BY ANCHOR.
+	# THE RECT, NOT THE ANCHORS. The first version of this asserted the four anchor
+	# numbers, and they were right the whole time the board was rendering in the
+	# top-left corner at content size: a Control parented to a CanvasLayer has no
+	# parent Control to take a rect from, so the node stayed 0x0 and everything
+	# anchored inside it collapsed against nothing.
+	#
+	# ASSERTING THE INPUT TO A LAYOUT IS NOT ASSERTING THE LAYOUT. Measure the rect.
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	check(view.x > 0.0 and view.y > 0.0, "the viewport has a size to measure against")
+	near(screen.size.x, view.x, 0.5,
+		"the score screen FILLS the viewport across (%.0f of %.0f) -- if this is "
+			% [screen.size.x, view.x]
+		+ "zero the panel inside it has nothing to be three quarters OF, and lands "
+		+ "in the corner at whatever size its text happens to be")
+	near(screen.size.y, view.y, 0.5, "and down (%.0f of %.0f)"
+		% [screen.size.y, view.y])
+	near(screen.position.x, 0.0, 0.5, "starting at the origin")
+	near(screen.position.y, 0.0, 0.5, "on both axes")
+
+	# THREE QUARTERS, ON BOTH AXES, CENTRED.
 	var panel: Control = screen._panel
 	near(panel.anchor_right - panel.anchor_left, 0.75, 0.001,
 		"the board covers three quarters of the screen across")
 	near(panel.anchor_bottom - panel.anchor_top, 0.75, 0.001, "and three quarters down")
 	near(panel.anchor_left, panel.anchor_top, 0.001, "centred, so the insets match")
+	# AND IT IS REALLY PLACED THERE. Only the position is checked, not the size: a
+	# PanelContainer cannot shrink below its content, and the headless viewport is
+	# 64x64 -- so at gate resolution the panel is legitimately larger than three
+	# quarters of the screen while still being anchored to it.
+	near(panel.position.x, view.x * 0.125, 0.5,
+		"and is actually placed an eighth in from the left (%.1f, wanted %.1f)"
+			% [panel.position.x, view.x * 0.125])
+	near(panel.position.y, view.y * 0.125, 0.5,
+		"and an eighth down (%.1f, wanted %.1f)"
+			% [panel.position.y, view.y * 0.125])
 
 	# AND THE HUD IS OUT OF THE WAY.
 	check(not hud._own_panel.visible, "the own panel hides behind the board")
