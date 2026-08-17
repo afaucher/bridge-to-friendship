@@ -502,7 +502,17 @@ const PLINKO_HIT_RADIUS := 1.1
 
 # Tall enough to read as absurd from across a 60 m bridge, short enough that the
 # top hat is still on screen.
-const HAT_MAX_STACK := 5
+#
+# RAISED 5 -> 7 on 2026-08-16, with HAT_LEAN_MAX_DEG deliberately left alone. The
+# lean accumulates up the tower at 5 degrees a hat, so the top now tips 35 rather
+# than 25 — further from upright and still a long way from lying down, which is
+# the direction the joke wants.
+#
+# IT IS ALSO A HIT COLUMN NOW, which it was not when 5 was chosen: a worn hat is
+# a target, HAT_HEIGHT tall each, so a full stack puts 2.45 m of score above your
+# head where anything on high ground can reach it. Seven is a bigger silhouette
+# as well as a bigger bet, and that is the trade rather than a side effect.
+const HAT_MAX_STACK := 7
 
 # HOW WIDE A HAT IS TO A BULLET (2026-08-16). Between the crown's collider radius
 # (0.26) and the brim's (0.42): a round that clips the brim of a hat you can see
