@@ -588,6 +588,28 @@ func clear_round_stats() -> void:
 # FROM THE BOARD, not from the live counters, so the log says exactly what the
 # players were shown -- a report about a number on the screen is unanswerable if
 # the two could differ.
+# WHERE EVERYBODY IS AT EVERY ROUND TRANSITION, on the host, unconditionally.
+#
+# Added 2026-08-17 because a precise playtest report -- "one guy was still outside
+# the lobby's south wall, and crossing it started the round" -- could not be
+# reproduced from a rig, and a second attempt at guessing the sequence is worth
+# less than one line of ground truth. A transition happens a few times a round.
+#
+# The corridor and the bodies together, because the bug was a DISAGREEMENT
+# between them: every rule about the next round is derived from where the party is
+# standing, so a player outside the corridor at this moment is the whole fault.
+func _log_transition() -> void:
+	var rows: Array = []
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body == null or not is_instance_valid(body):
+			continue
+		var row: int = grid.cell_of_world(body.position).y if grid != null else -1
+		var inside: bool = grid != null and grid.is_lobby_row(row)
+		rows.append("%d@%d%s" % [int(peer_key), row, "" if inside else "!OUT"])
+	print("[round] -> %s rear=%d target=%d  %s" % [round_machine.state_name(),
+		round_machine.rear_row, round_machine.target_row, " ".join(rows)])
+
 func _log_round_stats() -> void:
 	for line in StatRegistry.log_lines(round_machine.board, round_machine.round_index):
 		print(line)
@@ -769,6 +791,8 @@ func _on_round_state_changed() -> void:
 	_settle_round_transition()
 	if is_host and round_machine.state == RoundMachine.State.SCORING:
 		_log_round_stats()
+	if is_host:
+		_log_transition()
 	if networked:
 		_round_sync.rpc(round_machine.state, round_machine.rear_row,
 			round_machine.target_row, round_machine.close_timer,
@@ -799,10 +823,33 @@ func _settle_round_transition() -> void:
 		return
 	if round_machine.state != RoundMachine.State.SCORING:
 		return
-	# THE STRAGGLERS. Anyone who did not get over the line is put in the lobby
-	# immediately -- no drone, no ceremony. They have already lost the round;
-	# making them watch a three-second flight as well is a punishment on top of a
-	# punishment, and it would play out over the scoreboard.
+	# EVERYBODY GOES IN THE LOBBY. Not just the stragglers.
+	#
+	# Reported from a playtest of three, two over the line and one behind: "when
+	# the scores went away, one guy was still outside the lobby's south wall, in
+	# the play area from the last round -- once he crossed it, the round STARTED".
+	# That second half is the diagnosis. A round begins when the party crosses the
+	# strip AHEAD of them, so a round that began on the strip BEHIND them means
+	# `target_row` was pointing at the lobby's entry band -- which is what
+	# `_enter_lobby` computes when it derives the corridor from a party member who
+	# is not in the lobby.
+	#
+	# It used to move only players NOT in `reached`, on the reasoning that anybody
+	# who crossed is already where they should be. They are not: crossing puts you
+	# ON the strip, which is the lobby's doorway rather than its floor, and it
+	# leaves the party spread across a boundary at the exact moment every rule
+	# about the next round is derived from where they are standing.
+	#
+	# So the transition now GATHERS. It is also what makes the corridor safe to
+	# re-derive at all: after this loop every player is demonstrably inside one
+	# lobby, so "where is the rearmost player" has one honest answer.
+	#
+	# NOBODY SEES THE MOVE. The scoreboard goes up on the same tick and covers the
+	# middle three quarters of the screen over a scrim.
+	#
+	# `reached` is untouched -- it is what the SCORING reads to say who made it,
+	# and that is a statement about what happened rather than about where anybody
+	# is standing now.
 	# A LANE INDEX, COUNTED -- never the peer id. It was `_lobby_point(peer)` until
 	# 2026-08-15, and peer ids are 1 and 2 locally but LARGE RANDOM INTS over the
 	# network: entry_spawn_cell computes `width/2 - 3 + index*2` and clamps, so
@@ -814,10 +861,22 @@ func _settle_round_transition() -> void:
 	#
 	# It played fine locally for exactly the reason it was never noticed: peers 1
 	# and 2 give lanes 1 and 2.
+	# ONLY IF THERE IS A LOBBY TO GATHER INTO. `lobby_row_near` falls back to the
+	# bridge entry when it cannot find one, which is right for a WIPE -- somewhere
+	# is better than nowhere -- and completely wrong here: it would teleport a
+	# party that just finished a round to the start of the run because the level
+	# they are playing has no lobby in it. Test fixtures are exactly that, and
+	# test_round_machine caught this within a minute of the gather going in.
+	#
+	# Without a lobby the old rule stands: stragglers are still returned, because
+	# leaving them behind a closed boundary is worse.
+	var lobby_row: int = grid.lobby_row_near(round_machine.rear_row) if grid != null else -1
+	var gather_all: bool = grid != null and grid.is_lobby_row(lobby_row)
+
 	var lane := 0
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
-		if round_machine.reached.has(peer):
+		if round_machine.reached.has(peer) and not gather_all:
 			continue
 		var body: Node = players[peer]
 		if body == null or not is_instance_valid(body):
