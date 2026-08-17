@@ -165,8 +165,29 @@ func _enter_lobby(world) -> void:
 	round_clock = 0.0
 	close_timer = 0.0
 	reached.clear()
-	# Re-asked rather than assumed: the run may have grown since the round began.
-	target_row = world.grid.gate_after(_rearmost_row(world))
+	# BOTH ENDS, RE-ASKED FROM WHERE THE PARTY ACTUALLY IS.
+	#
+	# Only `target_row` was re-derived here, and `rear_row` was left holding the
+	# strip the party crossed to START the round they just lost -- which is not the
+	# corridor they are standing in once a wipe has carried them backwards. The two
+	# numbers could then describe a corridor spanning a whole round, and every rule
+	# in this file is expressed against them.
+	#
+	# The corridor is defined at the top of this file as "the strip they came
+	# through and the strip they are heading for". That is a statement about a
+	# PLACE, so the only honest way to answer it after bodies have been moved is to
+	# ask the grid where they ended up. Deriving one end and remembering the other
+	# is what let them disagree.
+	#
+	# This alone does not fix the flip and `_lobby_point` alone does not either --
+	# A/B'd separately 2026-08-16. With only this, the party is still standing ON
+	# the exit band, so `gate_at_or_before` answers with that band and the corridor
+	# is still the whole round. With only that, the party is back in the lobby but
+	# `rear_row` still points at its exit, so rear and target land on the SAME row
+	# and the rear wall stands between the player and the strip they have to cross.
+	var rearmost: int = _rearmost_row(world)
+	rear_row = world.grid.gate_at_or_before(rearmost)
+	target_row = world.grid.gate_after(rearmost)
 
 # --- Predicates ---------------------------------------------------------------
 

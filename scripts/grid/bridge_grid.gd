@@ -77,6 +77,59 @@ func segment_index_of_row(row: int) -> int:
 			return i
 	return maxi(0, _segments.size() - 1)
 
+# Is this row inside a segment tagged `lobby`? The tag is what a lobby IS -- both
+# the generated one and the authored file carry it -- so nothing here has to know
+# how the run was planned.
+func is_lobby_row(row: int) -> bool:
+	if _segments.is_empty():
+		return false
+	var i: int = segment_index_of_row(row)
+	if i < 0 or i >= _segments.size():
+		return false
+	var start: int = int(_segments[i]["z_offset"])
+	var seg = _segments[i]["data"]
+	# segment_index_of_row answers with the LAST segment for anything off the
+	# front, which is the fallback CLAUDE.md already has a note about -- so the
+	# containment is re-checked here rather than trusted.
+	if row < start or row >= start + int(seg.length):
+		return false
+	return seg.tags.has("lobby")
+
+# WHERE THE PARTY GOES WHEN A ROUND ENDS, given the strip they last came through.
+#
+# FORWARD FIRST, THEN BACK, and the two cases are genuinely different rather than
+# one rule with an off-by-one:
+#
+#   A ROUND FINISHED. The party crossed INTO a lobby, so `rear` is that lobby's
+#   ENTRY band and the stragglers belong just past it -- forwards, with everyone
+#   else.
+#   A ROUND WAS LOST. Nobody crossed anything, so `rear` is the strip they left
+#   the LAST lobby by, and just past it is the section that beat them. They belong
+#   backwards, in the lobby behind.
+#
+# Told apart by asking whether the row past the strip is in a lobby, which is the
+# question itself rather than a proxy for it. The version of this that only walked
+# BACKWARDS sent stragglers a whole round down the bridge on a normal round end --
+# and the leash then dragged them back to the party as one stacked pile, which is
+# this project's oldest trap wearing a new hat.
+#
+# Never lands ON a band: a band is two rows deep, so `rear + 1` is still the
+# checker, and a party standing on the strip they are supposed to walk up to is
+# both wrong for the player and wrong for `gate_after`.
+func lobby_row_near(rear: int) -> int:
+	if rear < 0:
+		return _first_standable_row()
+	var ahead: int = gate_band_end(rear) + 1
+	if is_lobby_row(ahead):
+		return ahead
+	var band: int = gate_at_or_before(rear - 1)
+	while band >= 0:
+		var behind: int = gate_band_end(band) + 1
+		if is_lobby_row(behind):
+			return behind
+		band = gate_at_or_before(band - 1)
+	return _first_standable_row()
+
 func first_row_of_segment(index: int) -> int:
 	if index < 0 or index >= _segments.size():
 		return 0

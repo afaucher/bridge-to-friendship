@@ -2528,7 +2528,34 @@ func _restock_lobby() -> void:
 func _lobby_point(lane: int) -> Vector3:
 	if grid == null:
 		return spawn_point(lane)
-	var row: int = round_machine.rear_row + 1 if round_machine.rear_row >= 0 else 1
+	# BEHIND THE STRIP THEY MUST CROSS, NOT ON IT.
+	#
+	# It was `rear_row + 1`, described as "the first walkable row of the lobby",
+	# and it is neither. `rear_row` is the START of the strip the party came
+	# through and A GATE BAND IS TWO ROWS DEEP (M16: one row is 2 m and a party of
+	# four told to gather on it is four players jostling), so `rear_row + 1` is the
+	# band's SECOND ROW -- still on the checker, and already past it as far as
+	# `gate_after` is concerned.
+	#
+	# Reported from a solo playtest as "it says you lost, but you don't spawn in a
+	# lobby -- the lobby/non-lobby gets flipped", and the flip is the consequence
+	# rather than the fault. Measured: the body ended at row 11, and `_enter_lobby`
+	# then asked `gate_after(11)` for the strip to cross next. That skips the
+	# lobby's own exit band, which starts at 10, and answers with the NEXT lobby's
+	# entry -- row 95, five sections up-bridge. The machine says LOBBY, the front
+	# wall stands at the far end of the round, and the party plays the entire next
+	# section in the lobby state. Everything downstream is then one boundary out.
+	#
+	# So the question is asked of the GRID instead: which lobby, given the strip
+	# they came through. `lobby_row_near` looks past the strip first and behind it
+	# only if what is past it is not a lobby -- because the two callers of this
+	# function want opposite directions. A straggler at a round END is behind a
+	# party that just walked INTO a lobby and belongs forwards with them; a party
+	# that LOST is standing in the section that beat them and belongs backwards.
+	# The first draft of this fix walked backwards unconditionally and sent
+	# stragglers a whole round down the bridge, where the leash then dragged them
+	# into one stacked pile -- caught by test_straggler_return.
+	var row: int = grid.lobby_row_near(round_machine.rear_row)
 	var cell := Vector2i(grid.entry_spawn_cell(lane).x, row)
 	if not grid.is_solid(cell):
 		# An authored lobby is solid across its entry row; a section that is not
