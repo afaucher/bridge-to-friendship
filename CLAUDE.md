@@ -370,6 +370,30 @@ the moment it is written.
   the tell for the general shape: **when a query about progress can be answered
   by something that is not making progress, anything that scales with progress
   becomes a loop.**
+- **A BOUNDARY THAT IS A RANGE HAS TWO EDGES, AND `start + 1` IS INSIDE IT.**
+  Observed 2026-08-16 from a solo playtest: "it says you lost, but you don't spawn
+  in a lobby -- the lobby/non-lobby gets flipped." A gate band is TWO ROWS deep
+  (widened 2026-08-15 so a party of four can stand on it), and `_lobby_point`
+  returned `rear_row + 1` while calling it "the first row past the strip". It is
+  the strip's SECOND ROW. Everything downstream asks `gate_after(row)`, which is
+  strictly-greater, so a body one row into a two-row band reads as PAST it: the
+  next boundary came back as the one five sections up-bridge, the machine sat in
+  LOBBY with its front wall at the far end of the round, and the party played a
+  whole section in the lobby state. **When a thing is a band, "just past it" is
+  `band_end + 1`** -- and the tell is that the bug appeared the day the band
+  stopped being one row, in code that was correct when it was written.
+  **The second lesson is bigger: TWO CALLERS OF ONE PLACEMENT FUNCTION WANTED
+  OPPOSITE DIRECTIONS.** A straggler at a round END is behind a party that just
+  walked INTO a lobby and belongs forwards; a party that LOST is standing in the
+  section that beat them and belongs backwards. The first fix walked backwards
+  unconditionally, sent stragglers a whole round down the bridge, and the leash
+  then dragged them back as ONE STACKED PILE -- the coincident-bodies trap again,
+  reached by a route nobody would predict. **Before generalising a placement rule,
+  enumerate its callers and ask which way each one means.**
+  And note what the instrument said: `wipes` was 0 the whole time, because a solo
+  death never reaches `_check_wipe` -- the round machine scores it first and
+  `_settle_round_transition` erases `_returning` on the way. A counter that names
+  the event is not the same as a counter the event increments.
 - **A VALIDATOR THAT MODELS A MOVEMENT THE PLAYER DOES NOT HAVE CERTIFIES BROKEN
   LEVELS.** Observed 2026-08-16. `SegmentValidator` allowed a rise of
   `SOLO_RISE` (1 unit) between any two deck cells, so a one-unit step read as
