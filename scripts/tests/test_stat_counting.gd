@@ -59,6 +59,7 @@ func _physics_process(_delta: float) -> void:
 	_test_distance_ignores_teleports()
 	_test_a_peak_is_not_a_total()
 	_test_a_boost()
+	_test_a_death()
 	_test_the_reset()
 	finish()
 
@@ -231,6 +232,33 @@ func _test_a_boost() -> void:
 	world.clear_round_stats()
 	world.resolve_shove_contact(shooter, shooter, 0.0)
 	eq(_stat(SHOOTER, "boosts"), 0, "and you cannot boost yourself")
+
+# --- A death is being put on the drone ------------------------------------------
+#
+# COUNTED AT THE LINE THAT DOES IT, after two goes at being clever. The first
+# version watched "is this player out of play" on a rising edge -- true for
+# seconds, so it looked like the safe thing to sample. It is not: on a solo wipe
+# the round machine goes to SCORING at the top of the tick and
+# _settle_round_transition ERASES `_returning` on its way past, so the flag is
+# created and destroyed inside one tick. Moving the detector to the end of the
+# tick did not help either, because the erase lands at the start of the next one.
+#
+# THE SYMPTOM WAS IN THE ROUND LOG, which is the reason the log was worth adding:
+# `deaths=0` for a round the player demonstrably died in, sitting there in plain
+# text. Nothing else would have shown it -- the screen would have said zero just
+# as confidently.
+func _test_a_death() -> void:
+	world.clear_round_stats()
+	world._returning.erase(VICTIM)
+	world._begin_drone_return(VICTIM)
+	eq(_stat(VICTIM, "deaths"), 1, "going out on the drone is a death")
+
+	# IDEMPOTENT, because _begin_drone_return is reached from more than one place
+	# and a player already on the drone has not died again.
+	world._begin_drone_return(VICTIM)
+	eq(_stat(VICTIM, "deaths"), 1, "and a second call while already out is not a "
+		+ "second death")
+	world._returning.erase(VICTIM)
 
 # --- One round, one scoreboard --------------------------------------------------
 

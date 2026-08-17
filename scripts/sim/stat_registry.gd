@@ -55,7 +55,7 @@ const STATS := {
 	},
 	"deaths": {
 		"label": "Deaths", "best": LEAST, "common": true,
-		"help": "Counted on the rising edge of being out of play, so every cause counts and none counts twice.",
+		"help": "Being put on the drone: counted at that line, once, whatever put you there. If a teammate reached you in time you did not die -- so this and `rescued` are a matched pair, the times nobody got there and the times somebody did.",
 	},
 	"friendly_damage": {
 		"label": "Friendly fire", "best": MOST, "common": true,
@@ -216,6 +216,41 @@ static func percent_text(hits: int, shots: int) -> String:
 	if shots <= 0:
 		return "--"
 	return "%d%%" % int(round(100.0 * float(hits) / float(shots)))
+
+# --- The round, as text -------------------------------------------------------
+
+# WHAT GOES IN THE LOG AT THE END OF A ROUND, built from the BOARD rather than
+# from the live counters -- so what is written down is exactly what the players
+# were shown. If the log and the screen could disagree, a playtest report about a
+# number would be unanswerable.
+#
+# A PURE FUNCTION, so the thing worth asserting can be asserted: that EVERY
+# registered stat reaches the line. The registry's promise is that adding a stat
+# is one entry and one bump, and a log with a hand-written list of columns quietly
+# breaks it -- the new stat is on the screen and missing from the record of the
+# session, which is the half you still have a week later.
+static func log_lines(board: Array, round_index: int) -> Array:
+	var out: Array = ["[round %d] %d players" % [round_index, board.size()]]
+	for entry in board:
+		var parts: Array = []
+		var stats: Dictionary = entry.get("stats", {})
+		for key in keys():
+			var name: String = str(key)
+			parts.append("%s=%s" % [name, format_value(name, int(stats.get(name, 0)))])
+		out.append("[round %d] #%d %s hats=%d made_it=%s | %s" % [
+			round_index, int(entry.get("rank", 0)), str(entry.get("name", "?")),
+			int(entry.get("hats", 0)), str(bool(entry.get("made_it", false))),
+			" ".join(parts)])
+		var badges: Array = entry.get("badges", [])
+		if not badges.is_empty():
+			var won: Array = []
+			for badge in badges:
+				var badge_key: String = str(badge.get("key", ""))
+				won.append("%s (%s%s)" % [label_of(badge_key),
+					format_value(badge_key, int(badge.get("value", 0))),
+					", tied" if int(badge.get("tie", 1)) > 1 else ""])
+			out.append("[round %d]    badges: %s" % [round_index, "; ".join(won)])
+	return out
 
 # COUNTED IN ONE UNIT, SHOWN IN ANOTHER. Everything in the table is an int, which
 # keeps the wire and the comparisons a single type; a duration is therefore ticks

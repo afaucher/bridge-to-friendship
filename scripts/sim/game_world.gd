@@ -30,6 +30,7 @@ const RocketScene = preload("res://scenes/rocket.tscn")
 const HitboxView = preload("res://scripts/ui/hitbox_view.gd")
 const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
 const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 const TurretScene = preload("res://scenes/turret.tscn")
@@ -513,6 +514,22 @@ func _host_tick() -> void:
 	# distance they cover in a frame, forever.
 	_process_bullets()
 
+	# LAST, AND THAT PLACEMENT IS THE WHOLE CORRECTNESS OF IT. An edge detector has
+	# to run AFTER every system that can change the state it reads, or it samples
+	# the previous tick.
+	#
+	# It was at the end of _process_run, which is FIRST in this tick -- so a death
+	# handed out by _process_rescue was not seen until the following tick, and on a
+	# solo wipe that tick never came: the round machine goes to SCORING at the top
+	# of _process_run and _settle_round_transition ERASES `_returning` on the way
+	# past, so the flag was gone before anything looked at it. Measured, and the
+	# symptom was a round log reading `deaths=0` for a round the player died in.
+	#
+	# Exactly the shape of the `wipes` counter that reads zero for the same reason,
+	# and the second time that transition has eaten a signal. Anything that wants
+	# to observe "a player went out" belongs here.
+	_count_edges()
+
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
 
@@ -558,6 +575,22 @@ func stats_of(peer: int) -> Dictionary:
 # two rounds, which is not something anybody would catch by looking at it.
 func clear_round_stats() -> void:
 	round_stats.clear()
+
+# THE ROUND, WRITTEN DOWN. Once per round, on the host, on a path no game state
+# can gate.
+#
+# DELIBERATELY NOT BEHIND A DEBUG TOGGLE. CLAUDE.md's rule is that the absence of
+# a gated log is not the absence of the event: a print behind a DebugSettings knob
+# that happens to be off looks exactly like nothing having happened, and this is
+# the one record of what a playtest session actually did. Three lines a round, a
+# few times an hour, is not a volume worth a switch.
+#
+# FROM THE BOARD, not from the live counters, so the log says exactly what the
+# players were shown -- a report about a number on the screen is unanswerable if
+# the two could differ.
+func _log_round_stats() -> void:
+	for line in StatRegistry.log_lines(round_machine.board, round_machine.round_index):
+		print(line)
 
 # ONE PLACE WHERE HARM IS DELIVERED, and the only place that counts it.
 #
@@ -682,9 +715,6 @@ func _count_edges() -> void:
 		if body == null or not is_instance_valid(body):
 			continue
 		var out: bool = _returning.has(peer) or int(body.state) == PlayerBody.State.DOWNED
-		if out and not bool(_was_out.get(peer, false)):
-			_bump(peer, "deaths")
-		_was_out[peer] = out
 
 		var dashing: bool = int(body.state) == PlayerBody.State.SHOVE
 		if dashing and not bool(_was_dashing.get(peer, false)):
@@ -729,7 +759,6 @@ func _process_run() -> void:
 	_sync_walls()
 	_check_wipe()
 	_apply_leash()
-	_count_edges()
 
 # A state change is rare -- a few times a round -- so it goes out RELIABLY the
 # moment it happens rather than riding the per-tick snapshot. The countdown is
@@ -738,6 +767,8 @@ func _process_run() -> void:
 # by is a number on a screen rather than anything the sim reads.
 func _on_round_state_changed() -> void:
 	_settle_round_transition()
+	if is_host and round_machine.state == RoundMachine.State.SCORING:
+		_log_round_stats()
 	if networked:
 		_round_sync.rpc(round_machine.state, round_machine.rear_row,
 			round_machine.target_row, round_machine.close_timer,
@@ -2683,6 +2714,26 @@ func _tick_revive(peer: int, body: Node) -> void:
 func _begin_drone_return(peer: int) -> void:
 	if _returning.has(peer):
 		return
+	# A DEATH IS BEING PUT ON THE DRONE, counted at the line that does it.
+	#
+	# THE EDGE DETECTOR DID NOT WORK AND COULD NOT. It watched "is this player
+	# out", which is true for seconds and looked like the safe thing to sample --
+	# but on a solo wipe the round machine goes to SCORING at the TOP of the tick
+	# and _settle_round_transition erases `_returning` on its way past, so the flag
+	# was created and destroyed inside one tick with no observer in between.
+	# Measured: a round log reading `deaths=0` for a round the player died in.
+	# Moving the detector to the end of the tick did not fix it either, because the
+	# erase happens at the start of the NEXT one.
+	#
+	# That transition has now eaten two signals -- `wipes` reads zero for exactly
+	# the same reason. CLAUDE.md already says to prefer a DIRECT COUNT at the line
+	# that does the thing; this is the second time the clever alternative has lost.
+	#
+	# AND IT DEFINES THE STAT WELL, which is the part worth keeping. If a teammate
+	# reaches you in time you did not die -- that is what the rescue was for -- so
+	# `deaths` and `rescued` become a matched pair: the times nobody got there, and
+	# the times somebody did.
+	_bump(peer, "deaths")
 	# IF YOU FALL, YOU LOSE THEM. Not dropped where you went over -- destroyed.
 	# See destroy_worn_hats: dropping them would rescue the one failure the design
 	# does not rescue, and would leave a free pile at the spot that killed you.

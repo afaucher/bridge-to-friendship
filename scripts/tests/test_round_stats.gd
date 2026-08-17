@@ -28,6 +28,7 @@ func setup(_main) -> void:
 	_test_rarest_first_and_capped()
 	_test_percent()
 	_test_display_ranks()
+	_test_log_lines()
 	finish()
 
 func _keys_for(result: Dictionary, peer: int) -> Array:
@@ -151,6 +152,45 @@ func _test_percent() -> void:
 	eq(StatRegistry.percent_text(0, 0), "--",
 		"and a player who never fired has NO accuracy -- printing 0% beside their "
 		+ "name says they missed everything they tried")
+
+# --- What goes in the log -----------------------------------------------------
+#
+# THE ASSERTION THAT CANNOT ROT: every registered stat reaches the line, checked
+# by walking the REGISTRY rather than a list written here. The registry's whole
+# promise is that adding a stat is one entry and one bump; a log with hand-written
+# columns quietly breaks it, and the way you find out is a week later when the
+# number you wanted is on nobody's screen and in nobody's file.
+func _test_log_lines() -> void:
+	var board: Array = [{
+		"peer": 1, "name": "duckbob", "rank": 1, "hats": 3, "made_it": true,
+		"stats": {"shots_fired": 48, "hits": 19, "time_alive": 7200, "distance": 34000},
+		"badges": [{"key": "dashes", "value": 7, "tie": 1}],
+	}]
+	var lines: Array = StatRegistry.log_lines(board, 3)
+	var blob: String = "\n".join(lines)
+
+	check(lines.size() >= 2, "a round writes a header and a line per player")
+	check(blob.contains("[round 3]"),
+		"tagged with the round, so a session log can be read back per round")
+	check(blob.contains("duckbob"), "and names the player")
+
+	var missing: Array = []
+	for key in StatRegistry.keys():
+		if not blob.contains("%s=" % str(key)):
+			missing.append(str(key))
+	eq(missing.size(), 0,
+		"EVERY registered stat is written down: missing %s. Walked from the "
+			% str(missing)
+		+ "registry rather than from a list here, so a stat added tomorrow is in "
+		+ "the log tomorrow without anybody remembering to add it")
+
+	# THE UNITS ARE THE READABLE ONES. A log full of tick counts and centimetres is
+	# a log somebody has to do arithmetic on before they can report anything.
+	check(blob.contains("time_alive=2:00"),
+		"a duration is written as time, not as 7200 ticks")
+	check(blob.contains("distance=340 m"),
+		"and a distance in metres, not as 34000 centimetres")
+	check(blob.contains("Most dashes"), "and the badges are written out too")
 
 # --- Display ranks ------------------------------------------------------------
 
