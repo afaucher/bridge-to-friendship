@@ -566,10 +566,22 @@ func _deliver(target, hit) -> bool:
 	var took: bool = target.receive_hit(hit)
 	if not is_host or source <= 0:
 		return took
-	if took:
-		# A HIT IS COUNTED WHERE IT LANDS, not where it was fired. The round that
-		# cover stopped never reaches here, which is exactly the difference between
-		# an accuracy figure and a trigger-pull figure.
+	# A HIT IS SOMETHING THAT BLEEDS. Counted where it LANDS rather than where it
+	# was fired -- the round that cover stopped never reaches here at all, which is
+	# the difference between an accuracy figure and a trigger-pull figure -- and
+	# counted only against a PERSON or an ENEMY.
+	#
+	# Deck, parapet and a shooter's pillar were already excluded for free: they have
+	# no `receive_hit`, so _resolve_round_hit returns before reaching this. What was
+	# not excluded is everything else in the world that DOES answer -- a stone, a
+	# plinko ball, a loose hat, a dropped special. Shooting a stone is a legitimate
+	# thing to do and it is not marksmanship, and counting it made accuracy a figure
+	# you could inflate by firing at the scenery.
+	#
+	# Asked of GameWorld's own lists rather than of the target. The alternative is a
+	# `counts_as_a_hit()` on eight bodies, which is a new protocol to answer a
+	# question the world already knows the answer to.
+	if took and (_is_player(target) or _is_enemy(target)):
 		_bump(source, "hits")
 	if not has_health:
 		return took
@@ -578,13 +590,29 @@ func _deliver(target, hit) -> bool:
 		# FRIENDLY OR NOT IS DECIDED BY THE TARGET, not by the source. `hit.source`
 		# says whose it was; whether it was a mistake is a question about who
 		# caught it.
-		_bump(source, "friendly_damage" if _is_player(target) else "enemy_damage", lost)
-	if before > 0 and int(target.health) <= 0 and not _is_player(target):
+		#
+		# AND NEITHER, FOR ANYTHING THAT IS NOT A PERSON OR AN ENEMY. The first
+		# version read "friendly if it is a player, enemy otherwise", so knocking
+		# the health off a loose hat scored as damage to the opposition. There are
+		# three answers here, not two, and the third is "that was scenery".
+		if _is_player(target):
+			_bump(source, "friendly_damage", lost)
+		elif _is_enemy(target):
+			_bump(source, "enemy_damage", lost)
+	# AND A KILL IS AN ENEMY, not merely a thing that ran out of health. Same fault
+	# as above and a louder one: a destroyed hat would have scored as a kill.
+	if before > 0 and int(target.health) <= 0 and _is_enemy(target):
 		_bump(source, "enemy_kills")
 	return took
 
 func _is_player(target) -> bool:
 	return "peer_id" in target and players.has(int(target.peer_id))
+
+# The things that shoot back. Membership in the lists this world already keeps,
+# so a body that is not in one of them cannot be mistaken for an enemy however
+# many of an enemy's properties it happens to have.
+func _is_enemy(target) -> bool:
+	return _rushers.has(target) or _gunners.has(target)
 
 # DEATHS, ON THE RISING EDGE OF BEING OUT OF PLAY.
 #

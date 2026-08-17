@@ -54,6 +54,7 @@ func _physics_process(_delta: float) -> void:
 	_test_a_shot_that_misses()
 	_test_friendly_versus_enemy()
 	_test_a_blocked_hit_delivers_nothing()
+	_test_scenery_is_not_a_hit()
 	_test_the_reset()
 	finish()
 
@@ -117,6 +118,40 @@ func _test_a_blocked_hit_delivers_nothing() -> void:
 	eq(_stat(SHOOTER, "friendly_damage"), 0,
 		"a hit that removed no health records no damage -- `hit.amount` would have "
 		+ "recorded three, which is the number the shooter ASKED for")
+
+# --- A hit is something that bleeds ---------------------------------------------
+#
+# Deck and parapet were always excluded for free: no `receive_hit`, so the round
+# never reaches the counter. What was NOT excluded is everything else in the world
+# that does answer -- a stone, a ball, a loose hat, a dropped special. Shooting a
+# stone is a legitimate thing to do and it is not marksmanship, and counting it
+# made accuracy a number you could inflate by firing at the furniture.
+#
+# A LOOSE HAT IS THE CASE, and it has to be hit with a BLAST. HatBody refuses a
+# BULLET outright -- the first version of this test shot one and asserted about a
+# hit that never happened, which is a control that cannot succeed and would have
+# "proved" the rule while measuring nothing. `took` below is what says the
+# difference.
+func _test_scenery_is_not_a_hit() -> void:
+	world.clear_round_stats()
+	var hat: Node = world._hats.spawn_loose(
+		shooter.global_position + Vector3(3.0, 1.0, 0.0))
+	if not check(hat != null, "the rig produced a loose hat to shoot at"):
+		return
+	var took: bool = world._deliver(hat, Hit.make(Hit.Kind.EXPLOSIVE, 2,
+		hat.global_position + Vector3(4.0, 0.0, 0.0), 4.0, 2.0, SHOOTER))
+
+	check(took, "and the hat really answered the hit, so this is not a no-op")
+	eq(_stat(SHOOTER, "hits"), 0,
+		"but shooting scenery is NOT a hit -- accuracy is a claim about hitting "
+		+ "people, and a counter that takes furniture is one you inflate by firing "
+		+ "at the deck furniture instead of at anything dangerous")
+	eq(_stat(SHOOTER, "enemy_damage"), 0,
+		"and damage to it is not damage to the opposition")
+	eq(_stat(SHOOTER, "enemy_kills"), 0,
+		"and destroying it is not a KILL, which is the loudest version of the same "
+		+ "fault: 'friendly if a player, enemy otherwise' has three answers, and "
+		+ "the third is 'that was scenery'")
 
 # --- One round, one scoreboard --------------------------------------------------
 

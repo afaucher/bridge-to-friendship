@@ -41,7 +41,7 @@ const STATS := {
 	},
 	"hits": {
 		"label": "Hits", "best": MOST, "common": true, "percent_of": "shots_fired",
-		"help": "Counted on the RECEIVING side. A round that is stopped by cover was fired and did not hit, and a counter that lives at the muzzle cannot tell the difference.",
+		"help": "Counted on the RECEIVING side, and only against a person or an enemy. A round stopped by cover was fired and did not hit, and a counter at the muzzle cannot tell the difference; a round that knocked a stone about was neither a miss nor marksmanship.",
 	},
 	"enemy_damage": {
 		"label": "Enemy damage", "best": MOST, "common": true,
