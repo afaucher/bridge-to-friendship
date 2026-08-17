@@ -24,7 +24,23 @@ const COLOR_BADGE := Color(0.55, 0.85, 1.0)
 
 const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
 
-const AVATAR_SIZE := Vector2(56, 56)
+# FONT SIZES ARE FOR A 1080-TALL SCREEN and are scaled from there -- see
+# `scaled_font`. The board is defined as a FRACTION of the viewport, so its text
+# has to be too, or it is sized for exactly one monitor.
+#
+# THEY ARE ALSO MUCH BIGGER THAN A HUD'S, which is the point. These were first
+# written at HUD sizes -- 34 down to 16 -- and reported from play as "the text is
+# tiny compared to the space". A HUD label is read out of the corner of your eye
+# while you play; this is a board four people look AT, from across a room,
+# occupying three quarters of the screen with nothing else on it.
+const FONT_TITLE := 64
+const FONT_RANK := 48
+const FONT_NAME := 34
+const FONT_STAT := 30
+const FONT_VALUE := 32
+const FONT_BADGE := 24
+const REFERENCE_HEIGHT := 1080.0
+const AVATAR_BASE := 96.0
 
 var _panel: PanelContainer = null
 var _grid: GridContainer = null
@@ -77,15 +93,23 @@ func _ready() -> void:
 
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 14)
+	# FILL THE PANEL. Without this the whole board sits at its own minimum size in
+	# the middle of a panel three quarters of the screen wide, which is the other
+	# half of "the text is tiny compared to the space" -- the type was small AND
+	# the block it was in refused to grow.
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.add_child(column)
 
-	_title = _label("", 34, COLOR_TEXT)
+	_title = _label("", FONT_TITLE, COLOR_TEXT)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_title)
 
 	_grid = GridContainer.new()
 	_grid.add_theme_constant_override("h_separation", 26)
 	_grid.add_theme_constant_override("v_separation", 8)
+	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(_grid)
 
 # Full screen, and kept there through a resize -- this is a floating layer over a
@@ -95,6 +119,25 @@ func _fit() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	position = Vector2.ZERO
 	size = view
+	# EVERY SIZE IN HERE IS DERIVED FROM THAT HEIGHT, so a resize has to rebuild
+	# rather than just re-lay-out. Clearing the signature is what makes the next
+	# refresh do it; the board is static for its whole life, so this costs nothing.
+	_signature = ""
+
+# TEXT AS A FRACTION OF THE SCREEN, and a PURE FUNCTION of it so the arithmetic
+# can be asserted. CLAUDE.md's note from the teammate marker: the headless
+# viewport is 64x64, so anything that reads the real screen inside a test is
+# measuring the harness -- split the maths out and hand it an explicit size.
+#
+# CLAMPED AT BOTH ENDS. Below about half, a board somebody is meant to read from
+# across a room becomes a HUD again; above double, four columns of it stop fitting
+# side by side on the ultrawide it was scaled up for.
+static func scaled_font(base: int, screen_height: float) -> int:
+	var scale: float = clampf(screen_height / REFERENCE_HEIGHT, 0.5, 2.0)
+	return maxi(8, int(round(float(base) * scale)))
+
+func _scale() -> float:
+	return clampf(get_viewport_rect().size.y / REFERENCE_HEIGHT, 0.5, 2.0)
 
 # `board` is the array RoundMachine.rank builds: already ordered, each entry
 # carrying its display rank, its stats and its badges. Nothing is computed here --
@@ -118,7 +161,7 @@ func _rebuild(board: Array, round_index: int) -> void:
 	_grid.columns = board.size() + 1
 
 	# --- Row one: who. Avatar, name, rank. --------------------------------------
-	_grid.add_child(_label("", 18, COLOR_DIM))
+	_grid.add_child(_label("", FONT_STAT, COLOR_DIM))
 	for entry in board:
 		_grid.add_child(_player_header(entry))
 
@@ -128,7 +171,7 @@ func _rebuild(board: Array, round_index: int) -> void:
 	# you answer "who shot most" by reading across one line. The other way round
 	# makes every comparison a scan down four separate columns.
 	for key in StatRegistry.common_keys():
-		_grid.add_child(_label(StatRegistry.label_of(key), 18, COLOR_DIM))
+		_grid.add_child(_label(StatRegistry.label_of(key), FONT_STAT, COLOR_DIM))
 		var best: int = _best_value(board, key)
 		for entry in board:
 			var stats: Dictionary = entry.get("stats", {})
@@ -144,12 +187,16 @@ func _rebuild(board: Array, round_index: int) -> void:
 			# party is level, colouring all four gold says nothing -- the same
 			# argument the badge rules make one level up.
 			var leads: bool = value == best and not _everyone_level(board, key)
-			var cell := _label(text, 20, COLOR_LEAD if leads else COLOR_TEXT)
+			var cell := _label(text, FONT_VALUE, COLOR_LEAD if leads else COLOR_TEXT)
 			cell.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			# EVERY PLAYER COLUMN THE SAME WIDTH, and together they take the panel.
+			# A GridContainer gives its spare width to the cells that ask for it,
+			# so asking in every player cell is what spreads them evenly.
+			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			_grid.add_child(cell)
 
 	# --- The badges -------------------------------------------------------------
-	_grid.add_child(_label("", 18, COLOR_DIM))
+	_grid.add_child(_label("", FONT_STAT, COLOR_DIM))
 	for entry in board:
 		_grid.add_child(_badge_column(entry.get("badges", [])))
 
@@ -157,9 +204,10 @@ func _player_header(entry: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 2)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var face := TextureRect.new()
-	face.custom_minimum_size = AVATAR_SIZE
+	face.custom_minimum_size = Vector2.ONE * (AVATAR_BASE * _scale())
 	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	# NULL BESIDE A MACHINE WITH NO STEAM, AND THAT IS NOT AN ERROR. The gate has
 	# no Steam client and a dev box does, so the only honest statement about this
@@ -171,11 +219,11 @@ func _player_header(entry: Dictionary) -> Control:
 	box.add_child(face)
 
 	var rank: int = int(entry.get("rank", 0))
-	var rank_label := _label(_ordinal(rank), 26, COLOR_LEAD if rank == 1 else COLOR_TEXT)
+	var rank_label := _label(_ordinal(rank), FONT_RANK, COLOR_LEAD if rank == 1 else COLOR_TEXT)
 	rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(rank_label)
 
-	var name_label := _label(str(entry.get("name", "")), 20, COLOR_TEXT)
+	var name_label := _label(str(entry.get("name", "")), FONT_NAME, COLOR_TEXT)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(name_label)
 
@@ -184,7 +232,7 @@ func _player_header(entry: Dictionary) -> Control:
 	var why: String = "%d hats" % int(entry.get("hats", 0))
 	if not bool(entry.get("made_it", false)):
 		why += " - left behind"
-	var why_label := _label(why, 16, COLOR_DIM)
+	var why_label := _label(why, FONT_BADGE, COLOR_DIM)
 	why_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(why_label)
 	return box
@@ -192,6 +240,7 @@ func _player_header(entry: Dictionary) -> Control:
 func _badge_column(badges: Array) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for badge in badges:
 		var key: String = str(badge.get("key", ""))
 		# THE NUMBER WITH THE LABEL. "Furthest travelled" is a claim; "furthest
@@ -203,7 +252,7 @@ func _badge_column(badges: Array) -> Control:
 		# claims, and the badge already carries which one it is.
 		if int(badge.get("tie", 1)) > 1:
 			text += " (tied)"
-		var line := _label(text, 16, COLOR_BADGE)
+		var line := _label(text, FONT_BADGE, COLOR_BADGE)
 		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(line)
 	return box
@@ -248,9 +297,10 @@ func _ordinal(rank: int) -> String:
 func _label(text: String, size: int, colour: Color) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", size)
+	var points: int = scaled_font(size, get_viewport_rect().size.y)
+	label.add_theme_font_size_override("font_size", points)
 	label.add_theme_color_override("font_color", colour)
-	label.add_theme_constant_override("outline_size", maxi(3, int(0.12 * float(size))))
+	label.add_theme_constant_override("outline_size", maxi(3, int(0.12 * float(points))))
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label

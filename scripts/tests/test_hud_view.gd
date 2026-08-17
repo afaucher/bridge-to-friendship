@@ -20,6 +20,7 @@ const HudScript = preload("res://scripts/ui/hud.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const ScoreScreen = preload("res://scripts/ui/score_screen.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null
@@ -273,8 +274,40 @@ func _phase_score_screen() -> void:
 	check(not hud._round_panel.visible,
 		"and the round headline, which sat exactly where the board now is")
 
+	_check_font_scaling()
+
 	# THE BOARD REALLY HAS PLAYERS IN IT, or every claim above is about an empty
 	# panel that would satisfy them just as well.
 	check(screen._grid.get_child_count() > 0,
 		"and the grid was populated (%d cells)" % screen._grid.get_child_count())
 	finish()
+
+# TEXT AS A FRACTION OF THE SCREEN.
+#
+# Reported from play at 4K as "the text is tiny compared to the space". The
+# project sets no stretch mode, so the viewport really is 3840x2160 on that
+# monitor and every UI pixel is half its apparent size at 1080p -- while the board
+# itself is defined as a FRACTION of the viewport and grows to match. Type that
+# does not scale with it is type sized for exactly one monitor.
+#
+# ASSERTED AS A PURE FUNCTION with an explicit height, which is the only way to
+# say anything about screen size in this gate: the headless viewport is 64x64, so
+# reading the real one here would measure the harness. Same split as the teammate
+# marker's placement maths.
+func _check_font_scaling() -> void:
+	var base := 32
+	eq(ScoreScreen.scaled_font(base, 1080.0), base,
+		"1080 is the reference height, so a size is itself there")
+	eq(ScoreScreen.scaled_font(base, 2160.0), base * 2,
+		"4K is twice as tall, so the type is twice as big -- which is the SAME "
+		+ "apparent size, not bigger text, because the panel doubled too")
+	check(ScoreScreen.scaled_font(base, 720.0) < base,
+		"and 720 gets less (%d of %d)" % [ScoreScreen.scaled_font(base, 720.0), base])
+
+	# CLAMPED AT BOTH ENDS. Below about half a board meant to be read from across
+	# the room becomes a HUD again; above double, four columns stop fitting side by
+	# side on the ultrawide it was scaled up for.
+	eq(ScoreScreen.scaled_font(base, 64.0), base / 2,
+		"a tiny viewport clamps rather than producing unreadable type -- which is "
+		+ "the case this gate actually runs at")
+	eq(ScoreScreen.scaled_font(base, 100000.0), base * 2, "and a huge one clamps too")
