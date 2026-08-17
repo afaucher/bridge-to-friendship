@@ -97,6 +97,13 @@ const OPTIONS := {
 		"mirrors": "MG_SPREAD_DEG",
 		"help": "Half-angle of the cone across the bridge. Vertical is a separate, much tighter number.",
 	},
+	"ammo_multiplier": {
+		"section": "Weapons",
+		"kind": KIND_FLOAT,
+		"label": "Ammo multiplier",
+		"default": 1.0, "min": 0.5, "max": 4.0, "step": 0.25,
+		"help": "Scales how loaded every special arrives -- 0.5 halves the economy, 4 quadruples it. One knob rather than six because the question a playtest answers is 'do specials run out too fast', and the RATIO between a rocket's two shots and an MG's twenty is a design decision a slider should not be able to scramble. Never rounds below one: a special is destroyed the tick its ammo hits zero, so a rocket rounded to nothing would be a pickup that vanishes as you touch it.",
+	},
 	"mg_fire_interval": {
 		"section": "Weapons",
 		"kind": KIND_FLOAT,

@@ -5,6 +5,8 @@ extends "res://scripts/test_support/test_case.gd"
 # the wrong thing -- these assertions are what turn that into a red gate.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const SpecialPool = preload("res://scripts/sim/special_pool.gd")
+const SpecialBody = preload("res://scripts/sim/special_body.gd")
 
 func setup(_main) -> void:
 	# Every registered option is well formed, whatever KIND it is. A knob with a
@@ -34,6 +36,7 @@ func setup(_main) -> void:
 
 	_test_no_drift()
 	_test_numeric_knobs()
+	_test_ammo_multiplier()
 
 	# Reading and writing round-trips, and out-of-range writes are refused
 	# rather than clamped -- a silently clamped knob reports a value the caller
@@ -63,6 +66,66 @@ func setup(_main) -> void:
 	eq(DebugSettings.get_choice_name("steam"), "auto", "steam knob defaults to auto")
 
 	finish()
+
+# THE AMMO MULTIPLIER, MEASURED AT THE LINE THAT GRANTS AMMO.
+#
+# Asserted through SpecialPool rather than by re-doing the arithmetic here: a test
+# that multiplies the constant by the knob and compares it against the same
+# expression proves only that multiplication works. What is under test is that the
+# knob is READ where ammo is handed out, and every weapon goes through _full_ammo.
+func _test_ammo_multiplier() -> void:
+	var was: float = DebugSettings.tuned("ammo_multiplier", 1.0)
+	var kinds: Array = [
+		[SpecialBody.Kind.MACHINE_GUN, SimConfig.MG_AMMO],
+		[SpecialBody.Kind.GRENADE, SimConfig.GRENADE_AMMO],
+		[SpecialBody.Kind.MINE, SimConfig.MINE_AMMO],
+		[SpecialBody.Kind.SHIELD, SimConfig.SHIELD_AMMO],
+		[SpecialBody.Kind.ROCKET, SimConfig.ROCKET_AMMO],
+		[SpecialBody.Kind.LEGS, SimConfig.LEGS_AMMO],
+	]
+
+	# THE DEFAULT CHANGES NOTHING. Every other assertion in this project about a
+	# weapon's ammo compares against the bare constant, so a multiplier that was
+	# not exactly 1.0 at rest would turn a debug knob into a balance change.
+	DebugSettings.set_value("ammo_multiplier", 1.0)
+	for entry in kinds:
+		eq(SpecialPool._full_ammo(int(entry[0])), int(entry[1]),
+			"at 1.0 a %s arrives with its constant, untouched" % str(entry[0]))
+
+	DebugSettings.set_value("ammo_multiplier", 4.0)
+	for entry in kinds:
+		check(SpecialPool._full_ammo(int(entry[0])) > int(entry[1]),
+			"at 4.0 every weapon gets MORE (%s: %d from %d) -- one knob has to reach "
+				% [str(entry[0]), SpecialPool._full_ammo(int(entry[0])), int(entry[1])]
+			+ "all six, and the way this fails is a weapon added later that does not "
+			+ "go through _full_ammo")
+
+	DebugSettings.set_value("ammo_multiplier", 0.5)
+	for entry in kinds:
+		var low: int = SpecialPool._full_ammo(int(entry[0]))
+		check(low < int(entry[1]), "at 0.5 every weapon gets less (%s: %d)"
+			% [str(entry[0]), low])
+		check(low >= 1, "and never nothing (%s: %d)" % [str(entry[0]), low])
+
+	# THE FLOOR, EXERCISED DIRECTLY, because no shipped weapon can reach it: the
+	# smallest magazine in the game is the rocket's two, and 2 x 0.5 rounds to one
+	# exactly. So the guard never fires today and would fire the moment somebody
+	# ships a single-use special -- which is precisely the kind of branch that is
+	# wrong on the day it is needed. A special is DESTROYED the tick its ammo hits
+	# zero, so without this the pickup would vanish as the player touched it.
+	eq(SpecialPool._scaled(1), 1,
+		"a one-use special still arrives with one at half ammo, rather than being "
+		+ "rounded out of existence")
+
+	# THE RANGE IS THE RANGE. Out of bounds CLAMPS for a float knob (it arrives
+	# from a slider and from the network, where the edge is what "as far as it
+	# goes" means), so this is checking the bounds are the ones asked for.
+	DebugSettings.set_value("ammo_multiplier", 99.0)
+	eq(DebugSettings.tuned("ammo_multiplier", 1.0), 4.0, "it clamps at 4x")
+	DebugSettings.set_value("ammo_multiplier", 0.01)
+	eq(DebugSettings.tuned("ammo_multiplier", 1.0), 0.5, "and at 0.5x")
+
+	DebugSettings.set_value("ammo_multiplier", was)
 
 # A KNOB THAT SHADOWS A CONSTANT MUST DEFAULT TO THAT CONSTANT.
 #

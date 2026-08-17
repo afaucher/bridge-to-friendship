@@ -85,7 +85,27 @@ func adopt(id: int, kind: int) -> Node:
 	s.apply_kind_look()
 	return s
 
+# HOW LOADED A SPECIAL ARRIVES. The one place ammo is granted, which is why the
+# multiplier goes here rather than at six constants: a knob applied per-weapon is
+# a knob somebody forgets to apply to the seventh weapon.
 static func _full_ammo(kind: int) -> int:
+	return _scaled(_base_ammo(kind))
+
+# A MULTIPLIER, NOT SIX SLIDERS. What a playtest is answering is "do specials run
+# out too fast", which is one question about the whole economy -- and the RATIO
+# between a rocket's two shots and a machine gun's twenty is a design decision
+# somebody made, not something a playtest should be able to scramble by accident.
+#
+# NEVER BELOW ONE. A special is DESTROYED on the tick its ammo hits zero, so a
+# multiplier that rounded a two-shot rocket to nothing would produce a pickup that
+# vanishes as you touch it -- and the player would report it as the pickup being
+# broken, with no reason to suspect a debug knob.
+static func _scaled(base: int) -> int:
+	if base <= 0:
+		return 0
+	return maxi(1, int(round(float(base) * DebugSettings.tuned("ammo_multiplier", 1.0))))
+
+static func _base_ammo(kind: int) -> int:
 	match kind:
 		SpecialBody.Kind.MACHINE_GUN:
 			return SimConfig.MG_AMMO
