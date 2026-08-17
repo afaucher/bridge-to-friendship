@@ -22,15 +22,15 @@ const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 # Both bodies stand in row 2 -- the first corridor row past the entrance -- and
 # both push EAST. Read off segments/run_maze.seg:
 #
-#   z=2:  X.X.....X.....X
+#   z=2:  ...X...........
 #         0123456789...
 #
-# (7,2) has a WALL at (8,2). (10,2) has open corridor as far as (13,2). One input,
+# (2,2) has a WALL at (3,2). (6,2) has open corridor all the way east. One input,
 # two outcomes, and the difference is the only thing under test.
-const BLOCKED_CELL := Vector2i(7, 2)
-const WALL_CELL := Vector2i(8, 2)
-const OPEN_CELL := Vector2i(10, 2)
-const OPEN_REACH := 12          # two clear cells east of OPEN_CELL
+const BLOCKED_CELL := Vector2i(2, 2)
+const WALL_CELL := Vector2i(3, 2)
+const OPEN_CELL := Vector2i(6, 2)
+const OPEN_REACH := 10          # two clear cells east of OPEN_CELL
 
 # Two seconds at full stick. A body crosses a 2 m cell in about a third of a
 # second, so this is six times what the control needs -- the margin is for the

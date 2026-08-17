@@ -8,7 +8,20 @@
 # rather than perfect -- a single-solution maze read from above is not a puzzle,
 # it is a queue. The loops mean two players can take different routes and still
 # arrive, which is the only version of a maze that suits a co-op game where the
-# camera frames everyone.
+# camera frames everyone. Carved at 14 loops over 80 cells; the first version of
+# this file managed five over seventy and played close to single file.
+#
+# THE OUTER LANES ARE THE BRIDGE'S OWN EDGE (2026-08-17). Corridors sit on EVEN
+# columns, so x = 0 and x = 14 are open deck against the parapet rather than a
+# wall column spent on a boundary the deck already has: `has_wall` railings any
+# solid cell in the outermost column, and WALL_HEIGHT is 2.0, exactly the height
+# a maze wall is. It buys a lane -- eight instead of seven -- and it stops the
+# maze reading as a sealed box, because the outer lanes have the real deck edge
+# beside them and the drop past it, like every other section.
+#
+# That lane was WALKED before this was authored: see test_edge_lane. A parapet is
+# a 0.3 m slab inset at the cell edge and this repo has three notes about
+# flat-bottomed bodies catching on exactly that kind of boundary.
 #
 # WALLS ARE TWO UNITS, AND THAT NUMBER IS A SIGHTLINE (not a climb -- there is no
 # step-up in this game, so ANY height is impassable and one unit would block just
@@ -16,22 +29,20 @@
 # ground behind it, and a cell is 2 m: so two units hides the FLOOR of the cell
 # beyond, and one unit would hide half of it and read as a kerb. A player is 1.8 m
 # though, so heads still clear the wall almost everywhere -- you lose track of
-# what is on the ground, never of where your friends are. That is the trade this
-# height buys, and it is why three units would be wrong: it starts swallowing
-# people.
+# what is on the ground, never of where your friends are.
 #
 # THE `X` GLYPH IS A WALL KIND, not raised deck. They build identically -- see
 # GridConfig.Kind.WALL -- but a wall is NOT SOLID, which is what stops the
-# validator counting all 190 wall tops as marooned deck and rejecting the file.
+# validator counting every wall top as marooned deck and rejecting the file.
 #
-# ONE DOOR EACH END, both at centre. A seven-wide mouth would let the party fan
-# out before the maze had asked them anything; a single opening makes the entrance
-# a place, and puts everyone in the same corridor for the first moment.
+# ONE DOOR EACH END. A full-width mouth would let the party fan out before the
+# maze had asked them anything; a single opening makes the entrance a place, and
+# puts everyone in the same corridor for the first moment.
 #
-# THE DEAD ENDS THAT SURVIVED THE BRAID HOLD THE REWARDS -- a heart near the
-# entrance and three hats deeper in. From above you can SEE them, so a detour is a
-# decision about time rather than a discovery, and that is the only way a dead end
-# earns its place in a maze you can see the whole of.
+# THE DEAD ENDS THAT SURVIVED THE BRAID HOLD THE REWARDS -- hats and one heart.
+# From above you can SEE them, so a detour is a decision about time rather than a
+# discovery, which is the only way a dead end earns its place in a maze you can
+# see the whole of.
 #
 # NOT DRESSED, like every authored segment (BridgeGrid.load_segment_file): worth
 # knowing here specifically, because a hazard budget has no idea what a corridor
@@ -46,64 +57,69 @@ tags = maze, walls, navigation
 
 [deck]
 ...............
-XXXXXXX.XXXXXXX
-X.X.....X.....X
-X.X.X.X.X.XXX.X
-X.X...X.X.....X
-X.X.XXX.X.XXX.X
-X.X.X...X...X.X
-X.X.X.XXXXXXX.X
-X.X.X.......X.X
-X.X.XXXXXXX.X.X
-X...X.....X...X
-X.XXX.XXX.XXX.X
-X.X...........X
-X.X.XXXXXXXXXXX
-X...X...X.....X
-X.XXX.X.XXXXX.X
-X.....X.......X
-XXXXXXXXXXXXX.X
-X...........X.X
-X.X.X.XXXXXXX.X
-X...X.........X
-XXXXXXX.XXXXXXX
+XXXXXXXX.XXXXXX
+...X...........
+XX.X.XXXXXXX.X.
+.X...X.........
+.XXXXX.X.XXX.XX
+.....X.X.....X.
+.XXX.X.XXX.XXX.
+...X.X.....X...
+XXXX.XXXXX.X.X.
+.....X...X.....
+.XXX.X.X.XXX.X.
+.......X.......
+.XXXXXXXXXXXXX.
+.....X.....X...
+XXXX.X.XXX.X.X.
+...X...........
+.X.X.X.X.XXXXX.
+.X.....X...X...
+.X.XXX.XXX.X.X.
+...........X...
+XXXXXX.XXXXXXXX
 ...............
 ...............
 
 [height]
 000000000000000
-222222202222222
-202000002000002
-202020202022202
-202000202000002
-202022202022202
-202020002000202
-202020222222202
-202020000000202
-202022222220202
-200020000020002
-202220222022202
-202000000000002
-202022222222222
-200020002000002
-202220202222202
-200000200000002
-222222222222202
-200000000000202
-202020222222202
-200020000000002
-222222202222222
+222222220222222
+000200000000000
+220202222222020
+020002000000000
+022222020222022
+000002020000020
+022202022202220
+000202000002000
+222202222202020
+000002000200000
+022202020222020
+000000020000000
+022222222222220
+000002000002000
+222202022202020
+000200000000000
+020202020222220
+020000020002000
+020222022202020
+000000000002000
+222222022222222
 000000000000000
 000000000000000
 
 [content]
 ...............
 ...............
-.+.............
+^..............
+...............
++..............
+...............
+..............^
+...............
+..^............
 ...............
 ...............
 ...............
-...........^...
 ...............
 ...............
 ...............
@@ -111,11 +127,6 @@ XXXXXXX.XXXXXXX
 ...............
 ...............
 ...............
-.........^.....
-...............
-...............
-...............
-...........^...
 ...............
 ...............
 ...............

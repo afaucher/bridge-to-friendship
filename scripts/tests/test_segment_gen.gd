@@ -482,12 +482,14 @@ func _check_mazes() -> void:
 		if not has_hat:
 			hatless += 1
 
-		var cols: int = (seg.width - 1) / 2
+		# Corridors on EVEN columns since 2026-08-17, so the outer lanes sit against
+		# the bridge's own parapet instead of an explicit wall column.
+		var cols: int = (seg.width + 1) / 2
 		var rows: int = (seg.length - 4) / 2
 		for j in rows:
 			for i2 in cols:
 				cells += 1
-				var at := Vector2i(1 + 2 * i2, 2 + 2 * j)
+				var at := Vector2i(2 * i2, 2 + 2 * j)
 				if seg.content_at(at.x, at.y) != GridConfig.Content.NONE:
 					rewards += 1
 				# Counted EAST and SOUTH only, so each link is counted once.
@@ -552,10 +554,13 @@ func _check_maze_deepest() -> void:
 	var open_cells: Dictionary = {}
 	var path: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
 		Vector2i(2, 1), Vector2i(2, 2)]
+	# CARVED THROUGH THE REAL HELPER, not through the lattice formula written out
+	# again here. The first version hardcoded it and broke the day corridors moved
+	# from odd columns to even -- a test that restates an implementation detail is
+	# a second copy of it, and the copy is the one that goes stale. What is under
+	# test is the WALK, not the coordinate mapping.
 	for n in range(1, path.size()):
-		var a: Vector2i = path[n - 1]
-		var b: Vector2i = path[n]
-		open_cells[Vector2i(1 + a.x + b.x, 2 + a.y + b.y)] = true
+		open_cells[SegmentGen._maze_between(path[n - 1], path[n])] = true
 
 	var deep: Vector2i = SegmentGen._maze_deepest(open_cells, 3, 3, Vector2i(0, 0))
 	eq(deep, Vector2i(2, 2),

@@ -434,10 +434,27 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 
 # --- The maze section ---------------------------------------------------------
 
-# THE LATTICE. Corridors sit on ODD columns and EVEN rows; everything between
+# THE LATTICE. Corridors sit on EVEN columns and EVEN rows; everything between
 # them starts as wall and gets carved. So the maze's own coordinates (i, j) map
-# to grid cells (1 + 2i, 2 + 2j), and the cell halfway between two neighbours is
-# the wall that separates them -- carving a link is writing one cell.
+# to grid cells (2i, 2 + 2j), and the cell halfway between two neighbours is the
+# wall that separates them -- carving a link is writing one cell.
+#
+# EVEN COLUMNS, WHICH PUTS THE OUTER LANES AGAINST THE BRIDGE'S OWN EDGE (changed
+# 2026-08-17). It was odd columns, spending x = 0 and x = width-1 on explicit WALL
+# blocks -- and the deck already railings itself there: `has_wall` parapets any
+# SOLID cell in the outermost column, and WALL_HEIGHT is 2.0, exactly the height a
+# maze wall is. The boundary was being paid for twice.
+#
+# Worth a lane, and worth more than a lane. At width 15 it is eight corridors
+# instead of seven, and the maze stops being a sealed box: the outer lanes have
+# the real deck edge beside them and the drop past it, which is what every other
+# section looks like from a 45-degree camera.
+#
+# THE LANE IS WALKABLE, AND THAT WAS MEASURED BEFORE THIS CHANGED -- see
+# test_edge_lane. A parapet is a 0.3 m slab inset at the cell edge, and this repo
+# has three separate notes about flat-bottomed bodies catching on exactly that
+# kind of boundary, every one of which presented as "sometimes you just stop". A
+# body walks the outer lane its full length and stays dead on its centre line.
 const MAZE_MIN_ROWS := 7
 const MAZE_MAX_ROWS := 10
 
@@ -470,7 +487,7 @@ const MAZE_DEAD_ENDS := 4
 
 static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
-	var cols: int = (width - 1) / 2
+	var cols: int = (width + 1) / 2
 	# Below three columns it is a corridor with kinks in it, not a maze.
 	if cols < 3:
 		return null
@@ -496,7 +513,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var open_cells: Dictionary = {}
 	for j in rows:
 		for i in cols:
-			open_cells[Vector2i(1 + 2 * i, 2 + 2 * j)] = true
+			open_cells[Vector2i(2 * i, 2 + 2 * j)] = true
 
 	# DEPTH-FIRST CARVE. A spanning tree over the lattice, so every cell is
 	# reachable from every other before a single loop is added -- which is what
@@ -571,8 +588,8 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	# ONE DOOR EACH END. A full-width mouth would let the party fan out before the
 	# maze had asked them anything; a single opening makes the entrance a PLACE,
 	# and puts everybody in the same corridor for the first moment.
-	var in_door: int = 1 + 2 * (_mix(salt + 1811) % cols)
-	var out_door: int = 1 + 2 * (_mix(salt + 3181) % cols)
+	var in_door: int = 2 * (_mix(salt + 1811) % cols)
+	var out_door: int = 2 * (_mix(salt + 3181) % cols)
 	open_cells[Vector2i(in_door, 1)] = true
 	open_cells[Vector2i(out_door, length - 3)] = true
 
@@ -595,7 +612,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 				kept.append(Vector2i(i, j))
 	for n in mini(kept.size(), MAZE_DEAD_ENDS):
 		var at: Vector2i = kept[n]
-		seg.contents[2 + 2 * at.y][1 + 2 * at.x] = \
+		seg.contents[2 + 2 * at.y][2 * at.x] = \
 			GridConfig.Content.HEART if n == 1 else GridConfig.Content.HAT
 
 	# AND IF THE BRAID LEFT NO DEAD END AT ALL, the hat goes at the DEEPEST point
@@ -612,7 +629,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	if kept.is_empty():
 		var deep: Vector2i = _maze_deepest(open_cells, cols, rows,
 			Vector2i((in_door - 1) / 2, 0))
-		seg.contents[2 + 2 * deep.y][1 + 2 * deep.x] = GridConfig.Content.HAT
+		seg.contents[2 + 2 * deep.y][2 * deep.x] = GridConfig.Content.HAT
 	return seg
 
 # The lattice cell furthest from `from` by walking distance. A breadth-first walk
@@ -639,7 +656,7 @@ static func _maze_deepest(open_cells: Dictionary, cols: int, rows: int,
 # The grid cell between two lattice neighbours -- the wall that separates them,
 # and the single cell that carving a link writes.
 static func _maze_between(a: Vector2i, b: Vector2i) -> Vector2i:
-	return Vector2i(1 + a.x + b.x, 2 + a.y + b.y)
+	return Vector2i(a.x + b.x, 2 + a.y + b.y)
 
 # How many of a lattice cell's four walls have been carved.
 static func _maze_degree(open_cells: Dictionary, cell: Vector2i) -> int:
