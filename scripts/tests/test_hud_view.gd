@@ -19,6 +19,7 @@ const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null
@@ -67,6 +68,7 @@ func _physics_process(_delta: float) -> void:
 		0: _phase_built()
 		1: _phase_rescue_bar()
 		2: _phase_roster_shrinks()
+		3: _phase_score_screen()
 
 func _advance(next_phase: int) -> void:
 	phase = next_phase
@@ -197,4 +199,53 @@ func _phase_roster_shrinks() -> void:
 		return
 	eq(hud._friend_rows.size(), 0, "a peer who leaves takes their row with them")
 	check(hud._own_panel.visible, "and the local player still has a HUD")
+	_advance(3)
+
+# --- The round board (M19 phase 3) --------------------------------------------
+#
+# TWO CLAIMS FROM THE ASK, and the second is the one worth a test: the board
+# covers three quarters of the screen, and IT HIDES THE HUD. The first is an
+# anchor and the second is behaviour -- a panel over the middle of the screen
+# with the round headline and the health panel still drawn through it is the
+# thing this replaced, not an improvement on it.
+#
+# NOT A PIXEL IS ASSERTED. The headless viewport is 64x64, so a size in pixels
+# here would be a statement about the harness. Anchors say the same thing at
+# every resolution, which is why the screen is built out of them.
+func _phase_score_screen() -> void:
+	# FRAME 3, like every other phase here: _physics_process returns early below
+	# that, so a setup step on frame 1 never runs at all.
+	if phase_frame == 3:
+		# A BOARD WITH SOMETHING IN IT. The HUD shows the screen exactly when the
+		# model hands it a non-empty board, so this is the real trigger rather
+		# than a flag poked into the view.
+		world.round_machine.state = RoundMachine.State.SCORING
+		world.round_machine.board = world.round_machine.rank(world)
+		return
+	if phase_frame < 6:
+		return
+
+	var screen: Control = hud._score_screen
+	if not check(screen != null, "the HUD builds a score screen"):
+		finish()
+		return
+	check(screen.visible, "which is shown while the board is up")
+
+	# THREE QUARTERS, ON BOTH AXES, BY ANCHOR.
+	var panel: Control = screen._panel
+	near(panel.anchor_right - panel.anchor_left, 0.75, 0.001,
+		"the board covers three quarters of the screen across")
+	near(panel.anchor_bottom - panel.anchor_top, 0.75, 0.001, "and three quarters down")
+	near(panel.anchor_left, panel.anchor_top, 0.001, "centred, so the insets match")
+
+	# AND THE HUD IS OUT OF THE WAY.
+	check(not hud._own_panel.visible, "the own panel hides behind the board")
+	check(not hud._friends_panel.visible, "and so does the roster")
+	check(not hud._round_panel.visible,
+		"and the round headline, which sat exactly where the board now is")
+
+	# THE BOARD REALLY HAS PLAYERS IN IT, or every claim above is about an empty
+	# panel that would satisfy them just as well.
+	check(screen._grid.get_child_count() > 0,
+		"and the grid was populated (%d cells)" % screen._grid.get_child_count())
 	finish()

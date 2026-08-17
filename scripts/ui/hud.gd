@@ -20,6 +20,7 @@ const HudModel = preload("res://scripts/ui/hud_model.gd")
 const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
 const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const ScoreScreen = preload("res://scripts/ui/score_screen.gd")
 
 const COLOR_GRACE := Color(1.00, 0.93, 0.55)
 const COLOR_SLOT_READY := Color(0.88, 0.90, 0.96)
@@ -90,6 +91,10 @@ var _round_panel: VBoxContainer = null
 var _round_label: Label = null
 var _round_clock: Label = null
 var _board_panel: VBoxContainer = null
+# THE ROUND BOARD, which is its own object rather than a bigger _board_panel --
+# see score_screen.gd. _board_panel stays for now and is simply not shown while
+# the screen is up; deleting it is a separate change from adding this.
+var _score_screen: Control = null
 
 var _friends_panel: Control = null
 var _friends_box: VBoxContainer = null
@@ -101,18 +106,40 @@ func _ready() -> void:
 	_build_friends_panel()
 	_build_markers()
 	_build_round_panel()
+	_build_score_screen()
 
 func _process(_delta: float) -> void:
 	var model: Dictionary = HudModel.build(world)
 	var active: bool = bool(model.get("active", false))
-	_own_panel.visible = active
-	_friends_panel.visible = active
 	if not active:
+		_own_panel.visible = false
+		_friends_panel.visible = false
+		_score_screen.visible = false
 		return
 	_update_own(model["own"])
 	_update_friends(model["friends"])
 	_update_markers(model["friends"])
 	_update_round(model.get("round", {}))
+
+	# THE BOARD HIDES THE HUD, and hides it rather than dimming it. A panel that
+	# covers the numbers you are reading is worse than no panel -- the same
+	# instinct that moved the debug console out of the top corner -- and the
+	# scoreboard occupies the middle three quarters of the screen, which is where
+	# the round headline, the clock and the teammate markers all live.
+	#
+	# NOTHING IS DESTROYED, only made invisible: the round is ten seconds long and
+	# the HUD comes straight back.
+	var round_entry: Dictionary = model.get("round", {})
+	var board: Array = round_entry.get("board", [])
+	var showing: bool = not board.is_empty()
+	if showing:
+		_score_screen.refresh(board, int(round_entry.get("index", 0)))
+	_score_screen.visible = showing
+	_own_panel.visible = not showing
+	_friends_panel.visible = not showing
+	_round_panel.visible = not showing
+	if _markers != null:
+		_markers.visible = _markers.visible and not showing
 
 # --- Avatars ------------------------------------------------------------------
 #
@@ -147,6 +174,11 @@ func _set_avatar(face: TextureRect, steam_id: int) -> void:
 	face.visible = texture != null
 
 # --- Offscreen and downed markers ---------------------------------------------
+
+func _build_score_screen() -> void:
+	_score_screen = Control.new()
+	_score_screen.set_script(ScoreScreen)
+	add_child(_score_screen)
 
 func _build_markers() -> void:
 	_markers = Control.new()

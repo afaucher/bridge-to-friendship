@@ -25,6 +25,7 @@ extends RefCounted
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
 
 enum State { LOBBY, RUNNING, CLOSING, SCORING }
 
@@ -153,6 +154,11 @@ func _cross(world) -> void:
 		state = State.RUNNING
 		round_clock = 0.0
 		reached.clear()
+		# ONE DEFINITION OF "THIS ROUND" (M19). Hung off the same line that zeroes
+		# the clock and clears the arrivals rather than given its own trigger: two
+		# resets a tick apart produce a scoreboard covering slightly different
+		# spans, which is not something anybody would catch by looking at it.
+		world.clear_round_stats()
 
 func _begin_scoring(world) -> void:
 	state = State.SCORING
@@ -274,6 +280,35 @@ static func rank_entries(entries: Array) -> Array:
 		return int(a.get("peer", 0)) < int(b.get("peer", 0)))
 	return out
 
+# THE RANK SHOWN, WHICH IS NOT THE ORDER (M19).
+#
+# `rank_entries` returns a TOTAL order and has to: two clients showing the board
+# in a different sequence is a disagreement about the round, which is why it falls
+# back to peer id on equal scores. But that tie-break exists to make the LIST
+# deterministic, not to invent a winner -- and printing "1st" and "2nd" beside two
+# identical rows states something untrue.
+#
+# So the number is a second pass over the already-ordered list: a row scores the
+# same as the row above it, so it gets the same rank. Standard competition
+# numbering, so two joint firsts are followed by THIRD -- the gap is what says the
+# tie happened.
+#
+# Keeping these two apart is the whole trick. Folding ties into the sort would
+# mean a comparator that answers "equal" for two rows, and a sort on equal keys is
+# not promised to be stable across machines.
+static func display_ranks(ordered: Array) -> Array:
+	var out: Array = []
+	for i in ordered.size():
+		if i == 0:
+			out.append(1)
+			continue
+		var here: Dictionary = ordered[i]
+		var above: Dictionary = ordered[i - 1]
+		var same: bool = int(here.get("hats", 0)) == int(above.get("hats", 0)) \
+			and bool(here.get("made_it", false)) == bool(above.get("made_it", false))
+		out.append(int(out[i - 1]) if same else i + 1)
+	return out
+
 func rank(world) -> Array:
 	var entries: Array = []
 	for peer_key in world.players.keys():
@@ -281,10 +316,29 @@ func rank(world) -> Array:
 		entries.append({
 			"peer": peer,
 			"name": world.player_name(peer),
+			"steam_id": int(world.player_steam_id(peer)),
 			"hats": int(world.hats_worn_by(peer).size()),
 			"made_it": bool(reached.get(peer, false)),
+			# THE ROUND'S NUMBERS RIDE THE BOARD. It already goes out reliably on
+			# every state change, so a separate stats RPC would only add a way for
+			# the board and the numbers describing it to arrive out of step.
+			"stats": world.stats_of(peer),
 		})
-	return rank_entries(entries)
+	var ordered: Array = rank_entries(entries)
+	var ranks: Array = display_ranks(ordered)
+	for i in ordered.size():
+		ordered[i]["rank"] = int(ranks[i])
+	# THE BADGES ARE COMPUTED ONCE, ON THE HOST, and shipped. A client working them
+	# out for itself would be deriving them from numbers it was handed anyway, and
+	# any disagreement -- a dropped field, a different registry order after an
+	# upgrade -- would show as two players seeing different awards.
+	var by_peer: Dictionary = {}
+	for entry in ordered:
+		by_peer[int(entry["peer"])] = entry.get("stats", {})
+	var badges: Dictionary = StatRegistry.superlatives(by_peer)
+	for entry in ordered:
+		entry["badges"] = badges.get(int(entry["peer"]), [])
+	return ordered
 
 # --- Where the walls stand ----------------------------------------------------
 

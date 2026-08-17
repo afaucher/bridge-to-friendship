@@ -516,6 +516,114 @@ func _host_tick() -> void:
 	if tick % SimConfig.SNAPSHOT_INTERVAL_TICKS == 0:
 		_broadcast_snapshot()
 
+# --- Round stats (M19) --------------------------------------------------------
+#
+# {peer -> {key -> int}}, HOST ONLY. A client never counts anything: it would be
+# counting what it locally observed, which differs from the host's view of any
+# round where a packet was late, and two players would be reading two different
+# scoreboards. The host counts; the board carries the numbers; everyone reads.
+var round_stats: Dictionary = {}
+
+func _bump(peer: int, key: String, amount: int = 1) -> void:
+	if not is_host or amount == 0 or peer <= 0:
+		return
+	if not round_stats.has(peer):
+		round_stats[peer] = {}
+	var row: Dictionary = round_stats[peer]
+	row[key] = int(row.get(key, 0)) + amount
+
+func stats_of(peer: int) -> Dictionary:
+	return (round_stats.get(peer, {}) as Dictionary).duplicate()
+
+# CLEARED WHERE THE ROUND BEGINS, and nowhere else. RoundMachine._cross already
+# clears `reached` and zeroes the clock on the way into RUNNING; hanging this off
+# the same line means there is one definition of "this round" rather than two that
+# can drift by a tick. A reset at the wrong moment produces a scoreboard covering
+# two rounds, which is not something anybody would catch by looking at it.
+func clear_round_stats() -> void:
+	round_stats.clear()
+
+# ONE PLACE WHERE HARM IS DELIVERED, and the only place that counts it.
+#
+# DELIVERED, NOT INTENDED. A shield refuses a hit outright, cover eats a round,
+# and a body on its last point takes one damage from a five-damage hit -- so the
+# honest measure is health actually removed, which is `before - after` and cannot
+# disagree with what happened. Reading `hit.amount` would have counted the shot a
+# shield ate as full damage dealt.
+#
+# It also answers "was that a kill" for free: the last point is the transition
+# from above zero to zero, measured at the line that caused it.
+#
+# NOT A CHANGE TO `receive_hit`. Widening that from `-> bool` to a damage figure
+# would touch eight implementations and a dozen tests to learn something the
+# health field already knows.
+func _deliver(target, hit) -> bool:
+	if target == null or not target.has_method("receive_hit"):
+		return false
+	var source: int = int(hit.source)
+	var has_health: bool = "health" in target
+	var before: int = int(target.health) if has_health else 0
+	var took: bool = target.receive_hit(hit)
+	if not is_host or source <= 0:
+		return took
+	if took:
+		# A HIT IS COUNTED WHERE IT LANDS, not where it was fired. The round that
+		# cover stopped never reaches here, which is exactly the difference between
+		# an accuracy figure and a trigger-pull figure.
+		_bump(source, "hits")
+	if not has_health:
+		return took
+	var lost: int = maxi(0, before - int(target.health))
+	if lost > 0:
+		# FRIENDLY OR NOT IS DECIDED BY THE TARGET, not by the source. `hit.source`
+		# says whose it was; whether it was a mistake is a question about who
+		# caught it.
+		_bump(source, "friendly_damage" if _is_player(target) else "enemy_damage", lost)
+	if before > 0 and int(target.health) <= 0 and not _is_player(target):
+		_bump(source, "enemy_kills")
+	return took
+
+func _is_player(target) -> bool:
+	return "peer_id" in target and players.has(int(target.peer_id))
+
+# DEATHS, ON THE RISING EDGE OF BEING OUT OF PLAY.
+#
+# Counted here rather than at `begin_downed` because there are several ways to go
+# out -- damage, a fall past FALL_KILL_Y, a hang that expired -- and a counter per
+# cause is a counter somebody forgets to add to the fourth one. An edge detector
+# over "is this player out" catches every route by construction.
+#
+# AN EDGE, NOT A POLL, and the distinction matters: CLAUDE.md's note is that a
+# value destroyed on reaching its terminal state is never observed in it. Being
+# out is not destroyed -- it persists for seconds -- so a rising edge over it is
+# safe where a poll for `health == 0` would miss deaths that pass straight through.
+var _was_out: Dictionary = {}
+var _was_dashing: Dictionary = {}
+
+# Both edge detectors, walked together because they walk the same list.
+#
+# A DASH IS COUNTED ON THE HOST, from the STATE, not at the input that asked for
+# one. `_begin_shove` runs on the client too -- SHOVE is one of the states a
+# client predicts (see the note on client prediction) -- so a counter there would
+# fire on every machine and count a mispredicted dash that the host rewound.
+func _count_edges() -> void:
+	if not is_host:
+		return
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body == null or not is_instance_valid(body):
+			continue
+		var out: bool = _returning.has(peer) or int(body.state) == PlayerBody.State.DOWNED
+		if out and not bool(_was_out.get(peer, false)):
+			_bump(peer, "deaths")
+		_was_out[peer] = out
+
+		var dashing: bool = int(body.state) == PlayerBody.State.SHOVE
+		if dashing and not bool(_was_dashing.get(peer, false)):
+			_bump(peer, "dashes")
+		_was_dashing[peer] = dashing
+
 # --- The run: lookahead, checkpoints, wipes, and the leash --------------------
 
 func _process_run() -> void:
@@ -530,6 +638,7 @@ func _process_run() -> void:
 	_sync_walls()
 	_check_wipe()
 	_apply_leash()
+	_count_edges()
 
 # A state change is rare -- a few times a round -- so it goes out RELIABLY the
 # moment it happens rather than riding the per-tick snapshot. The countdown is
@@ -1894,7 +2003,7 @@ func _process_deployables() -> void:
 		var near: bool = d.wants_proximity_check() 			and _anything_walking_within(d.position, SimConfig.MINE_TRIGGER_RADIUS)
 		if not d.step(near):
 			continue
-		blast_at(d.position, d.blast_radius())
+		blast_at(d.position, d.blast_radius(), Hit.Kind.EXPLOSIVE, int(d.thrower))
 		_deployables.remove_at(i)
 		d.queue_free()
 
@@ -2004,6 +2113,10 @@ func _fire_round(shooter: Node, weapon: Node) -> void:
 # cover, and resolved through the same matrix. `source` of 0 means the world.
 func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 		shooter_rid: RID, as_rocket: bool = false) -> void:
+	# SHOTS FIRED, AT THE LINE A ROUND IS SPAWNED. Every round in the game comes
+	# through here -- the player's machine gun, the rocket, and both gunners' --
+	# so a source of 0 (the world) is filtered by _bump rather than by a branch.
+	_bump(source, "shots_fired")
 	var scene: PackedScene = RocketScene if as_rocket else BulletScene
 	var bullet: Node3D = scene.instantiate()
 	_next_bullet_id += 1
@@ -2102,7 +2215,8 @@ func _process_bullets() -> void:
 				# replicated exactly as a round is; what differs is what happens at
 				# the far end of the raycast.
 				if bool(bullet.explodes):
-					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS)
+					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS,
+						Hit.Kind.EXPLOSIVE, int(bullet.owner_peer))
 				else:
 					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
 						to_local(hit["position"]), bullet.origin, int(bullet.owner_peer))
@@ -2124,7 +2238,11 @@ func bullet_count() -> int:
 #
 # Returns how many things it affected, so a caller can tell whether the charge
 # was worth spending.
-func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) -> int:
+# `source` is whoever set it off, or 0 for the world -- a mound going up under
+# somebody is nobody's doing. Defaulted so every existing caller still compiles,
+# and passed by the ones that know.
+func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE,
+		source: int = 0) -> int:
 	if not is_host:
 		return 0
 	var affected := 0
@@ -2142,8 +2260,8 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE) ->
 
 	for target in _blast_targets(centre, radius):
 		var hit: RefCounted = Hit.make(kind, SimConfig.BLAST_DAMAGE, centre,
-			SimConfig.BLAST_PUSH, SimConfig.BLAST_LIFT)
-		if target.receive_hit(hit):
+			SimConfig.BLAST_PUSH, SimConfig.BLAST_LIFT, maxi(source, 0))
+		if _deliver(target, hit):
 			affected += 1
 
 	# SEEN BY EVERYONE, AND TOLD RATHER THAN INFERRED. A client could almost work
@@ -2247,8 +2365,12 @@ func _resolve_round_hit(target, direction: Vector3, at: Vector3,
 	# arrive from a point 40 cm away: inside SHIELD_MIN_BLOCK_DISTANCE, therefore
 	# unblockable, at every angle, always.
 	var came_from: Vector3 = origin if is_finite(origin.x) else at - direction * SimConfig.MG_RANGE
-	target.receive_hit(Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, came_from,
-		SimConfig.MG_KNOCKBACK, SimConfig.MG_KNOCKBACK_LIFT))
+	# SOURCE, WHICH WAS BEING DROPPED. Hit.make takes it last and defaults it to 0
+	# -- the world -- so every round in the game arrived unattributed even though
+	# `shooter` was sitting right here in the signature. Nothing needed it until
+	# M19 asked who shot whom, which is how a defaulted argument stays wrong.
+	_deliver(target, Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, came_from,
+		SimConfig.MG_KNOCKBACK, SimConfig.MG_KNOCKBACK_LIFT, maxi(shooter, 0)))
 
 # Under the holder's Facing pivot, which player_body already rotates to match
 # `facing` -- so the barrel points where they are aiming and nothing here has to
@@ -2396,6 +2518,19 @@ func _process_rescue() -> void:
 # Is a teammate on their feet, close enough to help? The same question for both
 # rescues, so it is asked in one place.
 func _helper_near(peer: int, body: Node) -> bool:
+	return _helper_peer_near(peer, body) > 0
+
+# WHO is standing with them, not merely WHETHER somebody is -- a rescue has to be
+# credited to a person, and the predicate that already walks the party is the only
+# thing that knows which one. Returns 0 for nobody, so the boolean above is one
+# line and the two answers cannot disagree about the radius.
+#
+# The NEAREST helper, not the first found: with two teammates in range the credit
+# should go to the one who actually came, and `players` iterates in whatever order
+# the dictionary happens to hold -- which is a coin toss dressed as a rule.
+func _helper_peer_near(peer: int, body: Node) -> int:
+	var best: int = 0
+	var best_distance: float = INF
 	for other_key in players.keys():
 		var other: int = int(other_key)
 		if other == peer or _returning.has(other):
@@ -2404,9 +2539,11 @@ func _helper_near(peer: int, body: Node) -> bool:
 		# Someone who is themselves hanging or downed cannot help anyone.
 		if helper.is_awaiting_rescue():
 			continue
-		if helper.position.distance_to(body.position) <= SimConfig.REVIVE_RADIUS:
-			return true
-	return false
+		var distance: float = helper.position.distance_to(body.position)
+		if distance <= SimConfig.REVIVE_RADIUS and distance < best_distance:
+			best_distance = distance
+			best = other
+	return best
 
 # A hanging player is hauled up by a teammate standing at the lip. They still
 # cannot get themselves out -- that is the entire point of the state -- but
@@ -2426,10 +2563,15 @@ func _tick_haul(peer: int, body: Node) -> void:
 
 # A downed player is revived by a teammate STANDING WITH THEM.
 func _tick_revive(peer: int, body: Node) -> void:
-	if _helper_near(peer, body):
+	var helper: int = _helper_peer_near(peer, body)
+	if helper > 0:
 		body.rescue_progress += SimConfig.TICK_DELTA
 		if body.rescue_progress >= SimConfig.REVIVE_SECONDS:
 			body.revive()
+			# ON THE RESCUER, at the line that does it. Counting it where the
+			# downed player is put back would credit the person who was saved.
+			_bump(helper, "rescues")
+			_bump(peer, "rescued")
 			return
 	else:
 		# Reset rather than pause: wandering off and back should not bank credit.
@@ -2723,6 +2865,7 @@ func _process_hearts() -> void:
 		if body.is_awaiting_rescue():
 			continue
 		if grid.try_take_heart(body.position) and body.heal(SimConfig.HEART_HEAL):
+			_bump(int(peer_key), "healed")
 			pass
 
 # Peers ordered so that anything being stood on is stepped before whoever is
