@@ -50,7 +50,11 @@ const WALL_THICKNESS := 0.3
 
 # --- Cell kinds ---------------------------------------------------------------
 
-enum Kind { DECK, HOLE, WATER, RAMP }
+# WALL IS APPENDED, NOT INSERTED. A kind's integer value is what a `.seg` parses
+# into and what every downstream match reads; renumbering DECK or HOLE would
+# reinterpret every cell in the game. Same rule as SetPieces.LIBRARY and
+# SegmentPool.POOL, for the same reason.
+enum Kind { DECK, HOLE, WATER, RAMP, WALL }
 
 # HOLE is `_` and NOT a space. Every text editor on earth strips trailing
 # whitespace, so a row ending in holes would silently lose its tail and the
@@ -62,6 +66,29 @@ const DECK_GLYPHS := {
 	"_": Kind.HOLE,
 	"~": Kind.WATER,
 	"/": Kind.RAMP,
+	# A BLOCK, NOT A FLOOR (2026-08-16). Solid geometry from the floor beside it up
+	# to its own height, that nothing can ever stand on.
+	#
+	# THIS GAME HAD NO WALL PRIMITIVE and a maze is the thing that needs one. The
+	# obvious substitute -- raised DECK -- already looks and collides exactly right,
+	# because `cell_underside` hangs a slab down to its lowest neighbour and there
+	# is no step-up in this game, so a cell one unit up is impassable. What it is
+	# NOT is walkable, and the validator had no way to know that: every wall top is
+	# a solid cell no flood can reach, so `_check_orphans` reports the entire
+	# lattice as "marooned deck" and rejects the segment. The two readings cannot be
+	# told apart geometrically -- a wall top and a shelf you were meant to reach are
+	# the same cell -- so it takes the AUTHOR to say which one it is. That is all
+	# this glyph is: the declaration.
+	#
+	# Being a non-solid kind is what does the work. `is_solid` is false, so the
+	# flood refuses to enter it, the orphan count skips it, parapets skip it,
+	# content on it is an error, and the dressing pass never picks it. Every one of
+	# those is the behaviour a wall wants, and not one of them had to be written.
+	#
+	# `X` rather than `#`, which reads better as a wall and is already PILLAR in the
+	# content grid. Two glyphs that mean different things in two grids is the typo
+	# nobody spots.
+	"X": Kind.WALL,
 }
 
 # --- Cell contents ------------------------------------------------------------

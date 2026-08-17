@@ -1,0 +1,123 @@
+# THE MAZE. A lattice of 2-unit walls with one way in, one way out, and rewards
+# in the dead ends.
+#
+# WHY THIS IS A LEVEL AND NOT A PUZZLE. The camera is fixed top-down at 45
+# degrees, so the whole maze is on screen: nobody is DISCOVERING the route, they
+# are choosing one and executing it while the party spreads out. That is the
+# opposite of what a maze usually is, and it is the reason this one is braided
+# rather than perfect -- a single-solution maze read from above is not a puzzle,
+# it is a queue. The loops mean two players can take different routes and still
+# arrive, which is the only version of a maze that suits a co-op game where the
+# camera frames everyone.
+#
+# WALLS ARE TWO UNITS, AND THAT NUMBER IS A SIGHTLINE (not a climb -- there is no
+# step-up in this game, so ANY height is impassable and one unit would block just
+# as well). At a 45-degree pitch a wall of height h hides exactly h metres of
+# ground behind it, and a cell is 2 m: so two units hides the FLOOR of the cell
+# beyond, and one unit would hide half of it and read as a kerb. A player is 1.8 m
+# though, so heads still clear the wall almost everywhere -- you lose track of
+# what is on the ground, never of where your friends are. That is the trade this
+# height buys, and it is why three units would be wrong: it starts swallowing
+# people.
+#
+# THE `X` GLYPH IS A WALL KIND, not raised deck. They build identically -- see
+# GridConfig.Kind.WALL -- but a wall is NOT SOLID, which is what stops the
+# validator counting all 190 wall tops as marooned deck and rejecting the file.
+#
+# ONE DOOR EACH END, both at centre. A seven-wide mouth would let the party fan
+# out before the maze had asked them anything; a single opening makes the entrance
+# a place, and puts everyone in the same corridor for the first moment.
+#
+# THE DEAD ENDS THAT SURVIVED THE BRAID HOLD THE REWARDS -- a heart near the
+# entrance and three hats deeper in. From above you can SEE them, so a detour is a
+# decision about time rather than a discovery, and that is the only way a dead end
+# earns its place in a maze you can see the whole of.
+#
+# NOT DRESSED, like every authored segment (BridgeGrid.load_segment_file): worth
+# knowing here specifically, because a hazard budget has no idea what a corridor
+# is and the reachability flood cannot see content -- a spiked maze would still
+# validate as crossable.
+
+name = run_maze
+base_height = 0
+width = 15
+length = 24
+tags = maze, walls, navigation
+
+[deck]
+...............
+XXXXXXX.XXXXXXX
+X.X.....X.....X
+X.X.X.X.X.XXX.X
+X.X...X.X.....X
+X.X.XXX.X.XXX.X
+X.X.X...X...X.X
+X.X.X.XXXXXXX.X
+X.X.X.......X.X
+X.X.XXXXXXX.X.X
+X...X.....X...X
+X.XXX.XXX.XXX.X
+X.X...........X
+X.X.XXXXXXXXXXX
+X...X...X.....X
+X.XXX.X.XXXXX.X
+X.....X.......X
+XXXXXXXXXXXXX.X
+X...........X.X
+X.X.X.XXXXXXX.X
+X...X.........X
+XXXXXXX.XXXXXXX
+...............
+...............
+
+[height]
+000000000000000
+222222202222222
+202000002000002
+202020202022202
+202000202000002
+202022202022202
+202020002000202
+202020222222202
+202020000000202
+202022222220202
+200020000020002
+202220222022202
+202000000000002
+202022222222222
+200020002000002
+202220202222202
+200000200000002
+222222222222202
+200000000000202
+202020222222202
+200020000000002
+222222202222222
+000000000000000
+000000000000000
+
+[content]
+...............
+...............
+.+.............
+...............
+...............
+...............
+...........^...
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+.........^.....
+...............
+...............
+...............
+...........^...
+...............
+...............
+...............
+...............
+...............

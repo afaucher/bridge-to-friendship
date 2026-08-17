@@ -125,7 +125,8 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 		# Meshes: one per cell, so the checkerboard exists.
 		for cx in width:
 			var kind2: int = seg.kind_at(cx, z)
-			if kind2 != GridConfig.Kind.DECK and kind2 != GridConfig.Kind.WATER:
+			if kind2 != GridConfig.Kind.DECK and kind2 != GridConfig.Kind.WATER \
+					and kind2 != GridConfig.Kind.WALL:
 				continue
 			# Collected for the grid to build as its own body-and-mesh pair. Skipped
 			# here so the checker square does not outlive the slab under it.
@@ -148,7 +149,12 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 			)
 			var lit: bool = (cx + z + z_offset) % 2 == 0
 			var material: StandardMaterial3D
-			if kind2 == GridConfig.Kind.WATER:
+			if kind2 == GridConfig.Kind.WALL:
+				# The parapet's colour, deliberately: a parapet and a maze wall are
+				# the same statement -- structure you do not cross -- and giving them
+				# one colour is what makes that readable without a legend.
+				material = palette["wall"]
+			elif kind2 == GridConfig.Kind.WATER:
 				material = palette["water"]
 			elif seg.content_at(cx, z) == GridConfig.Content.GATE:
 				# The round boundary. Same parity, different palette -- see
@@ -184,7 +190,16 @@ static func _merge_deck_collision(seg, z_offset: int, h_offset: int,
 			if covered.has(Vector2i(x, z)):
 				continue
 			var kind: int = seg.kind_at(x, z)
-			if kind != GridConfig.Kind.DECK and kind != GridConfig.Kind.WATER:
+			# WALL BUILDS EXACTLY LIKE RAISED DECK, and that is the entire
+			# implementation. `cell_underside` already hangs a cell's box down to its
+			# lowest solid neighbour, so a WALL at height 2 beside a floor at 0 comes
+			# out as a box from y 0 to y 2 -- a block standing on the corridor floor.
+			# Nothing here needed to learn what a wall is.
+			#
+			# It cannot merge with the deck around it in any case: the merge key is
+			# (kind, height, underside) and a wall differs on all three.
+			if kind != GridConfig.Kind.DECK and kind != GridConfig.Kind.WATER \
+					and kind != GridConfig.Kind.WALL:
 				continue
 			if is_mutable(seg, x, z):
 				continue

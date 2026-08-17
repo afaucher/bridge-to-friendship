@@ -56,6 +56,15 @@ const POOL := [
 		"difficulty": 2,
 		"tags": ["plinko", "pillars"],
 	},
+	# THE ONE SECTION WITH NO HAZARD IN IT AT ALL, and that is what it is for. Every
+	# other thing in the pool asks the party to survive something; this one asks
+	# them to agree on a route while spread out where they cannot help each other.
+	# Difficulty 1 as a threat and not at all easy as a section.
+	{
+		"path": "res://segments/run_maze.seg",
+		"difficulty": 1,
+		"tags": ["maze", "walls", "navigation"],
+	},
 ]
 
 # A small deterministic generator. Deliberately NOT the global RNG -- see above.
