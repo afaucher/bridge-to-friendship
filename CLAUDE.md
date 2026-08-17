@@ -263,6 +263,31 @@ the moment it is written.
   an exposed edge. **Ray at FOOT height when a walk stops for no reason** -- the
   chest-height ray said "nothing there" and was the reason two rounds went
   looking for the wrong collider.
+- **A CONVEX HULL AND A CYLINDER STOP AGREEING FAR FROM THE ORIGIN, and the
+  disagreement is METRES wide.** Observed 2026-08-16 from a playtest report of
+  "rubber-banding on ramps, even in solo". Ramp wedges were
+  `ConvexPolygonShape3D` from `create_convex_shape()`, the player is a
+  `CylinderShape3D`, and Godot solves that pair in WORLD space. At 160 m up the
+  bridge the solver returned bogus manifolds -- normals anchored at the wedge's
+  far vertices, reporting **4.47 m of penetration** against a 0.8 m-wide body --
+  and `move_and_slide` dutifully depenetrated along them, throwing the body
+  **3.86 m in ONE TICK** (a walking step is 0.108 m) and back again the next.
+  **The tell that it is not movement code: `velocity` sat at a constant
+  `(0,0,-6)` and `grounded` stayed true throughout**, so the displacement was 25x
+  `velocity * delta`. When a body moves far further than its velocity allows it
+  is being EJECTED, not driven -- read `get_slide_collision().get_depth()` before
+  touching anything in `player_body.gd`. A 2x2x2 (origin/160 m x
+  cylinder/capsule x convex/trimesh) put the fault in exactly one cell: only
+  cylinder-vs-convex-far fails, and EITHER swap fixes it. Ramps now use
+  `create_trimesh_shape()`, a static ramp having no need of a convex shape.
+  Two further lessons came out of it. **It scales with distance, so solo's
+  endless assembled run makes it worse the longer you play** -- which reads as
+  degradation over time and is why the first report blamed the netcode; a
+  near-origin fixture like `test_ascent.seg` shows the same bug as a harmless
+  3 cm hitch. **So measure geometry FAR FROM THE ORIGIN**, at the distances the
+  assembled run really reaches, or the fixture is the thing that is wrong. And
+  `test_ramp_traversal` was green for the whole life of the bug because it
+  asserts once at tick 220 -- the twin of the one-frame-sample note above.
 - **A DISTANCE ASSERTION HAS NO OPINION ABOUT DIRECTION, and this project has now
   shipped three sign errors.** Observed 2026-08-14: the grenade throw built its
   own forward vector as `Vector3(sin(f), 0, cos(f))`, which is the exact NEGATION

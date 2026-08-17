@@ -390,7 +390,7 @@ static func _build_ramps(seg, z_offset: int, h_offset: int, body: StaticBody3D, 
 			var col := CollisionShape3D.new()
 			# The shape is derived FROM the mesh, so the thing you walk on and
 			# the thing you see cannot disagree.
-			col.shape = mesh_res.create_convex_shape()
+			col.shape = mesh_res.create_trimesh_shape()
 			col.transform = xform
 			body.add_child(col)
 

@@ -113,10 +113,16 @@ func _test_wide_ramp_has_no_seam() -> void:
 	check(ramp_cells >= 4, "the playtest map has a multi-cell ramp to check (%d cells)" % ramp_cells)
 
 	var structure: Node = built.root.get_node("Structure")
+	# Count by "not a box" rather than by a specific shape CLASS. Everything else
+	# the builder emits -- deck, skirts, walls -- is a BoxShape3D, and the wedge
+	# has already changed class once (convex hull -> trimesh, 2026-08-16). A test
+	# that names the class goes quietly to zero on the day it changes, and
+	# `0 < ramp_cells` passes just as well as the real answer does.
 	var wedges := 0
 	for child in structure.get_children():
-		if child is CollisionShape3D and child.shape is ConvexPolygonShape3D:
+		if child is CollisionShape3D and not (child.shape is BoxShape3D):
 			wedges += 1
+	check(wedges >= 1, "the ramp emitted a wedge collider at all (%d)" % wedges)
 	# One wedge per contiguous BLOCK of ramp, not per cell and not per column.
 	check(wedges < ramp_cells,
 		"a wide ramp merges into fewer wedges than it has cells (%d wedges, %d cells)"
