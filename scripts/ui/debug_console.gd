@@ -49,8 +49,24 @@ func toggle() -> void:
 
 func _build() -> void:
 	_panel = PanelContainer.new()
-	_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_panel.position = Vector2(24, 24)
+	# BOTTOM LEFT, OUT OF THE HUD'S WAY (2026-08-16). The panel was pinned to the
+	# top corner, which is where the round state, the clock and the score all live
+	# -- so opening the console hid the things a playtester has the console open to
+	# watch. The bottom corner is the emptiest part of the screen: the camera looks
+	# down the bridge, so the near edge of the deck is what is under there.
+	#
+	# ANCHORED, NOT POSITIONED. `position` is a pixel offset from the parent's top
+	# left and would leave the panel wherever the window last happened to be that
+	# size; anchoring to the bottom keeps it in the corner through a resize, which
+	# matters because this is a floating layer over a game that changes resolution.
+	# GROW_DIRECTION_BEGIN is the half that is easy to miss -- without it a panel
+	# that grows as knobs are added grows DOWNWARD off the bottom of the screen,
+	# and the registry is designed to be appended to.
+	_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	_panel.offset_left = 24
+	_panel.offset_bottom = -24
 	_panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = COLOR_PANEL

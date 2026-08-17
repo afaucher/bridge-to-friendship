@@ -33,6 +33,7 @@ var c: CharacterBody3D = null
 var frames: int = 0
 var reported: bool = false
 var dropped: bool = false
+var hurt: bool = false
 
 func setup(main) -> void:
 	timeout_seconds = 90.0
@@ -86,6 +87,21 @@ func _physics_process(_delta: float) -> void:
 		_park(a, 5, machine().target_row)
 		return
 
+	# HURT EVERYBODY BEFORE THE ROUND ENDS, so "full health in the lobby" is a
+	# claim with something to prove -- a rig that never takes damage cannot tell a
+	# heal from a body that was never hit. A is the one who REACHES the strip,
+	# which is the case that used to keep its damage: the straggler loop skips
+	# anybody who made it.
+	#
+	# IN CLOSING, NOT RUNNING: the RUNNING branch below parks A on the strip and
+	# RETURNS, so a block after it never runs -- which is how the first version of
+	# this managed to assert on a party that had never been hit.
+	if machine().state == RoundMachine.State.CLOSING and not hurt:
+		hurt = true
+		a.health = 2
+		b.health = 2
+		c.health = 2
+
 	if machine().state == RoundMachine.State.CLOSING:
 		# THE STATE A REAL STRAGGLER IS IN. Standing on the deck was the first
 		# version of this and it lands fine -- the reported case is somebody who
@@ -130,4 +146,25 @@ func _physics_process(_delta: float) -> void:
 			"a straggler is STANDING in the lobby, not hanging off the side of it")
 		check(grid.is_solid(grid.cell_of_world(body.position)),
 			"on solid deck (cell %s)" % grid.cell_of_world(body.position))
+
+	# FULL HEALTH, BY EVERY ROUTE INTO THE LOBBY, AND AT THE MOMENT THE ROUND ENDS.
+	#
+	# All three were on 2 when the round closed. The four ways in used to give four
+	# answers -- keep your damage if you reached the strip, one hit point if you
+	# were a straggler, full from a wipe, and everybody topped up ten seconds later
+	# when the lobby state opened. The cost of a lost round is the GROUND, which the
+	# return already takes back.
+	#
+	# ASSERTED DURING SCORING ON PURPOSE. The board is up and the party is already
+	# standing in the lobby; waiting for the LOBBY state would pass against the old
+	# build, because `_restock_lobby` healed them then and always did.
+	check(hurt, "the rig really damaged the party first")
+	eq(a.health, SimConfig.MAX_HEALTH,
+		"the player who REACHED the strip is on full health in the lobby -- the "
+		+ "straggler loop skips anyone who made it, so this is the route that used "
+		+ "to arrive still hurt")
+	for peer in [PEER_B, PEER_C]:
+		eq(world.player_body(peer).health, SimConfig.MAX_HEALTH,
+			"and so is a straggler, rather than the single hit point REVIVE_HEALTH "
+			+ "used to give them")
 	finish()

@@ -592,8 +592,23 @@ func _settle_round_transition() -> void:
 		if body == null or not is_instance_valid(body):
 			continue
 		_returning.erase(peer)
-		body.respawn_at(_lobby_point(lane), maxi(body.health, SimConfig.REVIVE_HEALTH))
+		# FULL, NOT REVIVE_HEALTH. It was `maxi(health, REVIVE_HEALTH)`, which put a
+		# straggler in the lobby on one hit point.
+		#
+		# STRICTLY REDUNDANT with the `_restock_lobby()` below, and A/B'd to confirm
+		# that -- reverting this line alone leaves the test green. It is written out
+		# anyway because `respawn_at` has to be handed a number, and leaving
+		# REVIVE_HEALTH there would state a rule the next line contradicts. The one
+		# that does the work is below.
+		body.respawn_at(_lobby_point(lane), SimConfig.MAX_HEALTH)
 		lane += 1
+
+	# AND EVERYONE ELSE, INCLUDING THE PEOPLE WHO WON. The loop above only touches
+	# players who did NOT reach the strip, so a party that finished a hard section
+	# stood on the board at whatever health it cost them and was healed ten seconds
+	# later when the lobby state opened. Same rule for everybody, applied at the
+	# moment the round ends rather than at the end of the scoreboard.
+	_restock_lobby()
 
 # The bridge is endless; it is just built lazily. Keep a couple of segments ahead
 # of whoever is furthest up, and tell clients so they build the same thing.
@@ -2508,6 +2523,20 @@ func _drone_drop_point(peer: int) -> Vector3:
 # each lobby in a run is a new segment with its own. There is deliberately no
 # "refill the pickups" pass: a pickup that respawns under you is a pickup you
 # cannot spend, and the one-slot rule is the whole economy.
+# REACHING THE LOBBY IS FULL HEALTH, IN EVERY CASE AND BY EVERY ROUTE.
+#
+# Called both when the round ENDS (the board goes up, and the party is already
+# standing in the lobby by then) and when the lobby state opens ten seconds later.
+# Idempotent, so being called twice is free -- and being called at both is what
+# makes the rule true of the scoreboard as well as of the lobby proper.
+#
+# The four ways into a lobby used to give four different answers: you kept your
+# damage if you reached the strip, you got one hit point if you were a straggler,
+# you got full health from a wipe, and everybody got topped up when the state
+# finally changed. The cost of losing a round is the GROUND, which the return
+# already takes back; carrying a health debt past the boundary on top of that
+# makes the next round harder because the last one went badly, which is the wrong
+# way round.
 func _restock_lobby() -> void:
 	for peer_key in players.keys():
 		var body: Node = players[int(peer_key)]
