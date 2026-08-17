@@ -113,7 +113,7 @@ func _rebuild(board: Array, round_index: int) -> void:
 		for entry in board:
 			var stats: Dictionary = entry.get("stats", {})
 			var value: int = int(stats.get(key, 0))
-			var text: String = str(value)
+			var text: String = StatRegistry.format_value(key, value)
 			# THE HIT COUNT CARRIES ITS RATE. Two numbers that only mean anything
 			# together, so they are one cell rather than two rows apart.
 			var over: String = StatRegistry.percent_of(key)
@@ -173,7 +173,12 @@ func _badge_column(badges: Array) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	for badge in badges:
-		var text: String = StatRegistry.label_of(str(badge.get("key", "")))
+		var key: String = str(badge.get("key", ""))
+		# THE NUMBER WITH THE LABEL. "Furthest travelled" is a claim; "furthest
+		# travelled, 340 m" is a claim somebody can argue with, which is the point
+		# of putting it on a screen four people are looking at.
+		var text: String = "%s  %s" % [StatRegistry.label_of(key),
+			StatRegistry.format_value(key, int(badge.get("value", 0)))]
 		# SAY IT WAS SHARED. "Most kills" and "most kills, tied" are different
 		# claims, and the badge already carries which one it is.
 		if int(badge.get("tie", 1)) > 1:

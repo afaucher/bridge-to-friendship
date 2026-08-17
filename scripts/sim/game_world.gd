@@ -596,7 +596,14 @@ func _deliver(target, hit) -> bool:
 		# the health off a loose hat scored as damage to the opposition. There are
 		# three answers here, not two, and the third is "that was scenery".
 		if _is_player(target):
-			_bump(source, "friendly_damage", lost)
+			# YOUR OWN GRENADE IS NOT FRIENDLY FIRE. Both are "you hurt a player",
+			# and they are completely different stories -- one is a mistake that
+			# cost somebody else, the other is a mistake that only cost you. Split
+			# here because `_deliver` is the only place that has both ends of it.
+			if int(target.peer_id) == source:
+				_bump(source, "self_damage", lost)
+			else:
+				_bump(source, "friendly_damage", lost)
 		elif _is_enemy(target):
 			_bump(source, "enemy_damage", lost)
 	# AND A KILL IS AN ENEMY, not merely a thing that ran out of health. Same fault
@@ -627,6 +634,22 @@ func _is_enemy(target) -> bool:
 # safe where a poll for `health == 0` would miss deaths that pass straight through.
 var _was_out: Dictionary = {}
 var _was_dashing: Dictionary = {}
+var _last_at: Dictionary = {}
+
+# A SINGLE TICK OF REAL MOVEMENT CANNOT BE THIS FAR, so anything longer was a
+# TELEPORT and is not distance travelled.
+#
+# This is the whole difficulty in measuring distance, and without it the number
+# measures the wrong thing spectacularly: a wipe returns the party to the lobby,
+# which is hundreds of metres backwards in one frame, and the leash MOVES a
+# straggler outright. A player who died twice would "walk" further than one who
+# played the whole round, and the badge would go to whoever failed most.
+#
+# The bound is set from the fastest thing a body can legitimately do: SHOVE_SPEED
+# is 56 m/s, which is 0.93 m in a 60 Hz tick. Two metres is a wide margin over
+# that and still an order of magnitude under any teleport in the game -- the
+# nearest is a lobby return, and no round is two metres long.
+const TELEPORT_TICK_DISTANCE := 2.0
 
 # Both edge detectors, walked together because they walk the same list.
 #
@@ -651,6 +674,25 @@ func _count_edges() -> void:
 		if dashing and not bool(_was_dashing.get(peer, false)):
 			_bump(peer, "dashes")
 		_was_dashing[peer] = dashing
+
+		# TIME ALIVE, IN TICKS, and only while the round is actually running --
+		# otherwise it counts the lobby, and the badge goes to whoever stood
+		# around longest between rounds.
+		var running: bool = round_machine.state == RoundMachine.State.RUNNING
+		if running and not out:
+			_bump(peer, "time_alive")
+
+		# DISTANCE, FLAT AND IN CENTIMETRES. Flattened because falling is not
+		# travelling: without it a player who goes off the bridge racks up metres
+		# on the way down, which is the opposite of what the number should say.
+		var here: Vector3 = body.global_position
+		if running and not out and _last_at.has(peer):
+			var step: Vector3 = here - Vector3(_last_at[peer])
+			step.y = 0.0
+			var moved: float = step.length()
+			if moved < TELEPORT_TICK_DISTANCE:
+				_bump(peer, "distance", int(round(moved * 100.0)))
+		_last_at[peer] = here
 
 # --- The run: lookahead, checkpoints, wipes, and the leash --------------------
 
@@ -1655,6 +1697,12 @@ func destroy_worn_hats(peer: int) -> void:
 	for hat in _hats.worn_by(peer):
 		ids.append(hat.hat_id)
 		_hats.destroy(hat)
+	# LOST IS LOST, however it happened. This path is the fall and the drone -- the
+	# tower is DESTROYED rather than dropped, per the rule above -- and the other
+	# path is being shot off. Counted at both rather than at some later "how many
+	# do they have now", because a count of what remains cannot tell a hat that was
+	# lost from one that was never picked up.
+	_bump(peer, "hats_lost", ids.size())
 	_forget_hat_if_bare(peer)
 	if networked and ids.size() > 0:
 		_hats_destroyed.rpc(ids)
@@ -1703,6 +1751,9 @@ func knock_off_hat_stack_from(hat: Node, from_point: Vector3) -> void:
 			away * SimConfig.HAT_SCATTER_SPEED * spread
 			+ Vector3(0.0, SimConfig.HAT_SCATTER_LIFT, 0.0))
 		ids.append(going.hat_id)
+	# THE OTHER WAY TO LOSE A TOWER. Shot off rather than destroyed, and the count
+	# is the same fact about the same player.
+	_bump(peer, "hats_lost", ids.size())
 	_forget_hat_if_bare(peer)
 	if networked:
 		_hats_released.rpc(ids)

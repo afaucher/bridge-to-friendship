@@ -17,6 +17,8 @@ extends RefCounted
 # WHICH END IS GOOD. Not decoration: it is what decides whether a zero is a
 # non-result ("most dashes: 0" is nothing) or the best score available ("fewest
 # deaths: 0" is the thing worth saying).
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
+
 const MOST := 0
 const LEAST := 1
 
@@ -75,6 +77,23 @@ const STATS := {
 	"dashes": {"label": "Most dashes", "best": MOST},
 	"healed": {"label": "Most health picked up", "best": MOST},
 	"rescued": {"label": "Most often rescued", "best": MOST},
+	"self_damage": {"label": "Most self-inflicted", "best": MOST},
+	"hats_lost": {"label": "Most hats lost", "best": MOST},
+	# STORED AS TICKS, SHOWN AS TIME. The table is ints throughout -- one type on
+	# the wire, one type in the comparison -- so a duration is counted in the unit
+	# the simulation actually has and converted at the last moment.
+	#
+	# WORTH KNOWING WHAT THIS BADGE DOES. If nobody dies, everybody ties at the
+	# full round and the party-wide rule drops it, which is right. If one of four
+	# dies, the other THREE tie at the maximum and all three get the badge -- a
+	# superlative three quarters of the party holds. It is the honest consequence
+	# of "most" on a stat with a ceiling everybody reaches; inverting it to time
+	# spent DOWN, with LEAST best, would name the same fact about one person
+	# instead. One line either way if it reads badly in play.
+	"time_alive": {"label": "Longest alive", "best": MOST, "format": "seconds"},
+	# STORED IN CENTIMETRES for the same reason -- and see _count_edges for the
+	# teleport guard, which is the whole difficulty in this one.
+	"distance": {"label": "Furthest travelled", "best": MOST, "format": "metres"},
 }
 
 static func keys() -> Array:
@@ -192,3 +211,15 @@ static func percent_text(hits: int, shots: int) -> String:
 	if shots <= 0:
 		return "--"
 	return "%d%%" % int(round(100.0 * float(hits) / float(shots)))
+
+# COUNTED IN ONE UNIT, SHOWN IN ANOTHER. Everything in the table is an int, which
+# keeps the wire and the comparisons a single type; a duration is therefore ticks
+# and a distance is centimetres, and this is the only place that knows.
+static func format_value(key: String, value: int) -> String:
+	match str(STATS.get(key, {}).get("format", "count")):
+		"seconds":
+			var total: int = int(round(float(value) * SimConfig.TICK_DELTA))
+			return "%d:%02d" % [total / 60, total % 60]
+		"metres":
+			return "%.0f m" % (float(value) / 100.0)
+	return str(value)

@@ -55,6 +55,8 @@ func _physics_process(_delta: float) -> void:
 	_test_friendly_versus_enemy()
 	_test_a_blocked_hit_delivers_nothing()
 	_test_scenery_is_not_a_hit()
+	_test_your_own_grenade()
+	_test_distance_ignores_teleports()
 	_test_the_reset()
 	finish()
 
@@ -152,6 +154,50 @@ func _test_scenery_is_not_a_hit() -> void:
 		"and destroying it is not a KILL, which is the loudest version of the same "
 		+ "fault: 'friendly if a player, enemy otherwise' has three answers, and "
 		+ "the third is 'that was scenery'")
+
+# --- Your own grenade is not friendly fire --------------------------------------
+#
+# Both are "a player hurt a player" and they are completely different stories: one
+# is a mistake that cost somebody else, the other is a mistake that only cost you.
+# The split matters most for the badge, because "most friendly fire" is the funniest
+# thing on the board and it should not be won by somebody who only ever blew
+# themselves up.
+func _test_your_own_grenade() -> void:
+	world.clear_round_stats()
+	shooter.health = SimConfig.MAX_HEALTH
+	shooter.invulnerable = 0.0
+	world._deliver(shooter, Hit.make(Hit.Kind.EXPLOSIVE, 2,
+		shooter.global_position + Vector3(1.0, 0.0, 0.0), 0.0, 0.0, SHOOTER))
+
+	eq(_stat(SHOOTER, "self_damage"), 2, "hurting yourself is SELF damage")
+	eq(_stat(SHOOTER, "friendly_damage"), 0,
+		"and is not friendly fire, which is a claim about hurting somebody ELSE")
+
+# --- Distance is travelled, not teleported --------------------------------------
+#
+# THE GUARD IS THE WHOLE FEATURE. Without it the number measures the opposite of
+# what it says: a wipe returns the party hundreds of metres backwards in one
+# frame, and the leash MOVES a straggler outright -- so a player who died twice
+# would out-"walk" one who played the whole round, and the badge would go to
+# whoever failed most.
+#
+# Asserted against the constant rather than against a distance, because what is
+# under test is the RULE: one tick's step is either plausible movement or it is a
+# teleport, and the threshold is the only thing that decides.
+func _test_distance_ignores_teleports() -> void:
+	var cap: float = float(GameWorldScript.TELEPORT_TICK_DISTANCE)
+	check(cap > SimConfig.SHOVE_SPEED * SimConfig.TICK_DELTA,
+		"the teleport threshold (%.2f m) is above the furthest a body can move in "
+			% cap
+		+ "one tick under its own power -- a dash is %.2f m, and a bound below "
+			% (SimConfig.SHOVE_SPEED * SimConfig.TICK_DELTA)
+		+ "that would silently stop counting the fastest thing in the game")
+	# AND FAR BELOW ANY REAL TELEPORT. A lobby return is the shortest one in the
+	# game and it crosses a whole round of bridge.
+	check(cap < 10.0,
+		"and far under any teleport in the game (%.2f m) -- the nearest is a lobby "
+			% cap
+		+ "return, and no round is ten metres long")
 
 # --- One round, one scoreboard --------------------------------------------------
 
