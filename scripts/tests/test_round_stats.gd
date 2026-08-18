@@ -82,14 +82,29 @@ func _test_zero_is_not_an_achievement() -> void:
 		"nobody gets 'most dashes: 0' -- a win on the default value is not a win")
 
 func _test_fewest_is() -> void:
-	# THE EXCEPTION, and the reason `best` exists at all. Zero deaths is the best
-	# score in the game, so the default-value rule must not eat it.
+	# DEATHS NEVER BADGES, EVEN AT ITS BEST VALUE -- because it is one of the seven
+	# common stats and already has a pinned row on the board. A badge under a
+	# COMMON column that already says who won it is the repeat this rule exists to
+	# refuse. Checked at the value that used to earn it one (zero, the best a LEAST
+	# stat can score) so this is a real test of the exclusion and not a case that
+	# happened not to trigger it.
 	var table := {1: {"deaths": 0}, 2: {"deaths": 2}, 3: {"deaths": 3}}
 	var out: Dictionary = StatRegistry.superlatives(table)
-	check(_keys_for(out, 1).has("deaths"),
-		"fewest deaths at ZERO is a badge: the default-value rule is about MOST, "
-		+ "and for LEAST the default is the best score available")
-	check(not _keys_for(out, 3).has("deaths"), "and the most deaths is not one")
+	check(not _keys_for(out, 1).has("deaths"),
+		"fewest deaths at ZERO is still not a badge -- it is a common stat, and "
+		+ "the common block on screen already says who has the fewest")
+	check(not _keys_for(out, 3).has("deaths"), "and the most deaths never was one")
+
+	# THE ARITHMETIC ITSELF, checked directly rather than through superlatives.
+	# `deaths` is the ONLY least-direction stat in the registry, and it is common,
+	# so the LEAST branch inside superlatives has no live path to it today -- any
+	# future least-direction badge stat exercises the same best_of/default_of pair
+	# this pins. Same shape as _maze_deepest: insurance for a branch nothing
+	# currently reaches, unit-tested directly so it is not untested.
+	eq(StatRegistry.best_of("deaths"), StatRegistry.LEAST,
+		"deaths is scored LEAST-is-best")
+	eq(StatRegistry.default_of("deaths"), 0,
+		"and its default is zero, which IS the best score a LEAST stat can have")
 
 func _test_party_wide_is_nothing() -> void:
 	var table := {
@@ -125,12 +140,15 @@ func _test_two_players_have_no_ties() -> void:
 
 func _test_rarest_first_and_capped() -> void:
 	# THREE PLAYERS, so a two-way tie is a real tie rather than the whole party.
-	# Peer 1 wins four things: two outright, two shared with peer 2. The cap is
-	# three and the outright wins must survive it.
+	# Every stat here is non-common on purpose: rescues, shots_fired and deaths
+	# were doing this job until the common-exclusion made them ineligible, which is
+	# what _test_fewest_is now covers. Peer 1 wins four badge-eligible things --
+	# three outright, one shared with peer 2 -- and the cap is three, so the
+	# outright wins have to survive it.
 	var table := {
-		1: {"dashes": 9, "healed": 9, "rescues": 5, "shots_fired": 5, "deaths": 4},
-		2: {"dashes": 1, "healed": 1, "rescues": 5, "shots_fired": 5, "deaths": 0},
-		3: {"dashes": 0, "healed": 0, "rescues": 0, "shots_fired": 0, "deaths": 2},
+		1: {"dashes": 9, "healed": 9, "hats_worn": 9, "boosts": 5, "self_damage": 0},
+		2: {"dashes": 1, "healed": 1, "hats_worn": 1, "boosts": 5, "self_damage": 9},
+		3: {"dashes": 0, "healed": 0, "hats_worn": 0, "boosts": 0, "self_damage": 0},
 	}
 	var out: Dictionary = StatRegistry.superlatives(table)
 	var badges: Array = out[1]
@@ -141,10 +159,11 @@ func _test_rarest_first_and_capped() -> void:
 	for badge in badges:
 		check(int(badge["tie"]) <= 2, "rarest first, so a tie never displaces a "
 			+ "solo win (%s tied %d)" % [badge["key"], int(badge["tie"])])
-	check(_keys_for(out, 1).has("dashes") and _keys_for(out, 1).has("healed"),
-		"specifically the two outright wins are both kept")
-	# Deaths: 0 beats 4, and LEAST is the good end, so peer 2 takes it.
-	check(_keys_for(out, 2).has("deaths"),
+	check(_keys_for(out, 1).has("dashes") and _keys_for(out, 1).has("healed")
+			and _keys_for(out, 1).has("hats_worn"),
+		"specifically all THREE outright wins are kept, not the tied fourth")
+	# self_damage: peer 2 alone at 9 beats peer 1 and peer 3 at 0.
+	check(_keys_for(out, 2).has("self_damage"),
 		"and the other player's own outright win is theirs")
 
 func _test_percent() -> void:

@@ -161,9 +161,15 @@ static func superlatives(stats_by_peer: Dictionary, limit: int = BADGE_LIMIT) ->
 		# being able to read the reason here.
 		return out
 
+	# THE COMMON BLOCK IS ALREADY ON THE BOARD, so a badge for one of those seven
+	# stats would repeat a row the player is already looking at -- "Most kills" as
+	# a badge, directly under a KILLS column that already says who won it. Badges
+	# are for what did NOT get a pinned row of its own.
 	var order: Array = keys()
 	for index in order.size():
 		var key: String = str(order[index])
+		if bool(STATS[key].get("common", false)):
+			continue
 		var direction: int = best_of(key)
 
 		var best: int = 0
