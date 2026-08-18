@@ -746,6 +746,25 @@ about *method*, not about that game.
   side and print the number**; identical output is the tell, and it is the only
   thing that separates "the rule works" from "the rig caps it anyway".
 
+- **A CLIENT THAT COUNTS ITS OWN TICKS DESYNCS EXACTLY THE THINGS THAT ARE PURE
+  FUNCTIONS OF THE TICK, AND NOTHING ELSE.** Observed 2026-08-18 from a
+  multiplayer playtest: "stuck elevator, one player saw elevator offset". `tick`
+  started at zero on every machine and was never synced -- the host had been
+  sending it on every snapshot since snapshots existed, in a parameter named
+  `server_tick`, and the client discarded it. **It is invisible for almost
+  everything, which is why it survived for milestones:** bodies, bullets, hats and
+  specials are all TOLD where they are, so a wrong clock costs them nothing. It is
+  fatal only where something is DERIVED from the tick to avoid replicating it --
+  an elevator ("there is nothing to agree about beyond the tick itself") and the
+  spike lift. Measured: the same platform at 2.92 m on one machine and 4.00 m on
+  the other. **When you decide a thing is cheap to derive rather than send, the
+  input to that derivation has become replicated state** -- and it is worth
+  checking that it actually is.
+  Its twin, from writing the test: the elevator cycle is 500 ticks, so a control
+  that compares tick 0 against tick **5000** compares the same phase and passes
+  while measuring nothing. A round number is the likeliest one to be a multiple of
+  the period you are testing.
+
 - **A COUNTER ONLY EVER ASSERTED *ABSENT* IS A COUNTER NOBODY HAS CHECKED.**
   Observed 2026-08-17 from a playtest: "enemy damage and kills were both zero when
   they shouldn't have been". They were unreachable code. `_deliver` measured damage

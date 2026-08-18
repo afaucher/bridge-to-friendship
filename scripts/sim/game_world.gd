@@ -3458,6 +3458,43 @@ func _carry_order() -> Array:
 			break
 	return ordered
 
+# THE HOST'S CLOCK, TAKEN ONCE.
+#
+# `tick` started at zero on every machine and was never synced -- the host sent
+# it on every snapshot and the parameter was named `server_tick` and thrown away.
+# So a client joining a session already 5000 ticks old ran its own clock from
+# zero, forever.
+#
+# THAT IS INVISIBLE FOR ALMOST EVERYTHING AND FATAL FOR THE THINGS KEYED ON IT.
+# Bodies, bullets and hats are all TOLD where they are, so a wrong clock costs
+# them nothing. But an elevator is a pure function of the tick -- deliberately,
+# because "there is nothing to agree about beyond the tick itself" -- so the two
+# machines placed the platform at different heights and stayed that way. Reported
+# from a playtest as "stuck elevator, one player saw elevator offset".
+#
+# Spikes have the same shape: their lift is `float(tick) * TICK_DELTA`, so a
+# client saw them down while the host had them out and was hurting people. That
+# is the hit-test-disagrees-with-the-art bug from CLAUDE.md, except the two ends
+# are two different computers.
+#
+# ONCE, ON THE FIRST SNAPSHOT, not continuously. The tick numbers the client's own
+# inputs and indexes its prediction history, so moving it is not free -- the
+# history is dropped in the same breath. After the jump both machines advance one
+# per physics frame and stay aligned, which is the same assumption every other
+# fixed-step part of this simulation already rests on.
+var _clock_taken: bool = false
+
+func _adopt_server_tick(server_tick: int) -> void:
+	if _clock_taken:
+		return
+	_clock_taken = true
+	if server_tick == tick:
+		return
+	tick = server_tick
+	# The history is indexed BY tick, so it means nothing under the new numbering.
+	_predicted.clear()
+	_pending_inputs.clear()
+
 func _client_tick() -> void:
 	tick += 1
 	_release_delayed_snapshots()
@@ -3969,6 +4006,7 @@ func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Arr
 		bullets: Array, gunners: Array, deployables: Array) -> void:
 	if is_host:
 		return
+	_adopt_server_tick(server_tick)
 	if debug_inbound_delay_ticks > 0:
 		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables])
 		return
