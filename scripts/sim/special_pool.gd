@@ -123,6 +123,8 @@ static func _base_ammo(kind: int) -> int:
 			return SimConfig.SHOTGUN_AMMO
 		SpecialBody.Kind.RIFLE:
 			return SimConfig.RIFLE_AMMO
+		SpecialBody.Kind.HEAVY:
+			return SimConfig.HEAVY_AMMO
 	return 0
 
 func destroy(s: Node) -> void:

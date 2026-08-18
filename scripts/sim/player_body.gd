@@ -87,6 +87,20 @@ var shove_cooldown: float = 0.0
 # bearing half of it is already carried by `facing`, which IS replicated. A replay
 # that re-runs step() with the recorded input reproduces it exactly.
 var aim_point: Vector3 = Vector3.INF
+
+# HOW FAST THIS BODY WALKS, AS A FRACTION. 1.0 unless something heavy is being
+# carried; GameWorld sets it from what is in the player's hands.
+#
+# A SCALAR, NOT THE ITEM. Nothing about a carried thing lives on PlayerBody -- see
+# special_pool.held_by, which is what keeps items out of capture_state by
+# construction rather than by discipline. This is the CONSEQUENCE of carrying
+# something, which is a different fact and one the body legitimately owns.
+#
+# AND IT IS IN capture_state, because it changes how the body STEPS. A client
+# predicting its own movement replays the last N ticks; without this the replay
+# would apply today's weight to ticks taken before the gun was picked up, and
+# GameWorld.corrections would climb every time somebody swapped weapons.
+var carry_speed: float = 1.0
 var dash_charges: int = SimConfig.DASH_CHARGES
 var dash_refill: float = 0.0
 
@@ -640,7 +654,7 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	if wish.length_squared() > 1.0:
 		wish = wish.normalized()
 
-	var target := wish * SimConfig.WALK_SPEED
+	var target := wish * SimConfig.WALK_SPEED * carry_speed
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var rate := SimConfig.WALK_ACCEL if wish.length_squared() > 0.0 else SimConfig.WALK_FRICTION
 	horizontal = horizontal.move_toward(target, rate * dt)
@@ -1318,7 +1332,8 @@ func _spend_dash() -> void:
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
-		shielding, shield_yaw, special_was_held, dash_charges, dash_refill]
+		shielding, shield_yaw, special_was_held, dash_charges, dash_refill,
+		carry_speed]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1336,6 +1351,8 @@ func apply_state(s: Array) -> void:
 	ledge_cooldown = float(s[12])
 	# Tolerated short, so a blob from before the shield existed still applies
 	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 18:
+		carry_speed = float(s[18])
 	if s.size() > 17:
 		dash_charges = int(s[16])
 		dash_refill = float(s[17])

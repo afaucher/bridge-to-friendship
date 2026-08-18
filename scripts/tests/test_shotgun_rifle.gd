@@ -58,6 +58,7 @@ func _volley(kind: int) -> Dictionary:
 	match kind:
 		SpecialBody.Kind.SHOTGUN: world._step_shotgun(body, w, true)
 		SpecialBody.Kind.RIFLE: world._step_rifle(body, w, true)
+		SpecialBody.Kind.HEAVY: world._step_heavy(body, w, true)
 		_: world._step_machine_gun(body, w, true)
 	var aimed: Vector3 = world.aim_direction(body, w)
 	var widest := 0.0
@@ -134,4 +135,55 @@ func _physics_process(_delta: float) -> void:
 		"`w` authors a shotgun")
 	eq(GridConfig.CONTENT_GLYPHS.get("f"), GridConfig.Content.PICKUP_RIFLE,
 		"and `f` a rifle")
+	_test_the_heavy_gun()
 	finish()
+
+# --- The heavy gun, which is the only one that charges you to hold it -----------
+
+func _test_the_heavy_gun() -> void:
+	var heavy := 0.0
+	for _i in 12:
+		heavy = maxf(heavy, float(_volley(SpecialBody.Kind.HEAVY)["widest"]))
+	var mg := 0.0
+	for _i in 12:
+		mg = maxf(mg, float(_volley(SpecialBody.Kind.MACHINE_GUN)["widest"]))
+	print("[guns] heavy spread %.2f deg against the machine gun %.2f" % [heavy, mg])
+
+	check(heavy > mg,
+		"the heavy gun is LESS accurate than the machine gun (%.2f vs %.2f degrees)"
+			% [heavy, mg])
+	check(SimConfig.HEAVY_FIRE_INTERVAL < SimConfig.MG_FIRE_INTERVAL,
+		"and faster")
+	check(SimConfig.HEAVY_AMMO > SimConfig.MG_AMMO,
+		"and deeper (%d rounds against %d)" % [SimConfig.HEAVY_AMMO, SimConfig.MG_AMMO])
+
+	# THE PRICE, WHICH IS THE WHOLE REASON IT IS INTERESTING. Every other special
+	# in this game is strictly better than empty hands, so picking one up has never
+	# been a decision.
+	var w: Node = _arm(SpecialBody.Kind.HEAVY)
+	world._apply_carry_weight()
+	check(body.carry_speed < 1.0,
+		"holding it slows you down (%.2f of normal)" % body.carry_speed)
+
+	# AND THE PRICE IS PAID BY THE LEGS, not just recorded. A scalar nothing reads
+	# is a scalar that does nothing, which is the shape of five collision-mask bugs
+	# in this project.
+	var walked_heavy: float = _walk_for(60)
+	world._specials.destroy(w)
+	world._apply_carry_weight()
+	eq(body.carry_speed, 1.0, "putting it down gives the speed back")
+	var walked_free: float = _walk_for(60)
+	print("[guns] one second of walking: %.2f m carrying the heavy gun, %.2f m without"
+		% [walked_heavy, walked_free])
+	check(walked_heavy < walked_free * 0.95,
+		"and a body carrying it really covers less ground (%.2f m against %.2f m)"
+			% [walked_heavy, walked_free])
+
+# Walk straight for `ticks` and report the distance actually covered.
+func _walk_for(ticks: int) -> float:
+	body.position = world.grid.cell_surface_world(Vector2i(7, 2)) + Vector3(0.0, 1.0, 0.0)
+	body.velocity = Vector3.ZERO
+	var start: Vector3 = body.global_position
+	for _t in ticks:
+		body.step(Vector2(0.0, -1.0), 0)
+	return start.distance_to(body.global_position)

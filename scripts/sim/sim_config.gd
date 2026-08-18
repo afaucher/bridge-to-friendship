@@ -755,6 +755,35 @@ const RIFLE_DAMAGE := 3
 const RIFLE_FIRE_INTERVAL := 1.0
 const RIFLE_AMMO := 10
 
+# THE HEAVY GUN: everything the machine gun is, more of it, and it costs you your
+# legs to carry.
+#
+# THE FIRST SPECIAL WITH A DOWNSIDE, and that is the interesting part rather than
+# the numbers. Every other weapon in this game is strictly better than empty
+# hands, so picking one up is never a decision -- you take whatever is nearest.
+# This one asks a question at the rack: on a bridge whose threat model is being
+# MOVED somewhere you did not choose, is more bullets worth being slower to answer
+# a rusher, slower to reach a teammate, and slower off a crumbling floor.
+#
+# It also gives the party a reason to want a specific person carrying it, which is
+# the co-op shape the rack has never had.
+const HEAVY_AMMO := 60
+const HEAVY_FIRE_INTERVAL := 0.14
+# WIDER THAN THE MACHINE GUN, which is what "lower accuracy" has to mean for a
+# weapon that already fires a cone. At this rate the cone is the weapon: you are
+# filling a corridor rather than hitting a thing.
+const HEAVY_SPREAD_DEG := 15.0
+const HEAVY_SPREAD_VERTICAL_DEG := 3.5
+const HEAVY_DAMAGE := 1
+
+# HOW MUCH SLOWER YOU WALK WHILE HOLDING IT.
+#
+# 0.65 is a number to playtest, not a number to trust. Too light and the downside
+# is decoration; too heavy and nobody picks it up and the whole decision
+# evaporates. The tell that it is wrong in the second direction is a rack where
+# the heavy gun is still sitting there at the end of every round.
+const HEAVY_CARRY_SPEED := 0.65
+
 # Below SHOVE_TRANSFER_SPEED (11) and just under its lift (2.5): being shot
 # pushes you around, being dashed into still throws you further. A weapon that
 # out-displaced the game's signature verb would replace it rather than complement

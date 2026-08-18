@@ -93,7 +93,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -102,6 +102,9 @@ const CONTENT_GLYPHS := {
 	# still reads as terrain in capitals and things-to-take in lower case.
 	"w": Content.PICKUP_SHOTGUN,
 	"f": Content.PICKUP_RIFLE,
+	# `y` for heavy. Not adjacent to any glyph it could be mistyped for, which
+	# matters more in a grid of them than the mnemonic does.
+	"y": Content.PICKUP_HEAVY,
 	"#": Content.PILLAR,
 	"L": Content.LADDER,
 	"B": Content.BOUNCER,

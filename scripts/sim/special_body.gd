@@ -33,7 +33,7 @@ enum Mode { HELD, FLYING, LOOSE }
 # APPENDED, NEVER REORDERED. A kind's integer is what segment_builder resolves an
 # authored glyph to and what the pickup travels as, so inserting one in the middle
 # would silently turn every rocket in every level into a mine.
-enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS, SHOTGUN, RIFLE }
+enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS, SHOTGUN, RIFLE, HEAVY }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -113,6 +113,8 @@ func kind_name() -> String:
 			return "SHOT"
 		Kind.RIFLE:
 			return "RIFLE"
+		Kind.HEAVY:
+			return "HEAVY"
 	return "?"
 
 # WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
@@ -144,6 +146,7 @@ const SHAPE_NODES := {
 	# gameplay one, and this milestone is an A/B about aiming.
 	Kind.SHOTGUN: "Body",
 	Kind.RIFLE: "Body",
+	Kind.HEAVY: "Body",
 }
 
 func apply_kind_look() -> void:
@@ -163,7 +166,7 @@ func apply_kind_look() -> void:
 	if barrel != null:
 		# EVERY GUN HAS ONE. It was the machine gun's tell when the machine gun was
 		# the only thing that pointed; a shotgun and a rifle point too.
-		barrel.visible = kind == Kind.MACHINE_GUN or kind == Kind.SHOTGUN 			or kind == Kind.RIFLE
+		barrel.visible = kind == Kind.MACHINE_GUN or kind == Kind.SHOTGUN or kind == Kind.RIFLE or kind == Kind.HEAVY
 
 func _kind_colour() -> Color:
 	match kind:
@@ -181,6 +184,8 @@ func _kind_colour() -> Color:
 			return Color(0.80, 0.35, 0.10)   # a hotter, redder orange than the MG
 		Kind.RIFLE:
 			return Color(0.55, 0.80, 0.95)   # pale blue: the only PRECISE warm thing
+		Kind.HEAVY:
+			return Color(0.45, 0.42, 0.40)   # gunmetal, the only HEAVY-looking one
 	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per

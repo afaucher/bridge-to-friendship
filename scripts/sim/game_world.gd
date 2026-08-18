@@ -402,6 +402,7 @@ func _physics_process(_delta: float) -> void:
 	# rather than being told. Nothing reads a lean back: not capture_state, not the
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
+	_apply_carry_weight()
 	_pose_held_specials()
 	_update_laser_sight()
 	_sync_hitboxes()
@@ -2022,6 +2023,8 @@ func _fire_specials() -> void:
 				spent_a_use = _step_shotgun(body, weapon, held)
 			SpecialBody.Kind.RIFLE:
 				spent_a_use = _step_rifle(body, weapon, held)
+			SpecialBody.Kind.HEAVY:
+				spent_a_use = _step_heavy(body, weapon, held)
 		weapon.was_held = held
 
 		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
@@ -2084,6 +2087,23 @@ func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
 	# being asked to gamble two of them on a dice roll.
 	_spawn_round(_muzzle_of(weapon, body), aim_direction(body, weapon),
 		int(body.peer_id), body.get_rid(), true)
+	return true
+
+# THE MACHINE GUN WITH THE BRAKES OFF: faster, wider, and sixty rounds deep.
+#
+# It is the same firing code with different numbers, which is the point -- the
+# weapon is not a new mechanism, it is a different POSITION on the same three
+# dials, and the interesting part is the price it charges to carry (see
+# _apply_carry_weight).
+func _step_heavy(body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.fire_timer > 0.0:
+		return false
+	weapon.fire_timer = SimConfig.HEAVY_FIRE_INTERVAL
+	weapon.ammo -= 1
+	_spawn_round(_muzzle_of(weapon, body),
+		_spread(aim_direction(body, weapon), SimConfig.HEAVY_SPREAD_DEG,
+			SimConfig.HEAVY_SPREAD_VERTICAL_DEG),
+		int(body.peer_id), body.get_rid(), false, SimConfig.HEAVY_DAMAGE)
 	return true
 
 # A FISTFUL AT ONCE. Seven pellets leave on one trigger pull, each with its own
@@ -2851,6 +2871,27 @@ func _update_laser_sight() -> void:
 	if absf(along.dot(Vector3.UP)) < 0.999:
 		_laser.global_transform = _laser.global_transform.looking_at(
 			from + along * reach, Vector3.UP)
+
+# WHAT IS IN YOUR HANDS SLOWS YOU DOWN, IF IT IS HEAVY.
+#
+# Set every tick from the pool rather than stored on the player, because the pool
+# is where a carried item lives -- PlayerBody deliberately knows nothing about
+# what it is holding. What the body gets is the CONSEQUENCE, a scalar, which is a
+# different fact and one it legitimately owns (see PlayerBody.carry_speed).
+#
+# THE FIRST SPECIAL WITH A DOWNSIDE. Every other weapon here is strictly better
+# than empty hands, so picking one up has never been a decision. This one asks a
+# question at the rack, and on a bridge whose threat model is being MOVED
+# somewhere you did not choose, being slower is a real price.
+func _apply_carry_weight() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body == null or not is_instance_valid(body):
+			continue
+		var weapon: Node = _specials.held_by(peer)
+		var heavy: bool = weapon != null and is_instance_valid(weapon) 			and int(weapon.kind) == SpecialBody.Kind.HEAVY
+		body.carry_speed = SimConfig.HEAVY_CARRY_SPEED if heavy else 1.0
 
 func _pose_held_specials() -> void:
 	for peer_key in players.keys():
