@@ -718,6 +718,43 @@ const AIM_SNAP_RADIUS := 0.6
 
 const MG_DAMAGE := 1
 
+# --- Two more guns, for the M20 aim A/B ---------------------------------------
+#
+# THEY EXIST TO SIT AT OPPOSITE ENDS OF ONE AXIS. Point aiming and the assist are
+# both bets about PRECISION, and the machine gun is a poor instrument for judging
+# a precision change: a 10-degree cone hides an aiming error the same way it hides
+# the muzzle offset. So one weapon forgives aim completely and one punishes it,
+# and the same playtest answers whether the new aim helps at both ends.
+#
+# THE SHOTGUN: a fistful of pellets, wide, cheap, and lethal at a range where
+# aiming barely matters. It is the control for "does point aim make things worse
+# when you did not need it".
+const SHOTGUN_PELLETS := 7
+const SHOTGUN_SPREAD_DEG := 9.0
+# WIDER VERTICALLY THAN ANYTHING ELSE, and on purpose: a spread that is flat is a
+# LINE, which on a bridge that climbs in layers is a weapon that cannot cover a
+# ramp. This is the one gun whose cone should look like a cone.
+const SHOTGUN_SPREAD_VERTICAL_DEG := 6.0
+const SHOTGUN_DAMAGE := 1
+const SHOTGUN_FIRE_INTERVAL := 0.85
+# EIGHT SHOTS, NOT TWENTY. Seven pellets a trigger pull is 56 rounds of ammunition
+# accounting; the SHOT is the unit the player counts, so the magazine is counted
+# in shots and each one is a decision.
+const SHOTGUN_AMMO := 8
+
+# THE RIFLE: one round, almost exactly where you pointed, slowly. It is the
+# instrument the aim A/B actually needs -- with a 0.4-degree cone the shot lands
+# where the aim says and nothing hides a mistake, so if point aiming is better the
+# rifle is where it will show first.
+const RIFLE_SPREAD_DEG := 0.4
+const RIFLE_SPREAD_VERTICAL_DEG := 0.2
+const RIFLE_DAMAGE := 3
+# SLOWER THAN THE ROCKET. The trade is explicit: the machine gun fires 2.5 times a
+# second for 1 damage, the rifle once a second for 3. Damage per second is close;
+# what differs is whether a miss costs you a round or a second.
+const RIFLE_FIRE_INTERVAL := 1.0
+const RIFLE_AMMO := 10
+
 # Below SHOVE_TRANSFER_SPEED (11) and just under its lift (2.5): being shot
 # pushes you around, being dashed into still throws you further. A weapon that
 # out-displaced the game's signature verb would replace it rather than complement

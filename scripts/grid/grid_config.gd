@@ -93,10 +93,15 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
+	# `w` is WIDE and `f` is FAR, which is the only thing that separates the two
+	# new guns -- and both are lowercase like every other pickup, so a glyph grid
+	# still reads as terrain in capitals and things-to-take in lower case.
+	"w": Content.PICKUP_SHOTGUN,
+	"f": Content.PICKUP_RIFLE,
 	"#": Content.PILLAR,
 	"L": Content.LADDER,
 	"B": Content.BOUNCER,

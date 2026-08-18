@@ -30,7 +30,10 @@ enum Mode { HELD, FLYING, LOOSE }
 # WHICH SPECIAL. The pool, the slot, the drop rule and the HUD box are shared, so
 # a new special is a different resolve function rather than a different object --
 # what differs between them is what the BUTTON means, and that lives in the world.
-enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS }
+# APPENDED, NEVER REORDERED. A kind's integer is what segment_builder resolves an
+# authored glyph to and what the pickup travels as, so inserting one in the middle
+# would silently turn every rocket in every level into a mine.
+enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS, SHOTGUN, RIFLE }
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -106,6 +109,10 @@ func kind_name() -> String:
 			return "RKT"
 		Kind.LEGS:
 			return "LEGS"
+		Kind.SHOTGUN:
+			return "SHOT"
+		Kind.RIFLE:
+			return "RIFLE"
 	return "?"
 
 # WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
@@ -130,6 +137,13 @@ const SHAPE_NODES := {
 	Kind.MINE: "Mine",
 	Kind.SHIELD: "Shield",
 	Kind.LEGS: "Legs",
+	# THE TWO NEW GUNS BORROW THE MACHINE GUN'S SILHOUETTE. They are a gun-shaped
+	# thing with a barrel, which is the reading that matters on the deck, and the
+	# COLOUR is what tells them apart -- the same job it already does for the five
+	# kinds that share this scene. A distinct mesh each is an art task, not a
+	# gameplay one, and this milestone is an A/B about aiming.
+	Kind.SHOTGUN: "Body",
+	Kind.RIFLE: "Body",
 }
 
 func apply_kind_look() -> void:
@@ -147,7 +161,9 @@ func apply_kind_look() -> void:
 	# raised thing does not point, and the rocket has its own tube.
 	var barrel := get_node_or_null("Barrel") as MeshInstance3D
 	if barrel != null:
-		barrel.visible = kind == Kind.MACHINE_GUN
+		# EVERY GUN HAS ONE. It was the machine gun's tell when the machine gun was
+		# the only thing that pointed; a shotgun and a rifle point too.
+		barrel.visible = kind == Kind.MACHINE_GUN or kind == Kind.SHOTGUN 			or kind == Kind.RIFLE
 
 func _kind_colour() -> Color:
 	match kind:
@@ -161,6 +177,10 @@ func _kind_colour() -> Color:
 			return Color(0.55, 0.62, 0.30)   # olive, the only military thing here
 		Kind.LEGS:
 			return Color(0.35, 0.85, 0.70)   # spring green, and the only mobility one
+		Kind.SHOTGUN:
+			return Color(0.80, 0.35, 0.10)   # a hotter, redder orange than the MG
+		Kind.RIFLE:
+			return Color(0.55, 0.80, 0.95)   # pale blue: the only PRECISE warm thing
 	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per

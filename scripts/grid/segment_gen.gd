@@ -71,6 +71,7 @@ static func lobby(width: int, run_seed: int, index: int):
 		GridConfig.Content.PICKUP, GridConfig.Content.PICKUP_GRENADE,
 		GridConfig.Content.PICKUP_ROCKET, GridConfig.Content.PICKUP_MINE,
 		GridConfig.Content.PICKUP_SHIELD, GridConfig.Content.PICKUP_LEGS,
+		GridConfig.Content.PICKUP_SHOTGUN, GridConfig.Content.PICKUP_RIFLE,
 	]
 	_spread(seg, GATE_DEPTH + 2, rack)
 

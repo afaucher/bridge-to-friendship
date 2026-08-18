@@ -2018,6 +2018,10 @@ func _fire_specials() -> void:
 				spent_a_use = _step_rocket(body, weapon, held)
 			SpecialBody.Kind.LEGS:
 				spent_a_use = _step_legs(body, weapon)
+			SpecialBody.Kind.SHOTGUN:
+				spent_a_use = _step_shotgun(body, weapon, held)
+			SpecialBody.Kind.RIFLE:
+				spent_a_use = _step_rifle(body, weapon, held)
 		weapon.was_held = held
 
 		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
@@ -2080,6 +2084,44 @@ func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
 	# being asked to gamble two of them on a dice roll.
 	_spawn_round(_muzzle_of(weapon, body), aim_direction(body, weapon),
 		int(body.peer_id), body.get_rid(), true)
+	return true
+
+# A FISTFUL AT ONCE. Seven pellets leave on one trigger pull, each with its own
+# roll inside a wide cone, and the SHOT is what costs ammunition -- not the pellet.
+# That is what makes the magazine eight rather than fifty-six, and what makes each
+# pull a decision the player can count.
+#
+# EVERY PELLET IS AIMED THROUGH aim_direction, so the shotgun gets point aim and
+# the assist for free and the cone is applied on top. A weapon that computed its
+# own direction would be outside the A/B while looking like it was in it.
+func _step_shotgun(body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.fire_timer > 0.0:
+		return false
+	weapon.fire_timer = SimConfig.SHOTGUN_FIRE_INTERVAL
+	weapon.ammo -= 1
+	var from: Vector3 = _muzzle_of(weapon, body)
+	var aimed: Vector3 = aim_direction(body, weapon)
+	for _pellet in SimConfig.SHOTGUN_PELLETS:
+		_spawn_round(from, _spread(aimed, SimConfig.SHOTGUN_SPREAD_DEG,
+			SimConfig.SHOTGUN_SPREAD_VERTICAL_DEG), int(body.peer_id),
+			body.get_rid(), false, SimConfig.SHOTGUN_DAMAGE)
+	return true
+
+# ONE ROUND, ALMOST EXACTLY WHERE YOU POINTED, SLOWLY.
+#
+# The cone is 0.4 degrees rather than zero. Not squeamishness: a perfectly
+# deterministic line makes two players standing in the same place fire the same
+# round forever, and a hair of scatter is what keeps a burst from being one
+# bullet. It is well inside a body at any range the bridge offers.
+func _step_rifle(body: Node, weapon: Node, held: bool) -> bool:
+	if not held or weapon.fire_timer > 0.0:
+		return false
+	weapon.fire_timer = SimConfig.RIFLE_FIRE_INTERVAL
+	weapon.ammo -= 1
+	_spawn_round(_muzzle_of(weapon, body),
+		_spread(aim_direction(body, weapon), SimConfig.RIFLE_SPREAD_DEG,
+			SimConfig.RIFLE_SPREAD_VERTICAL_DEG),
+		int(body.peer_id), body.get_rid(), false, SimConfig.RIFLE_DAMAGE)
 	return true
 
 # HELD TO ADJUST DISTANCE, thrown on release.
@@ -2323,8 +2365,13 @@ func _fire_round(shooter: Node, weapon: Node) -> void:
 # ONE ROUND, whoever fired it. Shared by the player's machine gun and by both
 # gunners -- so an enemy's round is the same object as yours, stopped by the same
 # cover, and resolved through the same matrix. `source` of 0 means the world.
+# `damage` DEFAULTS TO THE MACHINE GUN'S so every existing caller -- both gunners
+# included -- keeps firing exactly what it fired before. A round has to carry it
+# rather than have it looked up at impact, because by then the weapon may be
+# spent, dropped, or in somebody else's hands.
 func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
-		shooter_rid: RID, as_rocket: bool = false) -> void:
+		shooter_rid: RID, as_rocket: bool = false,
+		damage: int = SimConfig.MG_DAMAGE) -> void:
 	# SHOTS FIRED, AT THE LINE A ROUND IS SPAWNED. Every round in the game comes
 	# through here -- the player's machine gun, the rocket, and both gunners' --
 	# so a source of 0 (the world) is filtered by _bump rather than by a branch.
@@ -2333,6 +2380,7 @@ func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 	var bullet: Node3D = scene.instantiate()
 	_next_bullet_id += 1
 	bullet.bullet_id = _next_bullet_id
+	bullet.damage = damage
 	bullet.name = "Bullet_%d" % _next_bullet_id
 	_bullets_root.add_child(bullet)
 	_bullets.append(bullet)
@@ -2443,11 +2491,15 @@ func _muzzle_of(weapon: Node, shooter: Node) -> Vector3:
 # Random on the HOST ONLY, which is what makes randf_range acceptable here: nobody
 # else re-derives it, the same licence plinko's launch angle takes. It is the only
 # randomness in the whole weapon.
-func _spread(base: Vector3) -> Vector3:
-	var spread: float = DebugSettings.tuned("mg_spread_deg", SimConfig.MG_SPREAD_DEG)
+# A CONE AROUND A DIRECTION, and the cone is now the WEAPON'S rather than the
+# machine gun's. Defaulting to the machine gun's numbers keeps every existing
+# caller and every existing test on exactly the path they were on.
+func _spread(base: Vector3, spread_deg: float = -1.0,
+		vertical_deg: float = -1.0) -> Vector3:
+	var spread: float = spread_deg if spread_deg >= 0.0 		else DebugSettings.tuned("mg_spread_deg", SimConfig.MG_SPREAD_DEG)
+	var vertical: float = vertical_deg if vertical_deg >= 0.0 		else SimConfig.MG_SPREAD_VERTICAL_DEG
 	var yaw_off: float = deg_to_rad(randf_range(-spread, spread))
-	var pitch_off: float = deg_to_rad(
-		randf_range(-SimConfig.MG_SPREAD_VERTICAL_DEG, SimConfig.MG_SPREAD_VERTICAL_DEG))
+	var pitch_off: float = deg_to_rad(randf_range(-vertical, vertical))
 
 	# Yaw about world up, so "horizontal" means horizontal on the bridge rather
 	# than horizontal relative to a barrel that may be pointing slightly downhill.
@@ -2504,7 +2556,8 @@ func _process_bullets() -> void:
 						Hit.Kind.EXPLOSIVE, int(bullet.owner_peer))
 				else:
 					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
-						to_local(hit["position"]), bullet.origin, int(bullet.owner_peer))
+						to_local(hit["position"]), bullet.origin,
+						int(bullet.owner_peer), int(bullet.damage))
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -2618,7 +2671,8 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 # made the shield useless against gunfire (playtest 2026-08-16, "the shield
 # doesn't block shots very well").
 func _resolve_round_hit(target, direction: Vector3, at: Vector3,
-		origin: Vector3 = Vector3.INF, shooter: int = -1) -> void:
+		origin: Vector3 = Vector3.INF, shooter: int = -1,
+		damage: int = SimConfig.MG_DAMAGE) -> void:
 	if target == null:
 		return
 	# THE CHAIN OF "WHAT ARE YOU?" QUESTIONS IS GONE. This used to ask
@@ -2654,7 +2708,7 @@ func _resolve_round_hit(target, direction: Vector3, at: Vector3,
 	# -- the world -- so every round in the game arrived unattributed even though
 	# `shooter` was sitting right here in the signature. Nothing needed it until
 	# M19 asked who shot whom, which is how a defaulted argument stays wrong.
-	_deliver(target, Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE, came_from,
+	_deliver(target, Hit.make(Hit.Kind.BULLET, damage, came_from,
 		SimConfig.MG_KNOCKBACK, SimConfig.MG_KNOCKBACK_LIFT, maxi(shooter, 0)))
 
 # Under the holder's Facing pivot, which player_body already rotates to match

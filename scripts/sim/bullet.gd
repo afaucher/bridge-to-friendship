@@ -51,6 +51,12 @@ var shooter_rid: RID = RID()
 # scarcity -- is tuning.
 var explodes: bool = false
 
+# WHAT THIS ROUND HITS FOR. Carried rather than looked up at impact: by the time
+# it lands, the weapon that fired it may be spent, dropped, or in somebody else's
+# hands. Defaulted to the machine gun's so a round from a build that did not set
+# it still does what it always did.
+var damage: int = SimConfig.MG_DAMAGE
+
 func launch(from: Vector3, direction: Vector3, peer: int, rid: RID,
 		as_rocket: bool = false) -> void:
 	explodes = as_rocket
