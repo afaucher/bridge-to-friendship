@@ -16,6 +16,7 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 
 const SHOOTER := 1
 const VICTIM := 2
@@ -59,6 +60,7 @@ func _physics_process(_delta: float) -> void:
 	_test_distance_ignores_teleports()
 	_test_a_peak_is_not_a_total()
 	_test_a_boost()
+	_test_killing_an_enemy()
 	_test_a_death()
 	_test_the_reset()
 	finish()
@@ -232,6 +234,46 @@ func _test_a_boost() -> void:
 	world.clear_round_stats()
 	world.resolve_shove_contact(shooter, shooter, 0.0)
 	eq(_stat(SHOOTER, "boosts"), 0, "and you cannot boost yourself")
+
+# --- Shooting an enemy is counted ------------------------------------------------
+#
+# THE ASSERTION THAT WAS MISSING, and its absence is the whole reason a playtest
+# had to find this. Every claim in this file about enemy damage and kills was that
+# they are ZERO -- zero when you shoot a teammate, zero when you shoot scenery --
+# so two counters that could never fire satisfied all of them. A stat only ever
+# asserted ABSENT is a stat nobody has checked.
+#
+# What it hid: _deliver measured damage as health lost, and NO ENEMY IN THIS GAME
+# HAS A HEALTH FIELD. A rusher and a gunner are killed outright by a bullet or a
+# blast, so `"health" in target` was false and the early return skipped both bumps
+# before they could run.
+func _test_killing_an_enemy() -> void:
+	world.clear_round_stats()
+	var enemy: Node = SkirmisherScene.instantiate()
+	world.add_child(enemy)
+	world._gunners.append(enemy)
+	enemy.global_position = shooter.global_position + Vector3(4.0, 0.0, 0.0)
+
+	check(not enemy.is_spent(), "the enemy starts alive, so the kill below is real")
+	var took: bool = world._deliver(enemy, Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE,
+		shooter.global_position, 0.0, 0.0, SHOOTER))
+
+	check(took, "the enemy answered the hit")
+	eq(_stat(SHOOTER, "hits"), 1, "shooting an enemy is a hit")
+	eq(_stat(SHOOTER, "enemy_damage"), SimConfig.MG_DAMAGE,
+		"and it counts DAMAGE -- measured as the hit's own amount, because an enemy "
+		+ "has no health to subtract and absorbs the round whole")
+	eq(_stat(SHOOTER, "enemy_kills"), 1,
+		"and a KILL, decided by is_spent() rather than by a health field that does "
+		+ "not exist on any enemy in this game")
+	eq(_stat(SHOOTER, "friendly_damage"), 0, "and none of it is friendly fire")
+
+	# NOT TWICE. Shooting a corpse is not a second kill, and the guard for that is
+	# the is_spent() sample taken BEFORE the hit.
+	world._deliver(enemy, Hit.make(Hit.Kind.BULLET, SimConfig.MG_DAMAGE,
+		shooter.global_position, 0.0, 0.0, SHOOTER))
+	eq(_stat(SHOOTER, "enemy_kills"), 1, "and shooting it again is not a second kill")
+	world._gunners.erase(enemy)
 
 # --- A death is being put on the drone ------------------------------------------
 #

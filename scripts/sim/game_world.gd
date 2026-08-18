@@ -634,6 +634,11 @@ func _deliver(target, hit) -> bool:
 	var source: int = int(hit.source)
 	var has_health: bool = "health" in target
 	var before: int = int(target.health) if has_health else 0
+	# SAMPLED BEFORE THE HIT, because kill() is what receive_hit does to an enemy
+	# and there is no reading it back afterwards -- the same shape as capturing
+	# approach velocity before move_and_slide.
+	var enemy: bool = _is_enemy(target)
+	var was_spent: bool = enemy and target.has_method("is_spent") and target.is_spent()
 	var took: bool = target.receive_hit(hit)
 	if not is_host or source <= 0:
 		return took
@@ -654,6 +659,30 @@ func _deliver(target, hit) -> bool:
 	# question the world already knows the answer to.
 	if took and (_is_player(target) or _is_enemy(target)):
 		_bump(source, "hits")
+	# AN ENEMY HAS NO HEALTH FIELD, AND MEASURING IT BY ONE COUNTED NOTHING.
+	#
+	# Reported from a playtest as "enemy damage and kills were both zero when they
+	# shouldn't have been", and it was two lines above this one: `has_health` is
+	# false for every enemy in the game -- a rusher and a gunner have no `health`
+	# at all, a BULLET or an EXPLOSIVE calls kill() outright -- so this early
+	# return fired first and both counters were unreachable code. `hits` worked
+	# because it is bumped ABOVE the return.
+	#
+	# So enemies are measured by the model they actually have: `is_spent`. Damage
+	# is the hit's own amount, because there is no health to subtract and a hit
+	# that lands on an enemy IS fully absorbed by it -- the delivered-versus-
+	# intended distinction that matters for a player has nothing to bite on here.
+	#
+	# THE TESTS COULD NOT HAVE CAUGHT THIS. Every assertion in test_stat_counting
+	# about these two stats was that they are ZERO -- zero for a friendly hit, zero
+	# for scenery -- so a permanently-zero counter satisfied all of them. A counter
+	# only ever asserted absent is a counter nobody has checked.
+	if enemy:
+		if took:
+			_bump(source, "enemy_damage", int(hit.amount))
+			if not was_spent and target.is_spent():
+				_bump(source, "enemy_kills")
+		return took
 	if not has_health:
 		return took
 	var lost: int = maxi(0, before - int(target.health))
@@ -675,12 +704,7 @@ func _deliver(target, hit) -> bool:
 				_bump(source, "self_damage", lost)
 			else:
 				_bump(source, "friendly_damage", lost)
-		elif _is_enemy(target):
-			_bump(source, "enemy_damage", lost)
-	# AND A KILL IS AN ENEMY, not merely a thing that ran out of health. Same fault
-	# as above and a louder one: a destroyed hat would have scored as a kill.
-	if before > 0 and int(target.health) <= 0 and _is_enemy(target):
-		_bump(source, "enemy_kills")
+
 	return took
 
 func _is_player(target) -> bool:

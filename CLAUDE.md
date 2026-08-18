@@ -733,6 +733,20 @@ about *method*, not about that game.
 - **`git log --grep` BEFORE proposing a change to load-bearing behaviour.**
   Behaviour that looks wrong in one context is often deliberate in another, and
   the commit message is where that reasoning lives.
+- **A COUNTER ONLY EVER ASSERTED *ABSENT* IS A COUNTER NOBODY HAS CHECKED.**
+  Observed 2026-08-17 from a playtest: "enemy damage and kills were both zero when
+  they shouldn't have been". They were unreachable code. `_deliver` measured damage
+  as health lost and **no enemy in this game has a `health` field** -- a rusher and
+  a gunner are killed outright by a bullet, so `"health" in target` was false and
+  an early return fired before either bump. `hits` worked only because it sits
+  above that return. Every assertion in the test file about those two stats was
+  that they equal ZERO -- zero for a friendly hit, zero for scenery -- so two
+  counters that could never fire satisfied all of them, and the suite was green.
+  **For every counter, assert one case where it MUST be non-zero**; a wall of
+  `eq(x, 0)` is a wall of claims a dead variable passes. Its twin: measure a thing
+  by the model it actually has (`is_spent()`) rather than by the one you assumed
+  it had, and take the sample BEFORE the call that destroys it.
+
 - **A VALUE THAT IS DESTROYED WHEN IT REACHES ITS TERMINAL STATE IS NEVER
   OBSERVED IN IT.** Observed 2026-08-16 measuring legs: a special is destroyed on
   the tick its ammo hits zero, so a test looping "until ammo == 0" never sees
