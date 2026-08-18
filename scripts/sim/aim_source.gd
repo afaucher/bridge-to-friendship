@@ -36,6 +36,34 @@ var _has_mouse_sample: bool = false
 # of desk vibration is not a decision.
 const MOUSE_CLAIM_PIXELS := 3.0
 
+# HOW FAR OUT A PAD'S VIRTUAL CURSOR SITS (M20).
+#
+# A stick gives an angle and no place, so `point` mode would have nothing to aim
+# at on a pad. Alien Swarm's answer is a cursor locked to a circle around the
+# character, adjustable by cvar, and this takes the same one -- so the pad
+# resolves to a POINT exactly as the mouse does and nothing downstream has to know
+# which device it came from.
+#
+# Six metres is inside MG_RANGE and roughly where a rusher becomes a problem. It
+# is a starting value: the assist is what makes a fixed radius playable, because
+# the ray only has to pass NEAR an enemy rather than through it.
+const PAD_CURSOR_RANGE := 6.0
+
+# How far above and below the virtual cursor to look for ground. A pad points at
+# a bearing, so the height has to come from the terrain under that bearing --
+# generous enough to find a deck two units up or a pit below.
+const PAD_GROUND_PROBE := 12.0
+
+# The last point the cursor resolved to in the world, or AIM_POINT_NONE.
+var _point: Vector3 = Vector3.INF
+
+# WHERE the player is pointing, as a place. `poll` answers which WAY, and the two
+# are deliberately separate calls over the same cursor: the bearing is what the
+# body faces and has shipped for months, and the point is new and optional. A
+# single call returning both would have made the control path carry the new code.
+func point() -> Vector3:
+	return _point
+
 # Returns the yaw the player is pointing, or NONE.
 #
 # `camera` and `from` are needed for the mouse: a cursor is a point on the SCREEN
@@ -43,6 +71,56 @@ const MOUSE_CLAIM_PIXELS := 3.0
 # met with the plane the player is standing on. That is why this cannot live in
 # PlayerInput.sample() with the rest of the input -- sampling is static and knows
 # about neither.
+# Resolve the cursor to a world POSITION. Called beside poll(), never instead of
+# it -- see the note on `point()`.
+#
+# THE MOUSE RAY GOES INTO THE WORLD, not onto a plane. A plane at the player's
+# height is what `_yaw_to_cursor` uses and is exactly right for a bearing; it is
+# exactly wrong for a point, because it would put every aim at the player's own
+# height and reintroduce the level-shot problem this feature exists to solve.
+#
+# FALLING BACK TO THAT PLANE when the ray hits nothing is deliberate: pointing at
+# the sky past the end of the bridge should aim somewhere sensible rather than
+# nowhere.
+func resolve_point(camera: Camera3D, from: Vector3) -> Vector3:
+	_point = Vector3.INF
+	if camera == null:
+		return _point
+	var space: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
+	if _device == Device.PAD:
+		_point = _pad_point(space, from)
+		return _point
+	var mouse := camera.get_viewport().get_mouse_position()
+	var origin := camera.project_ray_origin(mouse)
+	var direction := camera.project_ray_normal(mouse)
+	var hit := _cast(space, origin, origin + direction * 200.0)
+	if hit.is_empty():
+		var plane := Plane(Vector3.UP, from.y)
+		var flat = plane.intersects_ray(origin, direction)
+		_point = flat if flat != null else Vector3.INF
+	else:
+		_point = hit["position"]
+	return _point
+
+# A pad has no cursor, so one is invented on a circle around the player and then
+# dropped onto whatever is under it -- which is what gives a stick a height.
+func _pad_point(space: PhysicsDirectSpaceState3D, from: Vector3) -> Vector3:
+	var flat: Vector3 = from + GridConfig.yaw_vector(_yaw) * PAD_CURSOR_RANGE
+	var hit := _cast(space, flat + Vector3(0.0, PAD_GROUND_PROBE, 0.0),
+		flat - Vector3(0.0, PAD_GROUND_PROBE, 0.0))
+	return hit["position"] if not hit.is_empty() else flat
+
+# WORLD AND ENEMIES, NOT PLAYERS. Aiming through a teammate has to be possible or
+# the party becomes cover for the enemy; aiming at the deck and at the things
+# standing on it is the whole point. Layers 1 (world) and 5 (rushers).
+func _cast(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:
+	if space == null:
+		return {}
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = (1 << 0) | (1 << 4)
+	query.collide_with_areas = false
+	return space.intersect_ray(query)
+
 func poll(camera: Camera3D, from: Vector3) -> float:
 	var pad := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	if pad.length_squared() > 0.0:

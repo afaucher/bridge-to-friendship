@@ -403,6 +403,7 @@ func _physics_process(_delta: float) -> void:
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
 	_pose_held_specials()
+	_update_laser_sight()
 	_sync_hitboxes()
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
 	if camera != null:
@@ -479,7 +480,8 @@ func _host_tick() -> void:
 		var restore_mask: int = body.collision_mask
 		if carriers.has(body):
 			body.collision_mask = restore_mask & ~PLAYERS_LAYER_BIT
-		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
+		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp),
+			PlayerInput.point_of(inp))
 		body.collision_mask = restore_mask
 
 	_process_run()
@@ -2076,10 +2078,8 @@ func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
 	# BUT NO SPREAD. The cone is what makes the machine gun a suppression weapon; a
 	# rocket is one decision and it goes where it was pointed, or the player is
 	# being asked to gamble two of them on a dice roll.
-	var from: Vector3 = _muzzle_of(weapon, body)
-	var zero: Vector3 = body.global_position 		+ GridConfig.yaw_vector(body.facing) * SimConfig.MG_RANGE
-	_spawn_round(from, (zero - from).normalized(), int(body.peer_id),
-		body.get_rid(), true)
+	_spawn_round(_muzzle_of(weapon, body), aim_direction(body, weapon),
+		int(body.peer_id), body.get_rid(), true)
 	return true
 
 # HELD TO ADJUST DISTANCE, thrown on release.
@@ -2316,9 +2316,7 @@ func _fire_round(shooter: Node, weapon: Node) -> void:
 	# Aiming at a point on the body's own aim ray fixes it the way a real weapon is
 	# zeroed: exact at MG_RANGE, and off by less than the muzzle offset everywhere
 	# nearer -- which is well inside a 0.4 m body.
-	var zero: Vector3 = shooter.global_position \
-		+ GridConfig.yaw_vector(shooter.facing) * SimConfig.MG_RANGE
-	var direction: Vector3 = _spread((zero - from).normalized())
+	var direction: Vector3 = _spread(aim_direction(shooter, weapon))
 
 	_spawn_round(from, direction, int(shooter.peer_id), shooter.get_rid())
 
@@ -2343,6 +2341,79 @@ func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 # The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
 # somehow not been posed yet -- a round from slightly the wrong place beats a
 # round from the origin of the world.
+# --- Where a shot is aimed (M20) ----------------------------------------------
+#
+# ONE FUNCTION, AND EVERYTHING USES IT. The round, the rocket, the laser sight
+# and the barrel rotation all ask here. That is not tidiness: a sight that
+# computed its own direction could agree with the cursor while the bullet
+# disagreed with both, and this project has already shipped a hit test that
+# disagreed with the art it was drawn from.
+
+# The PLACE a shot is aimed at.
+#
+# `level` reproduces the shipped behaviour exactly -- a zero 30 m down the
+# bearing at the shooter own height, which is why every shot leaves flat.
+# `point` uses the world position the cursor rests on, which carries height.
+func aim_target(body: Node) -> Vector3:
+	var target: Vector3 = body.global_position + GridConfig.yaw_vector(body.facing) * SimConfig.MG_RANGE
+	if DebugSettings.get_choice_name("aim_mode") == "point" and is_finite(body.aim_point.x):
+		target = body.aim_point
+	if DebugSettings.get_choice_name("aim_assist") == "snap":
+		target = _snap_to_enemy(body, target)
+	return target
+
+# THE DIRECTION FROM THE GUN, not from the player.
+#
+# The muzzle is the barrel tip, held to one side, so a direction taken at the
+# body and reused at the muzzle is off by that offset forever. Aiming FROM the
+# muzzle AT the target is what makes the offset vanish -- and in `point` mode it
+# vanishes at the range the shot is actually taken rather than only at thirty
+# metres, which is the whole of the rocket complaint.
+func aim_direction(body: Node, weapon: Node) -> Vector3:
+	var from: Vector3 = _muzzle_of(weapon, body)
+	var away: Vector3 = aim_target(body) - from
+	if away.length_squared() < 0.0001:
+		return GridConfig.yaw_vector(body.facing)
+	return away.normalized()
+
+# CENTRE MASS, WHEN THE SHOT WAS ALREADY GOING TO PASS CLOSE.
+#
+# Alien Swarm rule and their phrasing: any entity in line of sight of where you
+# are aiming is aimed at, snapping to the centre of the body. It triggers on what
+# the RAY passes rather than on screen proximity, which is what makes it the fix
+# for shooting at a different height -- point roughly at something above you and
+# the assist supplies the elevation.
+#
+# A TIGHT RADIUS, DELIBERATELY. See SimConfig.AIM_SNAP_RADIUS.
+func _snap_to_enemy(body: Node, target: Vector3) -> Vector3:
+	var from: Vector3 = body.global_position
+	var along: Vector3 = target - from
+	var span: float = along.length()
+	if span < 0.001:
+		return target
+	along /= span
+	var best: Vector3 = target
+	var best_distance: float = span
+	for list in [_rushers, _gunners]:
+		for enemy in list:
+			if not is_instance_valid(enemy) or enemy.is_spent():
+				continue
+			var offset: Vector3 = enemy.global_position - from
+			var along_ray: float = offset.dot(along)
+			# BEHIND YOU IS NOT A TARGET, and neither is past the point you asked
+			# for -- aiming SHORT of something is how a blast is placed in front of
+			# it, which the tight radius exists to preserve.
+			if along_ray <= 0.0 or along_ray > span:
+				continue
+			if (offset - along * along_ray).length() > SimConfig.AIM_SNAP_RADIUS:
+				continue
+			# NEAREST WINS. A second enemy further down the same line must not
+			# steal the aim off the one in front of it.
+			if along_ray < best_distance:
+				best_distance = along_ray
+				best = enemy.global_position
+	return best
+
 func _muzzle_of(weapon: Node, shooter: Node) -> Vector3:
 	var barrel := weapon.get_node_or_null("Barrel") as Node3D
 	if barrel != null and barrel.is_inside_tree():
@@ -2603,7 +2674,26 @@ func _pose_held_special(weapon: Node, body: Node) -> void:
 	# rusher; firing from shoulder height shot over the top of every rusher on the
 	# bridge.
 	weapon.position = Vector3(0.22, 0.25, -0.35)
+	# THE BARREL POINTS WHERE THE ROUND GOES (M20 phase 2b).
+	#
+	# It was Vector3.ZERO -- parented to the Facing pivot and left there -- so the
+	# gun pointed along `facing` while the shot did not. Both weapons have always
+	# converged on a zero down the centreline, which leaves the muzzle angled 0.42
+	# degrees inboard of the barrel it comes out of.
+	#
+	# Nobody chose that. It is a picture disagreeing with the simulation, which is
+	# the shape of the spike hit test and the hat collider before it. And it had to
+	# go before the laser sight could mean anything: a line drawn out of a barrel
+	# that points somewhere the round does not go is an instrument that lies, and
+	# the whole A/B is judged through it.
 	weapon.rotation = Vector3.ZERO
+	var aimed: Vector3 = aim_direction(body, weapon)
+	if aimed.length_squared() > 0.0001:
+		# Into the pivot own space, since the weapon hangs off Facing rather than
+		# off the world.
+		var local: Vector3 = attach.global_transform.basis.inverse() * aimed
+		weapon.rotation = Vector3(asin(clampf(local.y, -1.0, 1.0)),
+			atan2(-local.x, -local.z), 0.0)
 
 func _drop_special(weapon: Node, at: Vector3) -> void:
 	if weapon.get_parent() != _specials_root:
@@ -2647,6 +2737,67 @@ func destroy_held_special(peer: int) -> void:
 # Every held special, every tick, on host and client alike. Cosmetic -- the
 # parent pivot does the aiming -- so a client poses its own rather than being
 # told, exactly like the hat lean.
+# --- The laser sight (M20 phase 1) --------------------------------------------
+#
+# THE INSTRUMENT, NOT THE FEATURE. It is how both aim modes are judged, so it
+# works in BOTH -- a line that only appeared in the new one would show you its
+# aim with nothing to compare against.
+#
+# DRAWN FROM aim_direction, THE SAME FUNCTION THAT FIRES. Not a parallel copy: a
+# sight computing its own direction can agree with the cursor while the round
+# disagrees with both, which is precisely the disagreement it exists to expose.
+#
+# LOCAL PLAYER ONLY, and view-only in the registry, so it changes nothing the
+# simulation reads and a client may switch it on the instant it is clicked.
+var _laser: MeshInstance3D = null
+
+func _update_laser_sight() -> void:
+	if not view_active:
+		return
+	var on: bool = DebugSettings.is_on("laser_sight")
+	var body: Node = players.get(local_peer)
+	var weapon: Node = _specials.held_by(local_peer) if body != null else null
+	# NO GUN, NO LINE. A sight on an empty hand would be aiming something that
+	# does not exist, and the muzzle fallback in _muzzle_of is the body centre --
+	# which would draw a beam out of the player chest.
+	if not on or body == null or weapon == null or not is_instance_valid(weapon):
+		if _laser != null:
+			_laser.visible = false
+		return
+	if _laser == null:
+		_laser = MeshInstance3D.new()
+		_laser.name = "LaserSight"
+		_laser.mesh = BoxMesh.new()
+		var beam := StandardMaterial3D.new()
+		beam.albedo_color = Color(1.0, 0.25, 0.2, 0.85)
+		beam.emission_enabled = true
+		beam.emission = Color(1.0, 0.3, 0.25)
+		beam.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		beam.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_laser.material_override = beam
+		add_child(_laser)
+	_laser.visible = true
+
+	var from: Vector3 = _muzzle_of(weapon, body)
+	var along: Vector3 = aim_direction(body, weapon)
+	# STOPS AT THE FIRST THING IT WOULD HIT, so the line reports the shot rather
+	# than a ray through the world. Same layers a round is stopped by.
+	var reach: float = SimConfig.MG_RANGE
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if space != null:
+		var query := PhysicsRayQueryParameters3D.create(from, from + along * reach)
+		query.collision_mask = (1 << 0) | (1 << 1) | (1 << 4)
+		query.exclude = [body.get_rid()]
+		var hit := space.intersect_ray(query)
+		if not hit.is_empty():
+			reach = from.distance_to(hit["position"])
+	var mesh: BoxMesh = _laser.mesh as BoxMesh
+	mesh.size = Vector3(0.02, 0.02, maxf(reach, 0.05))
+	_laser.global_position = from + along * (reach * 0.5)
+	if absf(along.dot(Vector3.UP)) < 0.999:
+		_laser.global_transform = _laser.global_transform.looking_at(
+			from + along * reach, Vector3.UP)
+
 func _pose_held_specials() -> void:
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
@@ -3152,7 +3303,8 @@ func _client_tick() -> void:
 		# that it walked and being dragged back every tick.
 		_refresh_shield_flag(local_peer, body)
 		if _is_predicted(body.state):
-			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp))
+			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp),
+			PlayerInput.point_of(inp))
 			_predicted.append([tick, body.capture_state()])
 		else:
 			# TUMBLE, LEDGE_HANG, DOWNED and the bus states genuinely have no
@@ -3201,7 +3353,7 @@ func _is_predicted(state: int) -> bool:
 func _gather_local_input(for_tick: int) -> Array:
 	if input_provider.is_valid():
 		return input_provider.call(for_tick)
-	return PlayerInput.sample(for_tick, _poll_aim())
+	return PlayerInput.sample(for_tick, _poll_aim(), _poll_aim_point())
 
 # Resolving the aim needs the camera and the local body -- a cursor is a point on
 # the screen and the answer wanted is a direction on the deck. Those live here, so
@@ -3216,6 +3368,16 @@ func _poll_aim() -> float:
 	if body == null:
 		return PlayerInput.AIM_NONE
 	return _aim.poll(camera, body.position)
+
+# The same cursor as _poll_aim, resolved to a place instead of a bearing. Asked
+# second and separately so the bearing path is untouched -- see aim_source.point().
+func _poll_aim_point() -> Vector3:
+	if not view_active or camera == null:
+		return PlayerInput.AIM_POINT_NONE
+	var body: Node = players.get(local_peer)
+	if body == null:
+		return PlayerInput.AIM_POINT_NONE
+	return _aim.resolve_point(camera, body.position)
 
 func _trim_history() -> void:
 	while _pending_inputs.size() > SimConfig.HISTORY_TICKS:
@@ -3706,7 +3868,8 @@ func _reconcile(body: Node, e: Array) -> void:
 	body.apply_state(authoritative)
 	_predicted.clear()
 	for pending in _pending_inputs:
-		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS], PlayerInput.aim_of(pending))
+		body.step(pending[PlayerInput.MOVE], pending[PlayerInput.ACTIONS],
+			PlayerInput.aim_of(pending), PlayerInput.point_of(pending))
 		_predicted.append([int(pending[PlayerInput.TICK]), body.capture_state()])
 
 # --- Names --------------------------------------------------------------------

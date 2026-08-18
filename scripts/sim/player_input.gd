@@ -4,7 +4,7 @@ extends RefCounted
 # the host about itself.
 #
 # WIRE FORMAT is a plain 4-element Array:
-#   [tick: int, move: Vector2, actions: int, aim: float]
+#   [tick: int, move: Vector2, actions: int, aim: float, aim_point: Vector3]
 # An Array rather than a class because it serialises natively over an RPC with no
 # encode/decode step to get wrong, and this crosses the network 60 times a second
 # per player.
@@ -31,17 +31,40 @@ const TICK := 0
 const MOVE := 1
 const ACTIONS := 2
 const AIM := 3
+const AIM_POINT := 4
+
+# WHERE THE CURSOR IS IN THE WORLD, not just which way it lies (M20).
+#
+# `aim` is a bearing on the deck plane and cannot say ANYTHING about height, which
+# is why every shot in the game leaves level. This is the same cursor resolved
+# against the world instead of against a plane, so it carries the up-and-down that
+# a bearing threw away.
+#
+# A POINT AND NOT A PITCH. The muzzle is not the player -- it is the barrel tip,
+# held to one side -- so a direction computed at the body and reused at the muzzle
+# is off by that offset forever. Given a place, the shot can be aimed at it from
+# wherever the gun actually is, which is the whole feature.
+#
+# CARRIED, NOT DERIVED, for exactly the reason `aim` is: it comes from a cursor,
+# and the host has no cursor.
+#
+# NOT IN capture_state. It is an INPUT, refreshed every tick like `move`, and it
+# changes only where a shot goes -- never how the body steps. `facing` already
+# carries the bearing and is already replicated, so a replay that re-runs step()
+# with the recorded input reproduces everything that matters.
+const AIM_POINT_NONE := Vector3.INF
 
 # No aiming device has been touched. Kept as a distinct value rather than
 # defaulting to north, so the body can fall back to the direction of travel --
 # which is what a keyboard-only player, and every existing test, expects.
 const AIM_NONE := AimSource.NONE
 
-static func make(tick: int, move: Vector2, actions: int, aim: float = AIM_NONE) -> Array:
-	return [tick, move, actions, aim]
+static func make(tick: int, move: Vector2, actions: int, aim: float = AIM_NONE,
+		aim_point: Vector3 = AIM_POINT_NONE) -> Array:
+	return [tick, move, actions, aim, aim_point]
 
 static func empty(tick: int) -> Array:
-	return [tick, Vector2.ZERO, 0, AIM_NONE]
+	return [tick, Vector2.ZERO, 0, AIM_NONE, AIM_POINT_NONE]
 
 # Reads the live InputMap. Only ever called on the machine a human is sitting at;
 # headless tests build inputs with make() instead, which is the same path the
@@ -51,7 +74,8 @@ static func empty(tick: int) -> Array:
 # needs the camera and the player's position, and this is a static function that
 # has neither. GameWorld owns both, so it does that half and hands the answer
 # down. See aim_source.gd.
-static func sample(tick: int, aim: float = AIM_NONE) -> Array:
+static func sample(tick: int, aim: float = AIM_NONE,
+		aim_point: Vector3 = AIM_POINT_NONE) -> Array:
 	var move := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var actions := 0
 	# Edge-triggered: set for exactly the tick the key went down. That is what
@@ -64,7 +88,7 @@ static func sample(tick: int, aim: float = AIM_NONE) -> Array:
 	# not be for legs.
 	if Input.is_action_pressed("special"):
 		actions |= SimConfig.ACTION_SPECIAL_HELD
-	return [tick, move, actions, aim]
+	return [tick, move, actions, aim, aim_point]
 
 # Older inputs on the wire, and every test that builds a 3-element array by hand,
 # are still legal. Reading the field through here rather than by index means a
@@ -74,6 +98,18 @@ static func aim_of(input: Array) -> float:
 	if input.size() <= AIM:
 		return AIM_NONE
 	return float(input[AIM])
+
+# Same tolerance, one field later. Every test that hand-builds a 4-element array,
+# and every packet from a build without this field, reads as "no point" rather
+# than as an out-of-bounds access -- which in GDScript aborts the rest of the
+# calling function silently and would take the whole tick with it.
+static func point_of(input: Array) -> Vector3:
+	if input.size() <= AIM_POINT:
+		return AIM_POINT_NONE
+	return input[AIM_POINT]
+
+static func has_point(input: Array) -> bool:
+	return is_finite(point_of(input).x)
 
 # True when this input carries anything the host must not miss. Used to decide
 # whether a packet is worth repeating beyond the standard redundancy window.

@@ -80,6 +80,13 @@ var shove_cooldown: float = 0.0
 # the dash GATE reads them, and SHOVE is a state a client predicts for itself, so
 # a body that replayed without them would allow a dash the host refused and
 # correct every tick afterwards.
+# WHERE THE CURSOR IS IN THE WORLD (M20), refreshed every tick from the input.
+#
+# NOT IN capture_state, and that is the point: it is an INPUT like `move`, not
+# state. It changes only where a shot is aimed, never how the body steps, and the
+# bearing half of it is already carried by `facing`, which IS replicated. A replay
+# that re-runs step() with the recorded input reproduces it exactly.
+var aim_point: Vector3 = Vector3.INF
 var dash_charges: int = SimConfig.DASH_CHARGES
 var dash_refill: float = 0.0
 
@@ -236,7 +243,9 @@ func shield_blocks(hit) -> bool:
 	var toward: float = GridConfig.yaw_of_vector(Vector3(-flat.x, 0.0, -flat.y))
 	return absf(wrapf(toward - shield_yaw, -PI, PI)) <= deg_to_rad(SimConfig.SHIELD_ARC_DEG) * 0.5
 
-func step(move: Vector2, actions: int, aim: float = INF) -> void:
+func step(move: Vector2, actions: int, aim: float = INF,
+		aim_at: Vector3 = Vector3.INF) -> void:
+	aim_point = aim_at
 	var before := position
 	state_timer += SimConfig.TICK_DELTA
 	shove_cooldown = maxf(0.0, shove_cooldown - SimConfig.TICK_DELTA)

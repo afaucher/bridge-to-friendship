@@ -703,6 +703,19 @@ const MG_BALL_PUSH := 10.0
 # special, so it must not out-reach the one that is.
 const MG_RANGE := 30.0
 
+# HOW CLOSE A SHOT HAS TO PASS AN ENEMY BEFORE THE ASSIST TAKES IT (M20).
+#
+# One body width. A rusher is 0.5 m in radius, so this is "the round was going to
+# graze it anyway" rather than "the round was in the same postcode".
+#
+# TIGHT ON PURPOSE. Pointing at the ground near something slow is the correct
+# play for an area weapon -- a rocket is easier to land behind a rusher than on
+# one -- and a generous bubble would drag every one of those shots onto the
+# target and quietly delete the decision. If a playtest says the assist does not
+# help enough, this is the number; the thing to watch while raising it is whether
+# the rocket stops being placeable.
+const AIM_SNAP_RADIUS := 0.6
+
 const MG_DAMAGE := 1
 
 # Below SHOVE_TRANSFER_SPEED (11) and just under its lift (2.5): being shot

@@ -97,6 +97,34 @@ const OPTIONS := {
 		"mirrors": "MG_SPREAD_DEG",
 		"help": "Half-angle of the cone across the bridge. Vertical is a separate, much tighter number.",
 	},
+	# --- Aiming (M20) ----------------------------------------------------------
+	#
+	# THREE SWITCHES FOR ONE FEATURE, because an A/B with one lever cannot say
+	# which half worked -- and a real possible outcome is that the assist alone
+	# fixes shooting at height and `point` never ships.
+	"aim_mode": {
+		"section": "Aiming",
+		"label": "Aim mode",
+		"choices": ["level", "point"],
+		"default": 0,
+		"help": "level is the shipped behaviour: a shot is aimed at a spot 30 m down the bearing at your own height, so it always leaves flat. point aims at the exact place the cursor rests on in the world, which is what lets you shoot up onto a deck or down into a pit -- and it makes the muzzle offset converge on the real target rather than on a fixed 30 m.",
+	},
+	"aim_assist": {
+		"section": "Aiming",
+		"label": "Aim assist",
+		"choices": ["off", "snap"],
+		"default": 0,
+		"help": "snap pulls the aim onto an enemy centre of mass when the shot would already pass close to one. The radius is deliberately TIGHT: pointing at the ground near something is a real strategy for an area weapon against a slow target, and a generous bubble would eat that decision and quietly make the rocket worse.",
+	},
+	"laser_sight": {
+		"section": "Aiming",
+		"kind": KIND_BOOL,
+		"view_only": true,
+		"label": "Laser sight",
+		"default": 0,
+		"help": "Draws a line out of the barrel along the direction the shot will ACTUALLY take, built from the same function that fires it -- so if the line and the round ever disagree, the line is telling you about a bug. Works in both aim modes on purpose: a sight that only appeared in the new one would show you its aim with nothing to compare against.",
+	},
+
 	"dash_charges": {
 		"section": "Weapons",
 		"kind": KIND_INT,
