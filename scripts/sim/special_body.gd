@@ -149,12 +149,36 @@ const SHAPE_NODES := {
 	Kind.HEAVY: "Body",
 }
 
+# ONE WRITE PER MESH, DECIDED BY THE MESH -- not one write per KIND.
+#
+# This used to loop over SHAPE_NODES and set `node.visible = (shape_kind == kind)`
+# on each pass. That was correct while the mapping was one kind to one mesh, and
+# it broke silently the moment four kinds started sharing "Body": every pass wrote
+# that node's visibility, so the LAST kind in the dictionary decided it for
+# everybody. HEAVY is last, so the heavy gun was the only one of the four with a
+# body and the other three were a floating barrel.
+#
+# Reported from play as "the machine gun comes out with a grey body, but for the
+# other three you can only see the barrel" -- and grey is the heavy's gunmetal,
+# which is the tell: the gun with a body was the one whose entry ran last.
+#
+# THE GENERAL SHAPE IS WORTH THE NOTE: a lookup table whose VALUES repeat, walked
+# by key, writing to the value. Every duplicate is a write, and only the last one
+# survives. Deduplicating on the mesh name is what makes the loop say what it
+# means -- "is this the mesh MY kind uses" -- rather than "am I the kind whose
+# turn this is".
 func apply_kind_look() -> void:
+	var mine_node: String = str(SHAPE_NODES.get(kind, ""))
+	var done: Dictionary = {}
 	for shape_kind in SHAPE_NODES:
-		var node := get_node_or_null(str(SHAPE_NODES[shape_kind])) as MeshInstance3D
+		var node_name: String = str(SHAPE_NODES[shape_kind])
+		if done.has(node_name):
+			continue
+		done[node_name] = true
+		var node := get_node_or_null(node_name) as MeshInstance3D
 		if node == null:
 			continue
-		var mine: bool = shape_kind == kind
+		var mine: bool = node_name == mine_node
 		node.visible = mine
 		if mine and node.material_override != null:
 			var mat: StandardMaterial3D = node.material_override.duplicate()

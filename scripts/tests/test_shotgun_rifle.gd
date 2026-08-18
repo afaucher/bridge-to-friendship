@@ -136,7 +136,48 @@ func _physics_process(_delta: float) -> void:
 	eq(GridConfig.CONTENT_GLYPHS.get("f"), GridConfig.Content.PICKUP_RIFLE,
 		"and `f` a rifle")
 	_test_the_heavy_gun()
+	_test_every_gun_has_a_body()
 	finish()
+
+# --- You can SEE it ---------------------------------------------------------------
+#
+# THE HALF THIS FILE TESTED NOTHING OF. Everything above is about what a gun DOES
+# -- ammo, spread, damage, rate, glyphs -- and a weapon that is mechanically
+# perfect and invisible ships anyway.
+#
+# It shipped: four kinds now share the "Body" mesh, apply_kind_look wrote that
+# node's visibility once per KIND, and the last entry in the dictionary decided it
+# for all four. Three of the four guns were a floating barrel and the tests were
+# green, because none of them had ever looked.
+func _test_every_gun_has_a_body() -> void:
+	var guns := [SpecialBody.Kind.MACHINE_GUN, SpecialBody.Kind.SHOTGUN,
+		SpecialBody.Kind.RIFLE, SpecialBody.Kind.HEAVY]
+	var colours: Dictionary = {}
+	for kind in guns:
+		var w: Node = _arm(kind)
+		var mesh := w.get_node_or_null("Body") as MeshInstance3D
+		if not check(mesh != null, "%s has a Body mesh at all" % w.kind_name()):
+			continue
+		check(mesh.visible,
+			"%s DRAWS its body, not just a floating barrel -- four kinds share "
+				% w.kind_name()
+			+ "this mesh, so a loop that writes its visibility once per KIND lets "
+			+ "the last one decide for everybody")
+		var barrel := w.get_node_or_null("Barrel") as MeshInstance3D
+		check(barrel != null and barrel.visible, "and its barrel")
+		check(mesh.material_override != null,
+			"and is tinted rather than left on the shared material")
+		colours[kind] = (mesh.material_override as StandardMaterial3D).albedo_color
+
+	# AND THEY ARE TOLD APART BY COLOUR, which is the whole reason sharing one
+	# silhouette is acceptable. Two guns the same colour is a rack you cannot read.
+	for a in guns:
+		for b in guns:
+			if a >= b or not colours.has(a) or not colours.has(b):
+				continue
+			check(colours[a] != colours[b],
+				"and no two guns are the same colour (%s vs %s)"
+					% [str(colours[a]), str(colours[b])])
 
 # --- The heavy gun, which is the only one that charges you to hold it -----------
 

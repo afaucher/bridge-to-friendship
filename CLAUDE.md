@@ -765,6 +765,21 @@ about *method*, not about that game.
   while measuring nothing. A round number is the likeliest one to be a multiple of
   the period you are testing.
 
+- **A LOOKUP TABLE WHOSE VALUES REPEAT, WALKED BY KEY AND WRITTEN THROUGH THE
+  VALUE, IS DECIDED BY WHICHEVER KEY COMES LAST.** Observed 2026-08-18 adding
+  three guns. `SHAPE_NODES` maps a special's kind to the mesh it shows, and
+  `apply_kind_look` looped the kinds setting `node.visible = (shape_kind == kind)`
+  -- correct for years while every kind had its own mesh, and silently wrong the
+  moment four kinds shared `"Body"`: each pass wrote that node, so the LAST entry
+  in the dictionary decided visibility for all four. Three of the four guns
+  shipped as a floating barrel. **The tell in the report was the colour** -- "the
+  machine gun comes out with a grey body" -- because grey is the HEAVY's gunmetal,
+  and the heavy is last in the dictionary. Deduplicate on the value and ask "is
+  this the mesh MY kind uses" rather than "am I the kind whose turn this is".
+  And the reason it shipped: every test on those weapons asked what they DO --
+  ammo, spread, damage, rate, glyph -- and none asked whether you can see them. **A
+  weapon that is mechanically perfect and invisible passes a mechanics suite.**
+
 - **A COUNTER ONLY EVER ASSERTED *ABSENT* IS A COUNTER NOBODY HAS CHECKED.**
   Observed 2026-08-17 from a playtest: "enemy damage and kills were both zero when
   they shouldn't have been". They were unreachable code. `_deliver` measured damage
