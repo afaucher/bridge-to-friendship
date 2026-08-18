@@ -188,11 +188,32 @@ static func _slots(world: Node, peer: int, body: Node) -> Array:
 			"id": "push",
 			"label": "PUSH",
 			"filled": true,
-			"ready": float(body.shove_cooldown) <= 0.0,
-			"cooldown": _fraction(float(body.shove_cooldown), SimConfig.SHOVE_COOLDOWN),
+			# READY MEANS BOTH LIMITS ARE CLEAR. The dash has two and they are
+			# different: the cooldown bounds the RATE and the charges bound the
+			# TOTAL, so a slot that only watched the cooldown would read as
+			# available with nothing in hand.
+			"ready": float(body.shove_cooldown) <= 0.0 and int(body.dash_charges) > 0,
+			"cooldown": _dash_wait(body),
+			# THE SAME NUMBER EVERY CONSUMABLE SHOWS. The dash became a fixed-uses
+			# item like the specials, so it gets the treatment the specials already
+			# have -- the view prints `ammo` under the label for any filled slot,
+			# and it needed no change at all to draw this.
+			"ammo": int(body.dash_charges),
 		},
 		_special_slot(world, peer),
 	]
+
+# HOW FULL THE SLOT LOOKS, and it answers a different question depending on which
+# limit you are against.
+#
+# With charges in hand it is the COOLDOWN -- a third of a second until the next
+# one. With none it is the REFILL, five seconds until one comes back, which is the
+# number a player actually wants then: an empty slot that filled at the cooldown's
+# rate would promise a dash every 0.35 s and deliver one every 5.
+static func _dash_wait(body: Node) -> float:
+	if int(body.dash_charges) <= 0:
+		return _fraction(float(body.dash_refill), SimConfig.DASH_REFILL_SECONDS)
+	return _fraction(float(body.shove_cooldown), SimConfig.SHOVE_COOLDOWN)
 
 # The one slot, read off the world rather than off the player. Nothing about a
 # carried item lives on PlayerBody -- see special_pool.held_by, which is what

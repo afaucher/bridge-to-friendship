@@ -98,6 +98,36 @@ func _check_slots() -> void:
 	near(float(slots[0]["cooldown"]), 0.5, 0.02, "and reports how much is left")
 	a.shove_cooldown = 0.0
 
+	# THE DASH IS A CONSUMABLE NOW, so it carries the number every consumable
+	# carries. The view already prints `ammo` under the label of any filled slot,
+	# so this is the whole of showing it.
+	slots = _own()["slots"]
+	# `.get`, NOT `[...]`. A missing Dictionary key RAISES in GDScript, and a raise
+	# aborts the rest of the function for that frame without failing anything --
+	# so a bare `slots[0]["ammo"]` would have made this test PASS when the field
+	# was deleted, and taken every assertion below it down silently too. Measured:
+	# it did exactly that on the first A/B, and only the view test caught the
+	# deletion.
+	eq(int(slots[0].get("ammo", -1)), a.dash_charges,
+		"the push slot reports dashes in hand, the same field a special uses "
+		+ "for its rounds")
+
+	# EMPTY-HANDED IS NOT THE SAME AS COOLING, and a slot that only watched the
+	# cooldown would say the dash is available with nothing left to spend.
+	a.dash_charges = 0
+	a.dash_refill = SimConfig.DASH_REFILL_SECONDS * 0.5
+	slots = _own()["slots"]
+	eq(int(slots[0].get("ammo", -1)), 0, "no dashes left reads as zero")
+	check(not bool(slots[0]["ready"]),
+		"and the slot is NOT ready, even with the cooldown clear -- the two limits "
+		+ "are different and the slot has to answer both")
+	# AND THE BAR SWITCHES TO THE REFILL. Filling at the cooldown's rate would
+	# promise a dash every 0.35 s and deliver one every 5.
+	near(float(slots[0]["cooldown"]), 0.5, 0.02,
+		"with the wait now measured against the REFILL rather than the cooldown")
+	a.dash_charges = a.max_dashes()
+	a.dash_refill = 0.0
+
 # --- Health, and the grace window that is currently unknowable -----------------
 
 func _check_grace_and_health() -> void:

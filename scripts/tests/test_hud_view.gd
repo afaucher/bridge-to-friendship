@@ -100,6 +100,17 @@ func _phase_built() -> void:
 	# An empty slot has to be visibly PRESENT rather than omitted, or the layout
 	# jumps the moment somebody picks a special up. The special slot is the only
 	# one that is ever empty now, and unlike the rope box it actually fills.
+	# THE DASH COUNT IS ON SCREEN, not merely in the model. hud_model carrying a
+	# field and the label showing it are two different claims, and this file exists
+	# because the second one is the half that ships unrun.
+	var push: ColorRect = hud._own_slots.get_child(0)
+	var push_caption: Label = push.get_child(0)
+	check(push_caption.text.contains(str(world.player_body(1).dash_charges)),
+		"the push slot draws how many dashes are in hand (text %s, charges %d)"
+			% [push_caption.text.replace("
+", "/"), world.player_body(1).dash_charges])
+	check(push_caption.text.contains("PUSH"), "under the label it has always had")
+
 	var special: ColorRect = hud._own_slots.get_child(1)
 	eq(special.color, HudScript.COLOR_SLOT_EMPTY,
 		"an empty special slot draws as deliberately empty, not missing")
