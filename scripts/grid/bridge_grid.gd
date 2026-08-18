@@ -730,10 +730,39 @@ func try_take_heart(world_position: Vector3) -> bool:
 		if not is_instance_valid(heart):
 			continue
 		if heart.position.distance_to(local) <= SimConfig.HEART_PICKUP_RADIUS:
-			_hearts.erase(cell)
-			heart.queue_free()
+			take_heart(cell)
 			return true
 	return false
+
+# REMOVE ONE, BY CELL. Split out of try_take_heart so the host and a client reach
+# the same code: the host arrives here by proximity, a client by being told which
+# cell went. Same shape as take_mound, and for the same reason.
+func take_heart(cell: Vector2i) -> void:
+	var heart = _hearts.get(cell)
+	if heart != null and is_instance_valid(heart):
+		heart.queue_free()
+	_hearts.erase(cell)
+	_taken_hearts[cell] = true
+
+# WHICH HEARTS HAVE GONE. A heart is built from the segment, so every machine
+# draws one until it is told otherwise -- and nothing told them. Reported from a
+# playtest as "client doesn't see health disappear after pickup": the host ate it,
+# healed the player, and left a heart drawn on every other screen that could never
+# be picked up again.
+var _taken_hearts: Dictionary = {}      # Vector2i -> true
+
+func taken_heart_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _taken_hearts:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+func apply_taken_hearts(layout: PackedInt32Array) -> void:
+	var i := 0
+	while i + 1 < layout.size():
+		take_heart(Vector2i(layout[i], layout[i + 1]))
+		i += 2
 
 # --- Mounds -------------------------------------------------------------------
 #

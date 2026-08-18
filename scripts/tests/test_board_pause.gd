@@ -95,6 +95,24 @@ func _phase_frozen() -> void:
 		"while the clock that ENDS the board keeps running (%.2f, was %.2f)"
 			% [world.round_machine.close_timer, clock_at])
 
+	# THE INPUT QUEUE DOES NOT BUILD UP, which is the half a playtest found and
+	# these assertions did not.
+	#
+	# _submit_input is an RPC and keeps arriving while the board is up; the frozen
+	# tick returns before _consume_remote_input, so nothing drains it. Ten seconds
+	# of board at 60 Hz is six hundred queued inputs per client, and the host takes
+	# one per tick -- so play resumed with the avatar replaying ten seconds in the
+	# past. Reported as judder and rubber-banding after every round.
+	var flooded: Array = []
+	for t in 400:
+		flooded.append(PlayerInput.make(10000 + t, Vector2(0.0, -1.0), 0))
+	world._inbox[PEER] = flooded.duplicate()
+	world._host_tick()
+	eq((world._inbox.get(PEER, []) as Array).size(), 0,
+		"input arriving while the board is up is DROPPED, not banked -- a queue "
+		+ "that survives the pause is a debt the player pays back in judder for "
+		+ "as long as the board was up")
+
 	# AND IT REALLY ENDS. Not a claim about the timer's direction -- a claim that
 	# the state machine gets out.
 	for _t in int(RoundMachine.SCORE_SECONDS / SimConfig.TICK_DELTA) + 20:

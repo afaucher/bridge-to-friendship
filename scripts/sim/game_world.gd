@@ -443,6 +443,27 @@ func _host_tick() -> void:
 		# returned a body to a row that had not been built and landed it on
 		# nothing.
 		_extend_run()
+		# AND THE INBOX IS DROPPED ON THE FLOOR, which is the difference between a
+		# pause and a ten-second input debt.
+		#
+		# _submit_input is an RPC: it keeps filling _inbox while the board is up,
+		# because a client goes on sending whether or not the host is stepping. But
+		# the frozen tick returns before _consume_remote_input, so nothing drains
+		# it -- ten seconds of scoreboard at 60 Hz is SIX HUNDRED queued inputs per
+		# client, and the host drains one per tick, so when the board closed the
+		# avatar was replaying ten seconds in the past and every prediction was
+		# wrong against it.
+		#
+		# Reported as "very laggy/stuck movement for the client after finishing one
+		# round, reproduced multiple times, judders to a stop with rubber banding".
+		# That is exactly what a 600-deep queue looks like from the far end.
+		#
+		# The inputs are discarded rather than applied because they describe ticks
+		# nobody was allowed to move on. `_highest_queued` is deliberately NOT
+		# reset: it is what stops a late packet from before the pause being
+		# accepted as new once play resumes.
+		for peer_key in _inbox.keys():
+			(_inbox[peer_key] as Array).clear()
 		var was: int = round_machine.state
 		round_machine.step(self)
 		if round_machine.state != was:
@@ -2982,6 +3003,11 @@ func _sync_spent_mounds(layout: PackedInt32Array) -> void:
 # permanently wrong when one of them is dropped -- and the floor being solid on
 # one machine and not the other is the worst disagreement this game can have.
 @rpc("authority", "call_remote", "reliable")
+func _sync_taken_hearts(layout: PackedInt32Array) -> void:
+	if grid != null:
+		grid.apply_taken_hearts(layout)
+
+@rpc("authority", "call_remote", "reliable")
 func _sync_open_cells(layout: PackedInt32Array) -> void:
 	if grid != null:
 		grid.apply_open_cells(layout)
@@ -3391,6 +3417,12 @@ func _process_hearts() -> void:
 			continue
 		if grid.try_take_heart(body.position) and body.heal(SimConfig.HEART_HEAL):
 			_bump(int(peer_key), "healed")
+			# TOLD, NOT INFERRED. A heart is built from the segment, so every
+			# machine draws one until it is told otherwise -- and a client has no
+			# way to work out that somebody else ate it. Same treatment mounds and
+			# shooters already get, and the same reason.
+			if networked:
+				_sync_taken_hearts.rpc(grid.taken_heart_layout())
 			pass
 
 # Peers ordered so that anything being stood on is stepped before whoever is
@@ -4233,12 +4265,9 @@ func host_add_peer(peer: int) -> void:
 		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
 		_sync_spent_shooters.rpc_id(peer, grid.spent_shooter_layout())
 		_sync_open_cells.rpc_id(peer, grid.open_cell_layout())
-	# Who is wearing what. The loose hats arrive on the next snapshot; a worn hat
-	# is not in that list by design, so it has to be told.
-	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())
-	# And who is holding what, for the identical reason: a HELD special is absent
-	# from the snapshot by design, so a newcomer would see an unarmed party.
-	_sync_held_specials.rpc_id(peer, _held_special_dump())
+		# And which hearts have already been eaten, for the identical reason: the
+		# newcomer built them from the seed and nothing else would remove them.
+		_sync_taken_hearts.rpc_id(peer, grid.taken_heart_layout())
 	# The debug config, so a joiner tunes against the same numbers everyone else
 	# is already playing on rather than against the shipped defaults.
 	_set_settings.rpc_id(peer, DebugSettings.snapshot())
@@ -4253,6 +4282,24 @@ func host_add_peer(peer: int) -> void:
 		var existing: int = int(existing_key)
 		_spawn_player.rpc_id(peer, existing, int(_spawn_index.get(existing, 0)))
 	host_spawn(peer)
+
+	# AFTER THE SPAWNS, AND THAT IS THE WHOLE BUG. Both of these name a PLAYER,
+	# and _wear_hat and _take_special both open with
+	# `if hat == null or body == null: return` -- so sent before the newcomer has
+	# been told anybody exists, every entry hit that guard and returned. Silently:
+	# the hats were adopted into the pool and then never worn, and the specials
+	# never held.
+	#
+	# Reported from a playtest as "hats do not appear on other players when
+	# joining a game". The held specials had the identical fault and nobody had
+	# noticed yet -- the comment below has claimed to prevent it since the day it
+	# was written.
+	#
+	# Worn hats and held items are absent from the snapshot BY DESIGN, so this
+	# catch-up is the only thing that carries them; there is no later pass that
+	# would have quietly fixed it.
+	_sync_worn_hats.rpc_id(peer, _worn_hat_dump())
+	_sync_held_specials.rpc_id(peer, _held_special_dump())
 	# The newcomer needs everyone's name, and it may have announced its own
 	# before the host had it in `players`. Republishing here costs one small
 	# reliable packet and removes the ordering question entirely.
