@@ -32,7 +32,7 @@ bounce = 0.5
 ; colliding is half of where the scatter comes from, and the field is meant to be
 ; chaotic in a way a single ball's arc cannot be.
 collision_layer = 8
-collision_mask = 15
+collision_mask = 31
 mass = 2.0
 physics_material_override = SubResource("Phys_1")
 script = ExtResource("1_ball")

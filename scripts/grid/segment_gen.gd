@@ -485,6 +485,39 @@ const MAZE_BRAID := 6      # one extra link per this many cells
 # place in a maze you can see all of.
 const MAZE_DEAD_ENDS := 4
 
+# FLOOR TRAPS. A maze with nothing in it is a walking puzzle, and this one is
+# read from above -- so the route is never the problem, and the only thing that
+# can make choosing it cost anything is what is standing on it.
+#
+# TIMED FLOORS ARE THE MAZE-FRIENDLY HAZARD. They are periodically solid, so one
+# can never make a route impossible -- only slower -- which matters because the
+# reachability flood CANNOT SEE CONTENT. A hazard that could seal a corridor would
+# be a maze that validates and cannot be crossed, which is the shape CLAUDE.md
+# keeps recording. The phase is per-cell (cell.x * 7 + cell.y * 13), so two of
+# them side by side open at different moments rather than becoming one wide gap.
+#
+# SPIKES ARE THE SAME KIND OF THING, and the first version of this file said
+# otherwise at length. It claimed a spike could SEAL a corridor -- that it hurts
+# the cell it is drawn in, that a maze corridor is one cell wide, and so a spike
+# on a cut vertex is a wall with a health bar -- and it refused any placement that
+# disconnected the maze.
+#
+# SPIKES RUN ON A CLOCK. SPIKE_PERIOD is 2 s and they are out for 34% of it, of
+# which the leading and trailing quarters are the RAMP -- a deliberate telegraph
+# -- so the cell actually hurts for 0.48 s in every 2.0 and is harmless 76% of the
+# time. And when it does hit it charges SPIKE_DAMAGE, one of five health. It does
+# not block; it takes a toll from somebody who walked through without reading it.
+# Corrected on the day it was written, from "the spikes absolutely run on a timer,
+# you can walk through them can't you?" -- which is what the constants say and
+# what piece_spike_gallery's own header has said all along: a rhythm to read
+# rather than a wall.
+#
+# So a spike on the only route is not a blocked maze, it is a timing gate, which
+# is a perfectly good thing for a maze to have. The connectivity check has gone
+# and the placements it was suppressing are back.
+const MAZE_TIMED := 3
+const MAZE_SPIKES := 3
+
 static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
 	var cols: int = (width + 1) / 2
@@ -615,6 +648,9 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 		seg.contents[2 + 2 * at.y][2 * at.x] = \
 			GridConfig.Content.HEART if n == 1 else GridConfig.Content.HAT
 
+	_maze_traps(seg, open_cells, cols, rows, salt,
+		Vector2i((in_door) / 2, 0), Vector2i((out_door) / 2, rows - 1), kept)
+
 	# AND IF THE BRAID LEFT NO DEAD END AT ALL, the hat goes at the DEEPEST point
 	# instead -- the cell furthest from the entrance by actual walking distance
 	# through the maze, not by straight line.
@@ -652,6 +688,45 @@ static func _maze_deepest(open_cells: Dictionary, cols: int, rows: int,
 			seen[n] = true
 			queue.append(n)
 	return last
+
+# Traps, on corridor cells only, spaced apart and never on a door cell or a
+# reward. `entry` and `exit` are lattice coordinates.
+static func _maze_traps(seg, open_cells: Dictionary, cols: int, rows: int,
+		salt: int, entry: Vector2i, exit_cell: Vector2i, rewards: Array) -> void:
+	var taken: Dictionary = {entry: true, exit_cell: true}
+	for r in rewards:
+		taken[r] = true
+
+	# NOT ON TOP OF EACH OTHER, and not next to each other either. Spikes beside a
+	# timed floor is a hazard aimed at somebody standing still waiting for the
+	# floor to come back -- the same complaint that got hazards banned from beside
+	# a lift, arriving by a different route.
+	var placed: Array = []
+	var wanted: Array = []
+	for _t in MAZE_TIMED:
+		wanted.append(GridConfig.Content.TIMED)
+	for _v in MAZE_SPIKES:
+		wanted.append(GridConfig.Content.SPIKES)
+
+	for n in wanted.size():
+		var kind: int = int(wanted[n])
+		for attempt in 24:
+			var i: int = _mix(salt + n * 3701 + attempt * 149) % cols
+			var j: int = _mix(salt + n * 6229 + attempt * 271) % rows
+			var here := Vector2i(i, j)
+			if taken.has(here):
+				continue
+			var near := false
+			for other in placed:
+				if absi(int(other.x) - i) + absi(int(other.y) - j) <= 1:
+					near = true
+					break
+			if near:
+				continue
+			seg.contents[2 + 2 * j][2 * i] = kind
+			taken[here] = true
+			placed.append(here)
+			break
 
 # The grid cell between two lattice neighbours -- the wall that separates them,
 # and the single cell that carving a link writes.

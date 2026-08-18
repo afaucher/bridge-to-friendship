@@ -51,7 +51,7 @@ roughness = 0.9
 ; Layer 5 = rushers, shared with every enemy body, so a round's mask already
 ; covers it and cover works against it without touching the weapon.
 collision_layer = 16
-collision_mask = 23
+collision_mask = 31
 script = ExtResource("1_turret")
 
 [node name="Base" type="MeshInstance3D" parent="."]

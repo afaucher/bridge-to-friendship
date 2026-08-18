@@ -439,6 +439,9 @@ func _check_mazes() -> void:
 	var wall_cells: int = 0
 	var rewards: int = 0
 	var hatless: int = 0
+	var timed: int = 0
+	var spikes: int = 0
+	var crowded: int = 0
 	var cells: int = 0
 	var links: int = 0
 
@@ -490,8 +493,17 @@ func _check_mazes() -> void:
 			for i2 in cols:
 				cells += 1
 				var at := Vector2i(2 * i2, 2 + 2 * j)
-				if seg.content_at(at.x, at.y) != GridConfig.Content.NONE:
+				# REWARDS ARE HATS AND HEARTS. Counting "any content" swept the
+				# floor traps in the moment they were added and turned a reward
+				# count of 127 into 331 -- a number that still passed its
+				# assertion while having stopped measuring what it named.
+				var what: int = seg.content_at(at.x, at.y)
+				if what == GridConfig.Content.HAT or what == GridConfig.Content.HEART:
 					rewards += 1
+				elif what == GridConfig.Content.TIMED:
+					timed += 1
+				elif what == GridConfig.Content.SPIKES:
+					spikes += 1
 				# Counted EAST and SOUTH only, so each link is counted once.
 				if i2 + 1 < cols and seg.is_solid(at.x + 1, at.y):
 					links += 1
@@ -501,6 +513,19 @@ func _check_mazes() -> void:
 			for x in seg.width:
 				if seg.kind_at(x, z) == GridConfig.Kind.WALL:
 					wall_cells += 1
+
+		# NO TRAP TOUCHING ANOTHER TRAP. Spikes beside a timed floor is a hazard
+		# aimed at somebody standing still waiting for the floor to come back --
+		# the complaint that got hazards banned from beside a lift, arriving by a
+		# different route.
+		for z in seg.length:
+			for x in seg.width:
+				if not _is_trap(seg, x, z):
+					continue
+				for step in [Vector2i(1, 0), Vector2i(0, 1)]:
+					if _is_trap(seg, x + step.x, z + step.y):
+						crowded += 1
+
 
 	var loops: int = links - (cells - mazes)      # n-1 links per maze is a tree
 	print("[gen maze] %d of %d sections, %d cells, %d links, %d loops, %d rewards"
@@ -522,6 +547,18 @@ func _check_mazes() -> void:
 	eq(bad_doors, 0, "and has exactly one door at each end")
 	check(wall_cells > 0, "mazes are made of WALL cells (%d)" % wall_cells)
 	check(rewards > 0, "and the dead ends that survive hold something (%d)" % rewards)
+	check(timed > 0, "mazes carry timed floors (%d)" % timed)
+	check(spikes > 0, "and spikes (%d)" % spikes)
+	eq(crowded, 0, "and no trap is placed against another one")
+	# NO ASSERTION THAT SPIKES LEAVE A CLEAR ROUTE, and the one that used to be
+	# here was wrong about the game. It flooded the maze with every spike treated
+	# as a WALL and demanded a way round -- but a spike is on a 2 s clock, out for
+	# 34% of it with a ramp either side, so the cell hurts for 0.48 s in 2.0 and is
+	# harmless 76% of the time. Even mid-strike it charges one health of five
+	# rather than blocking. A spike on the only route is a timing gate, not a
+	# sealed maze.
+	#
+	# It "caught" 4 of 34 mazes, which was the false model reporting itself.
 	eq(hatless, 0,
 		"and EVERY maze holds at least one hat: it is the only section with no "
 		+ "hazard in it, so nothing else in it drops one -- a maze that pays "
@@ -717,3 +754,9 @@ func _check_deterministic() -> void:
 	check(same,
 		"and the identical terrain -- the guarantee a joining client rides when it "
 		+ "is told two numbers instead of a world")
+
+func _is_trap(seg, x: int, z: int) -> bool:
+	if x < 0 or z < 0 or x >= seg.width or z >= seg.length:
+		return false
+	var what: int = seg.content_at(x, z)
+	return what == GridConfig.Content.TIMED or what == GridConfig.Content.SPIKES

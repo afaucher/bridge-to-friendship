@@ -41,7 +41,7 @@ emission_energy_multiplier = 0.35
 ; park a rusher against it forever. A ball passing through a rusher is a smaller
 ; wrong than an enemy stuck on a marble.
 collision_layer = 16
-collision_mask = 23
+collision_mask = 31
 script = ExtResource("1_rusher")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

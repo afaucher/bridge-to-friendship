@@ -23,7 +23,7 @@ roughness = 0.7
 ; it, so cover works against these on the day they land without touching the
 ; weapon.
 collision_layer = 16
-collision_mask = 23
+collision_mask = 31
 script = ExtResource("1_gunner")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
