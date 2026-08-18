@@ -97,6 +97,14 @@ const OPTIONS := {
 		"mirrors": "MG_SPREAD_DEG",
 		"help": "Half-angle of the cone across the bridge. Vertical is a separate, much tighter number.",
 	},
+	"dash_charges": {
+		"section": "Weapons",
+		"kind": KIND_INT,
+		"label": "Dash charges",
+		"default": 3, "min": 1, "max": 9,
+		"mirrors": "DASH_CHARGES",
+		"help": "How many dashes you hold. They come back one every DASH_REFILL_SECONDS, and the clock starts when you SPEND one rather than when you run dry. Separate from the dash cooldown, which bounds the rate rather than the total. Read live, so turning it down mid-round takes charges away instead of leaving somebody holding nine.",
+	},
 	"ammo_multiplier": {
 		"section": "Weapons",
 		"kind": KIND_FLOAT,

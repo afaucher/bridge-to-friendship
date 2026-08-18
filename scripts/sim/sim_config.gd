@@ -172,6 +172,21 @@ const SHOVE_TRANSFER_LIFT := 2.5   # a little upward, so a hit reads as a launch
 # faster way to walk.
 const SHOVE_COOLDOWN := 0.35
 
+# HOW MANY DASHES YOU HOLD, and how fast they come back.
+#
+# CHARGES AND COOLDOWN ARE DIFFERENT LIMITS AND BOTH ARE KEPT. SHOVE_COOLDOWN
+# bounds the RATE -- you cannot spend three in a third of a second -- and this
+# bounds the TOTAL. Without charges the dash was free and infinite, which made it
+# the answer to everything: the counter to a rusher, the way across a gap, and the
+# way out of any mistake. Without the cooldown, three charges would be one
+# three-length dash.
+#
+# THE REFILL STARTS WHEN YOU SPEND, not when you run dry. Waiting for empty before
+# the clock starts punishes the player who paced themselves and rewards the one
+# who dumped all three, which is backwards.
+const DASH_CHARGES := 3
+const DASH_REFILL_SECONDS := 5.0
+
 # How fast a pushed stone slides to its new cell. Presentation only -- the grid
 # records the new cell the instant the push is legal.
 const STONE_PUSH_SPEED := 6.0

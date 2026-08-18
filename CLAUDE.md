@@ -733,6 +733,19 @@ about *method*, not about that game.
 - **`git log --grep` BEFORE proposing a change to load-bearing behaviour.**
   Behaviour that looks wrong in one context is often deliberate in another, and
   the commit message is where that reasoning lives.
+- **VERIFY THAT THE A/B MUTATION APPLIED, NOT JUST THAT THE TEST STILL PASSED.**
+  Observed 2026-08-17 twice in one change. A `sed` anchored to `^			and
+  dash_charges > 0:$` matched nothing, because a `\`-continuation had been written
+  as one long line -- so the "reverted" build was the SHIPPED build, and the green
+  run read as "the test does not catch this" when nothing had been reverted.
+  **Print the mutation, or assert the string is gone, before believing the result.**
+  The second one was real and worse: with the gate genuinely deleted the test STILL
+  passed, because the dash covers 5.6 m and the fixture is 28 m, so the body ran
+  off the end after three dashes and caught a ledge -- and three is also the charge
+  limit. The right number for entirely the wrong reason. **Run both builds side by
+  side and print the number**; identical output is the tell, and it is the only
+  thing that separates "the rule works" from "the rig caps it anyway".
+
 - **A COUNTER ONLY EVER ASSERTED *ABSENT* IS A COUNTER NOBODY HAS CHECKED.**
   Observed 2026-08-17 from a playtest: "enemy damage and kills were both zero when
   they shouldn't have been". They were unreachable code. `_deliver` measured damage

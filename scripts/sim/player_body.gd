@@ -76,6 +76,12 @@ var grounded: bool = false
 var facing: float = 0.0
 var shove_yaw: float = 0.0
 var shove_cooldown: float = 0.0
+# DASHES IN HAND, and the clock on the next one back. Both are in capture_state:
+# the dash GATE reads them, and SHOVE is a state a client predicts for itself, so
+# a body that replayed without them would allow a dash the host refused and
+# correct every tick afterwards.
+var dash_charges: int = SimConfig.DASH_CHARGES
+var dash_refill: float = 0.0
 
 # --- Riding -------------------------------------------------------------------
 #
@@ -235,6 +241,7 @@ func step(move: Vector2, actions: int, aim: float = INF) -> void:
 	state_timer += SimConfig.TICK_DELTA
 	shove_cooldown = maxf(0.0, shove_cooldown - SimConfig.TICK_DELTA)
 	ledge_cooldown = maxf(0.0, ledge_cooldown - SimConfig.TICK_DELTA)
+	_tick_dash_charges()
 
 	invulnerable = maxf(0.0, invulnerable - SimConfig.TICK_DELTA)
 
@@ -605,7 +612,8 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	elif move.length_squared() > 0.04:
 		facing = GridConfig.yaw_of(move)
 
-	if (actions & SimConfig.ACTION_SHOVE) != 0 and shove_cooldown <= 0.0:
+	if (actions & SimConfig.ACTION_SHOVE) != 0 and shove_cooldown <= 0.0 and dash_charges > 0:
+		_spend_dash()
 		_begin_shove(move, aim)
 		_step_shove()
 		return
@@ -1195,6 +1203,11 @@ func respawn_at(where: Vector3, restored_health: int) -> void:
 	# Coming back on cooldown reads as a dropped input on the first dash after a
 	# respawn, which is exactly when someone is most likely to try one.
 	shove_cooldown = 0.0
+	# FULL DASHES ON A RESPAWN, for the same reason the cooldown is cleared: coming
+	# back with nothing in hand reads as a dropped input at the exact moment
+	# somebody is most likely to reach for one.
+	dash_charges = max_dashes()
+	dash_refill = 0.0
 	visible = true
 	_sync_mesh()
 
@@ -1251,6 +1264,42 @@ func _find_carrier() -> Node:
 # Position is LOCAL, not global: the wire format must not encode where a world
 # happens to sit in someone's scene tree.
 
+# HOW MANY DASHES ARE LEFT, and the clock on the next one.
+#
+# THE CAP IS A DEBUG KNOB, so it is read rather than stored -- turning it down
+# mid-round has to take charges away rather than leave somebody holding nine.
+# `tuned` returns whatever the registry holds and falls back to the constant, so
+# an unregistered key still plays the shipped game.
+func max_dashes() -> int:
+	return maxi(1, int(DebugSettings.tuned("dash_charges", SimConfig.DASH_CHARGES)))
+
+# THE CLOCK RUNS WHENEVER YOU ARE BELOW THE CAP, and is started by SPENDING rather
+# than by running dry -- see the note in SimConfig. Spending is also the only
+# thing that starts it, which is why _spend_dash sets it rather than this.
+func _tick_dash_charges() -> void:
+	var cap: int = max_dashes()
+	dash_charges = mini(dash_charges, cap)
+	if dash_charges >= cap:
+		dash_refill = 0.0
+		return
+	if dash_refill <= 0.0:
+		# Below the cap with no clock running: the knob was just turned UP. Start
+		# one rather than handing the charges over instantly.
+		dash_refill = SimConfig.DASH_REFILL_SECONDS
+	dash_refill -= SimConfig.TICK_DELTA
+	if dash_refill > 0.0:
+		return
+	dash_charges += 1
+	dash_refill = SimConfig.DASH_REFILL_SECONDS if dash_charges < cap else 0.0
+
+func _spend_dash() -> void:
+	# STARTED ON THE FIRST SPEND AND NOT RESTARTED BY LATER ONES. Dashing again
+	# while a charge is already on its way back must not push it further away --
+	# that would make holding two dashes worse than holding one.
+	if dash_refill <= 0.0:
+		dash_refill = SimConfig.DASH_REFILL_SECONDS
+	dash_charges = maxi(0, dash_charges - 1)
+
 # rescue_progress is the one field here that step() never reads, so it cannot
 # make a replay diverge. It is carried because the HUD has to DRAW it, and it is
 # incremented only by GameWorld._tick_haul/_tick_revive -- i.e. only on the host.
@@ -1260,7 +1309,7 @@ func _find_carrier() -> Node:
 func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
-		shielding, shield_yaw, special_was_held]
+		shielding, shield_yaw, special_was_held, dash_charges, dash_refill]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1278,6 +1327,9 @@ func apply_state(s: Array) -> void:
 	ledge_cooldown = float(s[12])
 	# Tolerated short, so a blob from before the shield existed still applies
 	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 17:
+		dash_charges = int(s[16])
+		dash_refill = float(s[17])
 	if s.size() > 15:
 		special_was_held = bool(s[15])
 	if s.size() > 14:

@@ -233,6 +233,10 @@ func _phase_off_axis_push_is_still_one_cell() -> void:
 		walker.state = PlayerBody.State.WALK
 		walker.grounded = true
 		walker.shove_cooldown = 0.0
+		# AND THE CHARGES. A dash now costs one of three (M19 tweak), so a rig that
+		# clears the rate limit between attempts has to clear the resource limit too
+		# -- otherwise the fourth attempt measures an empty hand rather than an aim.
+		walker.dash_charges = walker.max_dashes()
 		p_move = Vector2.ZERO
 		p_actions = 0
 		p_aim = PlayerInput.AIM_NONE
@@ -259,6 +263,7 @@ func _park(cell: Vector2i) -> void:
 	walker.state = PlayerBody.State.WALK
 	walker.grounded = true
 	walker.shove_cooldown = 0.0
+	walker.dash_charges = walker.max_dashes()
 	p_move = Vector2.ZERO
 	p_actions = 0
 	p_aim = PlayerInput.AIM_NONE
