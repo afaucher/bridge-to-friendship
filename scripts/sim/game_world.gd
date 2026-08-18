@@ -3511,7 +3511,29 @@ func _client_tick() -> void:
 		# holding -- so its prediction agrees with the host instead of guessing
 		# that it walked and being dragged back every tick.
 		_refresh_shield_flag(local_peer, body)
-		if _board_is_up():
+		if _is_being_carried(body):
+			# RIDING IS NOT PREDICTABLE, and CLAUDE.md called this one in advance:
+			# the platform carry is engine-internal state that capture_state()
+			# CANNOT restore, "so watch GameWorld.corrections if riding ever
+			# happens during networked play". It happened.
+			#
+			# A client replaying its own body reproduces gravity, input and the
+			# floor -- but not the carry, because that lives inside
+			# CharacterBody3D and never reaches the wire. So the predicted body
+			# drifts away from the host's every tick it spends on the platform,
+			# and gets dragged back on every snapshot.
+			#
+			# The drift is ALONG THE PLATFORM'S TRAVEL, and this lift's travel is a
+			# tilted line -- 3.99 m up and 0.279 m down-bridge, because the bridge
+			# is pitched four degrees and the platform moves along the grid's own
+			# up. That is why it was reported as offset DOWN THE RAMP rather than
+			# vertically.
+			#
+			# Handled exactly as TUMBLE and LEDGE_HANG already are: when the player
+			# is not the one driving, there is nothing to predict with and nothing
+			# to gain, so authority drives it.
+			_predicted.clear()
+		elif _board_is_up():
 			# THE CLIENT FREEZES TOO, and it has to be told rather than left to
 			# notice. The host is not stepping anybody, so a client that kept
 			# predicting would walk its own avatar around under the scoreboard and
@@ -3564,6 +3586,15 @@ func _client_tick() -> void:
 # reachable only from _step_walk -- so replaying the tick that carried
 # ACTION_SHOVE re-enters the dash exactly once, and replaying later ticks inside
 # it does nothing.
+# STANDING ON SOMETHING THAT IS MOVING UNDER YOU. Asked of Godot rather than of
+# the grid: `platform_floor_layers` is what does the carrying, so its own idea of
+# whether it is carrying you is the one that matters -- and it is true for any
+# moving body, not just the lift that exposed this.
+func _is_being_carried(body: Node) -> bool:
+	if not body.has_method("get_platform_velocity"):
+		return false
+	return body.get_platform_velocity().length_squared() > 0.0001
+
 func _is_predicted(state: int) -> bool:
 	return state == PlayerBody.State.WALK or state == PlayerBody.State.SHOVE
 
