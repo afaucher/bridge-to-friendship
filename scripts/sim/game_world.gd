@@ -410,11 +410,45 @@ func _physics_process(_delta: float) -> void:
 	if camera != null:
 		camera.focus_held = _returning.has(local_peer)
 
+# THE BOARD IS UP, SO THE WORLD STOPS.
+#
+# The scoreboard covers three quarters of the screen and the party has already
+# been gathered into the lobby, so anything still moving underneath it is moving
+# where nobody can see it -- a rusher walking onto somebody, a ball rolling off a
+# ledge, a timed floor opening under a player who is reading their score.
+#
+# NOT `get_tree().paused`. That would stop the HUD, the countdown and the network
+# along with the simulation, and the countdown is the thing that ENDS the pause.
+# What stops is the simulation; the round machine keeps its clock.
+func _board_is_up() -> bool:
+	return round_machine.state == RoundMachine.State.SCORING
+
 func _host_tick() -> void:
 	tick += 1
 	# Before anything steps, so every body in this tick runs under one set of
 	# rules. See push_setting.
 	_apply_pending_settings()
+
+	# FROZEN, EXCEPT THE CLOCK THAT ENDS THE FREEZE. The machine still steps -- it
+	# is counting SCORE_SECONDS down, and skipping it would leave the board up
+	# forever -- and the walls still follow it. Nothing else in the tick runs: no
+	# body steps, no enemy thinks, no round flies, no floor opens.
+	#
+	# Deliberately NOT reusing _process_run: that also runs the leash, which MOVES
+	# players, and a pause where somebody slides across the lobby is not a pause.
+	if _board_is_up():
+		# THE BRIDGE STILL GETS BUILT. Streaming is not motion: the run has to keep
+		# segments ahead of the party or the ground the next round starts on does
+		# not exist yet. Caught immediately by test_checkpoint_return, which
+		# returned a body to a row that had not been built and landed it on
+		# nothing.
+		_extend_run()
+		var was: int = round_machine.state
+		round_machine.step(self)
+		if round_machine.state != was:
+			_on_round_state_changed()
+		_sync_walls()
+		return
 
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)
@@ -3126,7 +3160,18 @@ func _drone_drop_point(peer: int) -> Vector3:
 				var side: Vector2i = beside + GridConfig.DIR_CELLS[dir]
 				if grid.is_solid(side) and grid.stone_at(side) == null:
 					return grid.cell_surface_world(side) + Vector3(0.0, 1.0, 0.0)
-		return best.position + Vector3(1.6, 1.0, 0.0)
+		# NO SOLID CELL BESIDE THEM, so stop guessing. This used to be a blind
+		# `+1.6 m in x`, which is the exact bug the comment above describes having
+		# fixed -- kept as a last resort, and a last resort that drops somebody
+		# into a hole is not one.
+		#
+		# Found 2026-08-18 by pausing the world during the scoreboard: that changed
+		# which return path two samples in test_checkpoint_return took, and its own
+		# "landed on solid deck" tripwire -- labelled weak, and there precisely for
+		# this -- fired for the first time. The lobby is always somewhere you can
+		# stand, and being put further back is a smaller wrong than being put in a
+		# gap.
+		return _lobby_point(0)
 	if grid != null:
 		return grid.cell_surface_world(grid.entry_spawn_cell(0)) + Vector3(0.0, 1.2, 0.0)
 	return spawn_point(0)
@@ -3397,7 +3442,15 @@ func _client_tick() -> void:
 		# holding -- so its prediction agrees with the host instead of guessing
 		# that it walked and being dragged back every tick.
 		_refresh_shield_flag(local_peer, body)
-		if _is_predicted(body.state):
+		if _board_is_up():
+			# THE CLIENT FREEZES TOO, and it has to be told rather than left to
+			# notice. The host is not stepping anybody, so a client that kept
+			# predicting would walk its own avatar around under the scoreboard and
+			# be yanked back the moment the board closed -- one enormous correction
+			# at the worst possible moment. `_round_sync` has already told it the
+			# state, so both ends stop on the same tick.
+			_predicted.clear()
+		elif _is_predicted(body.state):
 			body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp),
 			PlayerInput.point_of(inp))
 			_predicted.append([tick, body.capture_state()])

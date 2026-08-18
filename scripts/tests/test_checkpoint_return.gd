@@ -37,6 +37,7 @@ extends "res://scripts/test_support/test_case.gd"
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 
 # Every Nth row of the initial run. The sweep is what found the real number; a
 # single sample would have been read as whatever the checkpoint happened to be.
@@ -86,6 +87,23 @@ func _place(row: int) -> void:
 func _physics_process(_delta: float) -> void:
 	if body == null or world.tick == 0:
 		return
+	# THE SCOREBOARD FREEZES THE WORLD, so wait it out before doing anything.
+	#
+	# This rig drops a body below FALL_KILL_Y and waits for the rescue to put it
+	# back. Nothing processes that fall while the board is up, so the probe read a
+	# body still at y -35 and recorded it as a landing -- the same fault the note
+	# below already describes the first draft having, arriving by a new route.
+	#
+	# It cannot happen in play: nobody moves during the pause, and the transition
+	# gathers the whole party into the lobby before the board goes up. So the RIG
+	# waits, rather than the game being made to keep running underneath it.
+	if world.round_machine.state == RoundMachine.State.SCORING:
+		# FAST-FORWARDED, not merely waited out. This rig takes 38 samples and a
+		# board is ten seconds; sitting through one per sample is six minutes of
+		# scoreboard to measure a respawn. The state is still ENTERED and left
+		# through its own transition -- only its clock is cut short.
+		world.round_machine.close_timer = 0.0
+		return
 	phase_frame += 1
 
 	# Stand at the row (so the run machinery sees a party there), drop out of the
@@ -134,7 +152,16 @@ func _record(landed: int) -> void:
 	# against _lobby_point: doing that asks the function under test what the right
 	# answer is and then checks it against its own output, which passes with the
 	# lookup hardcoded to row 1 — measured, this exact test did.
-	if not world.grid.is_solid(Vector2i(world.grid.entry_spawn_cell(0).x, landed)):
+	#
+	# THE BODY'S OWN CELL, not a fixed column at the same row. It used to sample
+	# `entry_spawn_cell(0).x`, which was a fair proxy while every return went to a
+	# lobby -- lobbies are solid across and the column did not matter. It stopped
+	# being fair the moment some returns became DRONE drops beside a teammate,
+	# which land in whatever column that teammate is standing in: the proxy then
+	# reports a hole three lanes away from a body standing on solid deck.
+	# Measured 2026-08-18, when pausing the world during the scoreboard changed
+	# which return path two samples took and this fired on both.
+	if not world.grid.is_solid(world.grid.cell_of_world(body.position)):
 		off_lobby += 1
 		if off_lobby_at < 0:
 			off_lobby_at = reached_row
