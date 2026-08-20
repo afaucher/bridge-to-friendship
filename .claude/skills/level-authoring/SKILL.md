@@ -44,10 +44,19 @@ is the authority, this table is a convenience.
 | `v` spikes | `c` crumbling floor | `%` timed block | `=` gate strip |
 | `t` tree (thin cover) | `h` half wall (wide cover) | `+` heart | `^` hat |
 | `*` machine gun | `g` grenade | `x` mine | `s` shield |
-| `r` rocket | `j` legs | `S` spawn | |
+| `r` rocket | `j` legs | `S` spawn | `$` merchant |
 
 Case carries meaning: `t` is a tree and `T` a turret, `s` a shield and `S` a
 spawn. Two glyphs one keypress apart are a typo nobody spots in a grid of them.
+
+The merchant is `$` and not a letter for exactly that reason — he is the one NPC
+who is not trying to kill you, and `M` puts him one shift-key from `m`, the mound
+that charges you. He also breaks the capitals-are-terrain convention on purpose:
+he is neither terrain nor something you walk over and collect. You buy from him
+by **dashing into him**, so never author one within three cells of anything
+dangerous — a player dashing at a rusher clips the shopkeeper and spends a hat on
+a trade they never made. The dressing pass enforces that for generated sections;
+an authored piece can still do it by hand.
 
 ## Rules the parser and the oracle enforce
 

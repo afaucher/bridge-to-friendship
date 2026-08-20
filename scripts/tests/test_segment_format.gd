@@ -27,7 +27,8 @@ func _test_shipped_segments() -> void:
 	# assertion below depends on its contents, so it stays free to be retuned --
 	# but a map that does not parse or does not validate should fail the gate
 	# rather than be discovered by walking into it.
-	for name in ["test_flat", "test_ascent", "playtest_bridge", "run_maze"]:
+	for name in ["test_flat", "test_ascent", "playtest_bridge", "run_maze",
+			"test_merchant"]:
 		var seg = SegmentData.from_file("res://segments/%s.seg" % name)
 		if not check(seg.is_valid(), "%s parses (%s)" % [name, ", ".join(seg.errors)]):
 			continue
