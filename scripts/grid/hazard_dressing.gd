@@ -196,7 +196,18 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 # shopkeeper on one machine and not the other, and the symptom is a player
 # trading with thin air.
 static func _place_merchant(seg, salt: int) -> bool:
-	if _mix(salt + 104729) % SimConfig.MERCHANT_RARITY != 0:
+	# READ THROUGH THE KNOB so a playtest can find one on purpose rather than
+	# walking until the dice agree. Set `merchant_rarity` to 1 and every generated
+	# section has one.
+	#
+	# THIS MAKES A DEBUG SETTING AN INPUT TO WORLDGEN, which no other knob is, and
+	# the bridge being a pure function of its seed is what lets a client be told
+	# two numbers instead of a world. Both machines dress from their OWN copy of
+	# this value, so two machines that disagree about it build different bridges.
+	# Solo and dev only; see the note on the knob.
+	var rarity: int = maxi(1, int(DebugSettings.tuned(
+		"merchant_rarity", float(SimConfig.MERCHANT_RARITY))))
+	if _mix(salt + 104729) % rarity != 0:
 		return false
 	var cells: Array = _candidates(seg, "merchant")
 	if cells.is_empty():

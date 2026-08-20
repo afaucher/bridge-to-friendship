@@ -125,6 +125,15 @@ const OPTIONS := {
 		"help": "Draws a line out of the barrel along the direction the shot will ACTUALLY take, built from the same function that fires it -- so if the line and the round ever disagree, the line is telling you about a bug. Works in both aim modes on purpose: a sight that only appeared in the new one would show you its aim with nothing to compare against.",
 	},
 
+	"merchant_rarity": {
+		"section": "World",
+		"kind": KIND_INT,
+		"label": "Merchant rarity (1 in N)",
+		"default": 6, "min": 1, "max": 20,
+		"mirrors": "MERCHANT_RARITY",
+		"help": "How often a GENERATED section gets a merchant, as 1-in-N. Set to 1 to put one in every generated section, which is how you find one on purpose instead of walking until the dice agree. Note what that does and does not promise: a run plan is only about half generated sections -- one slot in six is a lobby and one non-lobby slot in three is an authored map, and neither is ever dressed -- so even at 1 you meet one every second section or so, not every section. THE FIRST KNOB HERE THAT CHANGES THE WORLD ITSELF, which is why it is worth reading twice: the bridge is a pure function of its seed and this is now an input to it, so a client that builds its run before the host's settings arrive would build a DIFFERENT BRIDGE. Solo and dev use only; put it back to 6 before hosting.",
+	},
+
 	"dash_charges": {
 		"section": "Weapons",
 		"kind": KIND_INT,
