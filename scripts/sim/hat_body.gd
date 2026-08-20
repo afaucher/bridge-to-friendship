@@ -259,10 +259,14 @@ func _set_simulated(simulated: bool) -> void:
 		# occupies in the tower, which is the same for every hat: exactly
 		# HAT_HEIGHT tall, centred on the node origin, so the slots tile with no
 		# seam. Restored to the style's own shape the moment it comes off.
+		# PER HAT NOW, NOT THE BARE CONSTANT. A merchant's hat occupies 3.5 slots,
+		# and the spacing in HatPool.pose_stack asks the same function -- the two
+		# MUST agree or the tower has 0.88 m of hat with no collider in it, which
+		# is the 2026-08-16 gappy-tower bug rebuilt by hand.
 		var column := shape.shape as CylinderShape3D
 		if column != null:
 			shape.position = Vector3.ZERO
-			column.height = SimConfig.HAT_HEIGHT
+			column.height = slot_height()
 			column.radius = SimConfig.HAT_HIT_RADIUS
 	else:
 		# On the deck or in the air: layer 6, world only, exactly as before -- and
@@ -272,6 +276,19 @@ func _set_simulated(simulated: bool) -> void:
 		shape.disabled = not simulated
 		collision_layer = LOOSE_LAYER
 		collision_mask = 1
+
+# HOW TALL A SLOT THIS HAT TAKES UP IN A TOWER. One question, one answer, asked
+# by the two places that must never disagree: the stack spacing and the worn hit
+# column. Delegated to HatStyle because it is a pure function of style_id like
+# every other visible property of a hat -- which is what makes it replicate,
+# persist and reach a late joiner with nothing extra on the wire.
+func slot_height() -> float:
+	return HatStyle.slot_height(style_id)
+
+# Is this the merchant's hat? Asked by the trade (he will not take one as
+# payment) and by the save rule (it does not survive a launch).
+func is_tall() -> bool:
+	return HatStyle.is_tall(style_id)
 
 # Can a round hit this? The answer lives on the thing being hit, which is the
 # rule _resolve_round_hit was rewritten around: the machine gun does not get to

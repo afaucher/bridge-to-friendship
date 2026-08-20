@@ -10,6 +10,7 @@ extends RefCounted
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
+const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatScene = preload("res://scenes/hat.tscn")
 
 # The body's own radius, so "within pickup radius" is measured from the edge of a
@@ -112,8 +113,14 @@ func pose_stack(peer: int, body: Node, mount_y: float, dt: float) -> void:
 		hat.lean_step(kick, dt)
 		frame = frame * hat.lean_basis()
 		var up: Vector3 = frame.y
-		hat.global_transform = Transform3D(frame, base + up * (SimConfig.HAT_HEIGHT * 0.5))
-		base += up * SimConfig.HAT_HEIGHT
+		# EACH HAT'S OWN SLOT, not the bare HAT_HEIGHT it was for as long as every
+		# hat took one. A merchant's hat takes 3.5, and hat_body.gd sizes the worn
+		# hit column off the SAME function: a slot that is spaced one way and shot
+		# at another is the gappy tower of 2026-08-16, which players report as "I
+		# shot him in the hat and nothing happened".
+		var slot: float = hat.slot_height()
+		hat.global_transform = Transform3D(frame, base + up * (slot * 0.5))
+		base += up * slot
 
 # A wearer who is gone stops being tracked. Without this the dictionary is a slow
 # leak keyed by peer -- small, but it also means a peer id reused by a later
@@ -137,7 +144,12 @@ func spawn_loose(at: Vector3, style: int = -1) -> Node:
 	_next_id += 1
 	hat.hat_id = _next_id
 	if style < 0:
-		style = randi()
+		# ORDINARY ONLY. The tall band is reserved for the merchant and this is the
+		# line that enforces it -- every hat in the game that is not handed over a
+		# counter is rolled here, so "the only way to get one is to trade for it"
+		# is a property of the code rather than a convention somebody has to
+		# remember. See HatStyle.random_ordinary_style.
+		style = HatStyle.random_ordinary_style()
 	hat.style_id = style
 	hat.name = "Hat_%d" % hat.hat_id
 	_root.add_child(hat)

@@ -535,6 +535,38 @@ const HAT_MAX_STACK := 7
 const HAT_HIT_RADIUS := 0.4
 const HAT_HEIGHT := 0.35
 
+# THE MERCHANT'S HAT, in ordinary slots. 3.5 x HAT_HEIGHT is 1.225 m standing in
+# one slot of the tower. See design_ideas/merchant.md.
+#
+# Three is barely a statement next to a 0.55 m hat somebody rolled by luck; four
+# plus the 5 degrees of lean every slot accumulates starts swinging further out
+# than the head under it. This is the number the whole item is sold on, so it is
+# expected to move in playtest and nothing else should be tuned to compensate --
+# the extra 0.88 m of silhouette IS the cost, because a worn hat has been a hit
+# column since 2026-08-16 and a shooter on high ground meets the tower first.
+const TALL_HAT_SLOTS := 3.5
+
+# --- The merchant -------------------------------------------------------------
+
+# How often a segment gets one, as 1-in-N. Rare enough to be an event, common
+# enough that a session of six or seven sections sees one or two.
+const MERCHANT_RARITY := 6
+
+# How far from a merchant nothing dangerous may be placed, in cells.
+#
+# THE POINT IS THAT A DASH IS ALSO HOW YOU FIGHT. A merchant three cells from a
+# rusher means a player dashing AT the rusher clips the shopkeeper and spends a
+# hat on a trade they never intended -- and they would report it as the rusher
+# taking their hat, because that is the only attribution available from inside
+# the game. Same shape as the spike block two cells from a lift, which reached
+# playtest as "the elevator hurts you".
+const MERCHANT_CLEARANCE := 3
+
+# How close a dash has to get. Measured centre to centre and generous, because
+# the merchant is a full cell wide and the alternative to a forgiving radius is a
+# player bouncing off the shopkeeper repeatedly with nothing happening.
+const MERCHANT_TRADE_RADIUS := 1.4
+
 # How long after a hat lands before it can be picked up again.
 #
 # THE WHOLE POINT IS THAT A DISLODGE AND A RE-COLLECT ARE NOT THE SAME EVENT. A

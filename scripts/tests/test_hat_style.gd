@@ -18,6 +18,19 @@ const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatScene = preload("res://scenes/hat.tscn")
 
+# THIS FILE IS ABOUT THE ORDINARY CATALOGUE, and since the merchant arrived that
+# is no longer every style id. The low band is reserved for his hat, which is
+# deliberately outside every range asserted below -- it is sized against the SLOT
+# rather than against the catalogue, because that is the whole item. Sweeping
+# from zero measured eight trophies against the catalogue's rules and reported
+# fifteen failures about correct code.
+#
+# The band's own claims live in test_tall_hat.gd. What is asserted HERE is that
+# the exclusion is exactly the band and not a cell more -- otherwise "skip the
+# ones that fail" is a sweep that can be widened until it passes.
+func _ordinary(i: int) -> int:
+	return HatStyle.TALL_FIRST + HatStyle.TALL_STYLE_COUNT + i
+
 func setup(main) -> void:
 	_test_deterministic()
 	_test_within_range()
@@ -49,7 +62,15 @@ func _test_deterministic() -> void:
 # --- 2. Every knob inside its stated range ------------------------------------
 
 func _test_within_range() -> void:
-	for id in 200:
+	# THE BAND IS EXACTLY THE BAND. Asserted before the sweep skips past it, so
+	# that "the ids the catalogue rules do not apply to" cannot quietly grow.
+	check(HatStyle.is_tall(_ordinary(0) - 1),
+		"the id just below the catalogue is the last trophy")
+	check(not HatStyle.is_tall(_ordinary(0)),
+		"and the first id the sweep below looks at is an ordinary hat")
+
+	for i in 200:
+		var id: int = _ordinary(i)
 		var k: Dictionary = HatStyle.knobs(id)
 		check(k["height"] >= HatStyle.HEIGHT_MIN - 0.001 and k["height"] <= HatStyle.HEIGHT_MAX + 0.001,
 			"height in range for %d (%.3f)" % [id, k["height"]])
@@ -64,8 +85,8 @@ func _test_within_range() -> void:
 func _test_variety() -> void:
 	var heights: Array = []
 	var rim_ratios: Array = []
-	for id in 60:
-		var k: Dictionary = HatStyle.knobs(id)
+	for i in 60:
+		var k: Dictionary = HatStyle.knobs(_ordinary(i))
 		heights.append(float(k["height"]))
 		rim_ratios.append(float(k["rim"]) / float(k["base"]))
 
@@ -85,8 +106,8 @@ func _test_variety() -> void:
 	# generator would only really have a single dial.
 	var tall_and_narrow := false
 	var short_and_wide := false
-	for id in 200:
-		var k: Dictionary = HatStyle.knobs(id)
+	for i in 200:
+		var k: Dictionary = HatStyle.knobs(_ordinary(i))
 		var tall: bool = float(k["height"]) > 0.4
 		var wide: bool = float(k["rim"]) / float(k["base"]) > 1.7
 		if tall and not wide:
@@ -100,7 +121,8 @@ func _test_variety() -> void:
 
 func _test_palette() -> void:
 	var used: Dictionary = {}
-	for id in 200:
+	for i in 200:
+		var id: int = _ordinary(i)
 		var colour: Color = HatStyle.knobs(id)["colour"]
 		check(HatStyle.PALETTE.has(colour), "colour %d is from the palette" % id)
 		used[colour] = true
@@ -117,11 +139,28 @@ func _test_meshes_are_per_hat(main) -> void:
 	# scene, so setting a radius on one hat sets it on every hat on the bridge --
 	# and the symptom reads as hats being wrong at random rather than as anything
 	# shared.
+	# TWO STYLES OF DIFFERENT HEIGHT, and asserted to be. The pair used to be ids 3
+	# and 4, which the reserved band swallowed -- and every trophy is deliberately
+	# the SAME height, so "built to its own style rather than to whichever was made
+	# last" became a claim that could not fail. Two hats of one height satisfy it
+	# whether or not they share a mesh.
+	var id_a: int = _ordinary(0)
+	var id_b: int = _ordinary(0)
+	for i in 40:
+		if absf(float(HatStyle.knobs(_ordinary(i))["height"])
+				- float(HatStyle.knobs(id_a)["height"])) > 0.1:
+			id_b = _ordinary(i)
+			break
+	if not check(id_a != id_b,
+			"two catalogue styles that really differ in height, or the assertions "
+			+ "below cannot tell a per-hat mesh from a shared one"):
+		return
+
 	var a: Node3D = HatScene.instantiate()
-	a.style_id = 3
+	a.style_id = id_a
 	main.add_child(a)
 	var b: Node3D = HatScene.instantiate()
-	b.style_id = 4
+	b.style_id = id_b
 	main.add_child(b)
 
 	var crown_a := a.get_node("Crown") as MeshInstance3D
@@ -129,9 +168,9 @@ func _test_meshes_are_per_hat(main) -> void:
 	check(crown_a.mesh != crown_b.mesh, "two hats do not share one mesh")
 	check(crown_a.material_override != crown_b.material_override,
 		"nor one material")
-	near(crown_a.mesh.height, float(HatStyle.knobs(3)["height"]), 0.001,
+	near(crown_a.mesh.height, float(HatStyle.knobs(id_a)["height"]), 0.001,
 		"and each is built to its own style")
-	near(crown_b.mesh.height, float(HatStyle.knobs(4)["height"]), 0.001,
+	near(crown_b.mesh.height, float(HatStyle.knobs(id_b)["height"]), 0.001,
 		"rather than to whichever was made last")
 
 	a.queue_free()

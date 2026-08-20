@@ -1,5 +1,9 @@
 extends RefCounted
 
+# Safe: sim_config.gd preloads nothing at all, so this cannot close a class cycle
+# -- which CLAUDE.md notes HANGS a run rather than failing it.
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
+
 # What a hat LOOKS like, derived entirely from its style_id.
 #
 # A PURE FUNCTION OF THE ID, NEVER ROLLED AT SPAWN, and that is the constraint
@@ -62,6 +66,40 @@ const CURL_MAX := 0.30
 
 const BRIM_THICKNESS := 0.05
 
+# --- The merchant's hat -------------------------------------------------------
+#
+# A RESERVED BAND OF STYLE IDS, NOT A FLAG ON THE BODY. See
+# design_ideas/merchant.md; the short version is that style_id is the only thing
+# about a hat's appearance that travels, so anything derived from it replicates,
+# persists and reaches a late joiner for free, while a second field would have to
+# be taught to do each of those separately.
+#
+# THE LOW BAND, AND THAT IS NOT ARBITRARY. `negative means tall` was the other
+# obvious encoding and it is a live grenade: HatPool.spawn_loose rolls a raw
+# randi(), which is negative half the time, so it would promote half of every hat
+# already saved on every machine to a stovepipe on the next launch. A saved id
+# landing in 0..7 by chance is one in 2^28.
+const TALL_STYLE_COUNT := 8
+
+# How many ordinary slots one of these occupies. 3.5 x HAT_HEIGHT is 1.225 m in a
+# single slot -- see SimConfig.TALL_HAT_SLOTS, which is where the number lives so
+# that the sim and the look cannot drift apart.
+const TALL_FIRST := 0
+
+static func is_tall(style_id: int) -> bool:
+	return style_id >= TALL_FIRST and style_id < TALL_FIRST + TALL_STYLE_COUNT
+
+# A style id for an ORDINARY hat. The one and only roll in the hat system, and it
+# exists so that "the merchant is the only source" is a property of the code
+# rather than a promise in a document: every other spawn path goes through here.
+static func random_ordinary_style() -> int:
+	return TALL_FIRST + TALL_STYLE_COUNT + absi(randi() % (1 << 30))
+
+# Which tall hat, 0-based. Rolled by the merchant so two players who both traded
+# are not wearing the identical trophy.
+static func random_tall_style() -> int:
+	return TALL_FIRST + absi(randi()) % TALL_STYLE_COUNT
+
 static func _mix(value: int) -> int:
 	var x: int = value
 	x = (x ^ (x >> 16)) * 0x45d9f3b
@@ -78,9 +116,50 @@ static func _draw(style_id: int, salt: int) -> float:
 static func _between(style_id: int, salt: int, low: float, high: float) -> float:
 	return low + (high - low) * _draw(style_id, salt)
 
+# HOW TALL A SLOT THIS HAT OCCUPIES IN A WORN TOWER.
+#
+# `HAT_HEIGHT` was never "how tall a hat is" -- ordinary hats are 0.10 to 0.55 and
+# always have been. It is how tall a SLOT is, and it was a bare constant at every
+# site that stacked or shot at one. It is a per-hat question now, and every one of
+# those sites has to ask it: get the SPACING from here and leave the HIT COLUMN on
+# the constant and you have rebuilt the 2026-08-16 gappy tower on purpose, with
+# 0.88 m of hat a round passes straight through.
+static func slot_height(style_id: int) -> float:
+	if is_tall(style_id):
+		return SimConfig.HAT_HEIGHT * SimConfig.TALL_HAT_SLOTS
+	return SimConfig.HAT_HEIGHT
+
+# THE TROPHY, and the reason it is not just an ordinary hat with the height knob
+# turned up: it is sized against the SLOT rather than against the catalogue.
+#
+# The eight differ in colour and in width, never in height. A tall hat has to be
+# recognisable as THE tall hat from across a 60 m bridge -- that is the entire
+# thing being sold -- so the silhouette is fixed and only the paint changes.
+static func _tall_knobs(style_id: int) -> Dictionary:
+	var slot: float = slot_height(style_id)
+	var base: float = 0.28 + 0.05 * _draw(style_id, 11)
+	return {
+		"base": base,
+		# Very slightly flared, so it reads as a stovepipe rather than as a pipe.
+		"top": base * (1.02 + 0.10 * _draw(style_id, 12)),
+		"rim": base * (1.35 + 0.25 * _draw(style_id, 13)),
+		"height": slot,
+		"curl": -0.05 + 0.15 * _draw(style_id, 14),
+		"colour": PALETTE[_mix(style_id * 104729 + 17) % PALETTE.size()],
+		# CENTRED ON THE ORIGIN rather than standing on it, which is what an
+		# ordinary hat does. See apply(): it is what makes the art and the worn hit
+		# column occupy exactly the same 1.225 m, and at this size that stops being
+		# a detail -- a hat drawn 0.6 m above the box that catches bullets is the
+		# "hit test disagrees with the art" trap, which has reached playtest twice
+		# in this project already.
+		"centred": true,
+	}
+
 # Every knob for one hat. Returned as a dictionary so a test can assert the
 # numbers directly rather than inferring them from a mesh.
 static func knobs(style_id: int) -> Dictionary:
+	if is_tall(style_id):
+		return _tall_knobs(style_id)
 	var base: float = _between(style_id, 1, BASE_MIN, BASE_MAX)
 	var top: float = base * _between(style_id, 2, TOP_RATIO_MIN, TOP_RATIO_MAX)
 	var rim: float = base * _between(style_id, 3, RIM_RATIO_MIN, RIM_RATIO_MAX)
@@ -93,6 +172,10 @@ static func knobs(style_id: int) -> Dictionary:
 		"height": height,
 		"curl": curl,
 		"colour": PALETTE[_mix(style_id * 104729 + 17) % PALETTE.size()],
+		# An ordinary hat STANDS ON its origin, which is what a hat resting on the
+		# deck wants: place_loose puts the origin on the surface and the hat sits
+		# on top of it.
+		"centred": false,
 	}
 
 # Build this hat's own meshes and material.
@@ -103,15 +186,34 @@ static func knobs(style_id: int) -> Dictionary:
 # one player's bar re-tinted the whole party's, and it presents as things looking
 # wrong at random rather than as anything shared.
 static func apply(hat: Node3D) -> void:
+	apply_style(hat, hat.style_id)
+
+# The same thing with the style passed IN, for a node that is not a HatBody.
+#
+# The merchant holds one of these up as signage, and it is built from this
+# function rather than modelled by hand so that the thing on the counter is
+# provably the thing you get -- a lookalike would drift the first time the
+# trophy's proportions were tuned. A plain Node3D has no `style_id`, and reading
+# a property that does not exist RAISES and silently aborts the rest of the
+# calling function, which is the GDScript trap CLAUDE.md opens with.
+static func apply_style(hat: Node3D, style_id: int) -> void:
 	var crown := hat.get_node_or_null("Crown") as MeshInstance3D
 	var brim := hat.get_node_or_null("Brim") as MeshInstance3D
 	if crown == null or brim == null:
 		return
-	var k: Dictionary = knobs(hat.style_id)
+	var k: Dictionary = knobs(style_id)
 
 	var material := StandardMaterial3D.new()
 	material.albedo_color = k["colour"]
 	material.roughness = 0.85
+
+	# WHERE THE HAT SITS RELATIVE TO ITS OWN ORIGIN. An ordinary hat stands on it
+	# (base = 0); a tall hat straddles it. Everything below -- crown, brim and the
+	# loose collider -- is measured from this one number, so the three cannot drift
+	# apart and a loose tall hat still rests on the deck rather than half inside
+	# it: the collider is what decides where a rigid body settles, and it moves
+	# with the mesh.
+	var floor_y: float = -float(k["height"]) * 0.5 if bool(k.get("centred", false)) else 0.0
 
 	var crown_mesh := CylinderMesh.new()
 	crown_mesh.bottom_radius = k["base"]
@@ -119,7 +221,7 @@ static func apply(hat: Node3D) -> void:
 	crown_mesh.height = k["height"]
 	crown.mesh = crown_mesh
 	crown.material_override = material
-	crown.position = Vector3(0.0, float(k["height"]) * 0.5, 0.0)
+	crown.position = Vector3(0.0, floor_y + float(k["height"]) * 0.5, 0.0)
 
 	# CURL IS THE CONE OF THE BRIM. A cylinder whose top radius exceeds its
 	# bottom radius has its widest edge at the top, which reads as an upturned
@@ -131,7 +233,7 @@ static func apply(hat: Node3D) -> void:
 	brim_mesh.height = BRIM_THICKNESS
 	brim.mesh = brim_mesh
 	brim.material_override = material
-	brim.position = Vector3(0.0, BRIM_THICKNESS * 0.5, 0.0)
+	brim.position = Vector3(0.0, floor_y + BRIM_THICKNESS * 0.5, 0.0)
 
 	# The collider follows the CROWN only. A wide thin brim collider catches on
 	# deck seams, which is the intermittent-by-position bug CLAUDE.md warns about,
@@ -142,4 +244,4 @@ static func apply(hat: Node3D) -> void:
 		cyl.radius = maxf(float(k["base"]), float(k["top"]))
 		cyl.height = k["height"]
 		shape.shape = cyl
-		shape.position = Vector3(0.0, float(k["height"]) * 0.5, 0.0)
+		shape.position = Vector3(0.0, floor_y + float(k["height"]) * 0.5, 0.0)

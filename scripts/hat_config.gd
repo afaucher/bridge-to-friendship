@@ -1,5 +1,7 @@
 extends RefCounted
 
+const HatStyle = preload("res://scripts/sim/hat_style.gd")
+
 # The hat you own, across launches.
 #
 # THE GAME'S FIRST PIECE OF STATE THAT OUTLIVES A SESSION, which is why the file
@@ -38,7 +40,11 @@ static func path() -> String:
 static func load_style() -> int:
 	var cfg := ConfigFile.new()
 	if cfg.load(path()) != OK:
-		var rolled: int = absi(randi())
+		# ORDINARY ONLY, like every other roll in the game. A first-ever launch
+		# must not hand out the merchant's hat -- it is the one thing you can only
+		# get by trading for it, and a free one on install would be the loudest
+		# possible way to break that.
+		var rolled: int = HatStyle.random_ordinary_style()
 		save_style(rolled)
 		return rolled
 	var value: int = int(cfg.get_value(SECTION, KEY, NONE))
