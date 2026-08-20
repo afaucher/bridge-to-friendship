@@ -359,5 +359,14 @@ static func _check_content_placement(seg, problems: Array) -> void:
 				# telegraph -- the entire fairness argument for this hazard -- is
 				# played somewhere the player cannot see it.
 				problems.append("a mound at (%d, %d) sits on a ramp" % [x, z])
+			if content == GridConfig.Content.MERCHANT and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+				# You buy from him by DASHING INTO HIM, and a dash up a slope is
+				# not the same move as a dash along the deck: it arrives short,
+				# high, or not at all, depending on where it started. A shopkeeper
+				# on a hillside is a shopkeeper whose price is the gradient.
+				#
+				# He is also a full-height solid body standing in the middle of a
+				# route, which is the other half of why nothing else settles here.
+				problems.append("a merchant at (%d, %d) sits on a ramp" % [x, z])
 	if spawns > 0 and spawns < 4:
 		problems.append("only %d spawn cells: a full party of 4 needs 4 (or none, to use the default ring)" % spawns)

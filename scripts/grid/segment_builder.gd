@@ -57,6 +57,10 @@ class Built:
 	var tree_cells: Array = []
 	var half_wall_cells: Array = []
 	var spike_cells: Array = []
+	# The merchant. Grid-resident like a mound rather than a free body like a hat:
+	# he never moves, and the only thing that ever changes about him is that he
+	# has sold. See design_ideas/merchant.md.
+	var merchant_cells: Array = []
 	# MUTABLE CELLS (M17 phase 8) — [[cell, content], ...]. Collected rather than
 	# built here for the reason in _merge_deck_collision: they are the one kind of
 	# deck that must NOT be merged, because merging is what makes removal cost a
@@ -580,6 +584,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.half_wall_cells.append(Vector2i(x, z))
 				GridConfig.Content.SPIKES:
 					out.spike_cells.append(Vector2i(x, z))
+				GridConfig.Content.MERCHANT:
+					out.merchant_cells.append(Vector2i(x, z))
 				GridConfig.Content.GATE:
 					# Once per ROW however many cells carry the glyph. The
 					# validator has already refused a strip that does not span

@@ -29,6 +29,7 @@ extends RefCounted
 # never touches the global RNG.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 # WHAT A THEME CAN ASK FOR. Named rather than free-form so a typo is a missing
 # key rather than a silently empty budget, and so the set of things a theme can
@@ -140,6 +141,21 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 	var budget: Dictionary = THEMES[theme]
 	var salt: int = _mix(run_seed + index * 7919)
 
+	# THE MERCHANT GOES FIRST, AND THAT ORDERING IS THE WHOLE RULE. Every kind in
+	# the budget loop below asks "where do I want to be"; he is the first thing on
+	# this bridge that needs the hazards to ask about HIM, and the only way
+	# `_near_merchant` can answer is if he is already standing there when they are
+	# placed. Placed second, the check would be a check against an empty grid --
+	# green, worthless, and exactly the shape of the 2026-08-16 note about a test
+	# run on the wrong object.
+	# DELIBERATELY NOT RECORDED IN `placed`. That dictionary is the BUDGET LEDGER
+	# -- its contract is "how many of each kind the budget bought", and the only
+	# thing anybody asks it is whether a count exceeded its allowance. The merchant
+	# has no allowance to exceed, so an entry for him is a row that fails that
+	# question by construction. Count him off the grid instead, which is the
+	# direct count anyway; test_merchant_placement does.
+	_place_merchant(seg, salt)
+
 	for kind in KINDS:
 		var want: int = int(budget.get(kind, 0))
 		if want <= 0:
@@ -164,6 +180,40 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 			placed[kind] = int(placed.get(kind, 0)) + 1
 			done += 1
 	return placed
+
+# ONE MERCHANT, RARELY, AND NOT OUT OF THE BUDGET.
+#
+# He is the first entry whose budget wants to be FRACTIONAL -- one in six
+# segments rather than N per segment -- which is why he is not in `KINDS` at all
+# and gets his own pass rather than a `THEMES` column of zeroes and the occasional
+# one. A theme that wanted to vary him could still do it later; nothing about
+# this shape prevents it, and a column of zeroes today would be four numbers
+# nobody is reading.
+#
+# RARITY IS A MIX, NEVER A FLOAT ROLL, for the reason at the top of this file:
+# the pass is a pure function of (run_seed, index) and a client is told two
+# numbers and builds the identical bridge. `randf() < 1.0 / 6.0` would put a
+# shopkeeper on one machine and not the other, and the symptom is a player
+# trading with thin air.
+static func _place_merchant(seg, salt: int) -> bool:
+	if _mix(salt + 104729) % SimConfig.MERCHANT_RARITY != 0:
+		return false
+	var cells: Array = _candidates(seg, "merchant")
+	if cells.is_empty():
+		return false
+	# Walked rather than indexed once. A single seeded pick that lands on an
+	# authored cell is a segment that rolled a merchant and silently has none --
+	# the rarity would then be lower than the constant says, in a way nothing
+	# reports.
+	var at: int = _mix(salt + 7) % cells.size()
+	for _i in cells.size():
+		var cell: Vector2i = cells[at]
+		at = (at + 1) % cells.size()
+		if seg.content_at(cell.x, cell.y) != GridConfig.Content.NONE:
+			continue
+		seg.contents[cell.y][cell.x] = GridConfig.Content.MERCHANT
+		return true
+	return false
 
 static func _content_for(kind: String, salt: int) -> int:
 	if kind == "cover":
@@ -219,7 +269,25 @@ static func _wants(seg, kind: String, x: int, z: int) -> bool:
 	# inside each branch: the next hazard added would not have remembered.
 	if kind in DANGEROUS_KINDS and _near_lift(seg, x, z):
 		return false
+	# AND NOT BESIDE THE SHOPKEEPER, checked in the same place and for the same
+	# reason: written into each branch, the next hazard added would not have
+	# remembered. See _near_merchant for why he needs the clearance -- the short
+	# version is that a dash is also how you fight.
+	if kind in DANGEROUS_KINDS and _near_merchant(seg, x, z):
+		return false
 	match kind:
+		"merchant":
+			# OPEN GROUND WITH CLEARANCE, and NEVER BESIDE A LIFT -- the same
+			# exclusion the hazards get, for the opposite reason. A rider carried
+			# past him is a hat spent by the terrain, which is a trade with no
+			# decision in it and the one outcome this feature must not have.
+			#
+			# The clearance is measured with the SAME radius the hazards keep, so
+			# the invariant is one number stated once and holds whichever of the
+			# two was placed first.
+			return (not _near_lift(seg, x, z)
+				and _open_run(seg, x, z, 2)
+				and not _near_content(seg, x, z, SimConfig.MERCHANT_CLEARANCE))
 		"shooters", "turrets":
 			# A LANE TO SHOOT DOWN, and something to hide behind on the way in.
 			# An enemy with no approach to cover is the unfair version of this.
@@ -297,6 +365,27 @@ static func _near_lift(seg, x: int, z: int) -> bool:
 			if not seg.in_bounds(x + dx, z + dz):
 				continue
 			if seg.content_at(x + dx, z + dz) == GridConfig.Content.ELEVATOR:
+				return true
+	return false
+
+# NOTHING DANGEROUS BESIDE THE SHOPKEEPER, and this is the one rule here that
+# runs the opposite way round from every other. Each entry in `_wants` asks "where
+# do I want to be"; the merchant is the first thing on the bridge that needs the
+# hazards to ask about HIM.
+#
+# THE REASON IS THAT A DASH IS ALSO HOW YOU FIGHT. A merchant three cells from a
+# rusher means a player dashing AT the rusher clips the shopkeeper and spends a
+# hat on a trade they never made -- and the report would say the RUSHER took their
+# hat, because that is the only attribution available from inside the game. Same
+# shape as the spike block two cells from a lift, which reached playtest as "the
+# elevator hurts you, every time it moves".
+static func _near_merchant(seg, x: int, z: int) -> bool:
+	var r: int = SimConfig.MERCHANT_CLEARANCE
+	for dz in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if not seg.in_bounds(x + dx, z + dz):
+				continue
+			if seg.content_at(x + dx, z + dz) == GridConfig.Content.MERCHANT:
 				return true
 	return false
 

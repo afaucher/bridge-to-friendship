@@ -155,6 +155,11 @@ system_exit={
 ; not stop a round (dropped hats would be cover), and a worn one must not be
 ; standable. One layer that only the bullet sweep masks is both.
 3d_physics/layer_9="worn_hats"
+; THE MERCHANT, on his own layer rather than parked on `stones`. Stones would
+; have worked and would have meant every rule ever written about a stone quietly
+; acquiring an opinion about the shopkeeper -- starting with the one directly
+; below, where a dash into a stone pushes it a cell.
+3d_physics/layer_10="merchant"
 
 [physics]
 

@@ -48,10 +48,13 @@ roughness = 0.65
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
-; world (1) | players (2) | stones (4). Stones MUST be in the mask or a dash
-; passes straight through a pillar and the push never resolves -- the shove is
-; detected from the dasher's own slide collisions.
-collision_mask = 151
+; world (1) | players (2) | stones (4) | rushers (16) | barrier (128)
+; | merchant (512). Stones MUST be in the mask or a dash passes straight through
+; a pillar and the push never resolves -- the shove is detected from the dasher's
+; own slide collisions. The MERCHANT is in it for exactly the same reason: a
+; trade is a dash contact, so a merchant outside this mask is a shopkeeper you
+; walk through, and every test that only asks whether he EXISTS still passes.
+collision_mask = 663
 script = ExtResource("1_player")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]

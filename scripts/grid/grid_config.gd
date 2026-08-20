@@ -93,7 +93,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -189,6 +189,18 @@ const CONTENT_GLYPHS := {
 	# `=` because it looks like the thing: a row of them draws a stripe across the
 	# deck layer in a text editor, which is the whole reason this format is ASCII.
 	"=": Content.GATE,
+	# THE MERCHANT: the first NPC here that is not trying to kill you. He takes one
+	# hat off your tower and gives back one three and a half times taller, once,
+	# and you pay by dashing into him. See design_ideas/merchant.md.
+	#
+	# `$` AND NOT A LETTER, deliberately breaking the capitals-are-terrain /
+	# lowercase-is-a-pickup convention rather than bending it, because he is
+	# neither: he is not built into the bridge and he is not something you walk
+	# over and collect. `M` was the obvious pick and is the wrong one -- `m` is a
+	# mound, and a friendly NPC one shift-key away from the hazard that charges you
+	# is the typo nobody spots in a grid of them. That is the same argument that
+	# put mines on `x` rather than beside the mound already.
+	"$": Content.MERCHANT,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least

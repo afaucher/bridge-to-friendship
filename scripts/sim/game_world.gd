@@ -43,6 +43,7 @@ const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
+const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
@@ -1815,8 +1816,12 @@ func _wear_hat(id: int, peer: int, index: int) -> void:
 		return
 	hat.wear(peer, index)
 	# ACQUIRING A HAT MAKES IT YOURS, TOMORROW TOO. Steal one and you keep it.
+	#
+	# ASKED OF THE WHOLE STACK rather than of the hat just picked up, because the
+	# answer is no longer "the newest one": a merchant's hat does not persist, so
+	# what gets saved is the topmost hat that CAN. See _persistable_top.
 	if peer == local_peer:
-		_remember_hat(hat.style_id)
+		_remember_hat(_persistable_top(peer))
 	# NOT REPARENTED ONTO THE HEAD, which is what M8.5 did and what 2026-08-16
 	# had to undo. Sitting under the player followed it for free, but A
 	# RIGIDBODY3D THAT IS A CHILD OF ANOTHER PHYSICS BODY IS NOT RETURNED BY A
@@ -1870,11 +1875,34 @@ func dislodge_hats(body: Node) -> void:
 func _forget_hat_if_bare(peer: int) -> void:
 	if peer != local_peer:
 		return
+	_remember_hat(_persistable_top(peer))
+
+# WHICH HAT FOLLOWS YOU TO THE NEXT LAUNCH: the topmost one that is allowed to,
+# or nothing at all.
+#
+# A MERCHANT'S HAT DOES NOT PERSIST (decided 2026-08-18), and this is where that
+# rule has to live rather than as a guard inside _remember_hat. The difference is
+# not stylistic and the guard version is wrong in the direction that makes the
+# merchant free:
+#
+#   * Guarding the SAVE leaves whatever was on disk before. Own one ordinary hat,
+#     trade it, and the trade consumed it while the guard rejected the trophy --
+#     so the file still names the hat you just spent, and the next launch hands it
+#     straight back. Invisible until somebody restarts the game.
+#   * Saving NONE whenever the top is tall throws away an ordinary hat you are
+#     still wearing, in a stack of [ordinary, tall].
+#
+# SELECTING instead gets every case right: [tall] saves nothing, [ordinary, tall]
+# saves the ordinary one, and trading away your only hat really does cost you your
+# saved hat -- which is the same rule as losing it to a fall, and the reason the
+# trade is a bet rather than a freebie.
+func _persistable_top(peer: int) -> int:
 	var worn: Array = _hats.worn_by(peer)
-	if worn.is_empty():
-		_remember_hat(HatConfig.NONE)
-	else:
-		_remember_hat(int(worn[worn.size() - 1].style_id))
+	for i in range(worn.size() - 1, -1, -1):
+		var hat: Node = worn[i]
+		if is_instance_valid(hat) and not hat.is_tall():
+			return int(hat.style_id)
+	return HatConfig.NONE
 
 # DESTROYED, not dropped. A player who leaves the world -- fell, drone-returned,
 # disconnected -- takes their hats with them.
@@ -1971,6 +1999,75 @@ func _hats_destroyed(ids: Array) -> void:
 		var hat: Node = _hats.by_id(int(id))
 		if hat != null:
 			_hats.destroy(hat)
+
+# --- The merchant -------------------------------------------------------------
+#
+# One hat off the top of your tower, one hat three and a half times taller back,
+# once per merchant. Design and the reasoning behind every rule below is in
+# design_ideas/merchant.md.
+#
+# HOST ONLY, reached from resolve_shove_contact which has already established it.
+# A client DOES simulate its own dash and so reaches that function -- its body
+# still stops against the merchant, because move_and_slide already swept it, but
+# what the trade DID is authority's to decide and arrives by RPC.
+func _trade_with(shover: Node, merchant: Node) -> void:
+	if not ("peer_id" in shover) or not merchant.can_trade():
+		return
+	var peer: int = int(shover.peer_id)
+	var worn: Array = _hats.worn_by(peer)
+	if worn.is_empty():
+		# Nothing to pay with. He is NOT spent -- a shopkeeper used up by somebody
+		# who had no hat is a shopkeeper the next player finds empty for no reason
+		# they can see.
+		return
+
+	# THE TOP OF THE STACK, which is the hat you most recently earned and the one
+	# the player can see they are handing over.
+	var payment: Node = worn[worn.size() - 1]
+
+	# HE WILL NOT TAKE A TALL HAT. You cannot launder one trophy into another, and
+	# you can never trade down. Note this governs the PAYMENT and not the wardrobe:
+	# pick up an ordinary hat afterwards and the top is ordinary again, so a second
+	# tall hat is reachable at the cost of a second ordinary one. That is
+	# deliberate -- each still costs a real hat, and two of them is 2.45 m of
+	# silhouette, which is the game's own argument that carrying more is louder.
+	#
+	# REFUSING DOES NOT SPEND HIM either, for the same reason as above.
+	if payment.is_tall():
+		return
+
+	var index: int = int(payment.stack_index)
+	var paid_id: int = int(payment.hat_id)
+	_hats.destroy(payment)
+	if networked:
+		_hats_destroyed.rpc([paid_id])
+
+	# Rolled per trade, so two players who both traded are not wearing the
+	# identical trophy. The style is what carries the whole appearance -- including
+	# that it is tall at all -- so nothing else has to be replicated.
+	var style: int = HatStyle.random_tall_style()
+	var granted: Node = _hats.spawn_loose(
+		shover.global_position + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0), style)
+	_wear_hat(granted.hat_id, peer, index)
+	if networked:
+		# THE SAME PATH A LATE JOINER USES, with one entry. A newly created WORN
+		# hat is deliberately absent from the per-tick snapshot, so a client that
+		# has never heard of this hat cannot be told to wear it by id alone --
+		# _sync_worn_hats adopts it first, which is exactly the missing half.
+		_sync_worn_hats.rpc([[granted.hat_id, style, peer, index]])
+
+	if grid != null:
+		grid.take_merchant(merchant.cell)
+		if networked:
+			_sync_spent_merchants.rpc(grid.spent_merchant_layout())
+
+# TOLD, NOT INFERRED, like taken hearts and spent mounds. Every machine builds the
+# same merchant from the same seed and has no way to work out that somebody else
+# has traded with him.
+@rpc("authority", "call_remote", "reliable")
+func _sync_spent_merchants(layout: PackedInt32Array) -> void:
+	if grid != null:
+		grid.apply_spent_merchants(layout)
 
 # --- Specials -----------------------------------------------------------------
 #
@@ -3676,6 +3773,13 @@ func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 		if "peer_id" in shover:
 			_bump(int(shover.peer_id), "boosts")
 		return
+	# THE MERCHANT. A dash into him is the trade -- the game has two action bits
+	# and neither of them is `interact`, and this is the right verb rather than
+	# merely the available one: it is a committed action aimed at a thing, and it
+	# is unmistakably deliberate, so nobody sells a hat by walking past.
+	if other.has_method("can_trade"):
+		_trade_with(shover, other)
+		return
 	if grid != null and other.has_method("slide_to"):
 		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))
 
@@ -4337,6 +4441,10 @@ func host_add_peer(peer: int) -> void:
 		# And which hearts have already been eaten, for the identical reason: the
 		# newcomer built them from the seed and nothing else would remove them.
 		_sync_taken_hearts.rpc_id(peer, grid.taken_heart_layout())
+		# And which merchants have already sold. Same reason a third time: he is
+		# built from the seed, so a joiner draws him holding a hat that is no
+		# longer for sale until it is told otherwise.
+		_sync_spent_merchants.rpc_id(peer, grid.spent_merchant_layout())
 	# The debug config, so a joiner tunes against the same numbers everyone else
 	# is already playing on rather than against the shipped defaults.
 	_set_settings.rpc_id(peer, DebugSettings.snapshot())

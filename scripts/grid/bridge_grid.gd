@@ -21,6 +21,7 @@ const StoneBody = preload("res://scripts/sim/stone_body.gd")
 const HeartScene = preload("res://scenes/heart.tscn")
 const ShooterScene = preload("res://scenes/shooter.tscn")
 const MoundScene = preload("res://scenes/mound.tscn")
+const MerchantBody = preload("res://scripts/sim/merchant_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
@@ -434,6 +435,8 @@ func load_segment(seg) -> void:
 		var sc := Vector2i(local_cell.x, local_cell.y + z_offset)
 		spike_cells.append(sc)
 		_spawn_spikes(sc)
+	for local_cell in built.merchant_cells:
+		_spawn_merchant(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 	# Authored hats are recorded, not spawned here. A hat is a free sim body owned
 	# by the world's hat pool, not grid-resident data like a stone or a heart --
@@ -1311,6 +1314,89 @@ func blast_mounds(centre: Vector3, radius: float) -> int:
 			if take_mound(cell):
 				removed += 1
 	return removed
+
+# --- Merchants ----------------------------------------------------------------
+#
+# Grid-resident and spent-once, exactly like a mound and for the same reasons: he
+# is authored terrain, so a client that built the same segments already has him
+# without being told, and the only thing that ever needs to cross the wire is
+# that somebody has traded. See design_ideas/merchant.md.
+
+var _merchants: Dictionary = {}     # Vector2i -> the node standing there
+var _merchant_root: Node3D = null
+# Which merchants have sold, so a joiner is told in one message rather than being
+# left drawing a hat that is not for sale.
+var _spent_merchants: Array = []    # Vector2i
+
+func _spawn_merchant(cell: Vector2i) -> void:
+	if _merchant_root == null:
+		_merchant_root = Node3D.new()
+		_merchant_root.name = "Merchants"
+		add_child(_merchant_root)
+	var merchant := MerchantBody.new()
+	merchant.name = "Merchant_%d_%d" % [cell.x, cell.y]
+	merchant.cell = cell
+	merchant.position = cell_surface(cell)
+	_merchant_root.add_child(merchant)
+	_merchants[cell] = merchant
+	# A merchant inside a section the party already traded in stays sold. Applied
+	# after the node exists rather than filtered at spawn, so the SPENT SET stays
+	# the single source of truth for that.
+	if _spent_merchants.has(cell):
+		merchant.mark_spent()
+
+func merchant_count() -> int:
+	return _merchants.size()
+
+# Every merchant that has not sold yet. The trade asks this rather than doing its
+# own scene-tree walk -- a spent one is still standing there and still a solid
+# body to dash into, so "is there a merchant here" and "can I trade" are two
+# different questions.
+func open_merchants() -> Array:
+	var out: Array = []
+	for cell in _merchants.keys():
+		var merchant: Node = _merchants[cell]
+		if is_instance_valid(merchant) and merchant.can_trade():
+			out.append(merchant)
+	return out
+
+func merchant_at_cell(cell: Vector2i) -> Node:
+	var merchant = _merchants.get(cell)
+	return merchant if is_instance_valid(merchant) else null
+
+func take_merchant(cell: Vector2i) -> bool:
+	var merchant: Node = merchant_at_cell(cell)
+	if merchant == null or not merchant.can_trade():
+		return false
+	merchant.mark_spent()
+	if not _spent_merchants.has(cell):
+		_spent_merchants.append(cell)
+	return true
+
+# The spent set as flat x,z pairs -- the same shape as spent_mound_layout(), and
+# sent on join rather than per tick because a merchant changes state exactly once
+# in his life.
+func spent_merchant_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _spent_merchants:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+func apply_spent_merchants(layout: PackedInt32Array) -> void:
+	var i := 0
+	while i + 1 < layout.size():
+		var cell := Vector2i(layout[i], layout[i + 1])
+		# RECORDED EVEN IF HE IS NOT BUILT YET. A client can be told about a
+		# merchant in a segment its streaming window has not reached; dropping that
+		# would leave him for sale a second time when it does. _spawn_merchant
+		# reads this set back.
+		if not _spent_merchants.has(cell):
+			_spent_merchants.append(cell)
+		var merchant: Node = merchant_at_cell(cell)
+		if merchant != null:
+			merchant.mark_spent()
+		i += 2
 
 func take_mound(cell: Vector2i) -> bool:
 	if not _mounds.has(cell):
