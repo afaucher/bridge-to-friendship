@@ -101,6 +101,24 @@ var aim_point: Vector3 = Vector3.INF
 # would apply today's weight to ticks taken before the gun was picked up, and
 # GameWorld.corrections would climb every time somebody swapped weapons.
 var carry_speed: float = 1.0
+
+# --- The sidearm (M24) --------------------------------------------------------
+#
+# ON THE PLAYER, NOT IN THE WORLD. Every other gun is a SpecialBody: an item with
+# a magazine, one slot, dropped when replaced and destroyed when spent. The
+# pistol cannot be dropped, never runs out, and is back the instant a special is
+# gone -- which is not a rule you bolt onto an item, it is a statement that this
+# is not one. So it lives here, and the whole pickup-drop-spend lifecycle never
+# has to make an exception for it.
+
+# HOW WILD IT HAS GONE, 0 (cold, accurate) to 1 (hot, useless). A shot adds
+# PISTOL_HEAT_PER_SHOT and it bleeds off at PISTOL_HEAT_DECAY per second.
+#
+# CAPTURED, so a client's HUD can show it. Nothing about firing is predicted --
+# the host decides every round -- but the meter is on screen the whole time, and
+# a meter that only moves when a snapshot happens to land reads as broken.
+var pistol_heat: float = 0.0
+var pistol_timer: float = 0.0
 var dash_charges: int = SimConfig.DASH_CHARGES
 var dash_refill: float = 0.0
 
@@ -1387,7 +1405,7 @@ func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
 		shielding, shield_yaw, special_was_held, dash_charges, dash_refill,
-		carry_speed]
+		carry_speed, pistol_heat, pistol_timer]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1405,6 +1423,9 @@ func apply_state(s: Array) -> void:
 	ledge_cooldown = float(s[12])
 	# Tolerated short, so a blob from before the shield existed still applies
 	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 20:
+		pistol_heat = float(s[19])
+		pistol_timer = float(s[20])
 	if s.size() > 18:
 		carry_speed = float(s[18])
 	if s.size() > 17:

@@ -778,6 +778,63 @@ const SHOTGUN_AMMO := 8
 # instrument the aim A/B actually needs -- with a 0.4-degree cone the shot lands
 # where the aim says and nothing hides a mistake, so if point aiming is better the
 # rifle is where it will show first.
+# --- The sidearm (M24) --------------------------------------------------------
+#
+# THE WEAPON YOU ALWAYS HAVE. Every gun in this game is a special: one slot, a
+# magazine, and when it runs out you are holding nothing and there is nothing to
+# do but walk to the next rack. The pistol is the answer to that -- unlimited,
+# undroppable, and back in your hand the instant a special is spent.
+#
+# IT IS NOT A SPECIAL, AND THAT IS THE WHOLE MODEL. A special is an ITEM: it is
+# picked up, it occupies the one slot, it is dropped when something replaces it
+# and destroyed when it is spent. "Cannot be dropped" is not a rule bolted onto
+# an item, it is a statement that this is not one -- so the sidearm lives on the
+# PLAYER, like their nose, and the item lifecycle never touches it.
+#
+# ACCURATE ONCE, WILD IF YOU LEAN ON IT. Single shots land where you point them;
+# hold the trigger and the thing walks all over the place. That is what makes it
+# a fallback rather than a replacement for the machine gun -- it beats an empty
+# hand at any range and loses to a real weapon the moment the fight is more than
+# one target.
+# SLOWER THAN THE MACHINE GUN, DELIBERATELY. It shipped at 0.30 against the
+# machine gun's 0.40, at the same 1 damage -- so the free, unlimited, undroppable
+# weapon out-damaged the one you have to find, 3.3 dps against 2.5, at the same
+# accuracy. There was no reason to pick a machine gun up. Caught by comparing the
+# two on paper rather than in play, which is the only way a number like that
+# shows: nothing about the pistol felt wrong, it was just quietly better.
+const PISTOL_FIRE_INTERVAL := 0.45
+const PISTOL_DAMAGE := 1
+
+# COLD, IT IS THE RIFLE. Warm, it is worse than the machine gun. The gap between
+# those two numbers is the entire weapon: 0.6 degrees is a shot you aim, 14 is a
+# shot you throw.
+const PISTOL_SPREAD_DEG := 0.6
+# WORSE THAN THE MACHINE GUN WHEN HOT, and it has to be by a clear margin
+# rather than a hair: spamming the sidearm should be the worst way to shoot
+# anything, not a near-substitute for the weapon you went and found.
+const PISTOL_SPREAD_HOT_DEG := 18.0
+
+# HOW FAST IT GOES WILD, AND HOW FAST IT SETTLES. Heat runs 0..1 and scales the
+# spread between the two numbers above. A shot adds 0.34, so the THIRD round of a
+# burst is already most of the way to useless; it bleeds off at 0.8 per second,
+# so a little over a second of trigger discipline buys the accurate shot back.
+#
+# THE RECOVERY IS DELIBERATELY SLOWER THAN THE FIRE RATE. At 0.45 s between shots
+# and 0.8/s of decay, holding the trigger gains 0.50 and loses 0.36 -- so a held
+# trigger climbs, and a tapped one does not. That relationship is the mechanic;
+# the numbers either side of it are tuning.
+#
+# THE HEAT ROSE WITH THE INTERVAL, AND HAD TO. Slowing the weapon to 0.45 s
+# without touching this would have put the per-shot gain (0.34) BELOW the
+# per-interval loss (0.36) -- a held trigger would have cooled, the spread would
+# never have opened, and the whole mechanic would have silently stopped existing
+# while every number still looked deliberate. `test_sidearm` asserts the held
+# case reaches the top of the range, which is what would have caught it.
+#
+# STAYING COLD COSTS 0.62 s BETWEEN SHOTS, which is the tap this weapon is for.
+const PISTOL_HEAT_PER_SHOT := 0.50
+const PISTOL_HEAT_DECAY := 0.8
+
 const RIFLE_SPREAD_DEG := 0.4
 const RIFLE_SPREAD_VERTICAL_DEG := 0.2
 const RIFLE_DAMAGE := 3

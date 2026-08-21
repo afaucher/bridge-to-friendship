@@ -81,16 +81,29 @@ func _check_slots() -> void:
 	# it had never filled and could not, so it was furniture rather than a
 	# deliberate blank. Asserting the COUNT is what stops it drifting back in
 	# unnoticed, and what would catch a fourth arriving without a decision.
-	eq(slots.size(), 2, "two action slots -- rope is gone until M4 brings it back")
+	eq(slots.size(), 3, "three action slots: push, the sidearm you always have, and the special "
+		+ "you might be carrying. Rope is still gone until M4 brings it back")
 	eq(str(slots[0]["id"]), "push", "push first")
 	check(bool(slots[0]["filled"]), "push is live")
 	check(bool(slots[0]["ready"]), "and ready when the dash is off cooldown")
-	# Empty is a STATE, not an absence: the view draws this deliberately blank
-	# rather than omitting it, so the layout does not move when a special is
-	# picked up. It is now the ONLY slot that does this, and the only one that
-	# genuinely varies -- which is what makes the distinction worth having.
-	eq(str(slots[1]["id"]), "special", "and the special slot second")
-	check(not bool(slots[1]["filled"]), "empty-handed until something is picked up")
+	# THE SIDEARM IS ITS OWN SLOT (M24), and it is the one that is never empty.
+	eq(str(slots[1]["id"]), "sidearm", "the sidearm slot second")
+	check(bool(slots[1]["filled"]),
+		"always filled -- it cannot be dropped and cannot run out, so there is no "
+		+ "state in which a player does not have it")
+	eq(str(slots[1]["label"]), "PISTOL", "and it names the weapon")
+	check(int(slots[1]["ammo"]) < 0,
+		"with an ammo count that reads as UNLIMITED rather than as a number -- a "
+		+ "literal 0 on a gun that never runs out is an empty gun")
+
+	# AND THE SPECIAL SLOT KEEPS ITS EMPTY STATE. Empty is a STATE, not an
+	# absence: the view draws it deliberately blank rather than omitting it, so
+	# the layout does not move when something is picked up. The sidearm briefly
+	# lived in this box and took that away -- which conflated two different
+	# questions, because what you are CARRYING can be nothing and what you always
+	# have cannot.
+	eq(str(slots[2]["id"]), "special", "and the special slot third")
+	check(not bool(slots[2]["filled"]), "empty-handed until something is picked up")
 
 	a.shove_cooldown = SimConfig.SHOVE_COOLDOWN * 0.5
 	slots = _own()["slots"]
