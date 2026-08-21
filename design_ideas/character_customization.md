@@ -51,6 +51,33 @@ the hats and the HUD row all still separate people. It is reversible: a curated
 palette is a smaller change than a picker, so if playtest reports "I could not
 tell who was who", the fix is available.
 
+**THE COLOUR TAKES THE WHOLE BODY** (decided 2026-08-20), replacing the hardcoded
+blue rather than sitting on a band or a sash. This answers `art_direction.md`'s
+open question 1, open since 2026-08-15, and it answers it in the expensive
+direction: **every art style in the bake-off must now survive an arbitrary body
+colour.** `SITE`'s hi-vis worker and `GOUACHE`'s painted cloak both assumed a
+neutral body with colour on an accessory, and neither assumption holds any more.
+That is a real constraint on a decision that has not been made yet, and it should
+be carried back into the bake-off rubric rather than discovered when a style
+comes back beautiful and monochrome.
+
+**And it lets a player dress as a threat.** `hat_style.gd:28-32` keeps blues and
+red-oranges out of the hat palette precisely so a hat reads as "not scenery, not
+a player, not a threat"; the shield comment in `player.tscn:84-85` says the
+palette's rule is that warm things hurt you. A whole-body free picker means
+somebody will choose rusher-red, and at 30 m a red thing on the bridge currently
+means *charging at you*.
+
+This is a different problem from the one the free-picker decision accepted. "Two
+players look alike" was chosen knowingly; "a player looks like an enemy" is a
+consequence of pairing that choice with whole-body, and it was not. **The
+existing answer is contract rule 1 — silhouette carries identity, colour carries
+team** — and it holds here: a rusher is a cone, a player is a cylinder that never
+tips, and the two are different shapes at any distance. So this is logged as a
+known cost with a standing defence rather than as a blocker. It is the second
+thing to look at if playtest reports mistaking players for hazards, the first
+being whether the shapes are as distinct in motion as they are at rest.
+
 **But the colour has to travel as DATA, and that is a real break from the hat
 system.** `hat_style.gd` opens with the constraint the entire hat feature hangs
 on — the look is a pure function of an integer, never rolled at spawn, because
@@ -177,6 +204,107 @@ The tail hangs off the `Facing` pivot so it trails the aim axis. Note that this
 makes it a **second, rear-pointing facing cue**, which is a small bonus and a
 small risk: it must never be brighter or larger than the nose, or the player has
 two markers and the wrong one is louder.
+
+---
+
+## The catalogue
+
+### Two budgets, pointing opposite ways
+
+Measured off `player.tscn`. The body is a cylinder of **radius 0.4**, height 1.8,
+origin at its centre. The nose is a `BoxMesh` of `(0.3, 0.3, 0.5)` at
+`(0, 0.35, −0.5)`, so its front face is at z = −0.75.
+
+**THE NUMBER THAT MATTERS IS NOT THE NOSE'S SIZE. IT IS HOW FAR IT STICKS OUT
+PAST THE CYLINDER.** From a camera looking down at 60 m of bridge, the body is a
+circle, and the only part of the nose that contributes anything to the facing
+read is the part outside that circle. The current nose runs from the silhouette
+edge at z = −0.4 out to z = −0.75:
+
+> **Protrusion budget: 0.35 m.** That is the entire top-down facing marker.
+
+A variant can be twice the volume and read as *nothing* if it hugs the body — and
+this is the trap the whole slot has, because a bigger nose looks more legible in
+the character preview, where the camera is at eye level, and the preview is where
+every one of these will be judged. **The preview is the one view that cannot see
+the property the nose exists for.**
+
+Accessories have the mirrored constraint. Contract rule 1 says silhouette carries
+identity, and the identity being carried is "that is a player, not a hazard" — so
+lateral spread has a **ceiling** where nose protrusion has a **floor**:
+
+> **Spread budget: an accessory may not make the top-down silhouette
+> unrecognisable as a cylinder.** Antlers are the variant that tests this.
+
+Two opposite rules, one reason: the top-down outline is the whole communication
+channel, and the nose is trying to break the circle while the accessory is trying
+not to.
+
+### Noses
+
+Every one is asymmetric about −Z, brighter than the body by the derived contrast
+rule, and hangs off the `Facing` pivot.
+
+| variant | shape | from directly above | protrusion | note |
+|---|---|---|---|---|
+| **WEDGE** | the current box, blunt | a square tab | 0.35 | **The default and the control.** The only variant with a proven facing read, because it is what the game ships today |
+| **BEAK** | tapers to a point | a triangle | 0.35–0.40 | The crispest arrow in the set. A point may reach slightly further than a face, because it carries less visual mass at the tip |
+| **SNOUT** | rounded, wider, slight droop | a broad tongue | 0.28 | Widest and shortest. Sits at the **floor** of the budget, so it is the first thing to re-measure if anyone reports a bad facing read |
+| **FORK** | two forward-swept prongs | a V | 0.35 | The gap is the character. Keep it ≥ one prong's width, or at range the prongs merge and it is a wedge that cost twice as much |
+| **PROW** | a tall thin vertical blade | **a line** | 0.40 | **The risky one.** A line has no width to catch the eye from above — it is the least readable variant in the set and needs a width floor or it should be cut |
+| **VISOR** | a shallow arc wrapping the front, pointed at centre | a forward-biased crescent | 0.30 at centre | Most of the arc hugs the body and contributes nothing. The centre point does all the work and must clear the budget alone |
+
+### Eyes
+
+Small on purpose. They sit above the nose on the front face and are **never
+brighter than it** — the nose owns the facing channel and eyes must lose at range
+rather than compete.
+
+| variant | shape | reads as |
+|---|---|---|
+| **DOTS** | two small spheres | the default; neutral |
+| **WIDE** | same, larger and further apart | eager, startled |
+| **SLIT** | two narrow horizontal bars | focused, unimpressed |
+| **SINGLE** | one central eye | cyclops. Sits directly above the nose's centreline — the one placement that could muddy the facing read, so it stays small |
+| **QUAD** | two stacked pairs | spidery, wrong |
+| **BAND** | one continuous horizontal strip | robotic. **The most visible eye option at range**, which makes it the one most likely to break the lose-at-range rule. Cap its brightness |
+
+### Accessories
+
+One at a time. Mesh only — no `CollisionShape3D`, no layer, no mask. All hang off
+`Facing` so they turn with the aim, and none of them raise `mount_y`.
+
+| variant | shape | spread | note |
+|---|---|---|---|
+| **HORNS** | two short thick cones, curving out and up from the sides | moderate | The safest: short, close to the head, unmistakable. Splayed outward so the vertical column stays the hats' |
+| **ANTLERS** | tall and branching | **widest** | The variant that tests the spread budget. Visible from above precisely *because* it splays — which is the point and the risk in one property |
+| **TAIL** | trailing low behind, on the aim axis | none | A **rear-pointing facing cue**, which is a small bonus and a small risk. Must be smaller and dimmer than the nose or the player has two markers and the wrong one is louder |
+| **EARS** | two rounded flaps, drooping outward | low | Mostly a close-range read, like eyes. Cheap and legible in the preview |
+| **SPIKES** | a lateral row of small spines along the sides | minimal | Reads as texture on the outline rather than as protrusion — the accessory for someone who wants the silhouette left alone |
+
+**Cut: `CREST`** — a fore-aft ridge along the top of the head. Disqualified twice
+over, which is why it is worth recording rather than quietly omitting. It sits in
+the **hat column**, which is the one thing an accessory may not do; and from
+above it is a fore-aft line through the body's centre, which is *a facing cue* —
+a second one, in a different place, competing with the nose. Either fault alone
+would be enough.
+
+### The default character
+
+**WEDGE nose, DOTS eyes, no accessory, and the current blue** —
+`Color(0.25, 0.6, 0.85)`.
+
+That is not a placeholder, and choosing it is the point. A first-launch character
+is what most players are seen as for their first session, so it has to be a
+deliberate design rather than the absence of one. The deliberate design available
+here is **the player the game already ships**: the only nose with a proven facing
+read, and the one body colour the entire art direction was built around —
+`player.tscn:25-26` picked it to be "obviously not scenery", and `hat_style.gd`
+excludes blue from the hat palette to keep it unambiguous.
+
+So an unconfigured player looks exactly like a player looks today. Everything in
+this feature is something you opt into, and the baseline is the one configuration
+with a track record.
 
 ---
 
@@ -340,7 +468,8 @@ being false.
 |---|---|
 | the contrast rule | **sweep the picker** and assert a minimum nose/body perceptual gap at every sample, including the exact yellow the constant used to be. One colour cannot see this bug — it is a region of the space, not a case |
 | **A/B the contrast rule** | delete the derivation, and confirm the sweep goes red. Per CLAUDE.md 2026-08-17: print the mutation, and run both builds side by side |
-| the facing contract | for **every** nose variant, the marker is asymmetric about −Z and its forward extent is within the current nose's. A variant that fails this ships "the dash went the wrong way" |
+| the facing contract | for **every** nose variant: asymmetric about −Z, and **protrusion past r = 0.4 within the budget** — a floor as well as a ceiling. A variant that clears the ceiling and misses the floor is a nose that looks fine in the preview and says nothing from the camera, which ships as "the dash went the wrong way" |
+| the spread budget | for **every** accessory, the top-down extent stays inside the ceiling. Antlers are the case that must be able to fail it — if the widest variant passes with room to spare, suspect the measurement before believing the result |
 | horns vs. the hat column | a stack of three hats is spaced identically with horns and without — **and assert the comparison can fail**, or it is a pair of numbers nobody checked |
 | accessories do not collide | no `CollisionShape3D`, and the accessory's layer is masked by nothing. Six bugs in this project have been one wrong bit here |
 | persistence | a saved character round-trips; `path_override` points somewhere disposable, asserted, so the gate cannot eat a developer's character |
@@ -362,7 +491,10 @@ Starting values with reasons, per house rules — every one expected to move.
 | constant | value | why |
 |---|---|---|
 | `NOSE_MIN_CONTRAST` | tbd | the perceptual gap the derived nose colour must clear against the body. Set it from the *current* blue/yellow pair, which is the one combination known to read at camera distance |
+| `NOSE_PROTRUSION_MIN` | 0.28 | the floor, set by `SNOUT`, the shortest variant. Measured past r = 0.4, not from the origin |
+| `NOSE_PROTRUSION_MAX` | 0.40 | the ceiling, set by `BEAK` and `PROW`. The current wedge's 0.35 sits between them by construction |
 | `EYE_SCALE` | small | sized to be lost at bridge range on purpose, so it never competes with the nose for the facing channel |
+| `ACCESSORY_SPREAD_MAX` | tbd | the top-down ceiling. Set it from `ANTLERS`, which is the only variant near it, and expect it to be the number that moves |
 | `ACCESSORY_SPLAY` | outward | horns clear the hat column laterally. The number is whatever keeps `mount_y` untouched |
 | `PREVIEW_SIZE` | explicit | never inherited — the headless viewport is 64×64 |
 
@@ -370,20 +502,13 @@ Starting values with reasons, per house rules — every one expected to move.
 
 ## Open questions
 
-1. **Does the personal colour take the whole body, or a zone?** This feature
-   *forces* `art_direction.md`'s open question 1 ("does the style need to survive
-   four team colours, or do we go one-avatar with colour only on an accessory?"),
-   which has been open since 2026-08-15. Whole-body is the stronger read and the
-   bigger constraint on every future art style; a zone is safer and quieter.
-   **Worth answering deliberately rather than discovering.**
-2. **Can the screen be opened mid-session?** Assumed no above. Yes is nicer and
+1. **Can the screen be opened mid-session?** Assumed no above. Yes is nicer and
    means re-checking the RPC ordering rule.
-3. **Is the preview model reused on the score screen?** It should be — it is the
+2. **Is the preview model reused on the score screen?** It should be — it is the
    other place a character is seen close — but that is a second consumer of the
    same viewport trick and it is not free.
-4. **What does a player with no accessory and a default colour look like?** The
-   default has to be a deliberate character rather than the absence of one,
-   because it is what most players are seen as for their first session.
+3. **Does whole-body colour change the art bake-off's rubric?** It should. See
+   the colour section: two of the six proposed styles assumed a neutral body.
 
 ---
 
@@ -394,9 +519,9 @@ Starting values with reasons, per house rules — every one expected to move.
   in a different document.
 - **Unlocks and progression.** Everything is free from the start (decided
   2026-08-20). Earned cosmetics are a second economy, and hats are the first.
-- **Per-slot colour.** One colour, on one designated zone. Five independently
+- **Per-slot colour.** One colour, taking the whole body. Five independently
   coloured parts is a character nobody can pick out at range and a picker nobody
-  finishes using.
+  finishes using — and the nose is already spoken for, since it is derived.
 - **Conflict prevention on colour.** Decided 2026-08-20. No reservation, no
   auto-nudge; two players may look alike.
 - **Multiple simultaneous accessories.** One slot (decided 2026-08-20).
