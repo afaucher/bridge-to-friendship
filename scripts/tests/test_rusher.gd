@@ -1,5 +1,12 @@
 extends "res://scripts/test_support/test_case.gd"
 
+# COLUMNS SHIFTED BY 3 ON 2026-08-20 (M22 phase C). This test measures on
+# playtest_bridge.seg, and the canvas went from 15 cells to 21 -- every
+# authored file was padded with 3 columns of HOLE on each side, which leaves
+# the world POSITION of every cell identical and moves its column INDEX right
+# by 3. The literals below are the current file's columns; the geometry they
+# point at has not moved a millimetre.
+
 # The first DESTRUCTIBLE hazard. See design_ideas/hazards.md.
 #
 # The claims worth defending, in the order they matter:
@@ -47,7 +54,7 @@ func setup(main) -> void:
 		return PlayerInput.make(t, recorded.get("move", Vector2.ZERO), int(recorded.get("actions", 0)))
 
 	# Park well clear so nothing wakes before its phase asks it to.
-	_park(Vector2i(7, 1))
+	_park(Vector2i(10, 1))
 
 func _physics_process(_delta: float) -> void:
 	if victim == null or world.tick == 0:
@@ -76,7 +83,7 @@ func _phase_wake_and_telegraph() -> void:
 		# Standing ON it was the first version and it made the phase untestable:
 		# the thing surfaced under our feet and the contact rule fired on the
 		# same tick the rise finished, so what got measured was the hit.
-		_park(Vector2i(3, 5))
+		_park(Vector2i(6, 5))
 		return
 	if phase_frame == 3:
 		eq(world.rusher_count(), 1, "walking up to a mound wakes exactly one rusher")
@@ -128,8 +135,8 @@ func _phase_chases_you_down() -> void:
 		# COLUMN 6 is the open lane through the whole arena: the pillar rows
 		# alternate between x 1,4,7,10,13 and x 2,5,8,11, so 6 carries neither.
 		# Every phase below that wants an unobstructed run uses it.
-		_park(Vector2i(6, 22))
-		recorded["id"] = _place_rusher_id(Vector2i(6, 27))
+		_park(Vector2i(9, 22))
+		recorded["id"] = _place_rusher_id(Vector2i(9, 27))
 		return
 	if phase_frame == 20:
 		if _lost_subject(): return
@@ -170,8 +177,8 @@ func _phase_line_of_sight() -> void:
 		# z26 and a player at z21 stand in clear cells with solid stone between
 		# them. Ten metres apart -- the SAME distance the clear-lane half below
 		# uses, so the two numbers are comparable.
-		_park(Vector2i(7, 21))
-		recorded["id"] = _place_rusher_id(Vector2i(7, 26))
+		_park(Vector2i(10, 21))
+		recorded["id"] = _place_rusher_id(Vector2i(10, 26))
 		return
 	if phase_frame == 10:
 		if _lost_subject(): return
@@ -194,8 +201,8 @@ func _phase_line_of_sight() -> void:
 		# assertion above passes just as happily on a rusher that never moves at
 		# all, which is the shape of gate CLAUDE.md calls half a gate.
 		_isolate()
-		_park(Vector2i(6, 21))
-		recorded["id"] = _place_rusher_id(Vector2i(6, 26))
+		_park(Vector2i(9, 21))
+		recorded["id"] = _place_rusher_id(Vector2i(9, 26))
 		return
 	if phase_frame == 70:
 		if _lost_subject(): return
@@ -223,10 +230,10 @@ func _phase_line_of_sight() -> void:
 func _phase_contact_tumbles_and_spends() -> void:
 	if phase_frame == 1:
 		_isolate()
-		_park(Vector2i(6, 22))
+		_park(Vector2i(9, 22))
 		# Placed right next to the player and already chasing, so the outcome
 		# under test is the contact and not the walk up to it.
-		_place_rusher(Vector2i(6, 23))
+		_place_rusher(Vector2i(9, 23))
 		return
 	if phase_frame == 30:
 		eq(victim.health, SimConfig.MAX_HEALTH - SimConfig.RUSHER_DAMAGE,
@@ -242,7 +249,7 @@ func _phase_contact_tumbles_and_spends() -> void:
 func _phase_dash_deflects() -> void:
 	if phase_frame == 1:
 		_isolate()
-		_park(Vector2i(6, 22))
+		_park(Vector2i(9, 22))
 		return
 	if phase_frame == 10:
 		# A HAT STACK, because the playtest report was about hats. Health is a
@@ -259,7 +266,7 @@ func _phase_dash_deflects() -> void:
 	if phase_frame == 20:
 		# Two cells UP-bridge (grid +z is world -z), which is the way a
 		# move of (0, -1) dashes -- so the player runs straight into it.
-		var rusher: Node = _place_rusher(Vector2i(6, 24))
+		var rusher: Node = _place_rusher(Vector2i(9, 24))
 		recorded["id"] = rusher.rusher_id
 		recorded["rusher_z"] = rusher.position.z
 		recorded["move"] = Vector2(0.0, -1.0)      # up-bridge, into it
@@ -345,8 +352,8 @@ func _phase_burrows() -> void:
 		_isolate()
 		# Out of reach: this measures the LIFETIME, not how long it took to walk
 		# somewhere. It must expire on its own clock with nobody to chase.
-		_park(Vector2i(7, 1))
-		var rusher: Node = _place_rusher(Vector2i(6, 25))
+		_park(Vector2i(10, 1))
+		var rusher: Node = _place_rusher(Vector2i(9, 25))
 		# Aged to just short of the limit, so the phase costs a fraction of a
 		# second rather than ten of them -- the clock is what is under test, and
 		# it is the same clock either way.
@@ -443,9 +450,9 @@ func _place_rusher(cell: Vector2i) -> Node:
 func _phase_speed_knob() -> void:
 	if phase_frame == 1:
 		_isolate()
-		_park(Vector2i(6, 22))
+		_park(Vector2i(9, 22))
 		DebugSettings.set_value("rusher_speed_pct", 100.0)
-		recorded["id"] = _place_rusher_id(Vector2i(6, 27))
+		recorded["id"] = _place_rusher_id(Vector2i(9, 27))
 		return
 	if phase_frame == 20:
 		if _lost_subject(): return
@@ -457,9 +464,9 @@ func _phase_speed_knob() -> void:
 		# Same rusher would be ideal, but it is closing on the player and would
 		# reach them; a fresh one on the same lane is the honest comparison.
 		_isolate()
-		_park(Vector2i(6, 22))
+		_park(Vector2i(9, 22))
 		DebugSettings.set_value("rusher_speed_pct", 25.0)
-		recorded["id"] = _place_rusher_id(Vector2i(6, 27))
+		recorded["id"] = _place_rusher_id(Vector2i(9, 27))
 		return
 	if phase_frame == 70:
 		if _lost_subject(): return

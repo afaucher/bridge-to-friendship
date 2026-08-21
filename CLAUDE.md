@@ -444,6 +444,96 @@ the moment it is written.
   made it slower and no more able to fail. **A/B a new assertion before believing
   it**, and when it survives its own rule being removed, suspect the OBJECT before
   the sample size.
+  **REPEATED 2026-08-20, WITH THE WRONG OBJECT MIXED INTO THE RIGHT ONE.** A test
+  that the generator now varies the bridge's width passed against the pre-M22
+  code with the mutation verified applied -- because `SegmentGen.section()`
+  returns a MAZE one time in five, and a maze is asymmetric and one cell wide by
+  design. The variety it measured was real and had nothing to do with the change.
+  Harder to spot than the lift case: the sample was not wholly wrong, it was
+  DILUTED, so every number looked plausible. **When one function can return two
+  kinds of thing, a claim about one of them has to say so** -- `seg.tags.has("maze")`
+  was the whole fix, and the same applies to `piece_rows`, which are authored and
+  carry their own silhouette.
+- **A REVERT THAT LEAVES THE SMOOTHING IN IS NOT A REVERT.** Same change, same
+  day, and it is why the A/B above took two rounds. The first mutation swapped the
+  new per-row edge profile back to the old symmetric margin and left the
+  `_cone()` call that follows it -- so the mutated profile was still smoothed, and
+  the rate-cap assertion could not fail. **A feature that is generate-then-fix is
+  TWO pieces of code, and reverting the generator while keeping the fixer measures
+  neither.** The tell is an A/B where some assertions flip and one conspicuously
+  does not: that one is downstream of something the mutation did not touch.
+- **A CONSTANT THAT MEANT TWO THINGS AT ONCE SPLITS INTO TWO THE DAY THEY
+  DIFFER, AND EVERY PLACE THAT PICKED THE WRONG ONE IS SILENT.** Observed
+  2026-08-20 raising the grid canvas from 15 to 21 with a 15-wide baseline. For
+  the whole life of the project `width` was simultaneously the coordinate frame,
+  the bridge, the camera's framing, and "all of it" -- so `for x in seg.width`
+  read correctly as any of the four. The moment they came apart, four separate
+  rules were quietly wrong in four different ways: `_check_gates` demanded gate
+  content on cells nobody can stand on, `test_set_pieces` demanded a piece be
+  solid across ground the terrain does not have, the camera would have zoomed
+  every player out 40% to frame six cells of air, and the entry/exit fixup wrote
+  DECK over the profile that had just been carefully computed. **None of them
+  errored** -- three failed as assertions about the wrong object and the fourth
+  passed. **When a constant is about to stop meaning one thing, grep every use
+  and ask which of the two each one meant**; the ones that read `seg.width`
+  without thinking are exactly the ones that will be wrong.
+  Its companion, and the reason the canvas bump was affordable at all: **a
+  symmetric pad is a no-op you can PROVE.** `cell_centre` is
+  `(x + 0.5 - width * 0.5) * CELL_SIZE`, so padding every file by 3 columns while
+  the width grows by 6 leaves every existing cell at exactly the same world
+  coordinate -- old column 0 and new column 3 are both x = -14. That turned "re-
+  author thirteen levels" into a mechanical script, and the tests that broke were
+  precisely the ones holding a hardcoded COLUMN INDEX rather than a position.
+- **A GENERATE-THEN-REPAIR PIPELINE HAS TO BE READ BACKWARDS, because the LAST
+  writer wins and it is usually the oldest line.** Same change. The edge profile
+  was computed, coned, lift-corrected and re-coned with considerable care -- and
+  then a four-line fixup from an earlier milestone stamped DECK across the full
+  width of the entry and exit rows, overruling all of it. Measured: 120 open ends
+  and 104 rate breaks, a six-cell flare at both ends of every generated section,
+  none of it visible in the code that looked like it was in charge. **When a
+  property you just computed is not in the output, find every later line that
+  writes the same field** -- the culprit was correct when it was written and
+  nobody touched it.
+- **A SOLVER THAT FINDS THE LARGEST PROFILE THAT FITS WILL ALWAYS PICK THE
+  STEEPEST SLOPE, AND THAT IS NOT A BUG IN IT.** Observed 2026-08-20, asked to
+  make the bridge's width change gradually. The generator rolled flat setback
+  BANDS and let a two-pass minimum cone discover the taper between them -- so
+  every transition in the game came out at exactly one column per row, the rate
+  cap, because the largest profile that fits is the one that tapers as late and
+  as hard as it is allowed to. Correct by every assertion and it read as the deck
+  SNAPPING. **A cap is not a gradient**; the fix was to state the shape
+  (waypoints joined by straight ramps, with a rolled rows-per-column stride)
+  instead of deriving it. And the measurement that made it legible was not "is
+  any slope illegal" -- none was -- but **what fraction of rows the edge is
+  MOVING on**: 17% after, and effectively every transition row before.
+- **A CONSTRAINT SATISFIED SOMEWHERE ELSE IS WORTH FINDING BEFORE YOU PAY FOR IT
+  TWICE.** From the same change. Lift rows were forced to full canvas width so a
+  rider always has ground to step onto -- which meant a rate-1 flare around every
+  lift, in a third of all sections, fighting the gradient hardest at the one place
+  the player is standing still looking at it. But `safe` already keeps every lift
+  in the middle columns, and the deepest either edge can ever be cut still leaves
+  those columns AND their neighbours solid: the property was guaranteed by
+  construction, at every profile the generator can produce. **Two lines of
+  arithmetic retired a special case that had been distorting the whole system** --
+  and the tell was a rule phrased about a ROW when what it protected was a CELL.
+- **A SOFT CONSTRAINT SOLVER WILL QUIETLY EAT A HARD ONE.** The third bug in that
+  same profile. `_cone` takes a MINIMUM, so it can only ever widen the deck --
+  which means a widening event two rows from the end reaches back and drags a
+  PINNED end open with it, and forcing the end back afterwards leaves exactly the
+  one-row cliff the cone existed to prevent. **A pin that runs before a smoother
+  is not a pin, it is a suggestion.** Fixed by re-pinning after and clamping
+  outward from the pins. And the diagnostic is the transferable part: printing
+  WHERE the 19 surviving breaks were (`lift?false end?true`, every one) named the
+  cause in a single run, after two rounds of plausible guesses about lifts.
+- **AN ARITHMETIC IMPOSSIBILITY BEATS A TUNED THRESHOLD.** From the same test,
+  and it is the reason the second A/B was decisive where a count would have been
+  argued about. "At least five distinct widths" is a number somebody picked; **"the
+  deck is sometimes an EVEN number of cells wide" is a proof**, because a single
+  symmetric margin at an odd canvas can only ever produce `15 - 2m` and every one
+  of those is odd. The reverted build printed `[9, 11, 13, 15]` -- exactly the four
+  values predicted, and no other -- against `[11, 12, 13, 14, 15]` for the new one.
+  **Where a change makes something newly POSSIBLE, look for a property the old
+  code could not produce at all**, and assert that instead of a magnitude.
 - **A HIT TEST THAT DISAGREES WITH THE ART IS A HAZARD PLAYERS LEARN BY DYING TO,
   and a test can lock the disagreement in.** Observed 2026-08-16. Spikes are drawn
   as nine cones standing straight up out of ONE cell; the hit test measured from

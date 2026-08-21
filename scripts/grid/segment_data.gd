@@ -150,6 +150,26 @@ func is_solid(x: int, z: int) -> bool:
 # something you fall into. And railing every hole would make it impossible to
 # ever shove a stone through one, which the design calls out as the reward for
 # rearranging the bridge.
+#
+# THE EDGE IS WHERE THE VOID REACHES THE CANVAS, NOT WHERE THE COLUMN INDEX RUNS
+# OUT (M22). This used to ask only `nx < 0 or nx >= width`, which is the true
+# grid boundary -- so a section the generator had NARROWED had no railing at all.
+# `_section_attempt` cuts `margin` columns off each side as HOLE and says why in
+# its own comment: "the loader refuses a width mismatch, a fiction is cheaper
+# than a format". The fiction was free right up until you noticed that an
+# interior hole gets no parapet by the rule above, so every narrow stretch in the
+# game was an unrailed drop and read as missing floor rather than as a narrower
+# bridge.
+#
+# So the question became geometric instead of indexical: walk outward. Void all
+# the way off the canvas and this cell is ON THE EDGE, whatever its column index
+# says. Solid ground (or a WALL) first and it is a PIT, and pits stay unrailed
+# for both the reasons above.
+#
+# Both cases are the same glyph and the same authoring -- a run of `_` -- which
+# is exactly why the rule has to measure rather than trust a tag. Columns 0-2 cut
+# for five rows is a setback and gets a railing at column 3; columns 6-8 cut for
+# one row is a gap the deck closes around and gets nothing.
 func has_wall(x: int, z: int, dir: int) -> bool:
 	if not is_solid(x, z):
 		return false
@@ -168,8 +188,18 @@ func has_wall(x: int, z: int, dir: int) -> bool:
 	var step: Vector2i = GridConfig.DIR_CELLS[dir]
 	# Only the sides. The Z ends join the neighbouring segment, and walling them
 	# would seal every segment shut.
-	var nx := x + step.x
-	return nx < 0 or nx >= width
+	#
+	# CHECKED RATHER THAN RELIED UPON, now that there is a loop below it. A Z step
+	# leaves x alone, so the old one-line version returned false for free -- and
+	# the walk would spin on the same column forever.
+	if step.x == 0:
+		return false
+	var nx: int = x + step.x
+	while nx >= 0 and nx < width:
+		if kind_at(nx, z) != GridConfig.Kind.HOLE:
+			return false
+		nx += step.x
+	return true
 
 # --- Parsing ------------------------------------------------------------------
 

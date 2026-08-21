@@ -1,5 +1,12 @@
 extends "res://scripts/test_support/test_case.gd"
 
+# COLUMNS SHIFTED BY 3 ON 2026-08-20 (M22 phase C). This test measures on
+# playtest_bridge.seg, and the canvas went from 15 cells to 21 -- every
+# authored file was padded with 3 columns of HOLE on each side, which leaves
+# the world POSITION of every cell identical and moves its column INDEX right
+# by 3. The literals below are the current file's columns; the geometry they
+# point at has not moved a millimetre.
+
 # MVP criteria B5, B5b, B6, B7, B8 — the whole failure-and-rescue loop.
 #
 # The claim this test exists to defend is the asymmetry in D2: **whether your
@@ -89,7 +96,7 @@ func _park(body: CharacterBody3D, cell: Vector2i, lift: float = 1.0) -> void:
 func _phase_damage_and_grace() -> void:
 	if phase_frame != 1:
 		return
-	_park(a, Vector2i(7, 1))
+	_park(a, Vector2i(10, 1))
 
 	# SILENCE IS A STATE. A player at full health shows nothing at all -- four
 	# permanent bars on a 60 m bridge are furniture, and furniture is not read, so
@@ -197,10 +204,10 @@ func _back_colour(body: CharacterBody3D) -> Color:
 
 func _phase_downed_and_revive() -> void:
 	if phase_frame == 1:
-		_park(a, Vector2i(7, 1))
+		_park(a, Vector2i(10, 1))
 		# Park the helper out of range to start, so revive cannot begin by
 		# accident and the "reset when they wander off" rule is exercised.
-		_park(b, Vector2i(13, 1))
+		_park(b, Vector2i(16, 1))
 		a.health = 1
 		a.invulnerable = 0.0
 		check(a.take_damage(1), "the last hit point can be taken")
@@ -326,11 +333,11 @@ func _phase_ledge_catch() -> void:
 		# possible. Dropped INTO the gap rather than nudged toward it: a tumble
 		# recovers as soon as it is slow and grounded, so a gentle push just
 		# stands back up before it ever reaches the edge.
-		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.position = world.grid.cell_surface_world(Vector2i(9, 2)) + Vector3(0.0, 0.5, 0.0)
 		a.health = SimConfig.MAX_HEALTH
 		a.begin_tumble(Vector3(0.0, 0.0, -1.0))
 		# The helper goes well clear, so the hang is genuinely unassisted first.
-		_park(b, Vector2i(13, 8))
+		_park(b, Vector2i(16, 8))
 		return
 	if phase_frame == 90:
 		eq(a.state, PlayerBody.State.LEDGE_HANG,
@@ -367,7 +374,7 @@ func _phase_ledge_catch() -> void:
 		near(a.position.y, float(recorded["hang_y"]), 0.05, "hanging where they caught")
 		eq(a.rescue_progress, 0.0, "with nobody helping")
 		# Bring a teammate to the lip.
-		_park(b, Vector2i(6, 1))
+		_park(b, Vector2i(9, 1))
 		return
 	if phase_frame > 150 and a.state == PlayerBody.State.WALK:
 		check(phase_frame < 150 + int(SimConfig.LEDGE_HAUL_SECONDS * 60.0) + 20,
@@ -388,7 +395,7 @@ func _phase_ledge_catch() -> void:
 # somewhere else entirely. That is the right behaviour and the wrong test.
 func _phase_launched_clear() -> void:
 	if phase_frame == 1:
-		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.position = world.grid.cell_surface_world(Vector2i(9, 2)) + Vector3(0.0, 0.5, 0.0)
 		a.begin_tumble(Vector3(0.0, -2.0, -SimConfig.LEDGE_CATCH_MAX_SPEED * 1.6))
 		recorded["caught_fast"] = false
 		return
@@ -413,11 +420,11 @@ func _phase_launched_clear() -> void:
 # invisible state rather than on the fall, which is what D2 says it is not.
 func _phase_own_fall_catches() -> void:
 	if phase_frame == 1:
-		_park(b, Vector2i(13, 8))
+		_park(b, Vector2i(16, 8))
 		# Airborne over the authored gap, in WALK. This is the shape a dash that
 		# fell short leaves you in: end_shove zeroes the horizontal velocity and
 		# hands you back to WALK, dropping.
-		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		a.position = world.grid.cell_surface_world(Vector2i(9, 2)) + Vector3(0.0, 0.5, 0.0)
 		a.velocity = Vector3(0.0, -1.0, -1.0)
 		a.state = PlayerBody.State.WALK
 		a.grounded = false
@@ -450,8 +457,8 @@ func _phase_own_fall_catches() -> void:
 # had no coverage at all. This is the whole reason the hang is not a soft landing.
 func _phase_release_actually_falls() -> void:
 	if phase_frame == 1:
-		_park(b, Vector2i(13, 8))
-		a.position = world.grid.cell_surface_world(Vector2i(6, 2)) + Vector3(0.0, 0.5, 0.0)
+		_park(b, Vector2i(16, 8))
+		a.position = world.grid.cell_surface_world(Vector2i(9, 2)) + Vector3(0.0, 0.5, 0.0)
 		a.health = SimConfig.MAX_HEALTH
 		a.state = PlayerBody.State.WALK
 		a.grounded = false
@@ -491,11 +498,11 @@ func _phase_drone_return() -> void:
 		a.visible = true
 		a.ledge_cooldown = 0.0
 
-		_park(b, Vector2i(7, 12))
+		_park(b, Vector2i(10, 12))
 		# A REAL tumble first, not a state assignment: the mesh spin has to be
 		# produced by the game's own mechanism for the "comes back upright"
 		# assertion below to mean anything.
-		_park(a, Vector2i(7, 14))
+		_park(a, Vector2i(10, 14))
 		a.begin_tumble(Vector3(9.0, 3.0, 0.0))
 		return
 	if phase_frame == 20:

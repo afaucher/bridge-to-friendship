@@ -410,6 +410,45 @@ func _physics_process(_delta: float) -> void:
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
 	if camera != null:
 		camera.focus_held = _returning.has(local_peer)
+		_tell_camera_where_the_deck_ends()
+
+# HOW WIDE THE BRIDGE IS WHERE THE PLAYER IS STANDING (M22 phase C).
+#
+# The camera frames a fixed number of metres and pans within the deck rather than
+# zooming out to fit the canvas, so it needs the deck's real edges -- and the deck
+# is no longer the same width from one row to the next.
+#
+# READ FROM THE GRID HERE RATHER THAN FROM THE CAMERA, because the camera is also
+# driven by shot_runner with no world at all. A camera nobody tells stays on the
+# centre line, which is exactly what it did before this existed.
+#
+# AVERAGED OVER A FEW ROWS AHEAD AND BEHIND, not taken from the one row the body
+# is on. An edge may move a column per row (SegmentGen.INSET_RATE), so a
+# single-row read steps the clamp every time the player crosses a boundary --
+# small, but it is a sideways twitch under a cursor, and the aim is a world
+# position now. The follow lerp smooths what is left.
+func _tell_camera_where_the_deck_ends() -> void:
+	var body: Node = players.get(local_peer)
+	if body == null or grid == null:
+		return
+	var here: Vector2i = grid.cell_of_world(body.global_position)
+	var left := INF
+	var right := -INF
+	for dz in range(-2, 3):
+		var row: int = here.y + dz
+		for x in grid.width:
+			if not grid.is_solid(Vector2i(x, row)):
+				continue
+			var edge_x: float = GridConfig.cell_origin_x(x, grid.width)
+			left = minf(left, edge_x)
+			right = maxf(right, edge_x + GridConfig.CELL_SIZE)
+	if left > right:
+		return
+	# Into the parent's space, which is where the camera lives -- the grid itself
+	# is pitched and offset, and a bound taken in grid space would drift with it.
+	var to_world: Transform3D = grid.transform
+	camera.set_deck_bounds((to_world * Vector3(left, 0.0, 0.0)).x,
+		(to_world * Vector3(right, 0.0, 0.0)).x)
 
 # THE BOARD IS UP, SO THE WORLD STOPS.
 #

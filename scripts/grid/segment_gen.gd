@@ -47,6 +47,22 @@ const MAX_PIECE_ROWS := SetPieces.MAX_ROWS
 
 static func lobby(width: int, run_seed: int, index: int):
 	var seg = _blank("lobby_%d" % index, maxi(width, LOBBY_MIN_WIDTH), LOBBY_LENGTH)
+	# THE LOBBY IS BASELINE WIDTH, NOT CANVAS WIDTH (M22 phase C). `_blank` fills
+	# the whole canvas, which was right while the canvas WAS the bridge; at a 21
+	# canvas it would make every lobby six cells wider than the sections either
+	# side of it and wider than the authored `lobby.seg` it alternates with. A
+	# lobby is punctuation and should read as the same bridge, standing still.
+	#
+	# EVERY ROW, INCLUDING THE GATE BANDS. A band six cells wider than the section
+	# it opens onto is a step at the exact row the party is told to gather on, and
+	# `_check_gates` counts STANDABLE cells, so a baseline-wide band satisfies it
+	# the same way a canvas-wide one did.
+	var lobby_inset: int = mini(GridConfig.BASELINE_INSET,
+		maxi(0, (seg.width - LOBBY_MIN_WIDTH) / 2))
+	for z in seg.length:
+		for x in seg.width:
+			if x < lobby_inset or x >= seg.width - lobby_inset:
+				seg.kinds[z][x] = GridConfig.Kind.HOLE
 	# TYPED, because SegmentData.tags is Array[String] and assigning a plain Array
 	# RAISES -- which aborts the rest of this function and returns null, and the
 	# caller then fails on a Nil with the real cause three frames back. The gate
@@ -59,8 +75,14 @@ static func lobby(width: int, run_seed: int, index: int):
 	# a gap, and that full-width row is also the REGROUP ROW the whole run leans
 	# on: it is where the party can be anywhere, which is what lets a section
 	# between two of them split into lanes and rejoin.
+	#
+	# ON THE STANDABLE CELLS ONLY, now that a lobby is narrower than its canvas.
+	# Content on a hole is refused by `_check_content_placement`, and rightly: a
+	# gate cell nobody can stand on is a boundary marker floating in the air.
 	for z in GATE_DEPTH:
 		for x in seg.width:
+			if not seg.is_solid(x, z):
+				continue
 			seg.contents[z][x] = GridConfig.Content.GATE
 			seg.contents[seg.length - 1 - z][x] = GridConfig.Content.GATE
 
@@ -85,13 +107,30 @@ static func lobby(width: int, run_seed: int, index: int):
 	return seg
 
 # Evenly across the row, inset from the parapet so nothing sits against a wall.
+#
+# ACROSS THE SOLID PART OF THE ROW, not across the canvas. A lobby is narrower
+# than its canvas now, so spreading a nine-item rack over all 21 columns would put
+# the first two and the last three on HOLES -- which `_check_content_placement`
+# refuses, and which would otherwise be a pickup hanging in the air beside the
+# bridge. Read off the row rather than from BASELINE_INSET so this stays right if
+# the lobby's own width ever changes.
 static func _spread(seg, row: int, items: Array) -> void:
 	if items.is_empty() or row < 0 or row >= seg.length:
 		return
-	var usable: int = seg.width - 2
+	var first := -1
+	var last := -1
+	for x in seg.width:
+		if not seg.is_solid(x, row):
+			continue
+		if first < 0:
+			first = x
+		last = x
+	if first < 0:
+		return
+	var usable: int = maxi(1, (last - first + 1) - 2)
 	for i in items.size():
-		var x: int = 1 + int(round(float(i + 1) * float(usable) / float(items.size() + 1)))
-		if x >= 0 and x < seg.width:
+		var x: int = first + 1 + int(round(float(i + 1) * float(usable) / float(items.size() + 1)))
+		if x >= first and x <= last and seg.is_solid(x, row):
 			seg.contents[row][x] = int(items[i])
 
 # --- The terrain skeleton (phase 5) -------------------------------------------
@@ -183,19 +222,44 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	# THE NARROWING IS DECIDED FIRST, because a ramp has to be placed somewhere
 	# the deck still exists two rows later. Narrowness is drawn as HOLES in the
 	# outer columns rather than a width change: the loader refuses a width
-	# mismatch, a fiction is cheaper than a format, and interior holes carry no
+	# mismatch, and a fiction is cheaper than a format.
+	#
+	# TWO EDGES, MOVING INDEPENDENTLY (M22). This used to be ONE symmetric
+	# `margin` applied to one contiguous band of rows, which is why the bridge
+	# only ever pinched evenly toward its own centre line and every section looked
+	# the same width. Now each side carries its own inset per row, so the deck can
+	# hug one edge while opening out the other -- a wall down one side and open air
+	# on the other is a shape the old single number could not express at all.
+	#
+	# AND IT IS NOW RAILED. The old comment here ended "interior holes carry no
 	# parapet by a deliberate M2 decision, so a thin section is unrailed and
-	# dangerous for free.
-	var narrow_from: int = 3 + salt % 4
-	var narrow_len: int = 3 + (salt / 3) % 5
-	var margin: int = 1 + (salt / 5) % maxi(1, width / 4)
+	# dangerous for free". That was the bug, not the feature: an unrailed setback
+	# reads as MISSING FLOOR rather than as a narrower bridge, and you walk off it.
+	# `SegmentData.has_wall` now asks whether the void reaches the canvas, so these
+	# cuts grow a real edge. See implementation_plans/m22_bridge_width.md.
 	var split: bool = (salt / 11) % 3 == 0
 	# The columns that are solid EVERYWHERE in this segment. A ramp must land in
 	# these or it climbs into a hole -- measured 2026-08-16, 40 of 231 ramp tops
 	# led nowhere because the ramp was placed before the narrowing was known and
 	# the row above it had been cut away.
+	#
+	# FROM THE BOUND, NOT FROM THE PROFILE. `_edge_inset_bound` is a pure function
+	# of the width, so the safe corridor can be known BEFORE any profile exists --
+	# which is what lets the profile be built last, with the lift rows it has to
+	# accommodate already decided. Slightly more conservative than reading the
+	# deepest inset a particular roll happened to reach, and worth it.
+	#
+	# ONE COLUMN OF SLACK ON EACH SIDE, which is what lets the transition-row
+	# exception go away. A ramp carries no parapet (its top face is a slope and a
+	# box at a fixed height either floats or buries), so a ramp sitting AT the
+	# inset would be an unrailed edge -- the exact "wedge with a hole beside it"
+	# the old code dodged by refusing to narrow a transition row at all. Keeping
+	# ramps one column inside the deepest possible cut means the cell beside every
+	# ramp and every lift is ordinary deck, and ordinary deck at the edge is now
+	# railed.
+	var deepest: int = _edge_inset_bound(width)
 	var safe: Array = []
-	for x in range(margin, width - margin):
+	for x in range(deepest + 1, width - deepest - 1):
 		if split and absi(x - width / 2) < 1:
 			continue
 		safe.append(x)
@@ -306,7 +370,15 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			# AND A MINORITY, about one qualifying climb in three. A section whose
 			# every ascent is a lift is a section spent standing still, and a ramp
 			# is still what this game is mostly made of.
-			if rise >= 2 and _mix(salt + row * 6151) % 3 == 0:
+			# AND CLEAR OF BOTH ENDS, or the two rules collide (M22 phase C). A lift
+			# row must be FULL WIDTH and a segment's ends must be BASELINE, and at
+			# one column of taper per row those are three rows apart -- so a lift
+			# too near an end is a demand the profile cannot satisfy, and whichever
+			# pass runs last wins. Measured when this guard was missing: 31 lift
+			# rows narrowed, because `_pin_ends` raised the zero back up.
+			var lift_clear: int = INSET_END_ROWS + GridConfig.BASELINE_INSET
+			if rise >= 2 and row >= lift_clear and row < length - lift_clear \
+					and _mix(salt + row * 6151) % 3 == 0:
 				low.append(height)
 				ramp_h.append(-1)
 				ramp_x0.append(0)
@@ -363,6 +435,33 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		piece_row.append(0)
 		piece_base.append(0)
 
+	# THE EDGE PROFILE IS BUILT LAST, once the rows that constrain it are known.
+	#
+	# It used to be built FIRST -- it had to be, because `safe` was derived from
+	# it -- and then patched afterwards for the lifts: zero the lift rows, re-cone,
+	# re-pin. Every one of those patches was a rate-1 correction, which is the
+	# steepest taper the rules allow, so a third of all sections had the deck
+	# snapping open around a lift at exactly the moment the goal was to make width
+	# change GRADUALLY.
+	#
+	# Deriving `safe` from `_edge_inset_bound` instead removed the ordering
+	# constraint, so the lift rows are simply WAYPOINTS the profile is drawn
+	# through. One pass, no patches, and the taper into a lift is as gentle as any
+	# other.
+	# AND THE LIFT ROWS NEED NO SPECIAL CASE AT ALL, which is the other half of
+	# what deriving `safe` from a bound bought.
+	#
+	# A lift row used to be forced full width, on the rule that "a shaft with a
+	# hole beside it is somewhere a player falls off while standing still". That
+	# property is real and it is already guaranteed somewhere better: `safe` keeps
+	# every lift inside columns 7..13, and the deepest either edge can ever be cut
+	# leaves columns 6..14 solid -- so a lift has ordinary deck on both sides at
+	# EVERY profile this generator can produce, and the parapet rule railed the
+	# setback beyond it. The full-width rule was buying a second time something
+	# already paid for, and charging the gradient for it.
+	var left_inset: Array = _edge_profile(width, length, salt + 30011)
+	var right_inset: Array = _edge_profile(width, length, salt + 40009)
+
 	for z in length:
 		# STAMPED WHOLE, and before anything else looks at the row. The piece wrote
 		# its own heights, kinds and contents; narrowing, ramps and lifts have
@@ -380,10 +479,14 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			seg.piece_rows.append(z)
 			continue
 
-		var narrow: bool = z >= narrow_from and z < narrow_from + narrow_len
-		# A LIFT ROW IS A TRANSITION ROW TOO, so it is never narrowed: a shaft
-		# with a hole beside it is somewhere a player falls while standing still.
-		var is_transition: bool = int(ramp_h[z]) >= 0 or int(lift_x[z]) >= 0
+		var cut_left: int = int(left_inset[z])
+		var cut_right: int = int(right_inset[z])
+		# THE LANE SPLIT SKIPS A LIFT ROW, for exactly the reason the inset does
+		# (see the re-cone above): a rider is stationary and out of verbs, so the
+		# one row where they cannot move stays whole. The insets are already zero
+		# here by construction; the split is a separate mechanism and needs saying
+		# separately.
+		var split_here: bool = split and int(lift_x[z]) < 0
 		for x in width:
 			var on_ramp: bool = int(ramp_h[z]) >= 0 \
 				and x >= int(ramp_x0[z]) and x < int(ramp_x0[z]) + int(ramp_w[z])
@@ -399,13 +502,12 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				seg.heights[z][x] = int(low[z])
 
 			var solid := true
-			# A TRANSITION ROW IS NEVER NARROWED. A wedge with a hole beside it is
-			# a wedge somebody falls off while climbing, and a climb is the one
-			# place a player has no lateral control to spare.
-			if narrow and not is_transition:
-				if x < margin or x >= width - margin:
+			# THE TWO EDGES, EACH ON ITS OWN. A ramp or a lift is never cut into,
+			# because `safe` keeps both one column inside the deepest inset.
+			if not on_ramp and not on_lift:
+				if x < cut_left or x >= width - cut_right:
 					solid = false
-				elif split and absi(x - width / 2) < 1:
+				elif split_here and absi(x - width / 2) < 1:
 					# A LANE SPLIT between two regroup rows. Free, because the
 					# boundary bands either side are full width and the party can
 					# be anywhere on them -- each lane is an ordinary route from
@@ -427,12 +529,47 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	# THE ENTRY AND EXIT ROWS ARE FLAT DECK, never a ramp: a segment is stacked on
 	# the one before it by its exit HEIGHT, and joining a wedge to a flat row
 	# leaves a step nobody authored.
+	#
+	# ACROSS THE BASELINE, NOT ACROSS THE CANVAS (M22 phase C). This wrote DECK to
+	# every column, which was right while the canvas WAS the bridge and is the
+	# reason the first phase-C run had a six-cell flare at both ends of every
+	# generated section: the profile said baseline and this line overruled it,
+	# silently, after all the careful work upstream. Measured: 120 open ends and
+	# 104 rate breaks, every one of them here.
+	#
+	# The lift re-cone can also drag an end off the baseline -- `_cone` takes a
+	# minimum and a lift row pinned to zero pulls its neighbours down -- so the
+	# ends are written from BASELINE rather than from the profile, which makes
+	# this line the single place that decides what a segment boundary looks like.
 	for x in width:
 		seg.kinds[0][x] = GridConfig.Kind.DECK
 		seg.kinds[length - 1][x] = GridConfig.Kind.DECK
 		seg.heights[0][x] = int(low[0])
 		seg.heights[length - 1][x] = int(low[length - 1])
+	_baseline_end_rows(seg)
 	return seg
+
+# EVERY SEGMENT BOUNDARY IN THE GAME IS THE SAME WIDTH (M22 phase C).
+#
+# Called last by both generators, and being last is the point. The section's
+# entry/exit fixup writes DECK to every column, the maze leaves its end rows as
+# whatever `_blank` produced, and the lift re-cone can drag an end off the
+# baseline because `_cone` takes a minimum -- three different routes to a
+# canvas-wide end, all of them silently overruling the profile. Measured on the
+# first phase-C run: 120 open ends and 104 rate breaks, which is a six-cell flare
+# at both ends of every generated section.
+#
+# So the boundary is decided HERE and nowhere else. Baseline, because every
+# authored file is padded to the baseline -- a canvas-wide generated end would
+# butt a 15-wide authored one and put a step at the seam.
+static func _baseline_end_rows(seg) -> void:
+	var inset: int = mini(GridConfig.BASELINE_INSET, maxi(0, seg.width / 2 - 1))
+	if inset <= 0:
+		return
+	for z in [0, seg.length - 1]:
+		for x in seg.width:
+			if x < inset or x >= seg.width - inset:
+				seg.kinds[z][x] = GridConfig.Kind.HOLE
 
 # --- The maze section ---------------------------------------------------------
 
@@ -668,6 +805,11 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 		var deep: Vector2i = _maze_deepest(open_cells, cols, rows,
 			Vector2i((in_door - 1) / 2, 0))
 		seg.contents[2 + 2 * deep.y][2 * deep.x] = GridConfig.Content.HAT
+	# A MAZE JOINS THE RUN LIKE ANY OTHER SECTION. Its lattice keeps the full
+	# canvas -- a maze is a different kind of place and its outer columns are WALL
+	# rather than edge -- but the rows it is entered and left by are the baseline,
+	# so the mouth is the same width as the bridge that leads to it.
+	_baseline_end_rows(seg)
 	return seg
 
 # The lattice cell furthest from `from` by walking distance. A breadth-first walk
@@ -769,6 +911,179 @@ static func _blank(seg_name: String, width: int, length: int):
 		seg.contents.append(crow)
 		seg.no_wall.append(wrow)
 	return seg
+
+# --- The edge profile (M22) ---------------------------------------------------
+
+# HOW FAR AN EDGE MAY MOVE IN ONE ROW.
+#
+# A cap, not a style choice. Deck thickness is derived from a cell's EIGHT
+# neighbours (SegmentBuilder.cell_underside), so an edge that jumps several
+# columns in a row leaves solid cells whose newly-exposed underside has nothing
+# beneath it -- which is the tapered-shape trap that already cost this project a
+# ramp with a knife edge over a DECK_THICKNESS-deep void. One column per row also
+# happens to be the discipline the HEIGHT profile already keeps, so a bridge
+# narrows at the rate it climbs and reads as one material.
+const INSET_RATE := 1
+
+# ROWS HELD AT FULL WIDTH AT EACH END. The entry and exit rows join the
+# neighbouring segment, and the join contract (M17) plus the round boundary bands
+# (M16) both want them solid across. Two rather than one so the taper has
+# somewhere to finish rather than ending abruptly on the join itself.
+const INSET_END_ROWS := 2
+
+# HOW MANY ROWS ONE COLUMN OF WIDTH CHANGE TAKES.
+#
+# INSET_RATE is the correctness FLOOR -- never steeper than a column per row.
+# This is the FEEL, and the two are different questions. Built at the floor, a
+# three-column setback completes in three rows: six metres, which a player crosses
+# in a second and reads as the bridge snapping rather than tapering. Spread over
+# two to six rows per column the same setback takes 12 to 36 m, which is a shape
+# you watch arrive.
+#
+# A RANGE, AND ROLLED PER EDGE. A fixed stride would make every transition in the
+# game the same slope, which is the shape of the problem this milestone started
+# with -- one number, applied everywhere, so nothing varies.
+const INSET_STEP_ROWS_MIN := 2
+const INSET_STEP_ROWS_MAX := 6
+
+# The deepest either edge may ever be cut, as a pure function of the width.
+#
+# PURE ON PURPOSE. `safe` -- the columns a ramp or a lift may occupy -- needs this
+# bound BEFORE any profile exists, which is what lets the profile be built last,
+# with the lift rows it must pass through already known. Bounded so a section
+# never closes to a thread: at a 21 canvas this is 6, so the narrowest deck is
+# 21 - 2*6 = 9 cells and the widest is the full 21.
+static func _edge_inset_bound(width: int) -> int:
+	var base: int = mini(GridConfig.BASELINE_INSET, maxi(0, width / 2 - 2))
+	return base + maxi(1, width / 7)
+
+# One edge's inset, per row: how many columns of THIS side are cut away.
+#
+# WAYPOINTS AND RAMPS, not events-then-cap. The first version rolled flat setback
+# BANDS and let a two-pass minimum cone discover the taper, which meant every
+# transition came out at the steepest slope the rules allow -- the cone's whole
+# job is to find the largest profile that fits, so it always tapers as late and
+# as hard as it can. Correct, and it reads as the bridge snapping.
+#
+# So the shape is stated instead of derived: a handful of waypoints, each a row
+# and an inset, joined by straight ramps. The gradient is then whatever the
+# spacing gives, and the spacing is what `stride` controls.
+#
+# IT MOVES IN BOTH DIRECTIONS. A waypoint deeper than BASELINE_INSET is a pinch,
+# shallower is the deck opening out past its usual width, and both are the same
+# arithmetic. Before the canvas grew, only the first was expressible at all.
+static func _edge_profile(width: int, length: int, salt: int) -> Array:
+	var base: int = mini(GridConfig.BASELINE_INSET, maxi(0, width / 2 - 2))
+	var deepest: int = _edge_inset_bound(width)
+	var stride: int = INSET_STEP_ROWS_MIN \
+		+ _mix(salt + 811) % maxi(1, INSET_STEP_ROWS_MAX - INSET_STEP_ROWS_MIN + 1)
+
+	# --- The waypoints, in row order ------------------------------------------
+	#
+	# Always opening and closing at the baseline: that is what makes every segment
+	# boundary in the game the same familiar width, and it is what an authored
+	# file (padded to the baseline) joins onto.
+	var at: Array = [0]
+	var to: Array = [base]
+
+	# ONE OR TWO ROLLED EVENTS PER SIDE. Zero is a straight section at the
+	# baseline, which is still wanted and arrives on its own when a roll lands
+	# somewhere the ordering below discards.
+	var marks: Array = []
+	var events: int = 1 + _mix(salt) % 2
+	for e in events:
+		marks.append(INSET_END_ROWS
+			+ _mix(salt + e * 7919) % maxi(1, length - 2 * INSET_END_ROWS))
+	marks.sort()
+
+	for row in marks:
+		var r: int = clampi(int(row), INSET_END_ROWS, length - 1 - INSET_END_ROWS)
+		# STRICTLY INCREASING, or the interpolation below walks backwards over rows
+		# it has already written. Two events that rolled the same row is the
+		# ordinary case, not an edge one.
+		if r <= int(at[at.size() - 1]):
+			continue
+		at.append(r)
+		to.append(_mix(salt + r * 15485863) % (deepest + 1))
+	at.append(length - 1)
+	to.append(base)
+
+	# --- The gradient is the constraint, so the WAYPOINTS give way -------------
+	#
+	# Each interior waypoint is pulled toward its neighbours until every leg is
+	# walkable at one column per `stride` rows: forward so it is reachable from
+	# the one before, backward so the profile can still get home to the baseline.
+	# A section that cannot afford the setback it rolled gets a smaller one -- a
+	# bridge that narrows less than intended is a shape, and one that narrows
+	# faster than the gradient is the snap this whole rewrite exists to remove.
+	for i in range(1, at.size() - 1):
+		var back: int = (int(at[i]) - int(at[i - 1])) / stride
+		to[i] = clampi(int(to[i]), int(to[i - 1]) - back, int(to[i - 1]) + back)
+	for i in range(at.size() - 2, 0, -1):
+		var fwd: int = (int(at[i + 1]) - int(at[i])) / stride
+		to[i] = clampi(int(to[i]), int(to[i + 1]) - fwd, int(to[i + 1]) + fwd)
+
+	# --- Joined by straight ramps ----------------------------------------------
+	var out: Array = []
+	out.resize(length)
+	for i in range(at.size() - 1):
+		var z0: int = int(at[i])
+		var z1: int = int(at[i + 1])
+		var v0: int = int(to[i])
+		var v1: int = int(to[i + 1])
+		var gap: int = maxi(1, z1 - z0)
+		for z in range(z0, z1 + 1):
+			out[z] = int(round(lerpf(float(v0), float(v1),
+				float(z - z0) / float(gap))))
+
+	# --- The ends, held flat ---------------------------------------------------
+	for i in mini(INSET_END_ROWS, length):
+		out[i] = base
+		out[length - 1 - i] = base
+	# Stride is a preference and the waypoints may not have left room for it, so
+	# the ends get the same outward clamp they always did -- which is also what
+	# repairs the two rows just forced flat.
+	return _pin_ends(out, base)
+
+# THE ENDS ARE A HARD CONSTRAINT AND THE CONE IS A SOFT ONE, so the cone cannot
+# be the last word.
+#
+# `_cone` takes a MINIMUM, which means a widening event near either end reaches
+# back and drags the pinned end open with it -- a target of 0 two rows in pulls
+# row 0 down to 2 whatever it was pinned to. Forcing the end back afterwards then
+# leaves a step at row 1, which is precisely the jump INSET_RATE exists to
+# forbid. Measured before this existed: 19 rate breaks over 60 sections, and the
+# diagnostic said `lift?false end?true` for every single one.
+#
+# So the ends are re-pinned and the rows next to them are dragged into line
+# instead: forward from the pinned start (which makes the whole array Lipschitz),
+# then pin the far end and walk backward (which repairs the far end, and only
+# perturbs its own neighbourhood because the forward pass already made everything
+# else consistent).
+static func _pin_ends(profile: Array, base: int) -> Array:
+	var out: Array = profile.duplicate()
+	var n: int = out.size()
+	if n < 2:
+		return out
+	for i in mini(INSET_END_ROWS, n):
+		out[i] = base
+	for z in range(1, n):
+		out[z] = clampi(int(out[z]),
+			int(out[z - 1]) - INSET_RATE, int(out[z - 1]) + INSET_RATE)
+	for i in mini(INSET_END_ROWS, n):
+		out[n - 1 - i] = base
+	for z in range(n - 2, -1, -1):
+		out[z] = clampi(int(out[z]),
+			int(out[z + 1]) - INSET_RATE, int(out[z + 1]) + INSET_RATE)
+	return out
+
+# `_cone` LIVED HERE AND IS GONE (2026-08-20). It found the taper by taking a
+# two-pass minimum over a profile of flat setback bands -- which is correct, and
+# always produced the STEEPEST taper the rate cap allows, because finding the
+# largest profile that fits means tapering as late and as hard as possible. The
+# waypoints-and-ramps construction above states the gradient instead of
+# discovering it. Recorded rather than silently deleted: the cone was right for
+# the question it was asked, and the question changed.
 
 # Where a ramp of width `w` can start so every one of its columns survives the
 # narrowing. Falls back to the middle of the corridor, which is always solid.

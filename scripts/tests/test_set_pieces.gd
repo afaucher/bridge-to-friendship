@@ -62,17 +62,35 @@ func _check_each_piece() -> void:
 			+ "author a whole level")
 
 		# 2. THE JOIN CONTRACT, one level down. A piece is stamped between two
-		# plateaus; if either end is not full-width solid, the party meets a step
-		# or a hole that nobody authored on the seam.
-		for x in seg.width:
+		# plateaus; if either end is not solid across the bridge, the party meets a
+		# step or a hole that nobody authored on the seam.
+		#
+		# ACROSS THE BASELINE, NOT ACROSS THE CANVAS (M22 phase C). This asked for
+		# every column of `seg.width` and the two were the same thing while the
+		# canvas was exactly as wide as the bridge. At a 21 canvas with a 15
+		# baseline they are different claims, and the canvas one is wrong twice
+		# over: every piece was padded with HOLE either side, so it would fail; and
+		# a piece that DID fill the canvas at its ends would be a piece six cells
+		# wider than the terrain it is stamped between, which is the seam this
+		# assertion exists to refuse.
+		var edge: int = GridConfig.BASELINE_INSET
+		for x in range(edge, seg.width - edge):
 			check(seg.is_solid(x, 0),
 				"%s: entry row is solid at x=%d" % [who, x])
 			check(seg.is_solid(x, seg.length - 1),
 				"%s: exit row is solid at x=%d" % [who, x])
+		# AND NOT WIDER THAN THE BASELINE AT ITS ENDS, which is the other half of
+		# the same seam and was never asserted because it could not happen before.
+		for x in [0, seg.width - 1]:
+			check(not seg.is_solid(x, 0),
+				"%s: entry row does NOT reach the canvas edge at x=%d -- a piece "
+					% [who, x]
+				+ "joins terrain at the baseline width, not at the widest the "
+				+ "bridge can ever be")
 
 		# 3. THE DECLARATION MATCHES THE GEOMETRY.
-		var entry_h: int = seg.height_at(0, 0)
-		var exit_h: int = seg.height_at(0, seg.length - 1)
+		var entry_h: int = seg.height_at(edge, 0)
+		var exit_h: int = seg.height_at(edge, seg.length - 1)
 		eq(exit_h - entry_h, seg.piece_exit,
 			"%s: piece_exit says %d and the deck rises %d -- the generator carries "
 				% [who, seg.piece_exit, exit_h - entry_h]

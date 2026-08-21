@@ -138,20 +138,35 @@ static func validate(seg) -> Array:
 # So it is refused at AUTHORING TIME, where the message can name the row. This is
 # the cheapest place in the entire milestone to catch it, and the only place
 # where the fix is obvious to the person who caused it.
+#
+# EVERY SOLID CELL, NOT EVERY CELL (M22 phase C). This used to demand the gate
+# cover all `seg.width` columns, which was the same thing while the canvas was
+# exactly as wide as the bridge. With a canvas wider than the baseline it is a
+# different claim and the wrong one: the padding either side of a 15-wide lobby
+# is HOLE, and a hole is not somewhere a player walks around a boundary -- it is
+# somewhere they fall. Requiring gate content on it would fail every authored
+# lobby and, worse, would be satisfiable by marking cells nobody can stand on.
+#
+# The rule the downstream logic actually needs is "no player can pass this row
+# without standing on a gate cell", and solid-cells-only is exactly that.
 static func _check_gates(seg, problems: Array) -> void:
 	for z in seg.length:
 		var marked := 0
+		var standable := 0
 		for x in seg.width:
+			if not seg.is_solid(x, z):
+				continue
+			standable += 1
 			if seg.content_at(x, z) == GridConfig.Content.GATE:
 				marked += 1
 		if marked == 0:
 			continue
-		if marked < seg.width:
+		if marked < standable:
 			problems.append(
-				("the round boundary at z = %d covers %d of %d cells -- a strip with a "
-					% [z, marked, seg.width])
-				+ "gap is a strip players walk around, and every rule about crossing it "
-				+ "then fails somewhere else")
+				("the round boundary at z = %d covers %d of %d STANDABLE cells -- a strip "
+					% [z, marked, standable])
+				+ "with a gap is a strip players walk around, and every rule about crossing "
+				+ "it then fails somewhere else")
 		# A gate cell on a ramp is a boundary on a slope: the strip is a LINE the
 		# party stands on together, and a sloped one has them at four heights.
 		for x in seg.width:
