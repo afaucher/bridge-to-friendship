@@ -34,6 +34,15 @@ const PREVIEW_SIZE := Vector2i(380, 460)
 # rendered as a menu.
 const SPIN_DEGREES := 24.0
 
+# Where the preview camera stands and what it looks at. Constants because the
+# test asserts the camera is actually AIMED at the model, and a test that
+# restates the numbers is a test that agrees with whatever the code does.
+#
+# ON THE -Z SIDE, because that is where the nose points. A preview framed from
+# behind shows a plain cylinder and hides the one feature that has shipped.
+const CAMERA_POS := Vector3(1.5, 0.75, -3.0)
+const CAMERA_TARGET := Vector3(0.0, -0.05, 0.0)
+
 const COLOR_PANEL := Color(0.08, 0.09, 0.12, 0.97)
 const COLOR_SCRIM := Color(0.0, 0.0, 0.0, 0.55)
 const COLOR_TEXT := Color(0.90, 0.92, 0.95)
@@ -144,14 +153,24 @@ func _build_preview() -> Control:
 
 	var camera := Camera3D.new()
 	camera.current = true
-	# PARENTED BEFORE IT IS AIMED. look_at works in GLOBAL space, so it needs the
-	# node to be in a tree to have one -- called on a loose node it is either an
-	# error or an aim at the wrong origin, depending on the version.
+	# AIMED WITH ARITHMETIC, NOT WITH look_at.
+	#
+	# `Node3D.look_at` works in GLOBAL space, so it needs the node to be in a tree
+	# to have one -- and NOTHING HERE IS IN THE TREE YET. This whole subtree hangs
+	# off `frame`, which its caller parents only after this function returns.
+	#
+	# THE FAILURE MODE IS WHY THIS COMMENT IS LONG. look_at fails in C++, not in
+	# GDScript: it prints `Node not inside tree` and RETURNS, so the script sails
+	# on with the camera left in its default orientation -- at z = -3 looking
+	# further away from the model. The preview then renders empty space, the
+	# screen opens looking perfectly fine, and the only evidence is one line in a
+	# log nobody reads. Shipped exactly that on 2026-08-20 and it was reported as
+	# "no character preview".
+	#
+	# `Transform3D.looking_at` is pure maths on a value. No tree, no global space,
+	# no failure mode, and a test can check the result.
+	camera.transform = Transform3D(Basis(), CAMERA_POS).looking_at(CAMERA_TARGET, Vector3.UP)
 	vp.add_child(camera)
-	# ON THE -Z SIDE, because that is where the nose points. A preview framed from
-	# behind would show a plain cylinder and hide the one feature that has shipped.
-	camera.position = Vector3(1.5, 0.75, -3.0)
-	camera.look_at(Vector3(0.0, -0.05, 0.0), Vector3.UP)
 
 	_pivot = Node3D.new()
 	_pivot.name = "Pivot"

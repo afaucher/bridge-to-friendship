@@ -27,6 +27,7 @@ func setup(_main) -> void:
 	_test_it_built(screen)
 	_test_it_is_laid_out(screen)
 	_test_preview_viewport_size(screen)
+	_test_camera_faces_the_model(screen)
 	_test_preview_is_the_real_player(screen)
 	_test_colour_does_not_leak(screen)
 	_test_toggle(screen)
@@ -78,6 +79,50 @@ func _has_light(vp: SubViewport) -> bool:
 		if child is DirectionalLight3D:
 			return true
 	return false
+
+# --- 3b. THE CAMERA IS POINTED AT THE MODEL -----------------------------------
+#
+# THIS IS THE ASSERTION WHOSE ABSENCE SHIPPED AN EMPTY PREVIEW. The first version
+# of this file checked that a camera EXISTED, which it did, while it faced the
+# wrong way entirely: `look_at` was called on a node that was not yet in the
+# tree, failed in C++ rather than in GDScript -- so it printed an error and let
+# the script continue -- and left the camera in its default orientation, at
+# z = -3 looking further away from the player. Everything else here passed.
+#
+# It is the same shape as three notes in CLAUDE.md: a blocker that exists is not
+# a blocker that blocks, and asserting a layout's anchors is not asserting its
+# layout. A camera that exists is not a camera that is looking at anything.
+
+func _test_camera_faces_the_model(screen: CanvasLayer) -> void:
+	var vp: SubViewport = screen._preview_viewport()
+	if vp == null:
+		return
+	var camera: Camera3D = null
+	for child in vp.get_children():
+		if child is Camera3D:
+			camera = child
+			break
+	if not check(camera != null, "the preview has a camera"):
+		return
+
+	check(camera.position.is_equal_approx(CharacterScreenScript.CAMERA_POS),
+		"the camera stands where it meant to -- %s" % camera.position)
+
+	# A Camera3D looks down its own -Z. So the question is whether that axis
+	# agrees with the direction from the camera to the thing it is supposed to be
+	# framing, and a dot product is the whole test.
+	var want: Vector3 = (CharacterScreenScript.CAMERA_TARGET - camera.position).normalized()
+	var facing: Vector3 = -camera.transform.basis.z.normalized()
+	var agreement: float = facing.dot(want)
+	check(agreement > 0.99,
+		"and is aimed at the model rather than away from it -- dot %.3f (1.0 is dead on, negative is backwards)"
+			% agreement)
+
+	# The model has to be in FRONT of it as well as along the axis: a camera
+	# aimed correctly from behind the subject satisfies a dot product and frames
+	# nothing.
+	var to_model: Vector3 = CharacterScreenScript.CAMERA_TARGET - camera.position
+	check(to_model.dot(facing) > 0.0, "with the model in front of the lens, not behind it")
 
 # --- 4. It previews the real thing --------------------------------------------
 #
