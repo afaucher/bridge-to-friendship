@@ -1,0 +1,61 @@
+# SET-PIECE: the lookout. THE FIRST PATCH -- a piece narrower than the bridge.
+#
+# Every other piece in the library spans the whole canvas and owns its rows
+# outright. This one is five columns wide, so the generator drops it somewhere
+# across the deck and ordinary terrain runs past on both sides -- the footprint
+# `design_ideas/world_generation.md` has been asking for since M17 and nothing
+# could express until now.
+#
+# THE COMPOSITION IS THE CLIMB AND WHAT IT COSTS. Two units of high ground with
+# one way up, and the way up is a two-row ramp on ONE side: taking the lookout
+# means committing to a direction and spending four rows of walking, and coming
+# off it means dropping. From up there you can see and be seen, which is the
+# whole reason to want it and the whole reason not to.
+#
+# IT CARRIES ITS OWN RAMP, and that is not decoration. A raised patch with no way
+# up is marooned deck and `_check_orphans` refuses the section outright -- so a
+# generator that assembled a platform and a ramp separately would produce runs
+# that silently lose their pieces. M23 phase 1 learnt this by authoring a tower
+# with one ramp row for a two-unit climb and watching six cells come out
+# unreachable. The ramp being INSIDE the piece is what makes the piece a
+# relationship rather than three primitives that happen to be adjacent.
+#
+# ENTRY AND EXIT ROWS AT HEIGHT 0, across the full footprint. The terrain either
+# side of a patch is at the plateau the piece was stamped at, so a patch whose
+# edge rows sat higher would be a step nobody authored, running down both of its
+# long sides.
+#
+# piece_exit = 0 BY RULE, not by choice. Terrain flows past a patch on both
+# sides at the plateau height; a patch that claimed to raise the deck would
+# desync the running height from the ground either side of itself.
+
+name = piece_lookout
+base_height = 0
+width = 5
+length = 6
+piece_exit = 0
+tags = foot, piece, environmental
+
+[deck]
+.....
+./...
+./...
+.....
+.....
+.....
+
+[height]
+00000
+01000
+02000
+02220
+02220
+00000
+
+[content]
+.....
+.....
+.....
+.....
+.....
+.....

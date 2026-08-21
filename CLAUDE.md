@@ -494,6 +494,133 @@ the moment it is written.
   property you just computed is not in the output, find every later line that
   writes the same field** -- the culprit was correct when it was written and
   nobody touched it.
+- **"SAME ARITHMETIC, ONE PLACE EACH" IS NOT A DESIGN, IT IS A COMMENT HOPING TO
+  BE ONE -- AND A TIE IS WHERE THE TWO COPIES COME APART.** Observed 2026-08-21
+  from a playtest of M23's watchpost: "it renders the ladder on the right side.
+  Approaching it snaps you to the front side." The ladder's face was computed
+  twice, once in `BridgeGrid._spawn_ladder` for the rungs and once in
+  `PlayerBody._ladder_face` for the body, and the first one carried a comment
+  warning that if either changed the other must change with it. **Neither ever
+  changed and they disagreed anyway**, because they were never the same
+  arithmetic: the art compared grid-LOCAL surface heights and the climb compared
+  WORLD ones, on a bridge pitched 4 degrees.
+  **IT TOOK A TIE TO SHOW, WHICH IS WHY IT SURVIVED THREE MILESTONES.** Every
+  ladder before this sat on a cliff with one clearly-lowest neighbour, and both
+  copies agreed however they measured. A free-standing post has THREE neighbours
+  level with each other -- measured, east/south/west all at local height 0 -- so
+  the tie-break becomes the entire answer, and local iteration order picked east
+  while the pitch made south lower by 0.14 m. **When two implementations of one
+  fact agree on every case you have, look for the case where the inputs TIE**;
+  that is where their tie-breaks, which nobody wrote down, start deciding.
+  The fix is the general one: the grid owns the heights, so the grid owns the
+  answer, and both callers ask it. And it compares INTEGER heights -- the grid's
+  own fact -- rather than a world Y, which is that fact plus presentation.
+  **AND ITS TWIN, REPORTED MINUTES LATER: THE CONDITION THAT ENTERS A STATE MUST
+  ASK WHAT THE STATE WILL DO.** With the face agreed, "you still snap to the
+  ladder side when touching any edge of the block" -- because `_ladder_cell`
+  tested only DISTANCE, in any of the eight cells around the body, while
+  `_step_climb` pins the body to the ladder's FACE. Brush the far side of a
+  free-standing post and you were moved the best part of three metres around it.
+  The grab was omnidirectional and the hold was directional, and **the difference
+  between an entry condition and the behaviour it enters is a distance the player
+  gets teleported.** Same shape as the ladder-face bug one line up: a cliff
+  ladder is unreachable from behind by the geometry, so nothing had ever entered
+  that state from the wrong side. **When a state SNAPS a body somewhere, its
+  entry test has to include "you are already roughly there".**
+- **A ONE-DIRECTIONAL VERIFIER CANNOT SEE A DUPLICATE, AND THE SIZE IS THE ONLY
+  THING THAT TELLS YOU.** Observed 2026-08-21: a release zip came out **75.9 MB
+  where every build that day was 38.3**, with the exe unchanged. Inside were TWO
+  copies of everything -- `BridgeToFriendship.exe` and
+  `BridgeToFriendship.exe~RF29e46dfa.TMP`, 104 MB each. Windows writes
+  `<name>~RF<hex>.TMP` when it replaces a file something else has open (an
+  on-access antivirus scan of a 104 MB binary is enough), the export's directory
+  wipe had silently failed on the locked exe, and `Compress-Archive` swept the
+  backups in beside the real files.
+  **The archive check added after the 2026-08-08 packaging bug did not fire, and
+  could not.** It walked the build directory asking "is every file in the zip" --
+  and the leftovers were real files on disk, so they counted as WANTED. An
+  archive can be wrong by containing something nobody asked for, and only the
+  other direction sees that. It now reports UNWANTED entries too, unit-checked
+  against an archive built to carry one.
+  The general form, and it is the third entry on this exact theme: **a check that
+  only walks one side of a correspondence passes on every fault that lives on the
+  other side.** The tell here was a number nobody was asserting on -- the file
+  size -- which is why "a packaging step that reports its own success is not
+  evidence; open the artifact" is worth doing even when the gate is green.
+- **A CONSERVATIVE BOUND IS A FINE ANSWER TO "CAN IT FIT" AND THE WRONG ANSWER TO
+  "WHERE DOES IT GO".** Observed 2026-08-21 from a playtest: "I don't see any
+  towers in the middle of the field, all are to one side or the other". Patches
+  were placed from `safe` -- the columns solid at EVERY profile the generator can
+  produce -- which is exactly right for proving a patch can be placed at all, and
+  is FIXED at the worst-case inset while the deck MOVES with the profile. At a 21
+  canvas `safe` is columns 7 to 13 forever, so a section cut 6-and-0 has its deck
+  at 6..20 and its tower pinned near 9: against the rail, on ground nowhere near
+  the middle of anything. M22 had made 38% of rows asymmetric, so it was most of
+  them. Fixed by deciding the column AFTER the profile exists, from the
+  intersection of the real solid span over the patch's own rows -- placement went
+  from three offsets to thirteen, and left/middle/right from [0, 98, 3] to
+  [27, 45, 29]. **When a thing is placed against a frame, check that the frame is
+  the one the player sees.**
+  **AND TWO ROUNDS OF THEORY BOTH LOST TO PRINTING THE MAP.** The first diagnosis
+  said towers were central and the report was about something else; the second
+  said the fix had made them worse. Both were argued from the same numbers and
+  disagreed. Dumping four real sections as ASCII settled it in one run and showed
+  a tower flush against a rail that no metric had named. **When two explanations
+  of the same measurement contradict each other, stop measuring and LOOK.**
+  Its third lesson is about the fix rather than the bug: seeing that flush tower
+  nearly bought a rule forcing a column of deck either side -- which would have
+  NARROWED the placement range in answer to a report asking for more spread, and
+  was redundant anyway because every patch already carries flat columns at its own
+  edges. **Check whether the thing you are about to enforce is already paid for**,
+  and be slow to correct toward the middle when what was asked for was variety.
+- **ADDING A NEW KIND OF THING RE-AIMS EVERY MEASUREMENT THAT DID NOT KNOW THERE
+  WAS MORE THAN ONE KIND, AND THE GATE TELLS YOU IN THE VOICE OF THE OLD
+  FEATURE.** Observed 2026-08-20, four times in one milestone, which is why it
+  gets its own entry rather than another line on the maze note. Introducing a
+  PATCH -- a set-piece narrower than the bridge -- broke three unrelated tests,
+  and not one of them said "there is a patch here":
+  `_piece_at` assumed a piece starts at column 0 (true of every piece that had
+  ever existed), so a patch at column 7 matched nothing and the section reported
+  **18 cells of stray content** for a correctly stamped turret. A rule that "no
+  ladders are generated" was scoped to the whole section when it was only ever
+  about the profile LOOP, so an authored ladder inside a piece failed it -- and
+  its stated reason ("there is no climb mechanic yet") had been false since the
+  day `State.CLIMB` shipped. And the split-plateau sweep counted a three-unit
+  tower as a three-unit SPLIT, because a patch is a plateau narrower than the
+  bridge and that is exactly what the detector was looking for.
+  Every number was true. None was about the feature being measured. **After
+  adding a kind, grep the tests for the assumption that there was only one** --
+  it reads as `x == 0`, `for x in width`, or any sweep that does not exclude the
+  new thing, and it will fail talking about something else entirely.
+- **WHERE A GENERATOR VALIDATES AND REROLLS, A BUG DOES NOT PRODUCE BROKEN
+  OUTPUT -- IT PRODUCES NO OUTPUT, AND EVERY ASSERTION ABOUT THE OUTPUT PASSES.**
+  Observed 2026-08-20 A/B-ing M23's split plateaus. The split's climb has to be
+  on the HIGH side; put it on the low side and the high half is marooned deck.
+  The expected failure was a counter of bad splits going up. What actually
+  happened: `SegmentValidator` refused every such attempt, `section()` rerolled
+  it up to 24 times, and the sweep came back with **zero splits in 63 sections**
+  -- the feature had silently ceased to exist, and every rule asserted ABOUT
+  splits (`ragged_ends`, `uncrossable`) was green over an empty set.
+  Two things follow. **A rejection oracle converts "wrong" into "absent",** so
+  the assertion that catches a generator bug is usually a COUNT OF THE THING
+  HAPPENING AT ALL, not a count of it happening badly. And the corollary killed
+  an assertion in the same file: `eq(unclimbable, 0)` could never move, because
+  the case it named is filtered one layer down before anything here can see it.
+  It is now a printed number, and the claim that bites is `with_split > 0`.
+  **CONFIRMED AGAIN AND SHARPENED 2026-08-20 on M23 phase 3**, where three
+  separate `eq(x, 0)` assertions turned out to be dead at once. `section()`
+  returns only a segment `SegmentValidator` accepted or a flat fallback, so
+  **every property the validator checks is true of everything a test of its
+  output can ever see** -- "no island", "no marooned deck", "crossable" are all
+  walls of green over a filter one layer down. The A/B is what showed it: giving
+  a patch the row-owning `continue` leaves a five-wide island in a row of holes,
+  and the island counter stayed at 0 while the PRESENCE counter fell to 0.
+  **The rule for telling a live assertion from a dead one: does the VALIDATOR
+  check this?** If it does, a bug gives an absence and the assertion cannot fire.
+  If it does not, a bug gives a bad section and the assertion is worth having --
+  which is why `ragged_ends` next door really does fire: a split running into the
+  exit row is LEVELLED by the fixup rather than rejected, so the section stays
+  crossable and comes out wrong.
 - **WHEN A RULE GAINS A NEW AXIS, THE INSTRUMENT THAT WATCHES IT IS STILL ON THE
   OLD ONE.** Observed 2026-08-20 adding parapets along Z as well as across X. The
   test that diffs the old parapet rule against the new one over every authored

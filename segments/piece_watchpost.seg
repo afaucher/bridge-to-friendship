@@ -1,0 +1,55 @@
+# SET-PIECE: the watchpost. A PATCH, and the one that carries a gun.
+#
+# Three units of high ground on a footprint two cells wide, with a TURRET on top
+# and a LADDER as the only way to it. Everything about it is the trade between
+# those two facts.
+#
+# THE LADDER IS THE POINT, not a decoration. A ramp spends a row per unit of
+# climb, so three units is three rows and a broad approach; a ladder does any
+# height in ONE cell. That is what makes a tall tower fit in a patch at all --
+# and `SimConfig.CLIMB_SPEED` says what it costs: the climb is slower than
+# walking and it happens somewhere you cannot dodge, shove or shoot. Taking this
+# post means three seconds of being a target with no verbs.
+#
+# WHICH IS WHY THE TURRET HAS TO BE ANSWERABLE FROM THE GROUND, and it is: M23
+# phase 0 made `point` the shipped aim mode, so a player can tilt a shot up at it
+# rather than walking until it is level with them. Under the old level aim this
+# piece would have been a gun you cannot shoot back at, which is the
+# hazard-with-no-counter shape CLAUDE.md warns about -- climbing the ladder would
+# have been the ONLY answer, and the ladder is the one place you cannot fight.
+#
+# THE TURRET IS AUTHORED, NOT DRESSED. Layer 3 keeps out of piece rows entirely,
+# and rightly: the empty cells of a composition are part of it. What sits on the
+# post is the composition's own business, which is what makes this a set-piece
+# rather than a shape with a hazard budget spent near it.
+#
+# Edge rows level with the terrain, and `piece_exit = 0`: terrain runs past a
+# patch on both sides at the plateau it was stamped at.
+
+name = piece_watchpost
+base_height = 0
+width = 3
+length = 5
+piece_exit = 0
+tags = foot, piece, enemy
+
+[deck]
+...
+...
+...
+...
+...
+
+[height]
+000
+030
+030
+000
+000
+
+[content]
+...
+.L.
+.T.
+...
+...

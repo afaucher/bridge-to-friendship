@@ -1,0 +1,53 @@
+# SET-PIECE: the bunker. THE OTHER KIND OF HIGH GROUND.
+#
+# One unit up, three cells across, and TWO ramps onto it -- everything the
+# watchpost is not. Where that one asks you to commit three seconds of helpless
+# climbing for a tall perch, this one is high ground you can take in a stride and
+# fight from immediately, and so can anything else.
+#
+# THE ASCENDER IS THE WHOLE DIFFERENCE, and it is worth having both in the
+# library rather than one tuned in between. A ramp is walkable the moment you
+# reach it and you can shoot the entire way up, so a bunker is contested ground:
+# the party can hold it, and a rusher can walk straight onto it. A ladder is a
+# commitment, so the watchpost is a decision. Two pieces, two answers to "what
+# does high ground cost".
+#
+# NOTHING IS AUTHORED ON IT. A bunker with a turret on it would be a watchpost
+# with a gentler climb -- what makes this one interesting is that it is EMPTY and
+# both sides want it. The lane either side stays at deck level, so walking past
+# is always an option and taking the high ground is always a choice.
+#
+# TWO RAMPS, NOT ONE, and they are the reason it reads as a place rather than as
+# a bump: a single ramp makes the bunker a dead end you back out of, while two
+# make it a route with a decision at each end.
+
+name = piece_bunker
+base_height = 0
+width = 5
+length = 6
+piece_exit = 0
+tags = foot, piece, environmental
+
+[deck]
+.....
+././.
+.....
+.....
+././.
+.....
+
+[height]
+00000
+01010
+01110
+01110
+01010
+00000
+
+[content]
+.....
+.....
+.....
+.....
+.....
+.....

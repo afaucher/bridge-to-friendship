@@ -41,6 +41,14 @@ const LIBRARY: Array[String] = [
 	"res://segments/piece_ramp_duel.seg",
 	"res://segments/piece_plinko_funnel.seg",
 	"res://segments/piece_rusher_pit.seg",
+	# THE FIRST PATCH (M23 phase 3): five columns wide, so the generator places
+	# it across the deck and terrain runs past on both sides. Appended, like
+	# everything else here -- the index is the wire protocol in all but name.
+	"res://segments/piece_lookout.seg",
+	# TWO MORE PATCHES (M23 phase 4), and the axis between them is the ASCENDER:
+	# a ladder makes a tall post a commitment, a ramp makes low ground contested.
+	"res://segments/piece_watchpost.seg",
+	"res://segments/piece_bunker.seg",
 ]
 
 # SMALLER THAN A SEGMENT IS THE POINT. Today a `.seg` is 16 to 30 rows and is a
@@ -66,9 +74,32 @@ static func all() -> Array:
 # SKIPPED, NOT STRETCHED. A composition scaled to fit is a shooter that no longer
 # covers the gap it was authored to cover -- the relationship is the piece, and
 # stretching is the one operation guaranteed to break it.
+#
+# WHICH IS AN ARGUMENT AGAINST SCALING, NOT AGAINST A SMALLER FOOTPRINT (M23
+# phase 3). This asked for `seg.width == width`, so every piece had to span the
+# whole canvas -- and `design_ideas/world_generation.md` has named the missing
+# capability since M17: "a set-piece is a 4-8 row full-width slice, OR A SMALLER
+# PATCH WITH A DECLARED FOOTPRINT". A tower is that patch, and there was no way
+# to select one.
+#
+# A PIECE'S OWN WIDTH IS ITS FOOTPRINT, which is why this needs no new header
+# key and no new format. A canvas-wide piece placed at offset 0 covers the row
+# exactly as it always did; a five-wide piece placed at offset k covers five
+# columns and the terrain runs past on both sides. One rule, one code path.
+#
+# The alternative was authoring a patch's outer columns as HOLE inside a
+# canvas-wide file, and it is worse than it looks: HOLE would then mean both "not
+# part of this piece" and "a gap inside this piece", so a tower with a deliberate
+# hole in it could not be expressed at all. Declaring the footprint by width has
+# no such ambiguity.
 static func for_width(width: int) -> Array:
 	var out: Array = []
 	for seg in all():
-		if seg.is_valid() and seg.is_piece() and seg.width == width:
+		if seg.is_valid() and seg.is_piece() and seg.width <= width:
 			out.append(seg)
 	return out
+
+# True where a piece is narrower than the section it is going into, and therefore
+# has terrain either side of it rather than owning its rows outright.
+static func is_patch(piece, width: int) -> bool:
+	return piece != null and piece.width < width

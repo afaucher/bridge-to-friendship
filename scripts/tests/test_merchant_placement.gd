@@ -163,27 +163,33 @@ func setup(_main) -> void:
 # segment can still put a shopkeeper on a hillside by hand, which is what the
 # validator is for -- so it is asserted directly, on a segment built to be wrong.
 func _check_the_validator_agrees() -> void:
-	var seg = SegmentGen.section(WIDTH, 991, 3)
-	if not check(seg != null, "a section to deface"):
-		return
-	# Find a ramp cell and stand him on it.
-	for z in seg.length:
-		for x in seg.width:
-			if seg.kind_at(x, z) != GridConfig.Kind.RAMP:
-				continue
-			seg.contents[z][x] = GridConfig.Content.MERCHANT
-			var problems: Array = SegmentValidator.validate(seg)
-			var named := false
-			for p in problems:
-				if String(p).contains("merchant") and String(p).contains("ramp"):
-					named = true
-			check(named,
-				"the validator refuses a merchant authored onto a ramp, and says "
-				+ "so by name -- it reported: %s" % str(problems))
-			return
-	# A section with no ramp in it at all is not a failure of the merchant; say so
-	# rather than passing silently on a fixture that could not have shown anything.
-	fail("no ramp cell found to test the lint against -- the assertion above never ran")
+	# A SEED THAT HAPPENS TO HOLD A RAMP, SEARCHED FOR RATHER THAN ASSUMED.
+	#
+	# This named one seed and required it to contain a ramp, which made a test
+	# about the VALIDATOR fail whenever the GENERATOR changed what that seed
+	# produces -- and it did, the day patches got their own roll. The claim has
+	# nothing to do with seed 991; it needs any section with a ramp in it.
+	for attempt in 40:
+		var seg = SegmentGen.section(WIDTH, 991 + attempt * 733, 3)
+		if seg == null:
+			continue
+		for z in seg.length:
+			for x in seg.width:
+				if seg.kind_at(x, z) != GridConfig.Kind.RAMP:
+					continue
+				seg.contents[z][x] = GridConfig.Content.MERCHANT
+				var problems: Array = SegmentValidator.validate(seg)
+				var named := false
+				for p in problems:
+					if String(p).contains("merchant") and String(p).contains("ramp"):
+						named = true
+				check(named,
+					"the validator refuses a merchant authored onto a ramp, and "
+					+ "says so by name -- it reported: %s" % str(problems))
+				return
+	# No ramp in forty sections is not a failure of the merchant; say so rather
+	# than passing silently on a sample that could not have shown anything.
+	fail("no ramp cell found in 40 sections to test the lint against -- the assertion above never ran")
 
 func _name_of(content: int) -> String:
 	for glyph in GridConfig.CONTENT_GLYPHS:

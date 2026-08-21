@@ -74,6 +74,22 @@ func is_piece() -> bool:
 # and a turret dropped in one is somebody else editing the piece.
 var piece_rows: Array = []       # int, section-local z
 
+# WHICH COLUMNS OF THOSE ROWS THE PIECE ACTUALLY OWNS (M23 phase 3), as
+# z -> Vector2i(from, to_exclusive).
+#
+# `piece_rows` was enough while every piece spanned the canvas: the row was the
+# footprint. A PATCH is narrower than the section, so the row is shared -- the
+# piece owns its columns and generated terrain owns the rest -- and "which rows"
+# stops being the same question as "which cells".
+#
+# Layer 3 still keeps out of whole ROWS, which is coarser than it needs to be and
+# deliberately so for now: a keep-out that is too big costs a few hazard slots,
+# while one that is too small lets the dressing pass edit a composition. This is
+# the record that makes the per-cell version free when it is wanted, and it is
+# what lets a test tell a patch from a full-width piece without inferring it from
+# the geometry -- which is how the first version of that test went wrong.
+var piece_footprints: Dictionary = {}
+
 # Row-major, indexed [z][x].
 var kinds: Array = []      # GridConfig.Kind
 var heights: Array = []    # int, in HEIGHT_UNITs above base_height

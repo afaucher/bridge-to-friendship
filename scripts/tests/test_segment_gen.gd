@@ -284,21 +284,33 @@ func _check_variation() -> void:
 			% [narrow_ramps, total_ramps]
 		+ "broad approach, and neither should be the norm")
 
-	# LADDERS ARE NOT USED, and this is the assertion that keeps it that way.
-	# ASCENDER_CONTENTS has counted LADDER since M2 but there is no climb mechanic
-	# yet, so a generated ladder would produce a run that VALIDATES and cannot be
-	# walked -- the worst possible failure for a rejection oracle. Phase 6 makes
-	# ladders real; until then this must stay zero.
+	# THE PROFILE LOOP PLACES NO LADDERS, and this is the assertion that keeps it
+	# that way. It is a rule about the GENERATOR'S OWN TERRAIN, not about the game:
+	# the loop's vocabulary is plateaus, ramps, lifts and drops, and a ladder
+	# dropped into it by rule would be a climb the profile never accounted for.
+	#
+	# THE REASON USED TO BE DIFFERENT AND IS NOW STALE. It read "there is no climb
+	# mechanic yet, so a generated ladder would VALIDATE and be impassable" --
+	# true when written and false since 2026-08-16, when `PlayerBody.State.CLIMB`
+	# was built and `LADDERS_CLIMBABLE` was flipped true. `test_ladder_climb`
+	# gates it.
+	#
+	# SO A PIECE MAY AUTHOR ONE (M23 phase 4), and piece_watchpost does: a ladder
+	# is the only ascender that fits a tall post in a small footprint. Piece rows
+	# are excluded here rather than the claim being weakened, because the claim is
+	# about the loop and the loop is what could regress.
 	var ladders := 0
 	for seed_value in [3, 777, 424242]:
 		for index in range(1, 6):
 			var seg = SegmentGen.section(WIDTH, seed_value, index)
 			for z in seg.length:
+				if seg.piece_rows.has(z):
+					continue
 				for x in seg.width:
 					if seg.content_at(x, z) == GridConfig.Content.LADDER:
 						ladders += 1
 	eq(ladders, 0,
-		"and NO ladders are generated: the validator counts them as ascenders and "
+		"and the profile loop places NO ladders of its own (a PIECE may, and "
 		+ "the game has no climb mechanic, so one would validate and be impassable")
 
 # --- 4. Generated and authored join ------------------------------------------
@@ -432,17 +444,25 @@ func _check_lifts() -> void:
 # contents identical, heights identical after ONE constant offset. That is what
 # "reserve, then stamp" claims — the piece owns those rows outright — and a
 # partial overwrite is exactly the failure it exists to prevent.
-static func _piece_at(seg, piece, at: int) -> bool:
+# AND `px` IS WHERE IT STARTS ACROSS THE BRIDGE (M23 phase 3). This assumed
+# column 0, which was the only answer while every piece spanned the canvas. A
+# PATCH is placed at an offset, so a matcher pinned to column 0 finds nothing --
+# and "no piece here" is exactly what this file reads as "content that came from
+# nowhere", which is how 18 stray cells got reported for a correctly stamped
+# turret.
+static func _piece_at(seg, piece, at: int, px: int = 0) -> bool:
 	if at < 0 or at + piece.length > seg.length:
 		return false
-	var offset: int = seg.height_at(0, at) - piece.height_at(0, 0)
+	if px < 0 or px + piece.width > seg.width:
+		return false
+	var offset: int = seg.height_at(px, at) - piece.height_at(0, 0)
 	for pz in piece.length:
 		for x in piece.width:
-			if seg.kind_at(x, at + pz) != piece.kind_at(x, pz):
+			if seg.kind_at(px + x, at + pz) != piece.kind_at(x, pz):
 				return false
-			if seg.content_at(x, at + pz) != piece.content_at(x, pz):
+			if seg.content_at(px + x, at + pz) != piece.content_at(x, pz):
 				return false
-			if seg.height_at(x, at + pz) != piece.height_at(x, pz) + offset:
+			if seg.height_at(px + x, at + pz) != piece.height_at(x, pz) + offset:
 				return false
 	return true
 
@@ -722,9 +742,12 @@ func _check_pieces() -> void:
 		var found = null
 		for piece in library:
 			for at in seg.length:
-				if _piece_at(seg, piece, at):
-					found_at = at
-					found = piece
+				for px in range(0, seg.width - piece.width + 1):
+					if _piece_at(seg, piece, at, px):
+						found_at = at
+						found = piece
+						break
+				if found != null:
 					break
 			if found != null:
 				break

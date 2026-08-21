@@ -276,6 +276,22 @@ const DIR_EAST := 1    # +X, cell x + 1
 const DIR_SOUTH := 2   # +Z, cell z - 1
 const DIR_WEST := 3    # -X, cell x - 1
 
+# The cell step for a direction VECTOR, which is the inverse of DIR_VECTORS.
+#
+# Exists because `ladder_face` answers in world directions (the art needs one to
+# point the rungs) while the cell it names is needed too, and deriving one from
+# the other by hand at each call site is how the two ends of a ladder came to
+# disagree in the first place.
+static func cell_step(v: Vector3) -> Vector2i:
+	var best: int = DIR_SOUTH
+	var closest: float = INF
+	for dir in 4:
+		var d: float = DIR_VECTORS[dir].distance_to(v)
+		if d < closest:
+			closest = d
+			best = dir
+	return DIR_CELLS[best]
+
 const DIR_CELLS := [
 	Vector2i(0, 1),
 	Vector2i(1, 0),

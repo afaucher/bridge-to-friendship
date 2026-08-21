@@ -43,6 +43,27 @@ const GATE_DEPTH := 2
 # because a mirrored constant is a constant that can drift.
 const MAX_PIECE_ROWS := SetPieces.MAX_ROWS
 
+# HOW OFTEN A ROW THAT COULD CARRY A PATCH DOES. Its own roll, separate from the
+# full-width piece above it, because a patch is the thing a player is meant to
+# MEET -- a tower they never encounter is a tower that does not exist. Tuned
+# against the measured encounter rate rather than picked: see test_piece_rate.
+const PATCH_ONE_IN := 3
+
+# --- Split plateaus (M23 phase 2) ---------------------------------------------
+
+# HOW FAR THE TWO HALVES MAY DIVERGE. Bounded at two units because the drop back
+# down is taken by falling, and because the whole point is a route CHOICE rather
+# than a cliff: at three or more the low side stops being an alternative and
+# starts being a place you cannot see out of.
+const SPLIT_RISE_MAX := 2
+
+# HOW LONG THEY STAY APART. Under about three rows the split is over before a
+# player has decided anything, which makes it read as a bump rather than as two
+# routes; much beyond six and one section is nothing else.
+const SPLIT_HOLD_MIN := 3
+const SPLIT_HOLD_MAX := 6
+
+
 # --- The lobby ----------------------------------------------------------------
 
 static func lobby(width: int, run_seed: int, index: int):
@@ -290,8 +311,50 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var piece_ref: Array = []
 	var piece_row: Array = []
 	var piece_base: Array = []
-	var pieces: Array = SetPieces.for_width(width)
+	# WHERE THE PIECE STARTS ACROSS THE BRIDGE (M23 phase 3). Always 0 for a
+	# canvas-wide piece, which is every piece that existed before patches.
+	var piece_x: Array = []
+	# A PATCH AND A FULL-WIDTH PIECE ARE DIFFERENT BUDGETS (M23, 2026-08-21).
+	#
+	# "ONE PER SECTION" was written for a piece that OWNS its rows: a section is
+	# 16 rows and a piece is 4 to 8 of them, so two would leave almost no
+	# generated terrain between them. A patch leaves the terrain either side of it
+	# intact, so that argument barely applies -- and holding both to one slot,
+	# picked uniformly from eleven pieces, is why a tower turned up in 2.9% of
+	# sections. A round is five sections, so a player met one about once every
+	# seven rounds. Reported as "still nothing that really looks like a tower... I
+	# am just not seeing anything like that", with the height explicitly fine.
+	#
+	# So they roll separately and a section may carry one of each.
+	var wide_pieces: Array = []
+	var patches: Array = []
+	# PINNED, IF SOMEBODY IS TRYING TO LOOK AT ONE. See the `force_piece` knob:
+	# a specific piece turns up in a few per cent of sections, so reviewing the
+	# one you just authored means replaying rounds until it happens.
+	var forced: String = DebugSettings.get_choice_name("force_piece")
+	for candidate in SetPieces.for_width(width):
+		if forced != "off" and String(candidate.name) != "piece_" + forced:
+			continue
+		if SetPieces.is_patch(candidate, width):
+			patches.append(candidate)
+		else:
+			wide_pieces.append(candidate)
 	var placed = null
+	var patched = null
+
+	# THE TWO HALVES OF THE DECK AT DIFFERENT HEIGHTS (M23 phase 2).
+	#
+	# Recorded as EVENTS and applied after the loop rather than appended row by
+	# row, because `low`, `ramp_h`, `ramp_x0`, `ramp_w`, `lift_x`, `lift_h` and
+	# the three piece arrays are already nine parallel appends at five separate
+	# sites, and adding two more to each is nine chances to get one wrong in a way
+	# that silently misaligns every row after it.
+	#
+	# Each entry is {from, to, at, up}: the rows the split covers, the column it
+	# divides at, and how much higher the RIGHT side is than the left (signed, so
+	# one field covers both directions).
+	var splits: Array = []
+	var did_split := false
 
 	var height := 0
 	var row := 0
@@ -309,6 +372,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			piece_ref.append(null)
 			piece_row.append(0)
 			piece_base.append(0)
+			piece_x.append(0)
 			row += 1
 		if row >= length:
 			break
@@ -326,9 +390,48 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		# whose top row IS the exit row gets stamped flat by the fixup below, and a
 		# ramp leading nowhere was measured at 23 of 239 before it was fixed. A
 		# piece running into the exit row is that bug wearing a composition.
-		if placed == null and not pieces.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and _mix(salt + row * 3571) % 4 == 0:
-			var pick = pieces[_mix(salt + row * 5023) % pieces.size()]
-			if row + pick.length + 2 <= length:
+		# TWO OFFERS, ONE STAMP. `elif` so a single pass places at most one piece,
+		# while a section may still end up with one of each across passes.
+		var pick = null
+		if placed == null and not wide_pieces.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or _mix(salt + row * 3571) % 4 == 0):
+			pick = wide_pieces[_mix(salt + row * 5023) % wide_pieces.size()]
+		elif patched == null and not patches.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or _mix(salt + row * 2909) % PATCH_ONE_IN == 0):
+			pick = patches[_mix(salt + row * 6763) % patches.size()]
+		if pick != null:
+			# WHERE IT SITS ACROSS THE BRIDGE (M23 phase 3). A canvas-wide piece has
+			# exactly one answer -- column 0 -- and that is the case this has always
+			# been. A PATCH is narrower than the section, so it needs choosing, and it
+			# has to land on ground that is solid for every one of its rows: `safe` is
+			# already that guarantee for ramps and lifts, so it is that guarantee here
+			# too rather than a second rule that can disagree with it.
+			# WHETHER IT FITS IS DECIDED HERE; WHERE IT SITS IS NOT.
+			#
+			# `safe` is the conservative corridor -- the columns solid at EVERY
+			# profile this generator can produce -- so a spot in it proves the patch
+			# can be placed at all, which is what this branch needs to know before
+			# it spends rows. It is the wrong answer to "where", and that was the
+			# bug: `safe` is FIXED at the worst-case inset while the deck MOVES with
+			# the profile, so on any section whose two edges were cut by different
+			# amounts the patch stayed pinned near the canvas centre while the deck
+			# had shifted out from under it. Reported from play as "I don't see any
+			# towers in the middle of the field -- all are to one side or the
+			# other", and M22 made 38% of rows asymmetric, so it was most of them.
+			#
+			# The column is chosen after the profile exists. See `_place_patches`.
+			var px: int = 0
+			var fits := true
+			if SetPieces.is_patch(pick, width):
+				fits = false
+				for col in safe:
+					var run := true
+					for k in pick.width:
+						if not safe.has(int(col) + k):
+							run = false
+							break
+					if run:
+						fits = true
+						break
+			if fits and row + pick.length + 2 <= length:
 				for pz in pick.length:
 					low.append(height)
 					ramp_h.append(-1)
@@ -339,10 +442,94 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 					piece_ref.append(pick)
 					piece_row.append(pz)
 					piece_base.append(height)
+					piece_x.append(px)
 					row += 1
-				height += int(pick.piece_exit)
-				placed = pick
+				# A PATCH NEVER MOVES THE DECK. Terrain runs past it on both sides at
+				# `height`, so a patch that claimed an exit height would desync the
+				# running plateau from the ground either side of itself. Refused at
+				# load by `_check_piece`, and ignored here as the belt to that brace.
+				if SetPieces.is_patch(pick, width):
+					patched = pick
+				else:
+					height += int(pick.piece_exit)
+					placed = pick
 				continue
+
+		# A SPLIT PLATEAU (M23 phase 2), offered before the climb roll for the same
+		# reason a piece is: it IS a climb, and rolling the ordinary terrain first
+		# would be deciding the same question twice.
+		#
+		# ONE PER SECTION. A split is 5 to 9 rows of a 14-to-21-row section, so two
+		# would leave almost nothing between them and the section would read as a
+		# staircase rather than as a place where the bridge divides.
+		#
+		# THE HIGH SIDE CLIMBS AND THE LOW SIDE DOES NOT, which is what makes this
+		# expressible at all: `low[z]` has always been the height of the WHOLE row,
+		# and the ramp band is the only thing that has ever disagreed with it. A
+		# split is that disagreement made to last for more than a transition row.
+		if not did_split and safe.size() >= 5 \
+				and _mix(salt + row * 9721) % 4 == 0 \
+				and row + SPLIT_RISE_MAX + SPLIT_HOLD_MIN + 2 <= length:
+			var rise: int = 1 + _mix(salt + row * 4801) % SPLIT_RISE_MAX
+			var hold: int = SPLIT_HOLD_MIN \
+				+ _mix(salt + row * 6491) % maxi(1, SPLIT_HOLD_MAX - SPLIT_HOLD_MIN + 1)
+			# TWO ROWS OF MARGIN AT THE END, exactly as a plain climb keeps: the exit
+			# row is stamped flat by the fixup below, so a split still running when it
+			# arrives is a split whose high half is silently levelled.
+			hold = mini(hold, length - 2 - row - rise)
+			if hold >= SPLIT_HOLD_MIN:
+				# THE BOUNDARY, and then the ramp is confined to the high side of it.
+				# A ramp on the LOW side would climb to a height its own half of the
+				# deck does not have, which is a ramp leading nowhere -- the bug this
+				# generator already paid for once at 23 of 239 ramp tops.
+				var high_right: bool = _mix(salt + row * 5407) % 2 == 0
+				var boundary: int = (int(safe[0]) + int(safe[safe.size() - 1])) / 2 + 1
+				var lane: Array = []
+				for col in safe:
+					if high_right == (int(col) >= boundary):
+						lane.append(int(col))
+				if lane.size() >= 2:
+					var sw: int = mini(_ramp_width(salt + row * 2237), lane.size())
+					var sx0: int = _safe_ramp_x0(lane, sw, _mix(salt + row * 3319))
+					sw = mini(sw, _safe_run_from(lane, sx0))
+					# The climb, on the high side only. Ordinary cells stay down.
+					for k in rise:
+						low.append(height)
+						ramp_h.append(height + k + 1)
+						ramp_x0.append(sx0)
+						ramp_w.append(sw)
+						lift_x.append(-1)
+						lift_h.append(0)
+						piece_ref.append(null)
+						piece_row.append(0)
+						piece_base.append(0)
+						piece_x.append(0)
+						row += 1
+					# The split proper: `low` carries the LEFT height and the event
+					# carries the difference.
+					var left_h: int = height if high_right else height + rise
+					var up: int = rise if high_right else -rise
+					splits.append({"from": row, "to": row + hold - 1,
+						"at": boundary, "up": up})
+					for _k in hold:
+						low.append(left_h)
+						ramp_h.append(-1)
+						ramp_x0.append(0)
+						ramp_w.append(0)
+						lift_x.append(-1)
+						lift_h.append(0)
+						piece_ref.append(null)
+						piece_row.append(0)
+						piece_base.append(0)
+						piece_x.append(0)
+						row += 1
+					# AND IT RECONVERGES BY FALLING. `height` never moved, so the row
+					# after the split is level across at the plateau both halves
+					# started from -- the high side simply drops, which costs nothing
+					# because falling is free and is why a split needs one ramp rather
+					# than two.
+					did_split = true
+					continue
 
 		var roll: int = _mix(salt + row * 7717) % 10
 		if roll < 6:
@@ -391,6 +578,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				piece_ref.append(null)
 				piece_row.append(0)
 				piece_base.append(0)
+				piece_x.append(0)
 				row += 1
 				height += rise
 				continue
@@ -416,6 +604,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				piece_ref.append(null)
 				piece_row.append(0)
 				piece_base.append(0)
+				piece_x.append(0)
 				row += 1
 			height += rise
 		elif roll < 8 and height > 0:
@@ -434,6 +623,19 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		piece_ref.append(null)
 		piece_row.append(0)
 		piece_base.append(0)
+		piece_x.append(0)
+
+	# THE SPLIT EVENTS, EXPANDED TO ONE ENTRY PER ROW. Built here rather than
+	# appended in the loop so the nine parallel arrays above stay nine.
+	var split_at: Array = []
+	var split_up: Array = []
+	for _z in length:
+		split_at.append(-1)
+		split_up.append(0)
+	for event in splits:
+		for z in range(int(event["from"]), mini(length, int(event["to"]) + 1)):
+			split_at[z] = int(event["at"])
+			split_up[z] = int(event["up"])
 
 	# THE EDGE PROFILE IS BUILT LAST, once the rows that constrain it are known.
 	#
@@ -462,22 +664,57 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var left_inset: Array = _edge_profile(width, length, salt + 30011)
 	var right_inset: Array = _edge_profile(width, length, salt + 40009)
 
+	# WHERE EACH PATCH SITS, DECIDED NOW THAT THE DECK'S REAL EDGES ARE KNOWN.
+	# See `_place_patches` -- this is the last thing settled about a patch, and it
+	# has to be, because the profile it depends on is built below the loop.
+	_place_patches(width, length, piece_ref, piece_x, left_inset, right_inset,
+		split, salt)
+
 	for z in length:
-		# STAMPED WHOLE, and before anything else looks at the row. The piece wrote
-		# its own heights, kinds and contents; narrowing, ramps and lifts have
-		# nothing to say about rows that are not theirs.
-		if piece_ref[z] != null:
-			var piece = piece_ref[z]
-			var pz: int = int(piece_row[z])
-			var base: int = int(piece_base[z])
-			for x in width:
-				seg.heights[z][x] = base + piece.height_at(x, pz)
-				seg.kinds[z][x] = piece.kind_at(x, pz)
-				seg.contents[z][x] = piece.content_at(x, pz)
-			# RECORDED AS THE ROWS ARE WRITTEN, so the record cannot disagree with
-			# what was stamped. Layer 3 reads it and keeps out.
+		# A CANVAS-WIDE PIECE IS STAMPED WHOLE, and before anything else looks at
+		# the row. It wrote its own heights, kinds and contents; narrowing, ramps
+		# and lifts have nothing to say about rows that are not theirs.
+		#
+		# A PATCH IS NOT, and that is the whole of M23 phase 3. It covers
+		# `piece.width` columns starting at `piece_x[z]`, and the terrain either
+		# side of it still needs every rule this loop applies -- the insets, the
+		# lane split, the height split. So the `continue` cannot be taken.
+		#
+		# TWO AUTHORS, ONE RULE, WHICH IS THE PART WORTH SAYING OUT LOUD. The
+		# comment on `piece_ref` warns that "building a skeleton and overwriting
+		# part of it afterwards leaves every cell with two authors and no rule
+		# about which wins", and names the bug that came of it: a ramp whose top row
+		# was eaten by a piece. That warning is about the ABSENCE of a rule, not
+		# about two authors. Here the rule is stated and is per-CELL: inside the
+		# footprint the piece wins, outside it the terrain does, and no cell is
+		# ever written by both.
+		var piece = piece_ref[z]
+		var patch_from: int = width
+		var patch_to: int = width
+		if piece != null:
+			patch_from = int(piece_x[z])
+			patch_to = patch_from + int(piece.width)
+			if not SetPieces.is_patch(piece, width):
+				var pz: int = int(piece_row[z])
+				var base: int = int(piece_base[z])
+				for x in width:
+					seg.heights[z][x] = base + piece.height_at(x, pz)
+					seg.kinds[z][x] = piece.kind_at(x, pz)
+					seg.contents[z][x] = piece.content_at(x, pz)
+				# RECORDED AS THE ROWS ARE WRITTEN, so the record cannot disagree
+				# with what was stamped. Layer 3 reads it and keeps out.
+				seg.piece_rows.append(z)
+				seg.piece_footprints[z] = Vector2i(0, width)
+				continue
+			# A PATCH ROW IS STILL A PIECE ROW FOR THE DRESSING PASS. Coarser than
+			# it needs to be -- only the footprint COLUMNS belong to the piece, and
+			# the deck either side is ordinary ground a hazard could legitimately
+			# stand on. Kept coarse deliberately: the alternative is a second,
+			# per-cell record for layer 3 to read, and a keep-out that is too big
+			# costs a few hazard slots while one that is too small lets somebody
+			# else edit the composition.
 			seg.piece_rows.append(z)
-			continue
+			seg.piece_footprints[z] = Vector2i(patch_from, patch_to)
 
 		var cut_left: int = int(left_inset[z])
 		var cut_right: int = int(right_inset[z])
@@ -488,6 +725,18 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		# separately.
 		var split_here: bool = split and int(lift_x[z]) < 0
 		for x in width:
+			# INSIDE THE FOOTPRINT THE PIECE WINS (M23 phase 3). Written before the
+			# terrain rather than over it, so no cell is ever authored twice and the
+			# `continue` keeps every later rule off the patch's own columns.
+			if x >= patch_from and x < patch_to:
+				var ppz: int = int(piece_row[z])
+				var pbase: int = int(piece_base[z])
+				var lx: int = x - patch_from
+				seg.heights[z][x] = pbase + piece.height_at(lx, ppz)
+				seg.kinds[z][x] = piece.kind_at(lx, ppz)
+				seg.contents[z][x] = piece.content_at(lx, ppz)
+				continue
+
 			var on_ramp: bool = int(ramp_h[z]) >= 0 \
 				and x >= int(ramp_x0[z]) and x < int(ramp_x0[z]) + int(ramp_w[z])
 			# AUTHORED AT THE HEIGHT IT RISES TO. Where it comes back down to is
@@ -499,7 +748,15 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			elif on_ramp:
 				seg.heights[z][x] = int(ramp_h[z])
 			else:
-				seg.heights[z][x] = int(low[z])
+				# THE ONE LINE THAT MAKES A PLATEAU NARROWER THAN THE BRIDGE.
+				# `low[z]` was the height of the whole row for the life of this
+				# generator, so every height change was a horizontal line running
+				# edge to edge and no section could ever divide. It is now the
+				# height of the LEFT side, and a split row carries the difference.
+				var h: int = int(low[z])
+				if int(split_at[z]) >= 0 and x >= int(split_at[z]):
+					h += int(split_up[z])
+				seg.heights[z][x] = h
 
 			var solid := true
 			# THE TWO EDGES, EACH ON ITS OWN. A ramp or a lift is never cut into,
@@ -921,6 +1178,78 @@ static func _blank(seg_name: String, width: int, length: int):
 		seg.contents.append(crow)
 		seg.no_wall.append(wrow)
 	return seg
+
+# --- Where a patch sits across the bridge (M23 phase 3) -----------------------
+
+# THE LAST THING DECIDED ABOUT A PATCH, and it has to be.
+#
+# The terrain loop knows a patch WILL fit -- `safe` is the corridor of columns
+# solid at every profile the generator can produce, so a spot in it proves the
+# thing can be placed. It does not know WHERE, because the deck's real edges are
+# the inset profile and the profile is built after the loop that reserves the
+# rows.
+#
+# PLACING IT FROM `safe` WAS THE BUG. That corridor is FIXED at the worst-case
+# inset while the deck MOVES with the profile: at a 21 canvas `safe` is columns
+# 7 to 13 whatever happens, so a section whose edges were cut 6 and 0 has its
+# deck at columns 6 to 20 and its tower pinned near column 9 -- hard against the
+# left rail, on ground that is nowhere near the middle of anything. Reported
+# from play as "I don't see any towers in the middle of the field, all are to one
+# side or the other", and M22 made 38 per cent of rows asymmetric, so it was most
+# of them.
+#
+# THE SPAN IS THE INTERSECTION OVER THE PATCH'S OWN ROWS, not the span at one of
+# them. An edge may move a column per row, so the columns solid for the WHOLE
+# piece are narrower than the columns solid at its first row -- and a tower whose
+# last row overhangs is the thing the `safe` guarantee existed to prevent in the
+# first place.
+static func _place_patches(width: int, length: int, piece_ref: Array,
+		piece_x: Array, left_inset: Array, right_inset: Array,
+		split: bool, salt: int) -> void:
+	var from := -1
+	for z in range(0, length + 1):
+		var patch_row: bool = z < length and piece_ref[z] != null \
+			and SetPieces.is_patch(piece_ref[z], width)
+		if patch_row and from < 0:
+			from = z
+			continue
+		if patch_row or from < 0:
+			continue
+
+		var piece = piece_ref[from]
+		var lo := 0
+		var hi := width
+		for r in range(from, z):
+			lo = maxi(lo, int(left_inset[r]))
+			hi = mini(hi, width - int(right_inset[r]))
+
+		# A LANE SPLIT IS A HOLE DOWN THE MIDDLE, and a patch is written over the
+		# terrain -- so one laid across the centre column would FILL that hole and
+		# quietly delete the split. Kept to whichever side has more room, which is
+		# also the honest answer for a section that really is two lanes: there is
+		# no middle to be in.
+		if split:
+			var mid: int = width / 2
+			if mid - lo >= hi - (mid + 1):
+				hi = mini(hi, mid)
+			else:
+				lo = maxi(lo, mid + 1)
+
+		# NO EXTRA MARGIN, AND THIS WAS NEARLY A MISTAKE. A draft kept a column of
+		# deck either side on the reasoning that a tower flush with the rail has no
+		# lane past it -- but every patch in the library already carries flat
+		# height-0 columns at its OWN edges (see piece_lookout, piece_watchpost,
+		# piece_bunker), so the piece is its own margin and the rule would have been
+		# buying a second time something already paid for. It would also have
+		# narrowed the placement range for no reason, against a report that asked
+		# for MORE spread rather than less.
+		var span: int = hi - lo - int(piece.width)
+		var at: int = lo
+		if span > 0:
+			at = lo + _mix(salt + from * 8677) % (span + 1)
+		for r in range(from, z):
+			piece_x[r] = clampi(at, 0, maxi(0, width - int(piece.width)))
+		from = -1
 
 # --- The edge profile (M22) ---------------------------------------------------
 
