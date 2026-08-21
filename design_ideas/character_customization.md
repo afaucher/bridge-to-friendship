@@ -22,20 +22,13 @@ Built so far (2026-08-20), in the order it landed:
 | **personal colour** | shipped end to end: chosen on the screen, saved to `user://player.cfg`, worn by the body, and replicated to everyone |
 | **eyes** | shipped, and **not as a slot** — see below |
 | **one accessory slot** | shipped — horns, antlers, a tail, or none |
-| **colour in the HUD and score screen** | not built — the value is on the body only |
+| **colour in the HUD** | shipped — drawn as an **outline** around your own panel and each friend row |
 
 The nose was deliberately narrowed to one shape. The original ask was a *better
 nose*, and the six-variant catalogue below over-built it into a menu; shipping
 one costs nothing a slot would later need, because the catalogue is written down,
 the budget governing it is measured, and `test_nose_shape.gd` already asserts the
 contract any future variant must meet.
-
-That is a deliberate narrowing and it is worth saying why it is safe. The nose
-was never going to be a *choice* in the first pass: the original ask was a
-better nose, and the six-variant catalogue in this document over-built it into a
-menu. Shipping one shape costs nothing that a slot would later need — the
-catalogue is written down, the budget that governs it is measured, and
-`test_nose_shape.gd` already asserts the contract any future variant has to meet.
 
 **And the beak is the most conservative possible version of the change:** it
 occupies exactly the box the old wedge did, so the one measured property of the
@@ -202,6 +195,15 @@ facing channel — two bright marks on the front of a cylinder, one of which mea
 "this is where the dash goes" and one of which means nothing. **Eyes stay small
 enough to lose at range, deliberately.**
 
+> **OVERTURNED BY PLAY, 2026-08-20.** Both halves of that were wrong. The eyes
+> were lost at *every* range including the character screen — reported as "way
+> too small, the minimum size should be 5x that" — because they had been sized
+> against a preview camera three metres away rather than against a camera framing
+> 60 m of bridge. And they do not compete with the marker anyway: a symmetric
+> pair says "this is the front" while an asymmetric wedge says "this way", and
+> the two **agree**. The channel the rule was protecting is not one eyes take
+> from. Radius is now 0.19–0.215.
+
 ### One accessory slot: horns, antlers, or a tail
 
 One at a time, or none. Everything free from the start (decided 2026-08-20).
@@ -344,9 +346,40 @@ One at a time. Mesh only — no `CollisionShape3D`, no layer, no mask. All hang 
 
 | variant | shape | measured spread | note |
 |---|---|---|---|
-| **HORNS** | two short thick cones, curving out and up from the sides | 0.37 | **SHIPPED.** The safest: short, close to the head, unmistakable. Splayed outward so the vertical column stays the hats' |
-| **ANTLERS** | a beam and two tines a side | 0.42 | **SHIPPED**, and the variant that tests the ceiling. Visible from above precisely *because* it splays — the point and the risk in one property |
-| **TAIL** | one tapered cone, trailing low behind on the aim axis | 0.09 | **SHIPPED.** A **rear-pointing facing cue**, reaching 0.26 back against the nose's 0.35 forward — asserted, so it can never out-shout the marker |
+| **HORNS** | two thick swept cones off the sides of the head, 0.15 × 0.80 | ~0.60 | **SHIPPED.** The safest shape: short, close to the head, unmistakable |
+| **ANTLERS** | a nine-part-per-side **elk rack** — see below | ~0.50 | **SHIPPED**, on the fourth attempt |
+| **TAIL** | **five chained segments** curving from back-and-down to nearly vertical | 0.22 | **SHIPPED.** Each segment's tip radius is the next one's base, so it tapers as one tail rather than reading as five spikes |
+
+**The antlers took four goes, and each failure was worth recording** — they are
+the hardest thing in this document to get right because a wrong one still *looks
+like something*, so only a person can tell you it is wrong.
+
+1. mounted at y 0.80–0.95 against a head whose top is 0.9, so they grew out of
+   the **crown** — both un-elk-like and the one place hats want;
+2. moved to the sides but splayed **flat in a single plane**, reported as not
+   making visual sense, because that is not what an antler does;
+3. sized against the preview, so "tiny";
+4. and then the real fault: *"cones whose tip intersects the middle of the next."*
+
+That last report names two separate bugs. The **beam** was independent cones that
+each tapered to a point and happened to overlap — it is now a **chain**, built
+like the tail, every segment's end the next one's start at matching thickness.
+And the **tines** were at eyeballed points crossing the beam mid-span, so they
+pierced it rather than grew from it — every tine now starts at a point **on** the
+beam, which is what "branching" actually means geometrically.
+
+The layout follows Boone and Crockett's field-judging description of a 6×6 bull:
+main beam sweeping up and **rearward over the shoulders**; **G1 brow** stabbing
+*forward over the face* (the one part pointing opposite to everything else, and
+the single most identifiable thing about an elk rack); **G2/G3** off the side,
+forward and out; **G4 royal** up off the top and the **longest point on the
+animal**; **G5** up behind it and short.
+
+**Aimed by direction vector, not Euler angles.** A part that sweeps out *and* up
+*and* back needs two composed rotations, and composing those by hand is what this
+project has shipped backwards three times — including the beak, earlier in this
+same feature. "Out, up and back" is `Vector3(0.35, 0.55, 0.76)`, which cannot be
+subtly transposed.
 | **EARS** | two rounded flaps, drooping outward | low | catalogued only. Mostly a close-range read, like eyes |
 | **SPIKES** | a lateral row of small spines along the sides | minimal | catalogued only. Reads as texture on the outline rather than as protrusion |
 
@@ -571,6 +604,11 @@ being false.
 | **two players, two colours** | **DONE, and it is the assertion that earns the test.** Every other claim asks about one body at a time and would pass while the whole party shared one material. A/B confirmed it: both avatars came back the same green, in *both* worlds |
 | eyes | **DONE — `test_eyes.gd`.** Deterministic and untouched by the global RNG; every seed including 0 gets two eyes, one either side; the asymmetry RATE is a minority rather than a stuck predicate; a face flagged symmetric really matches and one flagged asymmetric really differs; and the meshes are actually built, under `Facing`, without stacking a second pair on re-apply |
 | **the flag agrees with the geometry** | **DONE, and A/B'd.** Suppressing the perturbation while still setting the flag failed *only* that assertion — the rate check stayed green. A test that measured the asymmetry rate alone would have passed while no face was ever actually asymmetric |
+| the screen constructs | **DONE — `test_character_screen.gd`**, including that the preview camera is AIMED at the model. Its absence shipped an empty preview: `look_at` fails in C++ rather than GDScript, so it printed one line and let the script run on with the camera facing away |
+| the tail's segments join | **DONE, A/B'd** by nudging one segment 7 cm out of the chain |
+| the antlers branch | **DONE, A/B'd** by floating the royal tine off the beam — caught at 0.077 away. This is the assertion for the fault a person had to report, and nothing before it could have seen |
+| HUD identity outlines | **DONE — `test_hud_identity_colour.gd`**, through the real path: a real world, a real HUD, its own `_process` pulling its own model |
+| **the HUD styleboxes are distinct** | **DONE, and the A/B was the nastiest yet.** One shared `StyleBoxFlat` made **your own panel show the other player's colour** — last write wins. The two colour assertions could not see it; only asserting the resources are different objects catches it |
 | the screen constructs | instantiate it headless; it is a UI script, and one the gate never runs ships having never executed a line |
 | the screen's layout | assert `size` and `position`, never the anchors — that distinction is why the score screen shipped in the corner |
 
@@ -589,8 +627,9 @@ Starting values with reasons, per house rules — every one expected to move.
 | `NOSE_MIN_CONTRAST` | tbd | the perceptual gap the derived nose colour must clear against the body. Set it from the *current* blue/yellow pair, which is the one combination known to read at camera distance |
 | `NOSE_PROTRUSION_MIN` | 0.28 | the floor, set by `SNOUT`, the shortest variant. Measured past r = 0.4, not from the origin |
 | `NOSE_PROTRUSION_MAX` | 0.40 | the ceiling, set by `BEAK` and `PROW`. The current wedge's 0.35 sits between them by construction |
-| `EYE_SCALE` | small | sized to be lost at bridge range on purpose, so it never competes with the nose for the facing channel |
-| `ACCESSORY_SPREAD_MAX` | tbd | the top-down ceiling. Set it from `ANTLERS`, which is the only variant near it, and expect it to be the number that moves |
+| `EYE_SIZE_MIN` / `MAX` | 0.19 / 0.215 | **five times the first guess.** See the correction below — these were sized against the preview camera, not the game's |
+| `ACCESSORY_SPREAD_MAX` | 0.85 | **raised from 0.45 after play**, under which the horns were invisible. The elk rack measures ~0.50 |
+| `OUTLINE_WIDTH` | 3 px | the HUD border carrying identity colour |
 | `ACCESSORY_SPLAY` | outward | horns clear the hat column laterally. The number is whatever keeps `mount_y` untouched |
 | `PREVIEW_SIZE` | explicit | never inherited — the headless viewport is 64×64 |
 
@@ -622,3 +661,26 @@ Starting values with reasons, per house rules — every one expected to move.
   auto-nudge; two players may look alike.
 - **Multiple simultaneous accessories.** One slot (decided 2026-08-20).
 - **Names, badges, titles, emotes.** Different feature, different document.
+
+---
+
+## What building it taught
+
+Two patterns ran through the whole feature and are worth carrying out of it.
+
+**Every bug here was a test asserting that something EXISTED rather than that it
+WORKED.** The beak's bounding box was correct while it pointed into the player.
+The preview camera existed while facing away. A shared material would have passed
+any test that checked one body at a time. The horns' "splay outward" check passed
+with the tilt reversed, because the number was satisfied by the mounting point.
+In every case the A/B was the only thing that found it — and in three of them the
+first version of the assertion could not fail at all.
+
+**And numbers chosen without looking were wrong every time.** The eyes, all three
+accessories, and the spread ceiling were each sized against the character screen,
+where the camera is three metres away — not against the game, which frames 60 m
+of bridge. Two rules written into this document as though settled had to be
+reversed by a person looking at the screen for ten seconds: the spread ceiling
+that made horns invisible, and "eyes stay small enough to lose at range". Where a
+human has played the thing, **their** number is the evidence and the model is the
+proxy.
