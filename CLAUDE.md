@@ -471,6 +471,38 @@ the moment it is written.
   that is not at all what we show". **When a hazard is reported in the wrong
   place, sample its damage as a MAP and compare it against the mesh**; and when a
   test states a rule the art contradicts, the test is the thing that is wrong.
+- **A CANDIDATE LIST IS A SNAPSHOT, AND A RULE ABOUT ITS OWN KIND IS STALE THE
+  MOMENT THE FIRST ONE LANDS.** Observed 2026-08-21 adding graves to the dressing
+  pass. `_candidates` is computed once per kind and then walked, so every rule in
+  `_wants` is answered against a grid with none of that kind on it. Harmless for
+  everything built in the four milestones before it -- no hazard cared how far it
+  was from another of itself, and the one-line "is this cell still empty" guard
+  inside the loop covered the whole of what went stale. A grave cares: it is the
+  only content that occupies its NEIGHBOURS, so two placed one cell apart is two
+  packs rising into each other. **When you add the first thing that must not be
+  adjacent to ITSELF, the precomputed list is no longer sufficient** -- re-ask at
+  placement time, and re-ask for that kind alone rather than re-running the whole
+  predicate, which would quietly retune every other kind's density inside a fix
+  for this one.
+- **A STRIDE THAT IS NOT COPRIME WITH THE LIST WALKS A SHORT CYCLE, and the
+  symptom is a budget that is silently a ceiling.** Same day, same file, and it
+  had been there since M17. `dress` spreads its picks by walking the candidate
+  list at a seeded stride; where `gcd(stride, n) > 1` it visits `n/gcd` cells and
+  revisits them. Measured over 320 generated sections: **68 of 117 budget
+  shortfalls**, worst case 44 cells whose walk reached 2. The tell was a section
+  reporting **115 candidate cells and placing zero**, which is not a shape a
+  "the section was full" explanation can take. `theme_for` twenty lines above does
+  the coprime walk correctly and says why in a comment; the loop below it was
+  written as though a stride were just a number. **Any modular walk meant to cover
+  a list needs gcd == 1, and the cheap tell is candidates >> placed.**
+- **AND ASSERTING THE HELPER IS NOT ASSERTING THE PASS.** The first test for that
+  stride fix checked `_coprime_stride` directly, reasoning that a placement count
+  has a second explanation (the section might be genuinely full). A/B killed it:
+  disconnecting the helper from the placement loop -- putting the bug back exactly
+  -- left the test GREEN, because the function it asked was still there and still
+  correct. The right move is to REMOVE the second explanation rather than stop
+  asking the question: run on a roomy fixture, and only assert budgets for kinds
+  with three times the candidates they need. Twin of the score-screen note below.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach

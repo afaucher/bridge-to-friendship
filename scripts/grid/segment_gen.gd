@@ -25,6 +25,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 
 # THE LOBBY'S OWN FLOOR, independent of its neighbours. A lobby that merely fits
 # the section either side could come out three cells wide, and that is not a
@@ -226,7 +227,16 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var piece_ref: Array = []
 	var piece_row: Array = []
 	var piece_base: Array = []
-	var pieces: Array = SetPieces.for_width(width)
+	# THE PIECES THIS SECTION'S THEME DRAWS FROM, not the whole library.
+	#
+	# The theme is a pure function of (run_seed, index) and both are already in
+	# hand, so this asks HazardDressing rather than taking a fifth argument --
+	# and asking keeps the skeleton and the dressing pass agreeing about which
+	# theme a section is by construction rather than by two callers being
+	# careful. It falls back to the full library for a theme with no piece of
+	# its own; see SetPieces.for_theme.
+	var pieces: Array = SetPieces.for_theme(width,
+		HazardDressing.theme_for(run_seed, index))
 	var placed = null
 
 	var height := 0

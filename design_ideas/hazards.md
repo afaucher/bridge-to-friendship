@@ -300,6 +300,70 @@ with nothing under it as a backstop. Without those, a member over a hole falls t
 instant it exists and the authored encounter quietly arrives at half strength with
 nothing anywhere reporting it.
 
+### How they reach a generated run
+
+Measured over 320 generated sections, 40 seeds, after the pass below was fixed:
+
+| theme | graves/section | rushers | shooters | cover | ~bodies on the deck |
+|---|---|---|---|---|---|
+| horde | **3.32** | 1 | 0 | 12 | ~14 |
+| survival | 0.81 | 6 | 1 | 5 | ~11 |
+| firefight | 0 | 1 | 5 | 10 | ~8 |
+| environmental | 0.78 | 1 | 0 | 2 | ~4 |
+| quiet | 0 | 2 | 1 | 4 | ~3 |
+
+About **half of all generated sections** now carry at least one grave.
+
+**The first attempt at this budget was arithmetic on the wrong units.** It paid
+for `survival: zombies 3` by cutting that theme's rushers from 6 to 3 -- one for
+one, as if a grave were an enemy. A grave is three to five BODIES, so survival
+went from roughly eight things on the deck to roughly fifteen: not a rebalance, a
+different difficulty, arrived at silently and shipped. Survival now takes one
+grave as an accent with its rusher budget restored, and a pack that wants to be
+the whole table has one of its own.
+
+**`horde` is the fifth theme and the first built around a single enemy.** Nothing
+that shoots, because a pack asks the player to choose ground and hold it while a
+shooter asks them to keep moving -- and asking for both at once is not a harder
+decision, it is no decision. Its cover budget is the highest in the table and is
+not there to stop bullets: a half wall is a StaticBody on layer 1, which makes it
+a **sight blocker**, and a zombie that cannot see anybody has no target and stands
+still. Cover is what lets a party break a pack into pieces and fight it a third at
+a time. One rusher, because it is fast and straight where everything else there is
+slow and crooked, so it punishes tunnel vision.
+
+**A grave is the only content that occupies the cells it is not in.** The pack
+reaches 1.4 m from the centre of a 2.0 m cell, so anything standing next door is
+something the pack spawns inside. `_near_grave` therefore excludes every kind
+-- not just the dangerous ones -- from a grave's eight neighbours, which is the
+merchant's rule pointed the other way.
+
+**And `segments/piece_zombie_choke.seg`** is the composition: a grave in an open
+bay with a three-cell gate in a wall between it and the way you came. The gate is
+BEHIND you, so the decision is whether to give up the metres you spent -- placed
+ahead it would be a race, and a race has one right answer. The bay is deliberately
+empty; a second answer in the middle of it would let a party solve the piece
+without noticing the gate.
+
+#### Two bugs the pack found in the dressing pass
+
+Neither is about zombies. Both are the kind that only surface when something new
+asks a harder question of old code.
+
+**The placement stride was not coprime with the candidate list**, so the walk
+revisited a short cycle instead of the whole thing. Over 320 sections, **68 of 117
+budget shortfalls were this** -- worst case a list of 44 cells whose walk reached
+2 of them. Spikes suffered most, because `environmental` asks for 14 and a cycle
+of 3 cannot deliver 14 wherever it looks. The tell was a section reporting 115
+candidate cells and placing zero. `theme_for`, twenty lines above, gets this
+exactly right and explains why in a comment.
+
+**A candidate list is a snapshot, and a rule about its own kind goes stale the
+moment the first one lands.** `_candidates` runs once per kind, before any of that
+kind exists. Harmless for everything built so far -- nothing cared how far it was
+from another of itself -- and fatal for graves, which is two packs rising into
+each other.
+
 ### Engineering shape
 
 - **Its own pool and its own snapshot section**, not a `kind` flag on the rusher's.

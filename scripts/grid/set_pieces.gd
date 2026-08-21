@@ -41,6 +41,7 @@ const LIBRARY: Array[String] = [
 	"res://segments/piece_ramp_duel.seg",
 	"res://segments/piece_plinko_funnel.seg",
 	"res://segments/piece_rusher_pit.seg",
+	"res://segments/piece_zombie_choke.seg",
 ]
 
 # SMALLER THAN A SEGMENT IS THE POINT. Today a `.seg` is 16 to 30 rows and is a
@@ -72,3 +73,31 @@ static func for_width(width: int) -> Array:
 		if seg.is_valid() and seg.is_piece() and seg.width == width:
 			out.append(seg)
 	return out
+
+# The ones this THEME should draw from.
+#
+# EVERY PIECE IN THE LIBRARY ALREADY CARRIES A THEME TAG -- `piece, survival`,
+# `piece, firefight` -- and until 2026-08-21 nothing read them. The generator drew
+# uniformly from everything that fitted the width, so a rusher pit landed in a
+# `quiet` section as readily as in a survival one, and the tags were documentation
+# of an intention the code did not have.
+#
+# That matters more with a pack than it did with anything before it. A composition
+# is a RELATIONSHIP -- this is why layer 2 exists -- and the relationship a zombie
+# piece poses is between a grave and the ground you retreat onto. Dropped into a
+# firefight section it is not a lesser version of itself; it is a chokepoint with
+# three shooters covering it, which is a different and worse question.
+#
+# FALLS BACK TO THE WHOLE LIBRARY when a theme has no piece of its own. A theme
+# with no matching piece should get generated terrain plus SOMETHING, not a
+# guarantee of nothing -- and an empty list here would silently turn off set
+# pieces for that theme, which is the kind of absence nothing reports.
+static func for_theme(width: int, theme: String) -> Array:
+	var fitting: Array = for_width(width)
+	if theme == "":
+		return fitting
+	var out: Array = []
+	for seg in fitting:
+		if seg.tags.has(theme):
+			out.append(seg)
+	return out if not out.is_empty() else fitting
