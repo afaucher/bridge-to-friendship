@@ -81,6 +81,7 @@ func _physics_process(_delta: float) -> void:
 	done = true
 
 	_test_the_distinction()
+	_test_the_railing_turns_the_corner()
 	_test_a_body_is_stopped()
 	_test_the_true_edge_is_unchanged()
 	_report_what_authored_content_gains()
@@ -149,14 +150,112 @@ func _test_the_true_edge_is_unchanged() -> void:
 	check(seg.has_wall(seg.width - 1, OPEN_ROW, GridConfig.DIR_EAST),
 		"on both sides")
 
-	# THE Z ENDS ARE STILL OPEN, or every segment seals shut and no run joins.
-	# Worth its own assertion because the new rule added a loop, and a Z step does
-	# not move x -- so the guard that returns early is load-bearing rather than
-	# tidy, and without it this call would never return.
+	# OPEN DECK IS NOT WALLED ALONG THE BRIDGE. Row 10 is solid across and so are
+	# its neighbours, so there is no exterior edge here in either Z direction.
 	check(not seg.has_wall(7, OPEN_ROW, GridConfig.DIR_NORTH),
-		"and the Z ends are still open -- walling them would seal every segment "
-		+ "shut, and the loop would never terminate on a step that leaves x alone")
-	check(not seg.has_wall(7, OPEN_ROW, GridConfig.DIR_SOUTH), "both of them")
+		"a cell with solid deck ahead of it is not railed along the bridge")
+	check(not seg.has_wall(7, OPEN_ROW, GridConfig.DIR_SOUTH), "or behind it")
+
+	# THE SEGMENT'S OWN ENDS ARE OPEN, or every segment seals shut and no run
+	# joins. This is the case that kept the whole Z branch a blanket `false` for
+	# three milestones, so it is asserted rather than assumed.
+	check(not seg.has_wall(7, 0, GridConfig.DIR_SOUTH),
+		"and the segment's entry row is open along the bridge -- walling the Z "
+		+ "ends would seal every segment shut and no run would join")
+	check(not seg.has_wall(7, seg.length - 1, GridConfig.DIR_NORTH),
+		"as is its exit row")
+
+# --- 1b. The railing follows the outline, not just the sides ------------------
+#
+# Reported from a playtest: "walls for all exterior edges except where marked --
+# the always to the side thing looks funny". A railing that only ran across X
+# left every taper step as an L-shaped corner with a rail down one face and
+# nothing along the other, so the deck came out fenced in dashes.
+func _test_the_railing_turns_the_corner() -> void:
+	# Row 1 is solid across; row 2 is set back three columns. So the cell at the
+	# END of row 1's overhang has void AHEAD of it, and that void runs off the
+	# side of the canvas -- an exterior edge facing along the bridge.
+	check(seg.has_wall(0, 1, GridConfig.DIR_NORTH),
+		"a cell with an exterior void AHEAD of it is railed along the bridge "
+		+ "(col 0, row 1 -> row 2's setback) -- this is the corner that used to "
+		+ "be left open, and it is the same void the cell beside it is railed "
+		+ "against")
+
+	# AND A PIT IS STILL A PIT FROM EVERY DIRECTION. The gap at columns 7-8 on
+	# rows 4-6 has deck closing around it, so the cell just before it must not be
+	# railed -- otherwise "exterior" has quietly come to mean "any hole", and you
+	# could no longer shove a stone into one.
+	check(not seg.has_wall(7, 3, GridConfig.DIR_NORTH),
+		"and a cell with an INTERIOR gap ahead of it is not (col 7, row 3 -> the "
+		+ "mid-deck gap) -- a pit is a pit whichever way you walk into it")
+	_test_a_chasm_is_not_an_edge()
+
+# --- 1c. A GAP ACROSS THE BRIDGE IS NOT THE SIDE OF THE BRIDGE ----------------
+#
+# The case the first version of the Z rule got wrong, and it went straight to
+# the two pieces whose entire subject is a gap. Asking only "does the void ahead
+# reach the side of the canvas" is far too loose: a chasm ACROSS the deck reaches
+# the side trivially, by spanning it. That railed the front lip of every
+# full-width gap -- measured at 20 rails on piece_timed_crossing and 16 on
+# piece_crumble_causeway -- turning a gap you may walk into off the front into a
+# corridor you are funnelled down.
+#
+# Built inline rather than on a `.seg` in the library, because this is a property
+# of the RULE and a fixture somebody authors for feel is not the place to pin one.
+func _test_a_chasm_is_not_an_edge() -> void:
+	var chasm = SegmentData.parse("""
+name = inline_chasm
+width = 9
+length = 5
+tags = fixture
+
+[deck]
+.........
+.........
+_________
+.........
+.........
+
+[height]
+000000000
+000000000
+000000000
+000000000
+000000000
+
+[content]
+.........
+.........
+.........
+.........
+.........
+""")
+	if not check(chasm.is_valid(), "the inline chasm parses (%s)" % str(chasm.errors)):
+		return
+
+	# THE MIDDLE OF THE LIP IS OPEN. You are meant to be able to walk off the
+	# front of a chasm into it.
+	check(not chasm.has_wall(4, 1, GridConfig.DIR_NORTH),
+		"the front lip of a full-width chasm is NOT railed in its middle -- a gap "
+		+ "across the bridge reaches the side of the canvas by SPANNING it, which "
+		+ "is not the same as being the side of the bridge")
+
+	# THE CORNER IS RAILED, and only the corner: that one cell is where the
+	# bridge's own side edge meets the chasm, which IS the outline turning.
+	check(chasm.has_wall(0, 1, GridConfig.DIR_NORTH),
+		"while the cell at the bridge's own EDGE is (col 0) -- that is the side "
+		+ "railing turning the corner, not the chasm being fenced")
+	check(chasm.has_wall(8, 1, GridConfig.DIR_NORTH), "on both sides")
+
+	var lip := 0
+	for x in chasm.width:
+		if chasm.has_wall(x, 1, GridConfig.DIR_NORTH):
+			lip += 1
+	eq(lip, 2,
+		"and exactly two cells of a nine-wide lip are railed (%d) -- counted, "
+			% lip
+		+ "because 'the middle is open' and 'the corners are closed' are both "
+		+ "satisfied by a rule that rails half the row")
 
 # --- 4. What this does to content somebody already authored -------------------
 #
@@ -180,19 +279,29 @@ func _report_what_authored_content_gains() -> void:
 		var s = SegmentData.from_file(String(path))
 		if s == null or not s.is_valid():
 			continue
-		var gained := 0
+		var sideways := 0
+		var along := 0
+		# ALL FOUR DIRECTIONS. This walked only WEST and EAST, which meant the
+		# report could not see the change that added Z railings AT ALL -- it was
+		# measuring the half of the rule that had not moved. Asked for directly:
+		# "did we check that interior holes and thin bridges stayed untouched?"
 		for z in s.length:
 			for x in s.width:
-				for dir in [GridConfig.DIR_WEST, GridConfig.DIR_EAST]:
+				for dir in [GridConfig.DIR_WEST, GridConfig.DIR_EAST,
+						GridConfig.DIR_NORTH, GridConfig.DIR_SOUTH]:
 					var was: bool = _old_rule(s, x, z, dir)
 					var now: bool = s.has_wall(x, z, dir)
 					if now and not was:
-						gained += 1
+						if GridConfig.DIR_CELLS[dir].x != 0:
+							sideways += 1
+						else:
+							along += 1
 					elif was and not now:
 						lost += 1
-		total_gained += gained
-		if gained > 0:
-			print("[setback] %s gains %d parapet(s)" % [String(path).get_file(), gained])
+		total_gained += sideways + along
+		if sideways + along > 0:
+			print("[setback] %s gains %d sideways, %d ALONG the bridge"
+				% [String(path).get_file(), sideways, along])
 	print("[setback] authored content gains %d parapets in total, loses %d"
 		% [total_gained, lost])
 

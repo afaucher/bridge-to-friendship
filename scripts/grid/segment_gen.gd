@@ -581,8 +581,18 @@ static func _baseline_end_rows(seg) -> void:
 # EVEN COLUMNS, WHICH PUTS THE OUTER LANES AGAINST THE BRIDGE'S OWN EDGE (changed
 # 2026-08-17). It was odd columns, spending x = 0 and x = width-1 on explicit WALL
 # blocks -- and the deck already railings itself there: `has_wall` parapets any
-# SOLID cell in the outermost column, and WALL_HEIGHT is 2.0, exactly the height a
-# maze wall is. The boundary was being paid for twice.
+# SOLID cell in the outermost column. The boundary was being paid for twice.
+#
+# THE TWO WERE THE SAME HEIGHT WHEN THAT CHANGED, and are not any more:
+# WALL_HEIGHT went to 1.0 on 2026-08-20 so the bridge reads as a structure rather
+# than a trench, while a maze wall is still MAZE_WALL_HEIGHT (2 units). The
+# argument survives the difference because it never rested on them matching --
+# there is no jump and no step-up in this game, so a 1 m railing is exactly as
+# impassable as a 2 m one, and the outer lane is bounded either way. What DID
+# change is how it looks: the maze's outer lane now has a low rail beside it and
+# the interior has tall walls, which is either "the maze is built ON a bridge"
+# or "the outside wall is missing" depending on the eye. Worth a look next time
+# a maze comes up in play.
 #
 # Worth a lane, and worth more than a lane. At width 15 it is eight corridors
 # instead of seven, and the maze stops being a sealed box: the outer lanes have

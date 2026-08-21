@@ -4,9 +4,15 @@ extends "res://scripts/test_support/test_case.gd"
 #
 # The maze spends its outer columns on explicit WALL blocks, which costs a lane.
 # The alternative is to let the deck's own railing be that boundary: `has_wall`
-# already parapets any solid cell in the outermost column, and WALL_HEIGHT is 2.0
-# -- exactly the height a maze wall is. Same barrier, one more corridor, and the
-# maze reads as walls built ON a bridge rather than as a sealed box.
+# already parapets any solid cell in the outermost column. Same barrier, one more
+# corridor, and the maze reads as walls built ON a bridge rather than as a sealed
+# box.
+#
+# It used to say "and WALL_HEIGHT is 2.0 -- exactly the height a maze wall is".
+# It is 1.0 since 2026-08-20 and the argument is unaffected: there is no jump and
+# no step-up in this game, so a 1 m railing bounds a lane exactly as well as a 2 m
+# one. THE HEIGHT WAS NEVER WHAT THIS TEST MEASURED -- it walks a body down the
+# lane, which is the claim that matters and the one that does not care.
 #
 # THAT DESIGN RESTS ENTIRELY ON THIS BEING WALKABLE, and this repo has form for
 # the opposite. A flat-bottomed cylinder does not cross a 4 cm gap, it catches the

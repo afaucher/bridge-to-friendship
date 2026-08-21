@@ -186,19 +186,71 @@ func has_wall(x: int, z: int, dir: int) -> bool:
 	if kind_at(x, z) == GridConfig.Kind.RAMP:
 		return false
 	var step: Vector2i = GridConfig.DIR_CELLS[dir]
-	# Only the sides. The Z ends join the neighbouring segment, and walling them
-	# would seal every segment shut.
+	if step.x != 0:
+		# ACROSS THE BRIDGE. Walk outward: off the canvas is an edge.
+		var nx: int = x + step.x
+		while nx >= 0 and nx < width:
+			if kind_at(nx, z) != GridConfig.Kind.HOLE:
+				return false
+			nx += step.x
+		return true
+
+	# ALONG THE BRIDGE, and this used to return false outright.
 	#
-	# CHECKED RATHER THAN RELIED UPON, now that there is a loop below it. A Z step
-	# leaves x alone, so the old one-line version returned false for free -- and
-	# the walk would spin on the same column forever.
-	if step.x == 0:
+	# Reported from a playtest of M22's variable width: "walls for all exterior
+	# edges except where marked -- the always to the side thing looks funny". It
+	# did, and the reason is that a railing only ever ran across X while the deck's
+	# outline now steps in Z as well. Where an edge tapers, every step leaves an
+	# L-shaped corner with a rail down one face and nothing along the other, so the
+	# bridge came out fenced in dashes rather than following its own shape.
+	#
+	# THE ENDS OF THE SEGMENT STILL GET NOTHING, and that is the whole reason this
+	# was a blanket `false`: the Z ends join the neighbouring segment, and walling
+	# them seals every segment shut. Out of bounds in Z is that join. Out of bounds
+	# in X is the side of the bridge, which is why the branch above answers the
+	# opposite way to this one.
+	var nz: int = z + step.y
+	if nz < 0 or nz >= length:
 		return false
-	var nx: int = x + step.x
+
+	# THE RAILING FOLLOWS THE SIDE OF THE BRIDGE, AND ONLY THE SIDE.
+	#
+	# So a Z-facing rail exists only where this cell is ITSELF on an edge and the
+	# void ahead of it CONTINUES that same edge -- which is what a taper corner is,
+	# and is the whole of what was missing.
+	#
+	# The first version asked only "does the void ahead reach the side of the
+	# canvas", and measured on real content that is far too loose: a chasm ACROSS
+	# the bridge reaches the side trivially, by spanning it. It railed the front
+	# lip of every full-width gap -- 20 rails on piece_timed_crossing and 16 on
+	# piece_crumble_causeway, the two thinnest-bridge pieces in the library -- which
+	# turns a gap you may walk into off the front into a corridor you are funnelled
+	# down. That is a design change wearing a rendering fix, and those two pieces
+	# are the ones whose whole subject is a gap.
+	#
+	# Asking whether THIS cell is on the edge is what tells the two apart, and it
+	# costs one corner: where the bridge's side meets a chasm, the single cell at
+	# the join is railed, which is correct -- that IS the outline turning.
+	for side in [GridConfig.DIR_WEST, GridConfig.DIR_EAST]:
+		if has_wall(x, z, side) \
+				and _void_runs_off(x, nz, GridConfig.DIR_CELLS[side].x):
+			return true
+	return false
+
+# Does the void in this cell run off the canvas in ONE given lateral direction?
+#
+# The same walk the X branch does, asked of a cell one row away. Directional
+# rather than either-way on purpose: it has to be the SAME side the caller is
+# already railed on, or a chasm answers yes for a side the bridge does not have
+# an edge on.
+func _void_runs_off(x: int, z: int, dx: int) -> bool:
+	if dx == 0 or kind_at(x, z) != GridConfig.Kind.HOLE:
+		return false
+	var nx: int = x + dx
 	while nx >= 0 and nx < width:
 		if kind_at(nx, z) != GridConfig.Kind.HOLE:
 			return false
-		nx += step.x
+		nx += dx
 	return true
 
 # --- Parsing ------------------------------------------------------------------

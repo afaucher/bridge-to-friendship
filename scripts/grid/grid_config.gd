@@ -71,7 +71,22 @@ const DEFAULT_WIDTH := 21
 # is the situation the canvas bump exists to escape.
 const BASELINE_INSET := 3
 const DECK_THICKNESS := 1.0    # how far the deck slab hangs below its top face
-const WALL_HEIGHT := 2.0       # one cell -- contains plinko balls, blocks a walk-off
+# A RAILING, NOT A WALL (2026-08-20, from a playtest of M22's variable width:
+# "it might visually read better with half height walls").
+#
+# It was 2.0 -- a whole cell -- and the player is 1.8 m tall, so the bridge was
+# fenced by something you cannot see over. That reads as a trench rather than as
+# a structure in the air, and the effect got louder the moment the deck started
+# changing width, because the railing is what draws the outline. At 1.0 it is
+# waist-high on a 1.8 m body: still stops a walk-off (there is no jump in this
+# game and no step-up), and now the drop past it is visible, which is what makes
+# a narrow section read as narrow.
+#
+# THE OLD NUMBER WAS CHOSEN FOR CONTAINMENT, NOT FOR LOOKS -- its comment said
+# "contains plinko balls, blocks a walk-off". Deliberately NOT gated: a ball that
+# escapes over a low rail and rolls off the bridge is a fine thing to happen, and
+# writing a test that pins containment would make it a rule nobody agreed to.
+const WALL_HEIGHT := 1.0
 const WALL_THICKNESS := 0.3
 
 # --- Cell kinds ---------------------------------------------------------------

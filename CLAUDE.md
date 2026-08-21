@@ -494,6 +494,25 @@ the moment it is written.
   property you just computed is not in the output, find every later line that
   writes the same field** -- the culprit was correct when it was written and
   nobody touched it.
+- **WHEN A RULE GAINS A NEW AXIS, THE INSTRUMENT THAT WATCHES IT IS STILL ON THE
+  OLD ONE.** Observed 2026-08-20 adding parapets along Z as well as across X. The
+  test that diffs the old parapet rule against the new one over every authored
+  file walked `[DIR_WEST, DIR_EAST]` -- so it was structurally incapable of
+  seeing the direction that had just been added, and reported the change as
+  clean. It was measuring the half of the rule that had not moved. Extended to
+  all four directions it named a real bug in one run. **A report written for the
+  old shape of a thing does not fail when the thing changes shape; it just stops
+  covering it** -- so when you widen what a rule can DO, widen what the report
+  ITERATES before believing the number.
+  The bug it found is worth its own line, because the loose version looked
+  perfectly reasonable: "is the void beyond this cell open to the side of the
+  canvas" seems like a fine definition of an exterior edge, and **a chasm ACROSS
+  the bridge satisfies it trivially, by SPANNING the bridge.** So the front lip of
+  every full-width gap grew a railing -- 20 of them on `piece_timed_crossing`, 16
+  on `piece_crumble_causeway`, the two pieces whose entire subject is a gap -- and
+  a gap you may walk off the front of quietly became a corridor you are funnelled
+  down. **A geometric predicate that is true for the case you meant is not
+  evidence; find the case where it is true for the WRONG reason.**
 - **A SOLVER THAT FINDS THE LARGEST PROFILE THAT FITS WILL ALWAYS PICK THE
   STEEPEST SLOPE, AND THAT IS NOT A BUG IN IT.** Observed 2026-08-20, asked to
   make the bridge's width change gradually. The generator rolled flat setback
