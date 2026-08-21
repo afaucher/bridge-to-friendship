@@ -58,11 +58,16 @@ const COLOR_HEAD := Color(0.45, 0.85, 1.0)
 # The slots, as a table rather than as code. debug_console.gd's whole shape, and
 # for its reason: the three unbuilt rows below become real by gaining a control,
 # not by anyone editing the layout.
+# ONLY THE ROWS THAT ARE ACTUALLY A CHOICE.
+#
+# The nose and the eyes used to be listed here with a line each explaining that
+# they are not selectable, which is a screen explaining itself instead of being
+# obvious. A control you cannot operate is not information, it is furniture --
+# and the same goes for the captions under the two real rows, which described
+# mechanics (saved when, applied when) that the player finds out by using them.
 const SLOTS := [
-	{"key": "colour", "label": "Colour", "state": "saved -- takes effect next time you play"},
-	{"key": "nose", "label": "Nose", "state": "Beak -- the only shape so far"},
-	{"key": "eyes", "label": "Eyes", "state": "everybody gets a pair -- yours are yours"},
-	{"key": "accessory", "label": "Accessory", "state": "one at a time, or none"},
+	{"key": "colour", "label": "Colour"},
+	{"key": "accessory", "label": "Accessory"},
 ]
 
 var _root: Control = null
@@ -213,7 +218,6 @@ func _build_controls() -> Control:
 	rows.custom_minimum_size = Vector2(340, 0)
 
 	rows.add_child(_label("CHARACTER", 16, COLOR_HEAD))
-	rows.add_child(_label("Nothing here is saved yet -- this screen previews\nwhat the customization system will drive.", 12, COLOR_DIM))
 
 	for slot in SLOTS:
 		rows.add_child(_row(slot))
@@ -229,20 +233,17 @@ func _build_controls() -> Control:
 	return rows
 
 func _row(slot: Dictionary) -> Control:
-	var row := VBoxContainer.new()
-	row.add_theme_constant_override("separation", 3)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
 
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 10)
+	var head := row
 	var name_label := _label(str(slot.get("label", "")), 13, COLOR_TEXT)
 	name_label.custom_minimum_size = Vector2(96, 0)
 	head.add_child(name_label)
 
-	# ONE BRANCH PER SLOT THAT HAS A CONTROL, and a label for the ones that do
-	# not. An unbuilt slot is shown rather than hidden: a screen that lists what
-	# is coming is a screen somebody can tell you is missing something.
+	# ONE BRANCH PER SLOT, and every slot in the table has a control -- the ones
+	# that were only ever a caption are gone.
 	var key: String = str(slot.get("key", ""))
-	var has_control: bool = false
 	match key:
 		"colour":
 			var picker := ColorPickerButton.new()
@@ -250,7 +251,6 @@ func _row(slot: Dictionary) -> Control:
 			picker.color = _body_colour
 			picker.color_changed.connect(_on_colour_chosen)
 			head.add_child(picker)
-			has_control = true
 		"accessory":
 			# BUILT FROM CharacterStyle.ACCESSORIES, never from a list written out
 			# again here. A second copy of the catalogue is a second thing to keep
@@ -264,13 +264,6 @@ func _row(slot: Dictionary) -> Control:
 					choices.select(i)
 			choices.item_selected.connect(_on_accessory_chosen)
 			head.add_child(choices)
-			has_control = true
-		_:
-			head.add_child(_label(str(slot.get("state", "")), 12, COLOR_DIM))
-
-	row.add_child(head)
-	if has_control:
-		row.add_child(_label(str(slot.get("state", "")), 11, COLOR_DIM))
 	return row
 
 func _label(text: String, size: int, colour: Color) -> Label:

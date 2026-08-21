@@ -1221,16 +1221,19 @@ func _apply_accessory(kind: String, body_colour: Color) -> void:
 		var piece := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
 		cone.bottom_radius = float(part["radius"])
-		# A POINT AT THE TOP. Horns and antlers taper; so does a tail.
-		cone.top_radius = 0.0
+		# A POINT unless the part names a tip, which the tail's segments do so
+		# each one's end matches the next one's start. Without that a chained tail
+		# is five separate spikes rather than one tapering curve.
+		cone.top_radius = float(part.get("tip", 0.0))
 		cone.height = float(part["length"])
 		piece.mesh = cone
 		piece.material_override = material
-		# EULER DEGREES, NOT A HAND-WRITTEN BASIS. Godot builds the matrix, which
-		# is the one way this project has repeatedly got wrong by hand -- three
-		# sign errors, the most recent on the beak in this same feature.
+		# AIMED BY DIRECTION, NOT BY EULER ANGLES. See CharacterStyle.aim_basis --
+		# a part that sweeps out and up and back needs two composed rotations, and
+		# composing Euler angles by hand is what this project has shipped
+		# backwards three times.
 		piece.position = part["pos"]
-		piece.rotation_degrees = part["rot"]
+		piece.basis = CharacterStyle.aim_basis(part["dir"])
 		root.add_child(piece)
 
 # --- Ledges -------------------------------------------------------------------

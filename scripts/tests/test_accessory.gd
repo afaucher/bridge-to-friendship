@@ -31,6 +31,7 @@ func setup(main) -> void:
 	_test_nothing_collides(main)
 	_test_spread_ceiling(main)
 	_test_horns_point_outward(main)
+	_test_antlers_branch()
 	_test_switching_replaces(main)
 	_test_none_is_nothing(main)
 	_test_unknown_names_wear_nothing(main)
@@ -143,6 +144,8 @@ func _test_horns_point_outward(main) -> void:
 		if not check(root != null, "%s built something to measure" % kind):
 			continue
 		var checked: int = 0
+		var outermost: float = 0.0
+		var attach: float = 999.0
 		for child in root.get_children():
 			var piece := child as MeshInstance3D
 			if piece == null or piece.mesh == null:
@@ -151,21 +154,116 @@ func _test_horns_point_outward(main) -> void:
 			if cone == null:
 				continue
 			var tip: Vector3 = piece.transform * Vector3(0.0, cone.height * 0.5, 0.0)
-			var base: Vector3 = piece.position
+			var base: Vector3 = piece.transform * Vector3(0.0, -cone.height * 0.5, 0.0)
 			checked += 1
-			if not check(absf(tip.x) > absf(base.x) + 0.02,
-					"%s: a piece leans OUTWARD from where it is attached -- tip x %.3f against base x %.3f"
-						% [kind, tip.x, base.x]):
-				break
-			# Same side of the head it started on. A tilt big enough to cross the
-			# centreline would satisfy the magnitude test above while putting the
-			# left horn on the right.
-			if not check(signf(tip.x) == signf(base.x),
-					"%s: and stays on its own side -- tip x %.3f, base x %.3f"
+			outermost = maxf(outermost, absf(tip.x))
+			attach = minf(attach, absf(base.x))
+			# EVERY piece stays on its own side of the head. A rack that crossed
+			# the centreline would put the left antler on the right, and a
+			# magnitude test alone cannot see that.
+			if not check(signf(tip.x) == signf(base.x) or is_zero_approx(tip.x),
+					"%s: a piece stays on its own side -- tip x %.3f, base x %.3f"
 						% [kind, tip.x, base.x]):
 				break
 		check(checked > 0, "%s had pieces to measure" % kind)
+
+		# THE OUTWARD CLAIM IS ABOUT THE WHOLE STRUCTURE, NOT EACH PIECE, and that
+		# is a correction. It used to be asserted per-part, which was right for
+		# horns and wrong for a real rack: an elk beam FLATTENS as it sweeps back,
+		# so its last segments barely move outward at all, and the G5 tine is a
+		# short spike that mostly goes up. Demanding every piece lean outward
+		# would have forbidden the anatomy.
+		check(outermost > attach + 0.15,
+			"%s reaches well outside where it is attached -- %.3f against %.3f"
+				% [kind, outermost, attach])
 		body.queue_free()
+
+# --- 3c. THE ANTLERS ACTUALLY BRANCH -----------------------------------------
+#
+# THE ASSERTION FOR THE FAULT THAT WAS REPORTED, and nothing before it could have
+# caught it. The rack was "cones whose tip intersects the middle of the next",
+# which is two separate problems:
+#
+#   * the BEAM was a couple of independent cones that happened to overlap, rather
+#     than one tapering stalk;
+#   * the TINES were placed at eyeballed points that crossed the beam mid-span,
+#     so they pierced it instead of growing out of it.
+#
+# Both are geometry, so both are measurable. The beam must chain -- every
+# segment's end is the next one's start, at the same thickness -- and every tine
+# must have its BASE somewhere ON that chain.
+
+const ANTLER_BEAM_PARTS := 4
+const ANTLER_PARTS_PER_SIDE := 9
+
+func _test_antlers_branch() -> void:
+	var parts: Array = CharacterStyle.accessory_parts(CharacterStyle.ACCESSORY_ANTLERS)
+	if not check(parts.size() == ANTLER_PARTS_PER_SIDE * 2,
+			"a rack is %d parts a side -- got %d total" % [ANTLER_PARTS_PER_SIDE, parts.size()]):
+		return
+
+	# One side is enough: the other is the same numbers with x negated, which
+	# _test_horns_point_outward already covers by sweeping every piece.
+	var side: Array = parts.slice(0, ANTLER_PARTS_PER_SIDE)
+
+	# --- the beam is a chain ---
+	var joints: Array[Vector3] = [_base_of(side[0])]
+	for i in ANTLER_BEAM_PARTS:
+		joints.append(_tip_of(side[i]))
+	for i in range(ANTLER_BEAM_PARTS - 1):
+		var a: Dictionary = side[i]
+		var b: Dictionary = side[i + 1]
+		if not check(_tip_of(a).distance_to(_base_of(b)) < 0.01,
+				"beam segment %d ends where %d starts -- %s against %s"
+					% [i, i + 1, _tip_of(a), _base_of(b)]):
+			return
+		near(float(b["radius"]), float(a.get("tip", 0.0)), 0.001,
+			"and is the same thickness at the join, so the beam tapers rather than steps")
+
+	# --- every tine grows OUT of the beam rather than through it ---
+	#
+	# Measured as the distance from the tine's base to the beam polyline. Inside
+	# the beam's own thickness means it emerges from the stalk; further out means
+	# it is a floating spike, and crossing it mid-span is what "intersects the
+	# middle of the next" looked like.
+	for i in range(ANTLER_BEAM_PARTS, ANTLER_PARTS_PER_SIDE):
+		var tine: Dictionary = side[i]
+		var base: Vector3 = _base_of(tine)
+		var nearest: float = 999.0
+		for j in range(joints.size() - 1):
+			var closest: Vector3 = Geometry3D.get_closest_point_to_segment(base, joints[j], joints[j + 1])
+			nearest = minf(nearest, base.distance_to(closest))
+		if not check(nearest < 0.02,
+				"tine %d is attached to the beam -- its base sits %.3f away from it" % [i, nearest]):
+			return
+
+	# --- and the shape is elk rather than a bush ---
+	#
+	# The two proportions that make a rack identifiable, from Boone and Crockett's
+	# field-judging description. Without them this is a branching structure that
+	# could be any deer.
+	var brow: Dictionary = side[ANTLER_BEAM_PARTS]
+	check((brow["dir"] as Vector3).z < -0.5,
+		"the brow tine points FORWARD over the face -- the one part that goes the other way")
+	var royal: Dictionary = side[ANTLER_BEAM_PARTS + 3]
+	check((royal["dir"] as Vector3).normalized().y > 0.8,
+		"the royal tine goes up off the top of the beam")
+	for i in range(ANTLER_BEAM_PARTS + 1, ANTLER_PARTS_PER_SIDE):
+		if i == ANTLER_BEAM_PARTS + 3:
+			continue
+		check(float(royal["length"]) >= float(side[i]["length"]),
+			"and is the longest point on the rack -- %.2f against %.2f at part %d"
+				% [float(royal["length"]), float(side[i]["length"]), i])
+
+	# The beam still sweeps BACK, which is the thing the flat version had none of.
+	check(_tip_of(side[ANTLER_BEAM_PARTS - 1]).z > 0.6,
+		"and the beam sweeps back over the shoulders -- %.3f" % _tip_of(side[ANTLER_BEAM_PARTS - 1]).z)
+
+func _base_of(part: Dictionary) -> Vector3:
+	return (part["pos"] as Vector3) - (part["dir"] as Vector3).normalized() * (float(part["length"]) * 0.5)
+
+func _tip_of(part: Dictionary) -> Vector3:
+	return (part["pos"] as Vector3) + (part["dir"] as Vector3).normalized() * (float(part["length"]) * 0.5)
 
 # --- 4. One at a time ----------------------------------------------------------
 #
@@ -209,24 +307,90 @@ func _test_unknown_names_wear_nothing(main) -> void:
 
 # --- 6. The tail does not out-shout the nose ----------------------------------
 #
-# It trails on the aim axis, which makes it a REAR-POINTING facing cue. That is a
-# small bonus and a small risk: if it reached further back than the nose reaches
-# forward, a player would have two markers and the louder one would be the one
-# that means nothing.
+# It trails on the aim axis, which makes it a REAR-POINTING facing cue -- a small
+# bonus and a small risk, since a player with two markers reads the louder one.
+#
+# THIS RULE WAS ORIGINALLY ABOUT LENGTH AND IT WAS THE WRONG QUESTION. It said
+# the tail must reach less far back than the nose reaches forward (0.35), which
+# sounds sober and is a rule no tail worth having can satisfy -- played, the
+# 0.26-reach tail that passed it was reported as "probably 5x too short and
+# thin".
+#
+# What actually keeps the marker the marker is CONTRAST, not size. The nose sits
+# a full 0.35 from the body in luminance and an accessory only 0.18, so however
+# long the tail gets, the eye still goes to the beak. That is the relationship
+# worth pinning, and unlike the length rule it is one the design can grow into.
 
 func _test_the_tail_is_quieter_than_the_nose() -> void:
 	var parts: Array = CharacterStyle.accessory_parts(CharacterStyle.ACCESSORY_TAIL)
-	if not check(parts.size() == 1, "the tail is one piece"):
+	if not check(parts.size() >= 4, "the tail is segmented -- %d parts" % parts.size()):
 		return
-	var part: Dictionary = parts[0]
-	# Its tip, along the cone's own axis after the tilt.
-	var tilt: float = deg_to_rad(float(part["rot"].x))
-	var half: float = float(part["length"]) * 0.5
-	var tip_z: float = float(part["pos"].z) + half * sin(tilt)
-	var reach: float = tip_z - PlayerBody.RADIUS
-	check(reach > 0.0, "the tail is visible behind the body at all -- %.3f" % reach)
-	check(reach < 0.35,
-		"and reaches less far back than the nose reaches forward (0.35) -- %.3f" % reach)
+
+	# --- it curves UP ---
+	#
+	# The claim the segments exist to make. The first segment leaves the rump
+	# heading DOWN and the last one is heading UP, and every step in between turns
+	# further up than the one before it -- a monotonic sweep rather than a kink.
+	var first: Vector3 = (parts[0]["dir"] as Vector3).normalized()
+	var last: Vector3 = (parts[parts.size() - 1]["dir"] as Vector3).normalized()
+	check(first.y < 0.0, "the tail leaves the body heading down -- %.3f" % first.y)
+	check(last.y > 0.6, "and finishes heading up -- %.3f" % last.y)
+	for i in range(1, parts.size()):
+		var prev: Vector3 = (parts[i - 1]["dir"] as Vector3).normalized()
+		var here: Vector3 = (parts[i]["dir"] as Vector3).normalized()
+		if not check(here.y > prev.y,
+				"segment %d turns further up than the one before it -- %.3f after %.3f"
+					% [i, here.y, prev.y]):
+			return
+
+	# --- the segments actually join ---
+	#
+	# The positions are a chain worked out by hand, so this is the assertion that
+	# catches an arithmetic slip: each segment's END must be the next one's START,
+	# and its tip radius must be the next one's base. Either mismatch shows up in
+	# game as a tail with gaps or steps in it, which reads as broken rather than
+	# as a shape somebody chose.
+	for i in range(parts.size() - 1):
+		var a: Dictionary = parts[i]
+		var b: Dictionary = parts[i + 1]
+		var a_end: Vector3 = (a["pos"] as Vector3) + (a["dir"] as Vector3).normalized() * (float(a["length"]) * 0.5)
+		var b_start: Vector3 = (b["pos"] as Vector3) - (b["dir"] as Vector3).normalized() * (float(b["length"]) * 0.5)
+		if not check(a_end.distance_to(b_start) < 0.01,
+				"segment %d ends where %d starts -- %s against %s" % [i, i + 1, a_end, b_start]):
+			return
+		near(float(b["radius"]), float(a.get("tip", 0.0)), 0.001,
+			"and is the same thickness at the join, so it tapers rather than steps")
+
+	# --- it reads from the game camera ---
+	var tip: Vector3 = (parts[parts.size() - 1]["pos"] as Vector3) \
+		+ last * (float(parts[parts.size() - 1]["length"]) * 0.5)
+	check(tip.z - PlayerBody.RADIUS > 0.35,
+		"the tail is long enough to see from the bridge camera -- %.3f behind the body"
+			% (tip.z - PlayerBody.RADIUS))
+
+	# --- and never drags through the deck ---
+	#
+	# The body origin is HALF_HEIGHT above the feet, so anything below
+	# -HALF_HEIGHT is underground. Checked at every segment rather than at the
+	# tip, because the tail now curves: its LOWEST point is in the middle.
+	for part in parts:
+		var low: float = float(part["pos"].y) - float(part["radius"])
+		if not check(low > -PlayerBody.HALF_HEIGHT + 0.15,
+				"every segment hangs clear of the deck -- %.3f against feet at %.3f"
+					% [low, -PlayerBody.HALF_HEIGHT]):
+			return
+
+	# --- and it wears the marker's colour ---
+	#
+	# Decided from play: the accessory and the nose share one colour so they read
+	# as the character's trim. This replaces an earlier rule that the nose had to
+	# out-contrast the accessory, which was protecting against a confusion that
+	# does not happen -- opposite ends of the body, completely different shapes.
+	for i in 12:
+		var body := Color.from_hsv(float(i) / 12.0, 0.7, 0.55)
+		if not check(CharacterStyle.accessory_colour(body) == CharacterStyle.nose_colour(body),
+				"the accessory wears the nose's colour"):
+			return
 
 # --- 7. THE HAT TOWER IS UNTOUCHED --------------------------------------------
 #

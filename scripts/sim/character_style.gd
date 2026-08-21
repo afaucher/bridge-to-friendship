@@ -115,21 +115,48 @@ static func to_luminance(colour: Color, target: float) -> Color:
 # nobody does.
 const ASYMMETRY_CHANCE := 0.35
 
-const EYE_SIZE_MIN := 0.038
-const EYE_SIZE_MAX := 0.055
+# SIZED FOR THE GAME CAMERA, NOT FOR THE PREVIEW (corrected 2026-08-20 from play).
+#
+# The first version of these numbers was five times smaller, and every one of
+# them was wrong for the same reason: they were chosen against the character
+# screen, where the camera is three metres away at eye level. The game is read
+# from a camera framing 60 m of bridge, and at that zoom a 4 cm eye is nothing.
+#
+# THIS ALSO REVERSES A RULE THIS FEATURE WAS DESIGNED AROUND. The design doc said
+# eyes must stay "small enough to lose at range, deliberately", so they could not
+# compete with the nose for the facing channel. Played, that was wrong twice
+# over: they were lost at every range including the preview, and eyes do not
+# compete with the marker anyway -- a symmetric pair says "this is the front" and
+# an asymmetric wedge says "this way", and the two AGREE. The channel they were
+# supposed to be protecting is not one they take from.
+const EYE_SIZE_MIN := 0.19
+const EYE_SIZE_MAX := 0.215
 
-# How far apart, and how high up the face. The body is a cylinder of radius 0.4
-# whose origin is its centre, and the nose sits at y = 0.35 -- so these put the
-# eyes above the marker without crowding the top of the head.
-const EYE_SPREAD_MIN := 0.10
-const EYE_SPREAD_MAX := 0.145
-const EYE_HEIGHT_MIN := 0.50
-const EYE_HEIGHT_MAX := 0.60
+# SPREAD IS DERIVED FROM SIZE, not drawn on its own.
+#
+# It used to be an independent knob, which was survivable while eyes were tiny
+# and is not now: an independent small spread with an independent large size is
+# one merged blob where a face should be. Deriving it makes the relationship hold
+# at every size rather than only where the two ranges happen to agree.
+#
+# THE CEILING IS LOW ON PURPOSE, AND THAT IS A GEOMETRY CONSTRAINT RATHER THAN A
+# TASTE ONE. The eyes sit on the surface of a cylinder of radius 0.4, so pushing
+# them further apart does not move them sideways across a face -- it walks them
+# AROUND THE HEAD. At a spread of 0.30 the surface has already turned to
+# z = -0.265, and an eye there is on the side of the skull looking outward. Just
+# touching at the front reads as a face; further apart reads as a hammerhead.
+const EYE_SPREAD_FACTOR_MIN := 1.00
+const EYE_SPREAD_FACTOR_MAX := 1.15
 
-# How much an asymmetric eye differs. Small: the intent is "something is slightly
-# wrong with that one", not a joke shop.
+# How high up the face. Raised with the size: an eye of radius 0.22 centred at
+# 0.55 reaches down to 0.33, and the nose occupies 0.20 to 0.50.
+const EYE_HEIGHT_MIN := 0.55
+const EYE_HEIGHT_MAX := 0.64
+
+# How much an asymmetric eye differs. Scaled up with everything else -- a fixed
+# offset that read as a wonky eye at 4 cm is invisible at 20 cm.
 const ASYM_SIZE := 0.45          # as a fraction of the base size
-const ASYM_HEIGHT := 0.055       # metres up or down
+const ASYM_HEIGHT := 0.10        # metres up or down
 
 # The same well-known integer mixer hat_style.gd and segment_pool.gd use, and for
 # the same reason: NOT the global RNG, which is entropy-seeded per launch and
@@ -157,7 +184,9 @@ static func random_character_seed() -> int:
 # you look at them, +Y is up, and -Z is forward.
 static func eye_knobs(character_seed: int) -> Dictionary:
 	var size: float = EYE_SIZE_MIN + (EYE_SIZE_MAX - EYE_SIZE_MIN) * _draw(character_seed, 1)
-	var spread: float = EYE_SPREAD_MIN + (EYE_SPREAD_MAX - EYE_SPREAD_MIN) * _draw(character_seed, 2)
+	var factor: float = EYE_SPREAD_FACTOR_MIN \
+		+ (EYE_SPREAD_FACTOR_MAX - EYE_SPREAD_FACTOR_MIN) * _draw(character_seed, 2)
+	var spread: float = size * factor
 	var height: float = EYE_HEIGHT_MIN + (EYE_HEIGHT_MAX - EYE_HEIGHT_MIN) * _draw(character_seed, 3)
 
 	var left := {"size": size, "x": spread, "y": height}
@@ -222,71 +251,158 @@ const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS, ACCESS
 # Contract rule 1 in art_direction.md: silhouette carries identity, and the
 # identity being carried is "that is a player, not a hazard". Measured as a
 # half-width from the centreline, against a body of radius 0.4.
-const ACCESSORY_SPREAD_MAX := 0.45
-
-# How far the accessory sits from the body in luminance. SUBTLER THAN THE NOSE'S
-# 0.35 on purpose -- a marker has to be found, an accessory only has to be seen,
-# and one that shouted would compete with the thing the dash depends on.
-const ACCESSORY_LUMA_GAP := 0.18
-
-# What horns are made of, before the body's colour is mixed into them.
-const ACCESSORY_BONE := Color(0.84, 0.80, 0.70)
-
-# An accessory's colour, derived from the body like the nose is.
 #
-# It could have been a flat constant the way the eyes are, and the reason it is
-# not is that eyes carry their own contrast in a pair -- a pale ring around a
-# dark dot reads on anything -- while a horn is one solid shape. A bone-coloured
-# horn on a bone-coloured player is a horn nobody can see, and unlike the nose
-# that is a disappointment rather than a bug, which is exactly why it would never
-# have been caught.
+# RAISED FROM 0.45 TO 0.85 (2026-08-20, from play). The old ceiling was a
+# speculative number that had never been looked at, and under it the horns were
+# invisible and the antlers were "tiny". A budget nothing can be seen inside is
+# not protecting the silhouette, it is preventing the feature -- and the
+# silhouette rule was always about staying recognisable as a player, which a
+# cylinder with a rack on it still is. The ceiling stays because a runaway is
+# still worth catching; only the number moved.
+const ACCESSORY_SPREAD_MAX := 0.85
+
+# THE ACCESSORY WEARS THE NOSE'S COLOUR (decided 2026-08-20, from play).
+#
+# It used to have a derived colour of its own, sitting a subtler 0.18 from the
+# body so the marker would stay the loudest thing on the player. Looked at, that
+# was a rule protecting against a problem that is not there: the nose and the
+# accessory are at opposite ends of the body and completely different shapes, so
+# nobody confuses a tail for a beak -- and giving them one shared colour makes
+# them read as the character's TRIM, which is a better answer than either being
+# quietly different.
+#
+# Kept as a function rather than inlined at the two call sites, so this stays one
+# decision in one place if it ever moves back.
 static func accessory_colour(body: Color) -> Color:
-	var tinted: Color = body.lerp(ACCESSORY_BONE, 0.4)
-	var l: float = luminance(body)
-	var target: float = l - ACCESSORY_LUMA_GAP if l > 0.4 else l + ACCESSORY_LUMA_GAP
-	return to_luminance(tinted, target)
+	return nose_colour(body)
+
+# Aim a part's +Y axis along an arbitrary direction.
+#
+# A DIRECTION VECTOR RATHER THAN EULER ANGLES, and that is the third time this
+# feature has run into the same wall. A part that has to sweep out AND up AND
+# back needs two composed rotations, and composing Euler angles means knowing
+# Godot's application order -- which is exactly the class of thing this project
+# has shipped backwards three times (a bullet tail, a muzzle offset, and the beak
+# earlier in this very feature).
+#
+# Naming the direction removes the question. "Out, up and back" is
+# `Vector3(0.35, 0.55, 0.76)`, which is readable, reviewable, and impossible to
+# get subtly transposed.
+static func aim_basis(direction: Vector3) -> Basis:
+	var y_axis: Vector3 = direction.normalized()
+	# Any reference not parallel to the aim. Swapped near the poles because a
+	# cross product with something parallel is the zero vector, and a basis built
+	# from that is garbage rather than an error.
+	var reference: Vector3 = Vector3.FORWARD if absf(y_axis.z) < 0.9 else Vector3.RIGHT
+	var x_axis: Vector3 = reference.cross(y_axis).normalized()
+	var z_axis: Vector3 = x_axis.cross(y_axis)
+	return Basis(x_axis, y_axis, z_axis)
 
 # The primitives that make up one accessory, in the FACING pivot's space.
 #
 # DATA RATHER THAN CODE, so a test can measure the design instead of the drawing.
-# Each part is a cone: an origin, a tilt in degrees, a base radius and a length.
-# `rot` is applied as Euler degrees by the builder rather than as a hand-written
-# Basis -- CLAUDE.md has paid three times for those nine numbers, most recently
-# on the beak in this same feature.
+# Each part is a tapered cylinder: a CENTRE, a direction its length runs along, a
+# base radius, an optional tip radius (0 makes a point), and a length.
 #
-# A cone's axis is +Y in its own space and its tip is at +length/2, so a tilt
-# about Z swings it sideways and a tilt about X swings it backwards.
+# Remember the axes: -Z is forward, +Z is back, +X is the character's left as you
+# look at them.
 static func accessory_parts(kind: String) -> Array:
 	match kind:
 		ACCESSORY_HORNS:
-			# Short, thick, and curving OUT rather than up. The vertical column
-			# above the head belongs to hats; see the note on the hat mount.
+			# THICK AND LONG ENOUGH TO SEE FROM THE BRIDGE CAMERA. The first
+			# version was 0.075 x 0.34 and the report was "I can't see the horns
+			# at all" -- sized against the preview, invisible in the game.
+			#
+			# Mounted at y = 0.62, on the SIDE of the head rather than the top,
+			# sweeping out and slightly back. The vertical column above the head
+			# belongs to hats.
 			return [
-				{"pos": Vector3(0.26, 0.72, 0.0), "rot": Vector3(0.0, 0.0, -38.0), "radius": 0.075, "length": 0.34},
-				{"pos": Vector3(-0.26, 0.72, 0.0), "rot": Vector3(0.0, 0.0, 38.0), "radius": 0.075, "length": 0.34},
+				{"pos": Vector3(0.34, 0.62, 0.0), "dir": Vector3(0.62, 0.72, 0.31), "radius": 0.15, "length": 0.80},
+				{"pos": Vector3(-0.34, 0.62, 0.0), "dir": Vector3(-0.62, 0.72, 0.31), "radius": 0.15, "length": 0.80},
 			]
 		ACCESSORY_ANTLERS:
-			# A beam and two tines a side. THE VARIANT THAT TESTS THE SPREAD
-			# CEILING -- it is visible from above precisely because it splays,
-			# which is the point and the risk in one property.
+			# ELK, and the fourth attempt. The previous three failed in order: they
+			# grew out of the crown, then splayed flat sideways in one plane, then
+			# read as "cones whose tip intersects the middle of the next" rather
+			# than as branching. That last note is the useful one, and it names two
+			# separate faults.
+			#
+			# FAULT ONE: THE BEAM WAS NOT CONTINUOUS. It was two cones that each
+			# tapered to a point and happened to overlap. A beam is one tapering
+			# stalk, so it is built the way the tail is -- a CHAIN, where every
+			# segment's end is the next one's start and its tip radius is the next
+			# one's base radius.
+			#
+			# FAULT TWO: THE TINES WERE NOT ATTACHED TO ANYTHING. They were placed
+			# at eyeballed points that happened to cross the beam mid-span, which
+			# is what "intersects the middle" means and why it read as a bundle
+			# rather than a branch. Every tine below STARTS AT A JOINT of the beam
+			# chain, so it emerges from the stalk instead of piercing it.
+			#
+			# The layout follows a 6x6 bull (Boone and Crockett's field-judging
+			# description). The proportions are what make it read as elk rather
+			# than as a generic branch, and the surprising one is the brow:
+			#
+			#   beam   up and slightly back, CURVING REARWARD -- on a real bull it
+			#          reaches as far back as the haunches
+			#   G1     the brow tine, projecting FORWARD over the face. The one
+			#          part that points opposite to everything else, and the single
+			#          most identifiable thing about an elk rack
+			#   G2/G3  the bez and trez, off the SIDE of the beam, forward and out
+			#   G4     the royal or dagger -- UP off the top of the beam, and the
+			#          LONGEST point on the animal
+			#   G5     up and behind the dagger, and much shorter
+			#
+			# Nine parts a side: four beam segments and five tines.
 			return [
-				{"pos": Vector3(0.22, 0.80, 0.0), "rot": Vector3(0.0, 0.0, -30.0), "radius": 0.035, "length": 0.42},
-				{"pos": Vector3(0.32, 0.95, 0.0), "rot": Vector3(0.0, 0.0, -55.0), "radius": 0.022, "length": 0.20},
-				{"pos": Vector3(0.28, 0.86, 0.0), "rot": Vector3(0.0, 0.0, -70.0), "radius": 0.020, "length": 0.16},
-				{"pos": Vector3(-0.22, 0.80, 0.0), "rot": Vector3(0.0, 0.0, 30.0), "radius": 0.035, "length": 0.42},
-				{"pos": Vector3(-0.32, 0.95, 0.0), "rot": Vector3(0.0, 0.0, 55.0), "radius": 0.022, "length": 0.20},
-				{"pos": Vector3(-0.28, 0.86, 0.0), "rot": Vector3(0.0, 0.0, 70.0), "radius": 0.020, "length": 0.16},
+				# --- main beam: a chain, curving from up-and-out to nearly
+				# horizontal as it sweeps back over the shoulders ---
+				{"pos": Vector3(0.265, 0.920, 0.076), "dir": Vector3(0.32, 0.86, 0.40), "radius": 0.075, "tip": 0.062, "length": 0.28},
+				{"pos": Vector3(0.345, 1.115, 0.239), "dir": Vector3(0.26, 0.55, 0.79), "radius": 0.062, "tip": 0.052, "length": 0.27},
+				{"pos": Vector3(0.403, 1.228, 0.468), "dir": Vector3(0.18, 0.30, 0.94), "radius": 0.052, "tip": 0.042, "length": 0.26},
+				{"pos": Vector3(0.443, 1.282, 0.713), "dir": Vector3(0.13, 0.12, 0.98), "radius": 0.042, "tip": 0.028, "length": 0.25},
+				# --- G1 brow: forward, over the face ---
+				{"pos": Vector3(0.269, 0.878, -0.099), "dir": Vector3(0.18, 0.12, -0.98), "radius": 0.045, "length": 0.30},
+				# --- G2 bez and G3 trez: off the side, forward and out ---
+				{"pos": Vector3(0.378, 1.072, 0.032), "dir": Vector3(0.55, 0.25, -0.80), "radius": 0.038, "length": 0.25},
+				{"pos": Vector3(0.445, 1.242, 0.253), "dir": Vector3(0.52, 0.42, -0.74), "radius": 0.036, "length": 0.25},
+				# --- G4 royal: up off the beam, the longest point ---
+				{"pos": Vector3(0.460, 1.410, 0.623), "dir": Vector3(0.22, 0.95, 0.22), "radius": 0.042, "length": 0.30},
+				# --- G5: up and behind the royal, short ---
+				{"pos": Vector3(0.474, 1.371, 0.864), "dir": Vector3(0.18, 0.92, 0.35), "radius": 0.030, "length": 0.16},
+				{"pos": Vector3(-0.265, 0.920, 0.076), "dir": Vector3(-0.32, 0.86, 0.40), "radius": 0.075, "tip": 0.062, "length": 0.28},
+				{"pos": Vector3(-0.345, 1.115, 0.239), "dir": Vector3(-0.26, 0.55, 0.79), "radius": 0.062, "tip": 0.052, "length": 0.27},
+				{"pos": Vector3(-0.403, 1.228, 0.468), "dir": Vector3(-0.18, 0.30, 0.94), "radius": 0.052, "tip": 0.042, "length": 0.26},
+				{"pos": Vector3(-0.443, 1.282, 0.713), "dir": Vector3(-0.13, 0.12, 0.98), "radius": 0.042, "tip": 0.028, "length": 0.25},
+				{"pos": Vector3(-0.269, 0.878, -0.099), "dir": Vector3(-0.18, 0.12, -0.98), "radius": 0.045, "length": 0.30},
+				{"pos": Vector3(-0.378, 1.072, 0.032), "dir": Vector3(-0.55, 0.25, -0.80), "radius": 0.038, "length": 0.25},
+				{"pos": Vector3(-0.445, 1.242, 0.253), "dir": Vector3(-0.52, 0.42, -0.74), "radius": 0.036, "length": 0.25},
+				{"pos": Vector3(-0.460, 1.410, 0.623), "dir": Vector3(-0.22, 0.95, 0.22), "radius": 0.042, "length": 0.30},
+				{"pos": Vector3(-0.474, 1.371, 0.864), "dir": Vector3(-0.18, 0.92, 0.35), "radius": 0.030, "length": 0.16},
 			]
 		ACCESSORY_TAIL:
-			# Behind and drooping. 110 degrees about X takes the cone's +Y axis
-			# past horizontal into back-and-down.
+			# SEGMENTED, SO IT CURVES UP.
 			#
-			# IT IS A REAR-POINTING FACING CUE, which is a small bonus and a small
-			# risk: it must reach less far back than the nose reaches forward
-			# (0.35) and be dimmer, or the player has two markers and the wrong
-			# one is louder. This one reaches about 0.26.
+			# One straight cone could only ever point one way, and a tail that
+			# does is a stick. Five segments chained nose-to-tail, each aimed a
+			# little higher than the last, sweep from back-and-down at the rump to
+			# nearly vertical at the tip -- the curve doing the work that length
+			# alone could not.
+			#
+			# EACH SEGMENT'S TIP RADIUS IS THE NEXT ONE'S BASE, which is what makes
+			# it read as one tapering tail rather than as five separate spikes.
+			# Only the last comes to a point.
+			#
+			# The positions are the chain worked out by hand: every centre is the
+			# previous segment's end plus half of its own length along its own
+			# direction. They are written out rather than computed so the data
+			# stays inspectable, and test_accessory.gd checks the joins line up.
 			return [
-				{"pos": Vector3(0.0, -0.05, 0.42), "rot": Vector3(110.0, 0.0, 0.0), "radius": 0.09, "length": 0.50},
+				{"pos": Vector3(0.0, -0.100, 0.594), "dir": Vector3(0.0, -0.25, 0.97), "radius": 0.220, "tip": 0.185, "length": 0.40},
+				{"pos": Vector3(0.0, -0.132, 0.966), "dir": Vector3(0.0, 0.10, 0.995), "radius": 0.185, "tip": 0.150, "length": 0.36},
+				{"pos": Vector3(0.0, -0.042, 1.288), "dir": Vector3(0.0, 0.45, 0.893), "radius": 0.150, "tip": 0.115, "length": 0.32},
+				{"pos": Vector3(0.0, 0.135, 1.524), "dir": Vector3(0.0, 0.75, 0.661), "radius": 0.115, "tip": 0.080, "length": 0.28},
+				{"pos": Vector3(0.0, 0.354, 1.654), "dir": Vector3(0.0, 0.95, 0.312), "radius": 0.080, "tip": 0.0, "length": 0.24},
 			]
 		_:
 			return []
