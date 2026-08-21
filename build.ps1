@@ -216,10 +216,32 @@ Get-ChildItem -Path $buildDir -Filter "${GameName}_Windows_v*.zip" -File -ErrorA
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-function Get-MissingFromArchive {
+# EXPORT LEFTOVERS, REMOVED BEFORE ANYTHING IS PACKED.
+#
+# Windows creates `<name>~RF<hex>.TMP` when it replaces a file that something
+# else has open -- an antivirus scanner mid-read is enough -- and Godot's
+# exporter leaves them behind. They are full-size copies of the OLD binary
+# sitting beside the new one, so the archive came out with two 104 MB
+# executables in it: 75.9 MB where every previous build was 38.3.
+#
+# The build reported success, the verification below passed, and the artifact was
+# twice the size and carried stale binaries. Caught by looking at the number.
+$stale = Get-ChildItem -Path $windowsBuildDir -Filter '*~RF*.TMP' -File -ErrorAction SilentlyContinue
+if ($stale) {
+    foreach ($f in $stale) {
+        Write-Host "  Removing export leftover: $($f.Name) ($([math]::Round($f.Length/1MB,1)) MB)" -ForegroundColor Yellow
+    }
+    $stale | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+function Get-ArchiveFaults {
     param([string]$SourceDir, [string]$ZipPath)
 
-    $expected = Get-ChildItem -Path $SourceDir -File -Recurse
+    $expected = @{}
+    foreach ($file in (Get-ChildItem -Path $SourceDir -File -Recurse)) {
+        $rel = $file.FullName.Substring($SourceDir.Length).TrimStart('\', '/').Replace('\', '/')
+        $expected[$rel] = $file.Length
+    }
     $packed = @{}
     $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
@@ -230,18 +252,29 @@ function Get-MissingFromArchive {
         $zip.Dispose()
     }
 
-    $missing = @()
-    foreach ($file in $expected) {
-        $rel = $file.FullName.Substring($SourceDir.Length).TrimStart('\', '/').Replace('\', '/')
+    $faults = @()
+    foreach ($rel in $expected.Keys) {
         # Length as well as presence: a truncated entry is the same class of
         # silent damage as an absent one.
         if (-not $packed.ContainsKey($rel)) {
-            $missing += "$rel (absent)"
-        } elseif ($packed[$rel] -ne $file.Length) {
-            $missing += "$rel (packed $($packed[$rel]) of $($file.Length) bytes)"
+            $faults += "MISSING  $rel"
+        } elseif ($packed[$rel] -ne $expected[$rel]) {
+            $faults += "TRUNCATED  $rel (packed $($packed[$rel]) of $($expected[$rel]) bytes)"
         }
     }
-    return $missing
+    # AND THE OTHER DIRECTION, which this check did not have and needed.
+    #
+    # It only ever asked "is every wanted file in the archive". An archive can
+    # also be wrong by containing something nobody asked for -- and because the
+    # leftovers above were real files on disk, they counted as WANTED and the
+    # check waved them through. A one-directional verifier cannot see a
+    # duplicate, and a duplicate of a 104 MB executable is not a subtle defect.
+    foreach ($rel in $packed.Keys) {
+        if (-not $expected.ContainsKey($rel)) {
+            $faults += "UNWANTED  $rel ($($packed[$rel]) bytes)"
+        }
+    }
+    return $faults
 }
 
 $packAttempts = 3
@@ -249,11 +282,11 @@ $missing = @()
 for ($attempt = 1; $attempt -le $packAttempts; $attempt++) {
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     Compress-Archive -Path "$windowsBuildDir\*" -DestinationPath $zipPath -Force
-    $missing = Get-MissingFromArchive -SourceDir $windowsBuildDir -ZipPath $zipPath
+    $missing = Get-ArchiveFaults -SourceDir $windowsBuildDir -ZipPath $zipPath
     if ($missing.Count -eq 0) { break }
 
-    Write-Host "Archive is incomplete (attempt $attempt of $packAttempts):" -ForegroundColor Yellow
-    foreach ($m in $missing) { Write-Host "    MISSING  $m" -ForegroundColor Yellow }
+    Write-Host "Archive does not match the build (attempt $attempt of $packAttempts):" -ForegroundColor Yellow
+    foreach ($m in $missing) { Write-Host "    $m" -ForegroundColor Yellow }
     if ($attempt -lt $packAttempts) {
         # Whatever held the file open is transient by nature. Give it a moment
         # rather than failing a build over an antivirus scan.
