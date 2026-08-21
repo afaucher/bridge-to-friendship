@@ -304,11 +304,16 @@ func _ready() -> void:
 		# A world with no view is a test rig or a headless sim, and neither should
 		# touch a file on the developer's disk.
 		_chosen_body_colour = CharacterConfig.load_body_colour()
+		# Rolled here on a first-ever launch, and saved. A world with no view --
+		# every test rig and every headless sim -- deliberately never reaches this
+		# line, so the gate neither reads nor writes a developer's face.
+		_chosen_seed = CharacterConfig.load_character_seed()
 
 # What this machine's player looks like. Read from disk at construction and
 # announced at start(); a world that never read a config plays the default, which
 # is a real character rather than a missing one.
 var _chosen_body_colour: Color = CharacterStyle.DEFAULT_BODY
+var _chosen_seed: int = 0
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -4299,35 +4304,53 @@ func _broadcast_names() -> void:
 # One consequence worth stating: a peer with no entry is not an error, it is the
 # default. That is what makes practice partners, late joiners and a client whose
 # announcement is still in flight all correct rather than merely tolerated.
+# TWO DICTIONARIES ON ONE CHANNEL, which is exactly what _set_names already does
+# with names and Steam ids. The seed is what the face is derived from -- eyes
+# today -- and it travels beside the colour because they are one announcement:
+# "here is what I look like".
 var player_colours: Dictionary = {}
+var player_seeds: Dictionary = {}
 
 func _announce_character() -> void:
-	var colour: Color = _chosen_body_colour
 	if is_host:
-		player_colours[local_peer] = colour
+		player_colours[local_peer] = _chosen_body_colour
+		player_seeds[local_peer] = _chosen_seed
 		_apply_character_looks()
 		_broadcast_characters()
 	elif networked:
-		_submit_character.rpc_id(1, colour)
+		_submit_character.rpc_id(1, _chosen_body_colour, _chosen_seed)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _submit_character(colour: Color) -> void:
+func _submit_character(colour: Color, character_seed: int = 0) -> void:
 	if not is_host:
 		return
-	player_colours[multiplayer.get_remote_sender_id()] = colour
+	var from: int = multiplayer.get_remote_sender_id()
+	player_colours[from] = colour
+	player_seeds[from] = character_seed
 	_apply_character_looks()
 	_broadcast_characters()
 
 @rpc("authority", "call_remote", "reliable")
-func _set_characters(colours: Dictionary) -> void:
+func _set_characters(colours: Dictionary, seeds: Dictionary = {}) -> void:
 	if is_host:
 		return
 	player_colours = colours.duplicate()
+	player_seeds = seeds.duplicate()
 	_apply_character_looks()
 
 func _broadcast_characters() -> void:
 	if networked:
-		_set_characters.rpc(player_colours)
+		_set_characters.rpc(player_colours, player_seeds)
+
+# The seed a peer's face is derived from, or 0.
+#
+# ZERO IS A REAL FACE, not a missing one -- eye_knobs answers for it like any
+# other number. That matters for practice partners and for a peer whose
+# announcement is still in flight: they get a face rather than a gap, and it is
+# the SAME face on every machine because zero is as deterministic as anything
+# else.
+func player_seed(peer: int) -> int:
+	return int(player_seeds.get(peer, 0))
 
 # What a peer looks like, or the default. Never fails, never returns null: an
 # unknown peer is a player who has not chosen, which is a real and correct state.
@@ -4346,7 +4369,7 @@ func _apply_character_look(peer: int) -> void:
 	if body == null or not is_instance_valid(body):
 		return
 	if body.has_method("apply_look"):
-		body.apply_look(player_colour(peer))
+		body.apply_look(player_colour(peer), player_seed(peer))
 
 # Somebody's Steam id, or 0. The HUD asks so it can ask for a face.
 func player_steam_id(peer: int) -> int:
@@ -4617,6 +4640,7 @@ func _despawn_player(peer: int) -> void:
 	_spawn_index.erase(peer)
 	player_names.erase(peer)
 	player_colours.erase(peer)
+	player_seeds.erase(peer)
 	_hats.forget_wearer(peer)
 	player_despawned.emit(peer)
 

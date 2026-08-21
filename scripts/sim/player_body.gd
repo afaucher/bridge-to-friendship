@@ -1085,7 +1085,7 @@ var _nose_material: StandardMaterial3D = null
 # the body behind it, and a player who could set both could set them equal. See
 # character_style.gd -- pick yellow for both and the thing the dash depends on is
 # gone.
-func apply_look(body_colour: Color) -> void:
+func apply_look(body_colour: Color, character_seed: int = 0) -> void:
 	var mesh := get_node_or_null("Mesh") as MeshInstance3D
 	var nose := get_node_or_null("Facing/Nose") as MeshInstance3D
 	if mesh == null or nose == null:
@@ -1100,6 +1100,83 @@ func apply_look(body_colour: Color) -> void:
 		nose.material_override = _nose_material
 	_body_material.albedo_color = body_colour
 	_nose_material.albedo_color = CharacterStyle.nose_colour(body_colour)
+	_apply_eyes(character_seed)
+
+# How far out of the head the eyes sit.
+#
+# The body is a cylinder of radius 0.4, so its surface at a given lateral offset
+# x is at z = -sqrt(0.4^2 - x^2). Sitting an eye exactly there would bisect it;
+# these push it slightly proud so it reads as a bump rather than as a decal, and
+# the pupil sits proud of the sclera for the same reason.
+const EYE_SINK := 0.015
+
+# How far forward the pupil sits inside its own eye, as a fraction of that eye's
+# radius. Past 1.0 it would float free of the sclera.
+const PUPIL_FORWARD := 0.7
+
+# Build or update the four little meshes.
+#
+# IN CODE RATHER THAN IN player.tscn, because they are sized PER CHARACTER --
+# hat_style.gd builds its crown and brim the same way and for the same reason. A
+# scene cannot hold a shape that depends on a number the player carries.
+#
+# They hang off `Facing` so they turn with the aim, exactly like the nose. A face
+# that stayed pointing north while the body turned would be worse than no face.
+func _apply_eyes(character_seed: int) -> void:
+	var facing := get_node_or_null("Facing") as Node3D
+	if facing == null:
+		return
+	var knobs: Dictionary = CharacterStyle.eye_knobs(character_seed)
+	_place_eye(facing, "EyeLeft", knobs["left"])
+	_place_eye(facing, "EyeRight", knobs["right"])
+
+func _place_eye(facing: Node3D, node_name: String, eye: Dictionary) -> void:
+	var sclera := facing.get_node_or_null(node_name) as MeshInstance3D
+	if sclera == null:
+		sclera = MeshInstance3D.new()
+		sclera.name = node_name
+		facing.add_child(sclera)
+		var pupil := MeshInstance3D.new()
+		pupil.name = "Pupil"
+		sclera.add_child(pupil)
+
+	var size: float = float(eye["size"])
+	var x: float = float(eye["x"])
+	var y: float = float(eye["y"])
+	# Where the cylinder's surface is at this lateral offset. Clamped because an
+	# eye set wider than the body has no surface to sit on, and a NAN from a
+	# negative square root would put the mesh nowhere at all.
+	var span: float = maxf(RADIUS * RADIUS - x * x, 0.0001)
+	var z: float = -sqrt(span) + EYE_SINK
+
+	var ball := SphereMesh.new()
+	ball.radius = size
+	ball.height = size * 2.0
+	sclera.mesh = ball
+	sclera.position = Vector3(x, y, z)
+	if sclera.material_override == null:
+		var white := StandardMaterial3D.new()
+		white.albedo_color = CharacterStyle.EYE_SCLERA
+		white.roughness = 0.55
+		sclera.material_override = white
+
+	var pupil_node := sclera.get_node_or_null("Pupil") as MeshInstance3D
+	if pupil_node == null:
+		return
+	var dot := SphereMesh.new()
+	dot.radius = size * 0.45
+	dot.height = size * 0.9
+	pupil_node.mesh = dot
+	# In the SCLERA's space, so it tracks whatever that eye's size and position
+	# turn out to be rather than needing the maths done twice -- including on an
+	# asymmetric face, where the two eyes are different sizes and a pupil offset
+	# computed once would be wrong on one of them.
+	pupil_node.position = Vector3(0.0, 0.0, -size * PUPIL_FORWARD)
+	if pupil_node.material_override == null:
+		var dark := StandardMaterial3D.new()
+		dark.albedo_color = CharacterStyle.EYE_PUPIL
+		dark.roughness = 0.4
+		pupil_node.material_override = dark
 
 # --- Ledges -------------------------------------------------------------------
 

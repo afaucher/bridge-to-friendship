@@ -56,22 +56,25 @@ const COLOR_HEAD := Color(0.45, 0.85, 1.0)
 const SLOTS := [
 	{"key": "colour", "label": "Colour", "state": "saved -- takes effect next time you play"},
 	{"key": "nose", "label": "Nose", "state": "Beak -- the only shape so far"},
-	{"key": "eyes", "label": "Eyes", "state": "not built"},
+	{"key": "eyes", "label": "Eyes", "state": "everybody gets a pair -- yours are yours"},
 	{"key": "accessory", "label": "Accessory", "state": "not built -- horns, antlers or a tail"},
 ]
 
 var _root: Control = null
 var _pivot: Node3D = null
 var _preview_body: Node3D = null
-var _body_material: StandardMaterial3D = null
-var _nose_material: StandardMaterial3D = null
 var _body_colour: Color = CharacterStyle.DEFAULT_BODY
+var _character_seed: int = 0
 
 func _ready() -> void:
 	layer = 80
 	# What is already on disk, before anything is built, so the preview and the
 	# picker both open showing the character you are actually playing.
 	_body_colour = CharacterConfig.load_body_colour()
+	# Rolls one on a first-ever launch, so opening this screen is a perfectly good
+	# way to acquire a face -- there is no order in which you have a colour and no
+	# eyes.
+	_character_seed = CharacterConfig.load_character_seed()
 	_build()
 	visible = false
 	set_process(false)
@@ -271,33 +274,22 @@ func _on_colour_chosen(colour: Color) -> void:
 	_apply_preview_colour()
 	CharacterConfig.save_body_colour(colour)
 
-# PER-INSTANCE MATERIALS, CREATED HERE AND NEVER THE SCENE'S.
+# THE SAME FUNCTION THE GAME CALLS, on the same scene the game spawns.
 #
-# player.tscn's Mat_1 and NoseMat_1 are sub-resources, which means every instance
-# of that scene SHARES them -- writing albedo_color through the node would tint
-# every player in the game, including the ones on the bridge behind this menu.
-# player_body.gd:178-182 records the same bug being fixed in the status bar,
-# where one player's bar re-tinted the whole party's. New materials, assigned as
-# an override on this instance only.
+# This used to build its own materials here, which worked and was a lie waiting
+# to happen: two code paths painting the same scene drift, and the one nobody
+# plays is the one that drifts. PlayerBody.apply_look is now the only thing that
+# knows how a character is painted, so the preview cannot show you a face the
+# bridge will not.
+#
+# It also inherits the per-instance materials for free -- player.tscn's Mat_1 is
+# a sub-resource shared by every instance, so painting through the node would
+# tint every player in a game running behind this menu. apply_look creates its
+# own; see the note there, and player_body.gd's status bar for the original bug.
 func _apply_preview_colour() -> void:
-	if _preview_body == null:
+	if _preview_body == null or not _preview_body.has_method("apply_look"):
 		return
-	var mesh := _preview_body.get_node_or_null("Mesh") as MeshInstance3D
-	var nose := _preview_body.get_node_or_null("Facing/Nose") as MeshInstance3D
-	if mesh == null or nose == null:
-		return
-
-	if _body_material == null:
-		_body_material = StandardMaterial3D.new()
-		_body_material.roughness = 0.7
-		mesh.material_override = _body_material
-	if _nose_material == null:
-		_nose_material = StandardMaterial3D.new()
-		_nose_material.roughness = 0.6
-		nose.material_override = _nose_material
-
-	_body_material.albedo_color = _body_colour
-	_nose_material.albedo_color = CharacterStyle.nose_colour(_body_colour)
+	_preview_body.apply_look(_body_colour, _character_seed)
 
 # --- Layout -------------------------------------------------------------------
 

@@ -23,6 +23,7 @@ const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 
 const SECTION := "player"
 const KEY_BODY := "body_colour"
+const KEY_SEED := "character_seed"
 const DEFAULT_PATH := "user://player.cfg"
 
 # Tests point this somewhere disposable. Without it, running the gate would read
@@ -55,6 +56,39 @@ static func save_body_colour(colour: Color) -> void:
 	# Load first so this never clobbers the hat sitting in the same file.
 	cfg.load(path())
 	cfg.set_value(SECTION, KEY_BODY, colour.to_html(false))
+	cfg.save(path())
+
+# The seed the face is derived from -- eyes today, and whatever else is not
+# chosen later.
+#
+# THIS ONE IS ROLLED AND SAVED, unlike the colour above, and the difference is
+# the same one that separates a hat from a character. A colour is CHOSEN, so it
+# has a default. A face is DEALT, so it has to come from somewhere -- and the
+# roll must happen exactly once, because a seed rolled per launch is a face that
+# changes overnight and a seed rolled per machine is a face your friends cannot
+# see. Same rule as HatConfig.load_style, for the same reason.
+#
+# So a first-ever read WRITES. That is a load with a side effect, which is
+# normally worth avoiding, and here it is the entire point: the value has to
+# outlive the call that invented it.
+static func load_character_seed() -> int:
+	var cfg := ConfigFile.new()
+	var existing: int = 0
+	if cfg.load(path()) == OK:
+		existing = int(cfg.get_value(SECTION, KEY_SEED, 0))
+	# Zero means "never rolled". It is also what a corrupt or hand-cleared value
+	# decays to, which is the behaviour we want: an unreadable seed becomes a new
+	# face rather than an error.
+	if existing != 0:
+		return existing
+	var rolled: int = CharacterStyle.random_character_seed()
+	save_character_seed(rolled)
+	return rolled
+
+static func save_character_seed(character_seed: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(path())
+	cfg.set_value(SECTION, KEY_SEED, character_seed)
 	cfg.save(path())
 
 # Test support: forget everything, so the next load is a first-ever run.

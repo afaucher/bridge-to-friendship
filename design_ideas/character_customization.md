@@ -20,7 +20,7 @@ Built so far (2026-08-20), in the order it landed:
 | **the character screen** | shipped. Opened from the menu, with a full-body turntable preview built from the real player scene |
 | **the derived nose colour** | shipped — `character_style.gd` |
 | **personal colour** | shipped end to end: chosen on the screen, saved to `user://player.cfg`, worn by the body, and replicated to everyone |
-| **eyes** | not built |
+| **eyes** | shipped, and **not as a slot** — see below |
 | **one accessory slot** | not built |
 | **colour in the HUD and score screen** | not built — the value is on the body only |
 
@@ -289,20 +289,51 @@ if the nose ever becomes a slot; none of them is implemented.
 | **PROW** | a tall thin vertical blade | **a line** | 0.40 | **The risky one.** A line has no width to catch the eye from above — it is the least readable variant in the set and needs a width floor or it should be cut |
 | **VISOR** | a shallow arc wrapping the front, pointed at centre | a forward-biased crescent | 0.30 at centre | Most of the arc hugs the body and contributes nothing. The centre point does all the work and must clear the budget alone |
 
-### Eyes
+### Eyes — NOT A SLOT (decided 2026-08-20, shipped)
 
-Small on purpose. They sit above the nose on the front face and are **never
-brighter than it** — the nose owns the facing channel and eyes must lose at range
-rather than compete.
+**Everybody gets eyes and nobody chooses them.** They are not something you
+equip; they are what a face is. What varies is a little shape, and a chance the
+two do not match.
 
-| variant | shape | reads as |
+The six-variant menu this section used to propose is deleted rather than
+deferred. It was the same over-build as the nose catalogue — turning "characters
+should have faces" into a thing to shop for — and here the cost is worse, because
+an eye style you pick is an eye style you can pick badly, and the art direction
+already says eyes must *lose* at gameplay range rather than compete with the nose
+for the facing channel.
+
+**Derived from a saved seed, never rolled at spawn.** This is `hat_style.gd`'s
+opening constraint and it applies with full force:
+
+- a `randf()` at spawn gives you a different face every launch, which is the
+  precise opposite of what this feature is for;
+- and a different face on every *machine* at once, so the wonky eye your friend
+  is laughing at is not the one you can see;
+- and it is untestable, because a draw from the entropy-seeded global RNG has no
+  correct answer to assert.
+
+So the seed is rolled **once**, on a first launch, saved beside the colour, and
+replicated beside it. Everything about a face is a pure function of it.
+
+Note this makes the seed the second thing in `player.cfg` that is *dealt* rather
+than *chosen* — the hat being the first — and it is dealt for the same reason: a
+default nobody rolled would give every player on earth the same face.
+
+| knob | range | note |
 |---|---|---|
-| **DOTS** | two small spheres | the default; neutral |
-| **WIDE** | same, larger and further apart | eager, startled |
-| **SLIT** | two narrow horizontal bars | focused, unimpressed |
-| **SINGLE** | one central eye | cyclops. Sits directly above the nose's centreline — the one placement that could muddy the facing read, so it stays small |
-| **QUAD** | two stacked pairs | spidery, wrong |
-| **BAND** | one continuous horizontal strip | robotic. **The most visible eye option at range**, which makes it the one most likely to break the lose-at-range rule. Cap its brightness |
+| size | 0.038–0.055 | small enough to be lost at bridge range, deliberately |
+| spread | 0.10–0.145 | lateral, either side of the centreline |
+| height | 0.50–0.60 | above the nose, below the top of the head |
+| asymmetry | **35% of faces** | a minority: if everyone is odd then nobody is |
+
+Asymmetry picks *which* eye and *in what way* from separate draws — size, height,
+or a bit of both — because one draw would make every odd face odd in the same
+direction, which reads as a broken model rather than as a face.
+
+**Eye colour is a constant where nose colour is derived, and that asymmetry in
+the design is deliberate.** A pale sclera with a dark pupil carries its own
+contrast: on a dark body the white ring reads, on a pale one the pupil does.
+There is no body colour that hides both, so there is nothing to derive.
 
 ### Accessories
 
@@ -526,6 +557,8 @@ being false.
 | the default | **DONE.** A first-ever launch produces the same character on every machine — no roll — and reading a default does not write a file |
 | replication | **DONE — `test_character_replication.gd`, over a real socket.** Both directions, and the colour is asserted **on the material the renderer uses**, not in a dictionary. A/B'd twice: with the broadcast disabled, and with the body reusing the scene's shared material |
 | **two players, two colours** | **DONE, and it is the assertion that earns the test.** Every other claim asks about one body at a time and would pass while the whole party shared one material. A/B confirmed it: both avatars came back the same green, in *both* worlds |
+| eyes | **DONE — `test_eyes.gd`.** Deterministic and untouched by the global RNG; every seed including 0 gets two eyes, one either side; the asymmetry RATE is a minority rather than a stuck predicate; a face flagged symmetric really matches and one flagged asymmetric really differs; and the meshes are actually built, under `Facing`, without stacking a second pair on re-apply |
+| **the flag agrees with the geometry** | **DONE, and A/B'd.** Suppressing the perturbation while still setting the flag failed *only* that assertion — the rate check stayed green. A test that measured the asymmetry rate alone would have passed while no face was ever actually asymmetric |
 | the screen constructs | instantiate it headless; it is a UI script, and one the gate never runs ships having never executed a line |
 | the screen's layout | assert `size` and `position`, never the anchors — that distinction is why the score screen shipped in the corner |
 

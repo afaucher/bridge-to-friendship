@@ -82,6 +82,111 @@ static func nose_colour(body: Color) -> Color:
 		candidate = candidate.lerp(Color.BLACK, clampf(1.0 - target / maxf(lc, 0.0001), 0.0, 1.0))
 	return candidate
 
+# --- Eyes ---------------------------------------------------------------------
+#
+# EVERY CHARACTER HAS THEM AND NOBODY CHOOSES THEM (decided 2026-08-20). They are
+# not a slot; they are what a face is. What varies is a small amount of shape,
+# and a chance that the two do not match.
+#
+# DERIVED FROM A SAVED SEED, NEVER ROLLED AT SPAWN -- the constraint hat_style.gd
+# opens with, and it is load-bearing for exactly the same reasons:
+#
+#   * A `randf()` at spawn would give you different eyes every launch, which is
+#     the opposite of the thing this feature is for. "That one's me" needs the
+#     face to still be mine tomorrow.
+#   * It would also give you different eyes on every MACHINE at once, so the
+#     asymmetry your friend is laughing at would not be the one you can see.
+#   * And it would be untestable: an outcome drawn from the entropy-seeded global
+#     RNG has no correct answer to assert.
+#
+# So the seed is rolled ONCE, saved, and replicated; everything below is a pure
+# function of it. Randomise the id; derive the face from it.
+
+# How many characters have mismatched eyes. A minority on purpose: asymmetry is
+# only funny if it reads as THIS character being odd, and if everyone has it then
+# nobody does.
+const ASYMMETRY_CHANCE := 0.35
+
+const EYE_SIZE_MIN := 0.038
+const EYE_SIZE_MAX := 0.055
+
+# How far apart, and how high up the face. The body is a cylinder of radius 0.4
+# whose origin is its centre, and the nose sits at y = 0.35 -- so these put the
+# eyes above the marker without crowding the top of the head.
+const EYE_SPREAD_MIN := 0.10
+const EYE_SPREAD_MAX := 0.145
+const EYE_HEIGHT_MIN := 0.50
+const EYE_HEIGHT_MAX := 0.60
+
+# How much an asymmetric eye differs. Small: the intent is "something is slightly
+# wrong with that one", not a joke shop.
+const ASYM_SIZE := 0.45          # as a fraction of the base size
+const ASYM_HEIGHT := 0.055       # metres up or down
+
+# The same well-known integer mixer hat_style.gd and segment_pool.gd use, and for
+# the same reason: NOT the global RNG, which is entropy-seeded per launch and
+# would make every one of these answers different on Tuesday.
+static func _mix(value: int) -> int:
+	var x: int = value
+	x = (x ^ (x >> 16)) * 0x45d9f3b
+	x = (x ^ (x >> 16)) * 0x45d9f3b
+	x = x ^ (x >> 16)
+	return absi(x)
+
+# A 0..1 draw for one knob. `salt` keeps the knobs independent -- without it every
+# knob of a given face would be the same number, and wide-set eyes would always
+# also be big ones.
+static func _draw(character_seed: int, salt: int) -> float:
+	return float(_mix(character_seed * 8191 + salt * 7919) % 10000) / 9999.0
+
+# The one roll in the whole character system. Called once, on a first launch, and
+# saved -- see character_config.gd.
+static func random_character_seed() -> int:
+	return absi(randi() % (1 << 30)) + 1
+
+# Both eyes, as plain numbers a test can assert directly rather than infer from a
+# mesh. Positions are in the FACING pivot's space: +X is the character's left as
+# you look at them, +Y is up, and -Z is forward.
+static func eye_knobs(character_seed: int) -> Dictionary:
+	var size: float = EYE_SIZE_MIN + (EYE_SIZE_MAX - EYE_SIZE_MIN) * _draw(character_seed, 1)
+	var spread: float = EYE_SPREAD_MIN + (EYE_SPREAD_MAX - EYE_SPREAD_MIN) * _draw(character_seed, 2)
+	var height: float = EYE_HEIGHT_MIN + (EYE_HEIGHT_MAX - EYE_HEIGHT_MIN) * _draw(character_seed, 3)
+
+	var left := {"size": size, "x": spread, "y": height}
+	var right := {"size": size, "x": -spread, "y": height}
+
+	var asymmetric: bool = _draw(character_seed, 4) < ASYMMETRY_CHANCE
+	if asymmetric:
+		# WHICH eye, and in WHAT WAY, are separate draws -- otherwise every odd
+		# face would be odd in the same direction and it would read as a bug in
+		# the model rather than as a face.
+		var odd: Dictionary = left if _draw(character_seed, 5) < 0.5 else right
+		var flavour: int = _mix(character_seed * 31 + 6) % 3
+		var updown: float = 1.0 if _draw(character_seed, 7) < 0.5 else -1.0
+		match flavour:
+			0:
+				odd["size"] = size * (1.0 + ASYM_SIZE)
+			1:
+				odd["y"] = height + ASYM_HEIGHT * updown
+			_:
+				odd["size"] = size * (1.0 + ASYM_SIZE * 0.6)
+				odd["y"] = height + ASYM_HEIGHT * 0.7 * updown
+
+	return {"left": left, "right": right, "asymmetric": asymmetric}
+
+# Is this face mismatched? Its own function because the rate is a claim worth
+# asserting on its own, and because a caller should not have to know that the
+# answer lives under a key in a dictionary of dictionaries.
+static func is_asymmetric(character_seed: int) -> bool:
+	return _draw(character_seed, 4) < ASYMMETRY_CHANCE
+
+# EYES CARRY THEIR OWN CONTRAST, which is why these are constants where the nose
+# colour is derived. A pale sclera with a dark pupil reads against ANY body: on a
+# dark character the white ring carries it, on a pale one the pupil does. There is
+# no body colour that hides both, so there is nothing here to derive.
+const EYE_SCLERA := Color(0.94, 0.94, 0.90)
+const EYE_PUPIL := Color(0.06, 0.06, 0.08)
+
 # The body colour a player starts with: the blue the game has always used.
 #
 # A DELIBERATE DEFAULT RATHER THAN THE ABSENCE OF ONE. It is what most players
