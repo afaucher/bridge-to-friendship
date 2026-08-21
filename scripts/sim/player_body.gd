@@ -16,6 +16,11 @@ extends CharacterBody3D
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+# Safe: character_style.gd preloads NOTHING AT ALL, so this cannot close the
+# class cycle CLAUDE.md warns HANGS a run rather than failing it. Keep it that
+# way -- it is a leaf on purpose, which is what lets both the sim and the menu
+# import it.
+const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 # A VIEW SCRIPT, PRELOADED BY A SIM ONE, and deliberately: the bar over this
 # body's head is already a view built here, colours and all, and the alternative
 # is a second copy of the crisis palette. crisis_flash.gd preloads nothing, so it
@@ -1059,6 +1064,42 @@ func _reset_mesh() -> void:
 	var mesh := get_node_or_null("Mesh") as Node3D
 	if mesh != null:
 		mesh.rotation = Vector3.ZERO
+
+# --- Looks --------------------------------------------------------------------
+
+# This avatar's own materials. Built on first use and then written through, so
+# changing a colour never allocates again.
+var _body_material: StandardMaterial3D = null
+var _nose_material: StandardMaterial3D = null
+
+# Wear a body colour, and the facing marker that goes with it.
+#
+# PER-INSTANCE MATERIALS, CREATED HERE AND NEVER THE SCENE'S. player.tscn's Mat_1
+# and NoseMat_1 are sub-resources, so EVERY INSTANCE OF THE SCENE SHARES THEM --
+# writing albedo_color through the node would recolour the whole party. The
+# status bar a hundred lines above hit precisely this and its comment records the
+# fix; this is the same fix for the body.
+#
+# THE NOSE IS DERIVED, NOT PASSED IN. It is not a second choice the player makes
+# and it must never become one: the marker's whole job is to be findable against
+# the body behind it, and a player who could set both could set them equal. See
+# character_style.gd -- pick yellow for both and the thing the dash depends on is
+# gone.
+func apply_look(body_colour: Color) -> void:
+	var mesh := get_node_or_null("Mesh") as MeshInstance3D
+	var nose := get_node_or_null("Facing/Nose") as MeshInstance3D
+	if mesh == null or nose == null:
+		return
+	if _body_material == null:
+		_body_material = StandardMaterial3D.new()
+		_body_material.roughness = 0.7
+		mesh.material_override = _body_material
+	if _nose_material == null:
+		_nose_material = StandardMaterial3D.new()
+		_nose_material.roughness = 0.6
+		nose.material_override = _nose_material
+	_body_material.albedo_color = body_colour
+	_nose_material.albedo_color = CharacterStyle.nose_colour(body_colour)
 
 # --- Ledges -------------------------------------------------------------------
 

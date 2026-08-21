@@ -9,9 +9,9 @@ extends CanvasLayer
 # openable from the menu with no world running.
 #
 # WHAT IS AND IS NOT WIRED UP YET (2026-08-20). The preview is real -- it is the
-# actual player scene, so the beak you see is the beak the game ships. The COLOUR
-# control is live but drives ONLY the preview: nothing is saved, nothing reaches
-# the running game, and nothing is replicated. Eyes and the accessory slot do not
+# actual player scene, so the beak you see is the beak the game ships. COLOUR is
+# fully wired: saved to user://player.cfg, read back at world construction, worn
+# by the body, and announced to everyone else. Eyes and the accessory slot do not
 # exist yet. See design_ideas/character_customization.md for the parts still to
 # build; this is the surface they will hang off.
 #
@@ -21,6 +21,7 @@ extends CanvasLayer
 # doing the one job this feature's sharpest finding asked of it.
 
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterConfig = preload("res://scripts/character_config.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 
 # EXPLICIT, NEVER INHERITED. The headless viewport is 64x64 (CLAUDE.md), so a
@@ -53,7 +54,7 @@ const COLOR_HEAD := Color(0.45, 0.85, 1.0)
 # for its reason: the three unbuilt rows below become real by gaining a control,
 # not by anyone editing the layout.
 const SLOTS := [
-	{"key": "colour", "label": "Colour", "state": "preview only -- not saved yet"},
+	{"key": "colour", "label": "Colour", "state": "saved -- takes effect next time you play"},
 	{"key": "nose", "label": "Nose", "state": "Beak -- the only shape so far"},
 	{"key": "eyes", "label": "Eyes", "state": "not built"},
 	{"key": "accessory", "label": "Accessory", "state": "not built -- horns, antlers or a tail"},
@@ -68,6 +69,9 @@ var _body_colour: Color = CharacterStyle.DEFAULT_BODY
 
 func _ready() -> void:
 	layer = 80
+	# What is already on disk, before anything is built, so the preview and the
+	# picker both open showing the character you are actually playing.
+	_body_colour = CharacterConfig.load_body_colour()
 	_build()
 	visible = false
 	set_process(false)
@@ -250,9 +254,22 @@ func _label(text: String, size: int, colour: Color) -> Label:
 
 # --- The preview's colour -----------------------------------------------------
 
+# SAVED ON EVERY CHANGE, with no confirm step.
+#
+# There is nothing to cancel: a colour is not a transaction and the preview
+# beside it already shows exactly what was saved. An Apply button would only
+# create a state where the screen and the disk disagree, which is a bug nobody
+# has to have.
+#
+# It takes effect at the next SPAWN rather than immediately, and that is a
+# property of where this screen lives rather than a decision: the button that
+# opens it is on the menu, and the menu is hidden while a world is running. If
+# the screen ever becomes reachable mid-session, this is the line that has to
+# start telling the world.
 func _on_colour_chosen(colour: Color) -> void:
 	_body_colour = colour
 	_apply_preview_colour()
+	CharacterConfig.save_body_colour(colour)
 
 # PER-INSTANCE MATERIALS, CREATED HERE AND NEVER THE SCENE'S.
 #

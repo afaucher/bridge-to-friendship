@@ -12,9 +12,23 @@ nothing.
 
 ## Status
 
-**Built so far: the beak, and nothing else** (2026-08-20). The nose is now a
-triangular prism instead of a box — a straight replacement of the facing marker,
-not a slot you can choose from. Everything else below is still design.
+Built so far (2026-08-20), in the order it landed:
+
+| piece | state |
+|---|---|
+| **nose — the beak** | shipped. A triangular prism replacing the box; a straight replacement of the facing marker, not a slot you choose from |
+| **the character screen** | shipped. Opened from the menu, with a full-body turntable preview built from the real player scene |
+| **the derived nose colour** | shipped — `character_style.gd` |
+| **personal colour** | shipped end to end: chosen on the screen, saved to `user://player.cfg`, worn by the body, and replicated to everyone |
+| **eyes** | not built |
+| **one accessory slot** | not built |
+| **colour in the HUD and score screen** | not built — the value is on the body only |
+
+The nose was deliberately narrowed to one shape. The original ask was a *better
+nose*, and the six-variant catalogue below over-built it into a menu; shipping
+one costs nothing a slot would later need, because the catalogue is written down,
+the budget governing it is measured, and `test_nose_shape.gd` already asserts the
+contract any future variant must meet.
 
 That is a deliberate narrowing and it is worth saying why it is safe. The nose
 was never going to be a *choice* in the first pass: the original ask was a
@@ -415,36 +429,50 @@ assert.
 
 ## Replication
 
-A character has to reach other players and, harder, **late joiners**. The hat
-system already solved this and the solution has a known-bad ordering.
+**BUILT 2026-08-20, AND NOT THE WAY THIS SECTION ORIGINALLY SPECIFIED.** The
+first draft said to copy the worn-hat channel. That was the wrong pick, and the
+reasoning is worth keeping because it is a choice this codebase offers more than
+once.
 
-The shape to copy, all in `game_world.gd`:
+The hat channel is a **per-object** RPC: `_wear_hat` names a hat and a body, and
+opens with `if hat == null or body == null: return`. So it carries an ordering
+trap — anything sent before the newcomer has been told who exists is dropped in
+silence. `host_add_peer:4463-4477` is a long comment about that exact bug, which
+shipped and was reported as "hats do not appear on other players when joining."
 
-| hat | character |
+But **a colour is not per-object state. It is per-peer metadata, exactly like a
+display name** — and the names channel has no ordering trap at all, because
+`_set_names` stores a dictionary and lets whoever needs it read it later.
+
+So the built version rides the names channel:
+
+| names | characters |
 |---|---|
-| `_wear_hat` — `@rpc("authority", "call_remote", "reliable")` (`:1811`) | `_set_character`, same annotation |
-| `_worn_hat_dump()` (`:4055-4060`) | `_character_dump()` |
-| `_sync_worn_hats(entries)` (`:4030-4036`) | `_sync_characters(entries)` |
-| called in `host_add_peer` (`:4478`) | same place, same ordering |
+| `player_names` dictionary | `player_colours` dictionary |
+| `_announce_name()` at `start()` | `_announce_character()` beside it |
+| `_submit_name` — `@rpc("any_peer", ...)` | `_submit_character`, same |
+| `_set_names` — `@rpc("authority", ...)` | `_set_characters`, same |
+| `_broadcast_names()` in `host_add_peer` | `_broadcast_characters()` beside it |
 
-**THE ORDERING IS THE WHOLE FINDING.** `host_add_peer` spawns every existing
-player to the newcomer *first* (`:4458-4460`), and only then syncs worn items
-(`:4478-4479`), with a comment at `:4463-4477` explaining why: `_wear_hat`
-early-returns if the target body does not exist yet on the receiving client. That
-is not a hypothetical — it is a fixed bug, reported as "hats do not appear on
-other players when joining." **A character sync placed before the spawn loop
-reproduces it exactly**, and the symptom is a joiner seeing a lobby full of
-identical default-coloured players while everyone else sees the real thing.
+**And it applies from BOTH ends**: `_spawn_player` paints from the dictionary,
+and `_set_characters` paints everyone already present. Whichever arrives second
+does the work, so **there is no order in which a player ends up the wrong
+colour** — the property the hat channel had to be taught with a comment is
+structural here instead.
 
-Reliable, not the snapshot wire. `game_world.gd:3991-3997` draws the line: who is
-wearing what travels reliably; a position that changes every tick belongs on the
-unreliable per-tick wire. A character changes approximately never.
+One consequence worth stating: a peer with no entry is not an error, it is the
+default. That is what makes practice partners, late joiners, and a client whose
+announcement is still in flight all *correct* rather than merely tolerated.
 
-**Can a character change mid-session?** Simplest answer is no — it is read at
-spawn and fixed for the session, which makes `_set_character` a spawn-time
-announcement rather than a live channel. If the screen is reachable mid-run
-later, the RPC already has the right shape; the ordering rule is what would need
-re-checking.
+The general lesson: **ask whether the thing you are replicating belongs to an
+object or to a peer, and pick the channel that matches.** Copying the nearest
+existing RPC inherits its constraints along with its shape.
+
+**Can a character change mid-session?** No, and today that is free rather than
+enforced: the button that opens the screen is on the menu, and the menu is hidden
+while a world runs. The colour is read at world construction. If the screen ever
+becomes reachable mid-run, `_announce_character()` is already the whole
+mechanism — it can simply be called again.
 
 ---
 
@@ -494,9 +522,10 @@ being false.
 | the spread budget | for **every** accessory, the top-down extent stays inside the ceiling. Antlers are the case that must be able to fail it — if the widest variant passes with room to spare, suspect the measurement before believing the result |
 | horns vs. the hat column | a stack of three hats is spaced identically with horns and without — **and assert the comparison can fail**, or it is a pair of numbers nobody checked |
 | accessories do not collide | no `CollisionShape3D`, and the accessory's layer is masked by nothing. Six bugs in this project have been one wrong bit here |
-| persistence | a saved character round-trips; `path_override` points somewhere disposable, asserted, so the gate cannot eat a developer's character |
-| the default | a first-ever launch produces the **same** character on every machine — no roll |
-| late join | a joiner sees every existing player's real colour, not the default. **Assert against the host's value, not a literal**, and place the sync after the spawn loop or reproduce the 2026-08-16 hat bug |
+| persistence | **DONE — `test_character_config.gd`.** Round-trips; shares a file with the saved hat in both write orders; survives a corrupt value; `path_override` asserted to actually redirect, so the gate cannot eat a developer's character |
+| the default | **DONE.** A first-ever launch produces the same character on every machine — no roll — and reading a default does not write a file |
+| replication | **DONE — `test_character_replication.gd`, over a real socket.** Both directions, and the colour is asserted **on the material the renderer uses**, not in a dictionary. A/B'd twice: with the broadcast disabled, and with the body reusing the scene's shared material |
+| **two players, two colours** | **DONE, and it is the assertion that earns the test.** Every other claim asks about one body at a time and would pass while the whole party shared one material. A/B confirmed it: both avatars came back the same green, in *both* worlds |
 | the screen constructs | instantiate it headless; it is a UI script, and one the gate never runs ships having never executed a line |
 | the screen's layout | assert `size` and `position`, never the anchors — that distinction is why the score screen shipped in the corner |
 

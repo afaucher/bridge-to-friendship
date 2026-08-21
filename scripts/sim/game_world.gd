@@ -45,6 +45,8 @@ const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
+const CharacterConfig = preload("res://scripts/character_config.gd")
+const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const AimSource = preload("res://scripts/sim/aim_source.gd")
@@ -298,6 +300,15 @@ func _ready() -> void:
 	# first pickup would look like a change and rewrite an identical file.
 	if view_active:
 		_remembered_hat = HatConfig.load_style()
+		# The chosen character, read once beside the hat and for the same reason.
+		# A world with no view is a test rig or a headless sim, and neither should
+		# touch a file on the developer's disk.
+		_chosen_body_colour = CharacterConfig.load_body_colour()
+
+# What this machine's player looks like. Read from disk at construction and
+# announced at start(); a world that never read a config plays the default, which
+# is a real character rather than a missing one.
+var _chosen_body_colour: Color = CharacterStyle.DEFAULT_BODY
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -306,6 +317,7 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	_build_level()
 	running = true
 	_announce_name()
+	_announce_character()
 
 func stop() -> void:
 	running = false
@@ -4263,6 +4275,79 @@ func _broadcast_names() -> void:
 	if networked:
 		_set_names.rpc(player_names, player_steam_ids)
 
+# --- Characters ---------------------------------------------------------------
+#
+# Body colours, peer -> Color. Chosen on the character screen, saved to disk, and
+# announced on join.
+#
+# THIS RIDES THE NAMES CHANNEL, NOT THE HATS ONE, and picking the right one of
+# those was the whole design decision.
+#
+# design_ideas/character_customization.md proposed copying the worn-hat shape --
+# a per-object RPC plus a dump replayed at join. That shape carries a known
+# ordering trap: _wear_hat opens with `if hat == null or body == null: return`,
+# so anything sent before the newcomer has been told who exists is silently
+# dropped. host_add_peer's long comment above exists because that bug shipped.
+#
+# But a colour is not per-OBJECT state like a worn hat. It is per-PEER metadata,
+# exactly like a display name -- and a name has no ordering trap at all, because
+# _set_names stores a dictionary and lets whoever needs it read it later. So this
+# stores too, and APPLIES from both ends: on spawn, and whenever the dictionary
+# changes. Whichever arrives second does the work, and there is no order in which
+# a player ends up the wrong colour.
+#
+# One consequence worth stating: a peer with no entry is not an error, it is the
+# default. That is what makes practice partners, late joiners and a client whose
+# announcement is still in flight all correct rather than merely tolerated.
+var player_colours: Dictionary = {}
+
+func _announce_character() -> void:
+	var colour: Color = _chosen_body_colour
+	if is_host:
+		player_colours[local_peer] = colour
+		_apply_character_looks()
+		_broadcast_characters()
+	elif networked:
+		_submit_character.rpc_id(1, colour)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _submit_character(colour: Color) -> void:
+	if not is_host:
+		return
+	player_colours[multiplayer.get_remote_sender_id()] = colour
+	_apply_character_looks()
+	_broadcast_characters()
+
+@rpc("authority", "call_remote", "reliable")
+func _set_characters(colours: Dictionary) -> void:
+	if is_host:
+		return
+	player_colours = colours.duplicate()
+	_apply_character_looks()
+
+func _broadcast_characters() -> void:
+	if networked:
+		_set_characters.rpc(player_colours)
+
+# What a peer looks like, or the default. Never fails, never returns null: an
+# unknown peer is a player who has not chosen, which is a real and correct state.
+func player_colour(peer: int) -> Color:
+	var stored: Variant = player_colours.get(peer)
+	return stored if stored is Color else CharacterStyle.DEFAULT_BODY
+
+# Paint everybody. Cheap -- four bodies at most, two material writes each -- so it
+# runs on any change rather than working out which peer moved.
+func _apply_character_looks() -> void:
+	for peer_key in players.keys():
+		_apply_character_look(int(peer_key))
+
+func _apply_character_look(peer: int) -> void:
+	var body: Node = players.get(peer)
+	if body == null or not is_instance_valid(body):
+		return
+	if body.has_method("apply_look"):
+		body.apply_look(player_colour(peer))
+
 # Somebody's Steam id, or 0. The HUD asks so it can ask for a face.
 func player_steam_id(peer: int) -> int:
 	return int(player_steam_ids.get(peer, 0))
@@ -4481,6 +4566,11 @@ func host_add_peer(peer: int) -> void:
 	# before the host had it in `players`. Republishing here costs one small
 	# reliable packet and removes the ordering question entirely.
 	_broadcast_names()
+	# And everyone's colour, on the same argument. Note this one does NOT have to
+	# be after the spawn loop the way the hats above do -- _set_characters stores
+	# a dictionary and _spawn_player applies from it, so either order works. It is
+	# here because it belongs with the names, not because it is load-bearing.
+	_broadcast_characters()
 
 func host_remove_peer(peer: int) -> void:
 	if not is_host:
@@ -4506,6 +4596,12 @@ func _spawn_player(peer: int, index: int) -> void:
 		_inbox[peer] = []
 	if peer == local_peer and camera != null:
 		camera.focus_target = body
+	# THE OTHER HALF OF THE ORDERING ANSWER. A colour that arrived before this
+	# body existed is sitting in player_colours doing nothing; this is where it
+	# lands. Together with _set_characters applying to whoever is already here,
+	# there is no order in which a player ends up the wrong colour -- which is the
+	# property the worn-hat channel had to be taught with a comment.
+	_apply_character_look(peer)
 	player_spawned.emit(peer)
 
 @rpc("authority", "call_local", "reliable")
@@ -4520,6 +4616,7 @@ func _despawn_player(peer: int) -> void:
 	_highest_queued.erase(peer)
 	_spawn_index.erase(peer)
 	player_names.erase(peer)
+	player_colours.erase(peer)
 	_hats.forget_wearer(peer)
 	player_despawned.emit(peer)
 

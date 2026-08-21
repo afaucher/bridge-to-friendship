@@ -892,7 +892,8 @@ about *method*, not about that game.
   `test_enet_loopback` 28777, `test_network_session` 28778,
   `test_authority_agreement` 28779, `test_client_prediction` 28780,
   `test_hud_rescue_visible` 28782, `test_debug_replication` 28783,
-  `test_dash_prediction` 28784, `test_contact_prediction` 28785 (28781 is
+  `test_dash_prediction` 28784, `test_contact_prediction` 28785,
+  `test_character_replication` 28786 (28781 is
   reserved for M8.5's hat replication test). Pick the next free one and add it
   here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
