@@ -301,6 +301,21 @@ the moment it is written.
   sin/cos by hand**, and when a test measures how far, ask what measures which way.
   (The earlier two were both Godot's row-major `Basis` — a bullet tail and a muzzle
   offset, from the same nine numbers.)
+- **A `Transform3D` IN A `.tscn` IS ROW-MAJOR, AND THE WRONG ONE HAS AN IDENTICAL
+  BOUNDING BOX.** The fourth sign error, and the third from those nine numbers —
+  observed 2026-08-20 turning the player's nose from a box into a beak. A
+  `PrismMesh`'s apex is `+Y`, so it needs a quarter turn about X to aim down `-Z`;
+  written column-major (the axis vectors, which is what the *constructor* takes)
+  it turned the other way and the beak pointed **into the player**, full width at
+  the front and tapering to a point where it met the body. **Every extent
+  assertion passed** — the AABB is the same 0.3 x 0.3 x 0.5 at the same corner
+  whichever way it spun, so protrusion, height, width and asymmetry were all
+  correct about a marker that was backwards. Only a check on the VERTICES could
+  see it: full width at the base, narrowing at the tip. **When a shape's identity
+  is its taper, a bounding volume cannot test it** — an AABB cannot tell a prism
+  from the box it was cut from, and neither can it tell which end is which. And
+  the general form: after hand-writing a `Basis`, assert something that is not
+  symmetric under the rotation you might have got wrong.
 - **A LAYER NOTHING MASKS IS A COLLIDER MADE OF NOTHING, and it passes every
   test that asks whether it EXISTS.** Observed 2026-08-15 building M16's round
   barrier: the wall was put on layer 9 while the player mask is 7, so it was

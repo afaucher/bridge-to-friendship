@@ -10,6 +10,24 @@ across sessions.
 The first thing in this game that is yours, that nobody can take, and that does
 nothing.
 
+## Status
+
+**Built so far: the beak, and nothing else** (2026-08-20). The nose is now a
+triangular prism instead of a box — a straight replacement of the facing marker,
+not a slot you can choose from. Everything else below is still design.
+
+That is a deliberate narrowing and it is worth saying why it is safe. The nose
+was never going to be a *choice* in the first pass: the original ask was a
+better nose, and the six-variant catalogue in this document over-built it into a
+menu. Shipping one shape costs nothing that a slot would later need — the
+catalogue is written down, the budget that governs it is measured, and
+`test_nose_shape.gd` already asserts the contract any future variant has to meet.
+
+**And the beak is the most conservative possible version of the change:** it
+occupies exactly the box the old wedge did, so the one measured property of the
+marker — 0.35 m of protrusion past the body — is untouched. Only the plan-view
+outline moved, from a square tab to an arrow.
+
 ## Why this is not a second hat system
 
 Hats are already the game's cosmetic, and every rule about them is the *opposite*
@@ -245,10 +263,13 @@ not to.
 Every one is asymmetric about −Z, brighter than the body by the derived contrast
 rule, and hangs off the `Facing` pivot.
 
+**Only `BEAK` is built.** The other five are recorded as a catalogue to draw from
+if the nose ever becomes a slot; none of them is implemented.
+
 | variant | shape | from directly above | protrusion | note |
 |---|---|---|---|---|
-| **WEDGE** | the current box, blunt | a square tab | 0.35 | **The default and the control.** The only variant with a proven facing read, because it is what the game ships today |
-| **BEAK** | tapers to a point | a triangle | 0.35–0.40 | The crispest arrow in the set. A point may reach slightly further than a face, because it carries less visual mass at the tip |
+| **WEDGE** | a box, blunt | a square tab | 0.35 | The shape the game shipped until 2026-08-20, and the control every other row is measured against |
+| **BEAK** | tapers to a point | a triangle | 0.35 | **SHIPPED.** A `PrismMesh` in exactly the wedge's bounding box, so the protrusion is unchanged and only the outline moved. A prism and not a cone: pointy in plan view, full height from the side, where a cone would have thrown the mass away |
 | **SNOUT** | rounded, wider, slight droop | a broad tongue | 0.28 | Widest and shortest. Sits at the **floor** of the budget, so it is the first thing to re-measure if anyone reports a bad facing read |
 | **FORK** | two forward-swept prongs | a V | 0.35 | The gap is the character. Keep it ≥ one prong's width, or at range the prongs merge and it is a wedge that cost twice as much |
 | **PROW** | a tall thin vertical blade | **a line** | 0.40 | **The risky one.** A line has no width to catch the eye from above — it is the least readable variant in the set and needs a width floor or it should be cut |
@@ -468,7 +489,8 @@ being false.
 |---|---|
 | the contrast rule | **sweep the picker** and assert a minimum nose/body perceptual gap at every sample, including the exact yellow the constant used to be. One colour cannot see this bug — it is a region of the space, not a case |
 | **A/B the contrast rule** | delete the derivation, and confirm the sweep goes red. Per CLAUDE.md 2026-08-17: print the mutation, and run both builds side by side |
-| the facing contract | for **every** nose variant: asymmetric about −Z, and **protrusion past r = 0.4 within the budget** — a floor as well as a ceiling. A variant that clears the ceiling and misses the floor is a nose that looks fine in the preview and says nothing from the camera, which ships as "the dash went the wrong way" |
+| the facing contract | **DONE — `test_nose_shape.gd`.** Asymmetric about −Z, and **protrusion past r = 0.4 within the budget** — a floor as well as a ceiling. A shape that clears the ceiling and misses the floor looks fine in the preview and says nothing from the camera, which ships as "the dash went the wrong way" |
+| the taper | **DONE, and it is the only assertion there that a box fails.** An AABB cannot tell a prism from the box it was cut from, so the beak is asserted from its **vertices**: full width where it meets the body, narrowing to a point at the tip. See below — this is not a nicety, it is the assertion that caught the shipped bug |
 | the spread budget | for **every** accessory, the top-down extent stays inside the ceiling. Antlers are the case that must be able to fail it — if the widest variant passes with room to spare, suspect the measurement before believing the result |
 | horns vs. the hat column | a stack of three hats is spaced identically with horns and without — **and assert the comparison can fail**, or it is a pair of numbers nobody checked |
 | accessories do not collide | no `CollisionShape3D`, and the accessory's layer is masked by nothing. Six bugs in this project have been one wrong bit here |
