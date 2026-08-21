@@ -241,8 +241,18 @@ const ACCESSORY_NONE := "none"
 const ACCESSORY_HORNS := "horns"
 const ACCESSORY_ANTLERS := "antlers"
 const ACCESSORY_TAIL := "tail"
+# MOOSE, and it is a separate entry rather than a variant of `antlers` because it
+# is a different STRUCTURE, not a different size of the same one. An elk rack is a
+# beam with points along it; a moose rack is a flat PALM with points around its
+# edge. Nothing about the elk data could be scaled into one.
+const ACCESSORY_MOOSE := "moose"
 
-const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS, ACCESSORY_TAIL]
+# APPENDED, NEVER INSERTED. The order here is not load-bearing the way
+# SetPieces.LIBRARY's is -- accessories are stored by NAME precisely so it cannot
+# be -- but the character screen walks this list, so inserting in the middle
+# reshuffles the buttons under somebody who had learned where theirs was.
+const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS,
+	ACCESSORY_MOOSE, ACCESSORY_TAIL]
 
 # THE SPREAD CEILING, and it is the mirror of the nose's protrusion FLOOR.
 #
@@ -259,7 +269,32 @@ const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS, ACCESS
 # silhouette rule was always about staying recognisable as a player, which a
 # cylinder with a rack on it still is. The ceiling stays because a runaway is
 # still worth catching; only the number moved.
-const ACCESSORY_SPREAD_MAX := 0.85
+# RAISED 2026-08-21, FROM 0.85 TO 1.50, FOR ONE ACCESSORY. Everything above still
+# holds; what it did not anticipate is an antler whose entire identity IS its
+# width.
+#
+# The arithmetic, against a head 0.80 across. A moose rack can start no closer to
+# the centreline than the head allows, so this ceiling decides almost exactly how
+# wide it can be -- and the rack reading too narrow was reported twice from
+# renders, with the fault here both times rather than in the geometry:
+#
+#     ceiling 0.85   rack spans 1.70   =  2.1 x the head width
+#     ceiling 1.15   rack spans 2.30   =  2.9 x
+#     ceiling 1.50   rack spans 3.00   =  3.8 x
+#     a real bull                      =  4.5 x measured, 6.3 x at the record
+#
+# See design_ideas/antler_research.md: 4.50x is the measured mean for a prime
+# bull across 1,965 racks. So even at 1.50 this is under the honest figure, and
+# the shipped rack measures 2.77 across -- 3.5x the head -- which leaves the
+# ceiling doing real work rather than merely trailing the data.
+#
+# WHAT IT COSTS, stated plainly. The moose is the widest thing any player can
+# wear by a factor of three; the other four accessories sit between 0.6 and 0.9
+# and are untouched. Contract rule 1 in art_direction.md asks that a player still
+# read as a player, and one option in a picker of five being this wide is right
+# at that line. IT HAS NOT BEEN PLAYED. The 0.85 it replaces was tuned from play
+# and this is not, which is the honest difference between the two numbers.
+const ACCESSORY_SPREAD_MAX := 1.50
 
 # THE ACCESSORY WEARS THE NOSE'S COLOUR (decided 2026-08-20, from play).
 #
@@ -303,6 +338,14 @@ static func aim_basis(direction: Vector3) -> Basis:
 # DATA RATHER THAN CODE, so a test can measure the design instead of the drawing.
 # Each part is a tapered cylinder: a CENTRE, a direction its length runs along, a
 # base radius, an optional tip radius (0 makes a point), and a length.
+#
+# ONE PRIMITIVE, AND THAT IS A DECISION RATHER THAN A LIMIT (2026-08-21). The
+# moose briefly had a second -- a flat plate, for its palm -- on the reasoning
+# that a palm is not a cone and the primitive has to be able to say what the
+# anatomy is. Rendered, both versions of it read as BOXES, because a slab in a
+# cast of cones is a slab however carefully it is shaped. The rack is a fan of
+# cones now and reads as an antler, which is the argument the other way: the
+# shape language of a thing built from parts is the parts.
 #
 # Remember the axes: -Z is forward, +Z is back, +X is the character's left as you
 # look at them.
@@ -379,6 +422,145 @@ static func accessory_parts(kind: String) -> Array:
 				{"pos": Vector3(-0.445, 1.242, 0.253), "dir": Vector3(-0.52, 0.42, -0.74), "radius": 0.036, "length": 0.25},
 				{"pos": Vector3(-0.460, 1.410, 0.623), "dir": Vector3(-0.22, 0.95, 0.22), "radius": 0.042, "length": 0.30},
 				{"pos": Vector3(-0.474, 1.371, 0.864), "dir": Vector3(-0.18, 0.92, 0.35), "radius": 0.030, "length": 0.16},
+			]
+		ACCESSORY_MOOSE:
+			# MOOSE, AND IT IS PALMATE -- the one word that separates it from the elk
+			# rack next door.
+			#
+			# An elk antler is a BEAM with points along it: everything radiates from a
+			# stalk, and the stalk is most of the shape. A moose antler is a broad
+			# flattened PALM with points around its edge -- "shaped like the palm of a
+			# hand with outstretched fingers" is the standard description, and Boone
+			# and Crockett score a bull on three numbers of which two are the palm.
+			#
+			# TAKEN LITERALLY, THAT DESCRIPTION IS BUILDABLE OUT OF CONES, and that is
+			# what this is: six long slender fingers splayed across a single plane, with
+			# their bases spread along a short RIM rather than meeting at a point.
+			#
+			# THE FIRST VERSION MET AT A POINT AND WAS A BURR. Reported from a render as
+			# "too bunched up to read as anything but a spiky block", and the numbers
+			# say it plainly: six fingers of 0.25 with base radii of 0.088 is a ratio of
+			# 0.33, which is a stubby spike rather than a point, and all twelve of them
+			# left the same spot beside a head 0.8 across. The mass ended up in a ball
+			# against the skull with short spines round it.
+			#
+			# What fixed it was proportion, in three places at once, and no one of them
+			# alone would have:
+			#
+			#   SLENDER    r/L from 0.33 to 0.106. A point has to be long against its
+			#              own thickness or it is a thorn
+			#   OFF A RIM  the bases are spread 0.24 along a line across the wrist, so
+			#              the shape is already wide where it LEAVES the wrist. From one
+			#              origin a fan is a starburst however long its arms are
+			#   FORE-AND-AFT  the fingers run mostly back rather than out, so their
+			#              length is spent on depth instead of against the spread
+			#              ceiling. A real palm is long front-to-back anyway, widest in
+			#              the middle and sweeping back over the shoulders
+			#
+			# Measured after: 1.68 wide by 1.11 deep against a head 0.80 across -- so the
+			# rack is 2.1x the width of the head, which is about what a bull carries
+			# (roughly a 50 inch spread against 30 inches ear to ear).
+			#
+			# IT TOOK TWO WRONG ANSWERS TO GET HERE AND BOTH WERE THE SAME MISTAKE:
+			# reaching for a new primitive instead of composing the one that was here.
+			# The palm was a BoxMesh slab first -- a plank, the same width at both ends,
+			# which a palm never is -- and then a PrismMesh fan, which fixed the outline
+			# and not the problem. Rendered, both read as BOXES: a flat plate in a cast
+			# of cones is a foreign object however carefully it is shaped, and the eye
+			# reads the ODD ONE OUT before it reads the silhouette. The shape language
+			# of a thing built from parts IS the parts.
+			#
+			# The anatomy, in the order it is built:
+			#
+			#   wrist    SHORT and stubby, MOUNTED ON THE HEAD'S SURFACE and aimed
+			#            mostly UP. Its whole job is to carry the fan's origin clear of
+			#            the skull -- see the burial note below. Mostly up rather than
+			#            out because the spread budget belongs to the FAN: a wrist that
+			#            leaned outward would spend half of it before a single finger
+			#            existed. On an elk the beam is the whole antler; here it is a
+			#            wrist, and getting that wrong in the other direction just
+			#            builds an elk again
+			#   fingers  six, splayed ACROSS one plane rather than branching out of a
+			#            stalk, from bases spread along a rim. Longest in the middle and
+			#            shortest at the ends, which is what makes the outer edge a
+			#            curve instead of a straight comb
+			#   brow     ONE forward point off the wrist, and NOT the brow palm a real
+			#            bull has. That was built and removed: this character has no
+			#            MUZZLE -- the front of its head is eyes -- so a plate over the
+			#            brow lands squarely on top of them and reads as blinders
+			#
+			# THE NUMBERS WERE COMPUTED, NOT EYEBALLED. Every finger's direction is the
+			# fan's centre line rotated about the fan's normal by a named angle, and
+			# every base is the wrist's far end. Eyeballed joints are what made the elk
+			# read as "cones whose tip intersects the middle of the next" for three
+			# attempts running.
+			#
+			# IT MOUNTS ON THE SURFACE, NOT INSIDE THE HEAD. Reported from a render,
+			# and the numbers say how badly the first version had it: the body is a
+			# cylinder of radius 0.4, the wrist started at radius 0.29, and its far end
+			# -- where every finger begins -- was STILL 0.04 inside. The whole palm grew
+			# out of the middle of the skull and only the tips escaped.
+			#
+			# The two parts that touch the body now sit exactly 0.03 INSIDE it, which is
+			# deliberate and is the opposite failure: a mount flush with the surface
+			# shows a seam the moment anything moves, and one outside it floats. Every
+			# other part is clear of the body by 0.07 or more. Asserted in
+			# test_accessory, because "it is roughly in the right place" is exactly the
+			# kind of claim that drifts silently.
+			#
+			# THE FAN LIES NEARLY FLAT (its normal is within 12 degrees of straight up)
+			# and that is the reading, not a detail: a trophy bull's palms lie flat and
+			# spread wide, and a rack whose fan stood upright would be an elk again.
+			return [
+				# --- ONE ROOT. Every limb below is TWO chained segments, so it curves ---
+				{"pos": Vector3(0.418, 0.624, -0.030), "dir": Vector3(0.880, 0.440, -0.140), "radius": 0.090, "tip": 0.086, "length": 0.11},
+				{"pos": Vector3(0.513, 0.673, -0.054), "dir": Vector3(0.843, 0.430, -0.302), "radius": 0.086, "tip": 0.083, "length": 0.11},
+				# --- FORK 1: the butterfly -- brow branch forward, main branch out ---
+				{"pos": Vector3(0.590, 0.706, -0.134), "dir": Vector3(0.425, 0.138, -0.888), "radius": 0.050, "tip": 0.046, "length": 0.14},
+				{"pos": Vector3(0.640, 0.717, -0.263), "dir": Vector3(0.280, 0.017, -0.953), "radius": 0.046, "tip": 0.043, "length": 0.14},
+				{"pos": Vector3(0.652, 0.693, -0.406), "dir": Vector3(-0.087, -0.314, -0.939), "radius": 0.038, "tip": 0.017, "length": 0.16},
+				{"pos": Vector3(0.624, 0.675, -0.558), "dir": Vector3(-0.271, 0.097, -0.958), "radius": 0.017, "length": 0.16},
+				{"pos": Vector3(0.696, 0.734, -0.382), "dir": Vector3(0.559, 0.244, -0.785), "radius": 0.034, "tip": 0.015, "length": 0.13},
+				{"pos": Vector3(0.768, 0.791, -0.469), "dir": Vector3(0.542, 0.632, -0.554), "radius": 0.015, "length": 0.13},
+				# --- the main branch, forking again at every joint ---
+				# Each TINE's second segment lifts out of the palm plane, so the
+				# points curve upward instead of lying flat along it.
+				{"pos": Vector3(0.614, 0.721, -0.064), "dir": Vector3(0.894, 0.415, 0.124), "radius": 0.066, "tip": 0.064, "length": 0.12},
+				{"pos": Vector3(0.721, 0.770, -0.042), "dir": Vector3(0.883, 0.389, 0.237), "radius": 0.064, "tip": 0.062, "length": 0.12},
+				{"pos": Vector3(0.810, 0.777, 0.059), "dir": Vector3(0.368, -0.169, 0.907), "radius": 0.036, "tip": 0.016, "length": 0.19},
+				{"pos": Vector3(0.890, 0.811, 0.214), "dir": Vector3(0.473, 0.521, 0.710), "radius": 0.016, "length": 0.19},
+				{"pos": Vector3(0.825, 0.816, -0.014), "dir": Vector3(0.883, 0.389, 0.237), "radius": 0.051, "tip": 0.049, "length": 0.11},
+				{"pos": Vector3(0.925, 0.858, 0.020), "dir": Vector3(0.862, 0.354, 0.347), "radius": 0.049, "tip": 0.048, "length": 0.11},
+				{"pos": Vector3(1.008, 0.858, 0.132), "dir": Vector3(0.332, -0.203, 0.914), "radius": 0.034, "tip": 0.015, "length": 0.20},
+				{"pos": Vector3(1.085, 0.886, 0.299), "dir": Vector3(0.437, 0.487, 0.757), "radius": 0.015, "length": 0.20},
+				{"pos": Vector3(1.022, 0.898, 0.058), "dir": Vector3(0.862, 0.354, 0.347), "radius": 0.039, "tip": 0.038, "length": 0.11},
+				{"pos": Vector3(1.114, 0.934, 0.102), "dir": Vector3(0.830, 0.311, 0.450), "radius": 0.038, "tip": 0.037, "length": 0.11},
+				{"pos": Vector3(1.185, 0.929, 0.209), "dir": Vector3(0.295, -0.236, 0.919), "radius": 0.034, "tip": 0.015, "length": 0.18},
+				{"pos": Vector3(1.248, 0.949, 0.365), "dir": Vector3(0.397, 0.450, 0.800), "radius": 0.015, "length": 0.18},
+				{"pos": Vector3(1.213, 0.971, 0.156), "dir": Vector3(0.830, 0.311, 0.450), "radius": 0.036, "tip": 0.016, "length": 0.13},
+				{"pos": Vector3(1.318, 1.008, 0.222), "dir": Vector3(0.782, 0.252, 0.560), "radius": 0.016, "length": 0.13},
+				{"pos": Vector3(-0.418, 0.624, -0.030), "dir": Vector3(-0.880, 0.440, -0.140), "radius": 0.090, "tip": 0.086, "length": 0.11},
+				{"pos": Vector3(-0.513, 0.673, -0.054), "dir": Vector3(-0.843, 0.430, -0.302), "radius": 0.086, "tip": 0.083, "length": 0.11},
+				{"pos": Vector3(-0.590, 0.706, -0.134), "dir": Vector3(-0.425, 0.138, -0.888), "radius": 0.050, "tip": 0.046, "length": 0.14},
+				{"pos": Vector3(-0.640, 0.717, -0.263), "dir": Vector3(-0.280, 0.017, -0.953), "radius": 0.046, "tip": 0.043, "length": 0.14},
+				{"pos": Vector3(-0.652, 0.693, -0.406), "dir": Vector3(0.087, -0.314, -0.939), "radius": 0.038, "tip": 0.017, "length": 0.16},
+				{"pos": Vector3(-0.624, 0.675, -0.558), "dir": Vector3(0.271, 0.097, -0.958), "radius": 0.017, "length": 0.16},
+				{"pos": Vector3(-0.696, 0.734, -0.382), "dir": Vector3(-0.559, 0.244, -0.785), "radius": 0.034, "tip": 0.015, "length": 0.13},
+				{"pos": Vector3(-0.768, 0.791, -0.469), "dir": Vector3(-0.542, 0.632, -0.554), "radius": 0.015, "length": 0.13},
+				{"pos": Vector3(-0.614, 0.721, -0.064), "dir": Vector3(-0.894, 0.415, 0.124), "radius": 0.066, "tip": 0.064, "length": 0.12},
+				{"pos": Vector3(-0.721, 0.770, -0.042), "dir": Vector3(-0.883, 0.389, 0.237), "radius": 0.064, "tip": 0.062, "length": 0.12},
+				{"pos": Vector3(-0.810, 0.777, 0.059), "dir": Vector3(-0.368, -0.169, 0.907), "radius": 0.036, "tip": 0.016, "length": 0.19},
+				{"pos": Vector3(-0.890, 0.811, 0.214), "dir": Vector3(-0.473, 0.521, 0.710), "radius": 0.016, "length": 0.19},
+				{"pos": Vector3(-0.825, 0.816, -0.014), "dir": Vector3(-0.883, 0.389, 0.237), "radius": 0.051, "tip": 0.049, "length": 0.11},
+				{"pos": Vector3(-0.925, 0.858, 0.020), "dir": Vector3(-0.862, 0.354, 0.347), "radius": 0.049, "tip": 0.048, "length": 0.11},
+				{"pos": Vector3(-1.008, 0.858, 0.132), "dir": Vector3(-0.332, -0.203, 0.914), "radius": 0.034, "tip": 0.015, "length": 0.20},
+				{"pos": Vector3(-1.085, 0.886, 0.299), "dir": Vector3(-0.437, 0.487, 0.757), "radius": 0.015, "length": 0.20},
+				{"pos": Vector3(-1.022, 0.898, 0.058), "dir": Vector3(-0.862, 0.354, 0.347), "radius": 0.039, "tip": 0.038, "length": 0.11},
+				{"pos": Vector3(-1.114, 0.934, 0.102), "dir": Vector3(-0.830, 0.311, 0.450), "radius": 0.038, "tip": 0.037, "length": 0.11},
+				{"pos": Vector3(-1.185, 0.929, 0.209), "dir": Vector3(-0.295, -0.236, 0.919), "radius": 0.034, "tip": 0.015, "length": 0.18},
+				{"pos": Vector3(-1.248, 0.949, 0.365), "dir": Vector3(-0.397, 0.450, 0.800), "radius": 0.015, "length": 0.18},
+				{"pos": Vector3(-1.213, 0.971, 0.156), "dir": Vector3(-0.830, 0.311, 0.450), "radius": 0.036, "tip": 0.016, "length": 0.13},
+				{"pos": Vector3(-1.318, 1.008, 0.222), "dir": Vector3(-0.782, 0.252, 0.560), "radius": 0.016, "length": 0.13},
 			]
 		ACCESSORY_TAIL:
 			# SEGMENTED, SO IT CURVES UP.

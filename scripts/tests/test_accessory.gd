@@ -32,6 +32,13 @@ func setup(main) -> void:
 	_test_spread_ceiling(main)
 	_test_horns_point_outward(main)
 	_test_antlers_branch()
+	_test_the_moose_is_one_root(main)
+	_test_every_limb_is_two_chained_segments(main)
+	_test_the_tines_lift(main)
+	_test_the_brow_is_in_front(main)
+	_test_it_sits_low_and_goes_out(main)
+	_test_the_moose_is_not_the_elk(main)
+	_test_it_grows_from_the_surface(main)
 	_test_switching_replaces(main)
 	_test_none_is_nothing(main)
 	_test_unknown_names_wear_nothing(main)
@@ -137,7 +144,8 @@ func _test_spread_ceiling(main) -> void:
 # up -- the beak's lesson, that a rotation is only ever verified by measuring
 # what came out of it.
 func _test_horns_point_outward(main) -> void:
-	for kind in [CharacterStyle.ACCESSORY_HORNS, CharacterStyle.ACCESSORY_ANTLERS]:
+	for kind in [CharacterStyle.ACCESSORY_HORNS, CharacterStyle.ACCESSORY_ANTLERS,
+			CharacterStyle.ACCESSORY_MOOSE]:
 		var body: Node3D = _fresh(main)
 		body.apply_look(CharacterStyle.DEFAULT_BODY, 1, kind)
 		var root: Node3D = _accessory_root(body)
@@ -440,3 +448,334 @@ func _stack_heights(pool: HatPool, body: Node3D, kind: String) -> Array:
 	for hat in pool.worn_by(1):
 		out.append(hat.global_position.y)
 	return out
+
+# --- 7b. IT GROWS FROM THE SURFACE, NOT OUT OF THE MIDDLE OF THE HEAD ----------
+#
+# Reported from a render, and the numbers say how badly the first fan had it: the
+# body is a cylinder of radius 0.4, the moose's wrist started at radius 0.29, and
+# its far end -- where every finger begins -- was STILL inside. The whole palm
+# grew out of the middle of the skull and only the tips escaped.
+#
+# NOTHING ABOVE COULD SEE IT. The spread ceiling measures how far OUT a part
+# reaches, the fan tests measure the shape it makes, and a rack buried to the
+# elbow satisfies both: it is exactly as wide and exactly as fanned as one that
+# is not. "Where does it start" is a different question from "where does it end",
+# and only the second was being asked.
+#
+# THE RULE HAS BOTH A FLOOR AND A CEILING, and the floor is the half people
+# forget. A mount flush with the surface shows a seam the moment anything moves,
+# and a mount OUTSIDE it floats -- so the parts that touch the body are meant to
+# be slightly buried. What must not happen is a part that is buried and is not a
+# mount.
+const BODY_RADIUS := 0.4
+const BODY_TOP := 0.9
+
+# How far inside the body a point sits. Negative is outside.
+func _burial(p: Vector3) -> float:
+	if p.y >= BODY_TOP:
+		return BODY_TOP - p.y
+	return BODY_RADIUS - Vector2(p.x, p.z).length()
+
+func _test_it_grows_from_the_surface(main) -> void:
+	# MEASURED FOR EVERY ACCESSORY AND ASSERTED FOR THE MOOSE, and that split is
+	# deliberate rather than lazy.
+	#
+	# Written as a rule for all four, it fails immediately -- and on content that
+	# was signed off from play. The horns' base sits 0.246 m inside a body of
+	# radius 0.4, which is very nearly the centre line, and the elk beam's is
+	# 0.179 m in. Both are long cones mounted by their MIDPOINT, so half of each
+	# is inside the head by construction and only the outer half is the horn you
+	# see. That may be perfectly fine, or it may be the same fault the moose had;
+	# it is not a question this change gets to answer on its own.
+	#
+	# So the numbers are printed for all of them -- they are in the gate output on
+	# every run, which is where a decision can be made from -- and the assertion
+	# binds the one accessory the rule was asked for.
+	var report: Array = []
+	for kind in CharacterStyle.ACCESSORIES:
+		if kind == CharacterStyle.ACCESSORY_NONE:
+			continue
+		var body: Node3D = _fresh(main)
+		body.apply_look(CharacterStyle.DEFAULT_BODY, 1, kind)
+		var root: Node3D = _accessory_root(body)
+		if not check(root != null, "%s built something to measure" % kind):
+			continue
+
+		var mounts: int = 0
+		var deepest: float = -INF
+		var deepest_free: float = -INF
+		for child in root.get_children():
+			var piece := child as MeshInstance3D
+			if piece == null:
+				continue
+			var cone := piece.mesh as CylinderMesh
+			if cone == null:
+				continue
+			var base: Vector3 = piece.transform * Vector3(0.0, -cone.height * 0.5, 0.0)
+			var d: float = _burial(base)
+			deepest = maxf(deepest, d)
+			if d > -0.01:
+				mounts += 1
+			else:
+				deepest_free = maxf(deepest_free, d)
+
+		report.append("%s deepest %+.3f, %d anchored" % [kind, deepest, mounts])
+
+		if kind == CharacterStyle.ACCESSORY_MOOSE:
+			# NO PART STARTS DEEPER THAN ITS OWN SEAM. The rack's two mounts sit
+			# 0.03 inside so there is no gap to see; 0.06 is that with margin, and
+			# it is nowhere near the 0.11 the old wrist had or the 0.04 its fingers
+			# had -- the whole palm grew out of the middle of the skull.
+			check(deepest <= 0.06,
+				"the moose starts at the head's SURFACE -- deepest base is %.3f m in"
+					% deepest)
+			# AND SOMETHING REALLY IS ANCHORED. Without this the line above is
+			# satisfied by a rack floating a hand's width off the head, which is
+			# the opposite mistake and looks just as wrong.
+			check(mounts >= 2, "and is anchored rather than floating -- %d mounts" % mounts)
+			# EVERY PART THAT IS NOT A MOUNT IS CLEAR OF THE BODY. This is the half
+			# that actually failed: the old fingers were not mounts and were inside
+			# the head anyway.
+			check(deepest_free < 0.0,
+				"and every part that is not the root clears the head outright -- "
+				+ "deepest is %.3f" % deepest_free)
+		body.queue_free()
+	print("[accessory burial] %s" % ", ".join(report))
+
+# --- 8. THE MOOSE: ONE ROOT, BIFURCATING ---------------------------------------
+#
+# What the rack IS, after six rebuilds. Every claim here is one a previous
+# version would have failed, and the numbers come from
+# design_ideas/antler_research.md rather than from taste.
+#
+# THIS FILE PREVIOUSLY ASSERTED THREE OTHER SHAPES -- a slab palm, a prism fan,
+# and a starburst of cones -- and each set of assertions was perfectly true of
+# the thing it described and said nothing about whether it read as an antler.
+# The lesson is in CLAUDE.md's language: they measured that a shape EXISTED.
+# What was missing was any claim about STRUCTURE, which is what these are.
+
+const HEAD_W := 0.8
+const SKULL_TOP := 0.9
+
+func _moose_parts(main) -> Array:
+	var body: Node3D = _fresh(main)
+	body.apply_look(CharacterStyle.DEFAULT_BODY, 1, CharacterStyle.ACCESSORY_MOOSE)
+	var root: Node3D = _accessory_root(body)
+	if root == null:
+		return []
+	var out: Array = []
+	for child in root.get_children():
+		var piece := child as MeshInstance3D
+		if piece == null:
+			continue
+		var cone := piece.mesh as CylinderMesh
+		if cone == null:
+			continue
+		out.append({
+			"base": piece.transform * Vector3(0.0, -cone.height * 0.5, 0.0),
+			"tip": piece.transform * Vector3(0.0, cone.height * 0.5, 0.0),
+			"dir": piece.transform.basis.y.normalized(),
+			"r0": cone.bottom_radius, "r1": cone.top_radius,
+		})
+	return out
+
+# How far inside the body a point sits. Negative is outside.
+func _sunk(p: Vector3) -> float:
+	if p.y >= SKULL_TOP:
+		return SKULL_TOP - p.y
+	return 0.4 - Vector2(p.x, p.z).length()
+
+func _test_the_moose_is_one_root(main) -> void:
+	var parts: Array = _moose_parts(main)
+	if not check(parts.size() > 0, "the moose built something to measure"):
+		return
+
+	# ONE PRIMITIVE. "Cylinders and cones only" is a decision about the whole art
+	# language, and it was broken twice by reaching for a new mesh type rather
+	# than by a bad number -- a BoxMesh slab and then a PrismMesh fan, both of
+	# which read as a foreign object dropped into a cast of cones.
+	for part in parts:
+		check(part["r0"] > 0.0, "every part is a cone or a cylinder")
+
+	# ONE ROOT PER SIDE. Goss: an antler forms by repeated bifurcation of a single
+	# outgrowth, so exactly one part a side may touch the head and everything else
+	# must start on another part. A rack with several roots is a bundle of horns.
+	var anchored: Array = []
+	for part in parts:
+		if _sunk(part["base"]) > 0.0:
+			anchored.append(part)
+	eq(anchored.size(), 2, "exactly one root a side touches the head")
+
+	# And every other part starts ON something. Measured against the parent's
+	# axis SEGMENT, so a part floating past the end of its parent is caught.
+	var floating: int = 0
+	for part in parts:
+		if _sunk(part["base"]) > 0.0:
+			continue
+		var nearest: float = INF
+		for other in parts:
+			if other == part:
+				continue
+			nearest = minf(nearest, _to_axis(part["base"], other))
+		if nearest > 0.03:
+			floating += 1
+	eq(floating, 0, "and every other part grows out of one that came before it")
+
+func _to_axis(at: Vector3, part: Dictionary) -> float:
+	var a: Vector3 = part["base"]
+	var span: Vector3 = part["tip"] - a
+	var t: float = clampf((at - a).dot(span) / maxf(span.length_squared(), 0.0001), 0.0, 1.0)
+	return (at - (a + span * t)).length() - part["r0"]
+
+# --- 8b. EVERY LIMB IS TWO SEGMENTS, AND THEY CHAIN ---------------------------
+#
+# A limb built from one cone is a straight stick and nothing on an antler is
+# straight. The chaining is what makes a pair read as ONE tapering thing: the
+# first segment's TIP radius is the second's BASE radius, the same rule the elk
+# beam and the tail already use. Without it a bent limb is two spikes meeting at
+# an angle, which is what the elk looked like for three attempts.
+
+func _test_every_limb_is_two_chained_segments(main) -> void:
+	var parts: Array = _moose_parts(main)
+	if parts.is_empty():
+		return
+	eq(parts.size() % 2, 0, "the part count is even -- two per limb")
+
+	# A CHAIN PARTNER, NOT MERELY A SUCCESSOR. Several parts may start at the same
+	# tip -- that is what a FORK is -- and a fork's children deliberately do NOT
+	# inherit the parent's radius, because the pipe model splits it between them.
+	# So the test looks for the ONE successor whose base radius MATCHES, which is
+	# the second half of the same limb. The first version compared against every
+	# successor and reported a 0.033 mismatch that was a fork doing its job.
+	var chained: int = 0
+	for part in parts:
+		if part["r1"] <= 0.0001:
+			continue        # a segment ending in a point starts no successor
+		for other in parts:
+			if other == part:
+				continue
+			if other["base"].distance_to(part["tip"]) < 0.01 					and absf(other["r0"] - part["r1"]) < 0.002:
+				chained += 1
+				break
+	check(chained >= parts.size() / 2 - 2,
+		"every limb's two segments share a radius at their join, so it reads as "
+		+ "one tapering thing -- %d chains across %d parts" % [chained, parts.size()])
+
+# --- 8c. THE TINES LIFT OUT OF THE PALM PLANE ---------------------------------
+#
+# First segment in the plane, second bent upward. This is the one claim that a
+# purely planar rack passes and a moose does not: a point lying flat along the
+# palm reads as a spike, and a real one curves up off it.
+
+func _test_the_tines_lift(main) -> void:
+	var parts: Array = _moose_parts(main)
+	if parts.is_empty():
+		return
+	var lifted: int = 0
+	var checked: int = 0
+	for part in parts:
+		if part["r1"] > 0.0001:
+			continue        # only the OUTER segment of a limb ends in a point
+		for other in parts:
+			if other["tip"].distance_to(part["base"]) < 0.01:
+				checked += 1
+				if part["dir"].y > other["dir"].y + 0.05:
+					lifted += 1
+				break
+	check(checked >= 8, "there are outer segments to measure -- %d" % checked)
+	# The BEAM's own tip is an outer segment too and does not lift, so this is a
+	# majority claim rather than a universal one.
+	check(lifted >= checked - 4,
+		"a tine's second segment bends UP out of the plane -- %d of %d lift"
+			% [lifted, checked])
+
+# --- 8d. THE BROW BRANCH IS IN FRONT ------------------------------------------
+#
+# The first fork is early and uneven: the smaller child is the BROW, and it
+# projects FORWARD over the face. Built without this the rack is on backwards,
+# and every extent assertion passes either way -- the same blindness the beak's
+# row-major Basis had.
+
+func _test_the_brow_is_in_front(main) -> void:
+	var parts: Array = _moose_parts(main)
+	if parts.is_empty():
+		return
+	var front: float = INF
+	var back: float = -INF
+	for part in parts:
+		front = minf(front, minf(part["base"].z, part["tip"].z))
+		back = maxf(back, maxf(part["base"].z, part["tip"].z))
+	# Forward is -Z. The brow reaches forward of the head; the main branch sweeps
+	# back behind it.
+	check(front < -0.45,
+		"the brow branch projects forward over the face -- reaches z %.2f" % front)
+	check(back > 0.15, "and the main branch sweeps back behind it -- z %.2f" % back)
+
+# --- 8e. IT SITS LOW AND GOES OUT ---------------------------------------------
+#
+# The cue the research ranks second and every version before this one had last.
+# Root it high and angle it up and the result is a FALLOW DEER -- the other
+# palmate cervid -- which reads as "deer", not "moose". That was predicted from
+# the literature before it saw the model, and it was exactly what had been built:
+# a beam leaving the head at 47 degrees upward.
+
+func _test_it_sits_low_and_goes_out(main) -> void:
+	var parts: Array = _moose_parts(main)
+	if parts.is_empty():
+		return
+	var top: float = -INF
+	var out: float = 0.0
+	for part in parts:
+		top = maxf(top, maxf(part["base"].y, part["tip"].y))
+		out = maxf(out, maxf(absf(part["base"].x), absf(part["tip"].x)))
+	var above: float = top - SKULL_TOP
+	check(above < 0.40,
+		"the rack stays below half a head-height above the skull -- %.2f" % above)
+	check(out - 0.4 > 2.0 * maxf(above, 0.01),
+		"and reaches out far further than up -- %.2f out against %.2f up"
+			% [out - 0.4, above])
+
+	# ROOTED AT EAR LEVEL, LATERAL. Not on the crown, which is where an elk's go.
+	for part in parts:
+		if _sunk(part["base"]) > 0.0:
+			check(part["base"].y < SKULL_TOP,
+				"and is rooted on the SIDE of the head, not the crown -- y %.2f"
+					% part["base"].y)
+
+# --- 8f. IT IS NOT THE ELK ----------------------------------------------------
+#
+# Two racks in one picker are only worth having if a player can tell them apart,
+# and the risk went UP when the moose was rebuilt to use the elk's branching
+# language. The research names front-view aspect as the separator: a moose is a
+# wide horizontal bar, an elk is a lyre.
+
+func _test_the_moose_is_not_the_elk(main) -> void:
+	var shapes := {}
+	for kind in [CharacterStyle.ACCESSORY_MOOSE, CharacterStyle.ACCESSORY_ANTLERS]:
+		var body: Node3D = _fresh(main)
+		body.apply_look(CharacterStyle.DEFAULT_BODY, 1, kind)
+		var root: Node3D = _accessory_root(body)
+		if root == null:
+			continue
+		var span := AABB()
+		var first := true
+		for child in root.get_children():
+			var piece := child as MeshInstance3D
+			if piece == null or piece.mesh == null:
+				continue
+			var box: AABB = piece.transform * piece.mesh.get_aabb()
+			span = box if first else span.merge(box)
+			first = false
+		shapes[kind] = span
+		body.queue_free()
+
+	var moose: AABB = shapes.get(CharacterStyle.ACCESSORY_MOOSE, AABB())
+	var elk: AABB = shapes.get(CharacterStyle.ACCESSORY_ANTLERS, AABB())
+	var m_ratio: float = moose.size.x / maxf(moose.size.y, 0.001)
+	var e_ratio: float = elk.size.x / maxf(elk.size.y, 0.001)
+	check(m_ratio > 2.5, "the moose is a wide horizontal bar -- W:H %.2f" % m_ratio)
+	check(e_ratio < 1.5, "and the elk is a lyre -- W:H %.2f" % e_ratio)
+	check(moose.size.x > elk.size.x * 1.8,
+		"and the moose is far the wider -- %.2f against %.2f" % [moose.size.x, elk.size.x])
+	print("[racks] moose %.2f x %.2f (W:H %.2f)   elk %.2f x %.2f (W:H %.2f)"
+		% [moose.size.x, moose.size.y, m_ratio, elk.size.x, elk.size.y, e_ratio])
