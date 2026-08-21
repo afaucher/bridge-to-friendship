@@ -24,6 +24,7 @@ const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const SECTION := "player"
 const KEY_BODY := "body_colour"
 const KEY_SEED := "character_seed"
+const KEY_ACCESSORY := "accessory"
 const DEFAULT_PATH := "user://player.cfg"
 
 # Tests point this somewhere disposable. Without it, running the gate would read
@@ -89,6 +90,30 @@ static func save_character_seed(character_seed: int) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(path())
 	cfg.set_value(SECTION, KEY_SEED, character_seed)
+	cfg.save(path())
+
+# The chosen accessory: horns, antlers, a tail, or nothing.
+#
+# CHOSEN, so it has a default and no roll -- the colour's rule, not the seed's.
+# The default is NONE because an accessory the game handed you would not be a
+# choice you made, and this is the one slot whose whole content is the choosing.
+#
+# AN UNKNOWN NAME DECAYS TO NONE rather than raising. The stored value is a name
+# so that reordering the list cannot remap saved characters, and the cost of that
+# is that a file can name something this build has never heard of -- an accessory
+# removed since, or a config from a newer build. Wearing nothing is the right
+# answer to that; refusing to load is not.
+static func load_accessory() -> String:
+	var cfg := ConfigFile.new()
+	if cfg.load(path()) != OK:
+		return CharacterStyle.ACCESSORY_NONE
+	var stored: String = str(cfg.get_value(SECTION, KEY_ACCESSORY, CharacterStyle.ACCESSORY_NONE))
+	return stored if CharacterStyle.is_accessory(stored) else CharacterStyle.ACCESSORY_NONE
+
+static func save_accessory(kind: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(path())
+	cfg.set_value(SECTION, KEY_ACCESSORY, kind if CharacterStyle.is_accessory(kind) else CharacterStyle.ACCESSORY_NONE)
 	cfg.save(path())
 
 # Test support: forget everything, so the next load is a first-ever run.

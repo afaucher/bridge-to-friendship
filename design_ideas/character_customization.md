@@ -21,7 +21,7 @@ Built so far (2026-08-20), in the order it landed:
 | **the derived nose colour** | shipped — `character_style.gd` |
 | **personal colour** | shipped end to end: chosen on the screen, saved to `user://player.cfg`, worn by the body, and replicated to everyone |
 | **eyes** | shipped, and **not as a slot** — see below |
-| **one accessory slot** | not built |
+| **one accessory slot** | shipped — horns, antlers, a tail, or none |
 | **colour in the HUD and score screen** | not built — the value is on the body only |
 
 The nose was deliberately narrowed to one shape. The original ask was a *better
@@ -340,13 +340,22 @@ There is no body colour that hides both, so there is nothing to derive.
 One at a time. Mesh only — no `CollisionShape3D`, no layer, no mask. All hang off
 `Facing` so they turn with the aim, and none of them raise `mount_y`.
 
-| variant | shape | spread | note |
+**Three are built; `EARS` and `SPIKES` are catalogued and not implemented.**
+
+| variant | shape | measured spread | note |
 |---|---|---|---|
-| **HORNS** | two short thick cones, curving out and up from the sides | moderate | The safest: short, close to the head, unmistakable. Splayed outward so the vertical column stays the hats' |
-| **ANTLERS** | tall and branching | **widest** | The variant that tests the spread budget. Visible from above precisely *because* it splays — which is the point and the risk in one property |
-| **TAIL** | trailing low behind, on the aim axis | none | A **rear-pointing facing cue**, which is a small bonus and a small risk. Must be smaller and dimmer than the nose or the player has two markers and the wrong one is louder |
-| **EARS** | two rounded flaps, drooping outward | low | Mostly a close-range read, like eyes. Cheap and legible in the preview |
-| **SPIKES** | a lateral row of small spines along the sides | minimal | Reads as texture on the outline rather than as protrusion — the accessory for someone who wants the silhouette left alone |
+| **HORNS** | two short thick cones, curving out and up from the sides | 0.37 | **SHIPPED.** The safest: short, close to the head, unmistakable. Splayed outward so the vertical column stays the hats' |
+| **ANTLERS** | a beam and two tines a side | 0.42 | **SHIPPED**, and the variant that tests the ceiling. Visible from above precisely *because* it splays — the point and the risk in one property |
+| **TAIL** | one tapered cone, trailing low behind on the aim axis | 0.09 | **SHIPPED.** A **rear-pointing facing cue**, reaching 0.26 back against the nose's 0.35 forward — asserted, so it can never out-shout the marker |
+| **EARS** | two rounded flaps, drooping outward | low | catalogued only. Mostly a close-range read, like eyes |
+| **SPIKES** | a lateral row of small spines along the sides | minimal | catalogued only. Reads as texture on the outline rather than as protrusion |
+
+**Stored and replicated by NAME, never by index.** An integer index into the
+list is a value that silently remaps the day anybody reorders it — every saved
+character would quietly grow different antlers. The cost is that a config file or
+a packet can name something this build has never heard of, so an unknown name
+wears nothing rather than raising, and the host **validates the name off the
+wire** before it reaches anybody else's roster.
 
 **Cut: `CREST`** — a fore-aft ridge along the top of the head. Disqualified twice
 over, which is why it is worth recording rather than quietly omitting. It sits in
@@ -550,7 +559,10 @@ being false.
 | **A/B the contrast rule** | delete the derivation, and confirm the sweep goes red. Per CLAUDE.md 2026-08-17: print the mutation, and run both builds side by side |
 | the facing contract | **DONE — `test_nose_shape.gd`.** Asymmetric about −Z, and **protrusion past r = 0.4 within the budget** — a floor as well as a ceiling. A shape that clears the ceiling and misses the floor looks fine in the preview and says nothing from the camera, which ships as "the dash went the wrong way" |
 | the taper | **DONE, and it is the only assertion there that a box fails.** An AABB cannot tell a prism from the box it was cut from, so the beak is asserted from its **vertices**: full width where it meets the body, narrowing to a point at the tip. See below — this is not a nicety, it is the assertion that caught the shipped bug |
-| the spread budget | for **every** accessory, the top-down extent stays inside the ceiling. Antlers are the case that must be able to fail it — if the widest variant passes with room to spare, suspect the measurement before believing the result |
+| the spread budget | **DONE — `test_accessory.gd`.** Measured off the BUILT meshes, not the declared numbers |
+| accessories do not collide | **DONE, and A/B'd.** Asserted over the whole subtree, not just the root — the failure would be one part with a shape on it. Giving every part a `CollisionShape3D` failed all three kinds |
+| the hat tower is unmoved | **DONE.** A real three-hat stack posed with antlers and without, compared height by height — plus an assertion that the hats really are stacked, because three equal numbers prove nothing if the tower had no height |
+| **they splay outward** | **DONE — and its first version was worthless.** It checked that the widest point exceeded 0.3, and **passed with the horn tilt reversed**, because a horn attached at x = 0.26 with radius 0.075 already reaches 0.335 untilted. The number was satisfied by the mounting point. A direction claim has to be measured as one: each piece's tip against its own base. Only the A/B found this |
 | horns vs. the hat column | a stack of three hats is spaced identically with horns and without — **and assert the comparison can fail**, or it is a pair of numbers nobody checked |
 | accessories do not collide | no `CollisionShape3D`, and the accessory's layer is masked by nothing. Six bugs in this project have been one wrong bit here |
 | persistence | **DONE — `test_character_config.gd`.** Round-trips; shares a file with the saved hat in both write orders; survives a corrupt value; `path_override` asserted to actually redirect, so the gate cannot eat a developer's character |

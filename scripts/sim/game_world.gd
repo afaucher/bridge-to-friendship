@@ -308,12 +308,14 @@ func _ready() -> void:
 		# every test rig and every headless sim -- deliberately never reaches this
 		# line, so the gate neither reads nor writes a developer's face.
 		_chosen_seed = CharacterConfig.load_character_seed()
+		_chosen_accessory = CharacterConfig.load_accessory()
 
 # What this machine's player looks like. Read from disk at construction and
 # announced at start(); a world that never read a config plays the default, which
 # is a real character rather than a missing one.
 var _chosen_body_colour: Color = CharacterStyle.DEFAULT_BODY
 var _chosen_seed: int = 0
+var _chosen_accessory: String = CharacterStyle.ACCESSORY_NONE
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -4310,37 +4312,53 @@ func _broadcast_names() -> void:
 # "here is what I look like".
 var player_colours: Dictionary = {}
 var player_seeds: Dictionary = {}
+var player_accessories: Dictionary = {}
 
 func _announce_character() -> void:
 	if is_host:
 		player_colours[local_peer] = _chosen_body_colour
 		player_seeds[local_peer] = _chosen_seed
+		player_accessories[local_peer] = _chosen_accessory
 		_apply_character_looks()
 		_broadcast_characters()
 	elif networked:
-		_submit_character.rpc_id(1, _chosen_body_colour, _chosen_seed)
+		_submit_character.rpc_id(1, _chosen_body_colour, _chosen_seed, _chosen_accessory)
 
 @rpc("any_peer", "call_remote", "reliable")
-func _submit_character(colour: Color, character_seed: int = 0) -> void:
+func _submit_character(colour: Color, character_seed: int = 0, accessory: String = "none") -> void:
 	if not is_host:
 		return
 	var from: int = multiplayer.get_remote_sender_id()
 	player_colours[from] = colour
 	player_seeds[from] = character_seed
+	# VALIDATED, BECAUSE THIS ONE CAME OFF THE WIRE. A colour and a seed cannot be
+	# malformed -- every Color is a colour and every int is a seed -- but an
+	# accessory is a NAME, and a name from another machine can be anything at all:
+	# a build with a slot this one has never heard of, or a peer that is simply
+	# wrong. An unknown name wears nothing rather than propagating into everyone
+	# else's roster.
+	player_accessories[from] = accessory if CharacterStyle.is_accessory(accessory) else CharacterStyle.ACCESSORY_NONE
 	_apply_character_looks()
 	_broadcast_characters()
 
 @rpc("authority", "call_remote", "reliable")
-func _set_characters(colours: Dictionary, seeds: Dictionary = {}) -> void:
+func _set_characters(colours: Dictionary, seeds: Dictionary = {}, accessories: Dictionary = {}) -> void:
 	if is_host:
 		return
 	player_colours = colours.duplicate()
 	player_seeds = seeds.duplicate()
+	player_accessories = accessories.duplicate()
 	_apply_character_looks()
 
 func _broadcast_characters() -> void:
 	if networked:
-		_set_characters.rpc(player_colours, player_seeds)
+		_set_characters.rpc(player_colours, player_seeds, player_accessories)
+
+# What a peer is wearing, or nothing. Like the seed, an absent entry is a real
+# answer rather than a gap.
+func player_accessory(peer: int) -> String:
+	var stored: String = str(player_accessories.get(peer, CharacterStyle.ACCESSORY_NONE))
+	return stored if CharacterStyle.is_accessory(stored) else CharacterStyle.ACCESSORY_NONE
 
 # The seed a peer's face is derived from, or 0.
 #
@@ -4369,7 +4387,7 @@ func _apply_character_look(peer: int) -> void:
 	if body == null or not is_instance_valid(body):
 		return
 	if body.has_method("apply_look"):
-		body.apply_look(player_colour(peer), player_seed(peer))
+		body.apply_look(player_colour(peer), player_seed(peer), player_accessory(peer))
 
 # Somebody's Steam id, or 0. The HUD asks so it can ask for a face.
 func player_steam_id(peer: int) -> int:
@@ -4641,6 +4659,7 @@ func _despawn_player(peer: int) -> void:
 	player_names.erase(peer)
 	player_colours.erase(peer)
 	player_seeds.erase(peer)
+	player_accessories.erase(peer)
 	_hats.forget_wearer(peer)
 	player_despawned.emit(peer)
 

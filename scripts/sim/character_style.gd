@@ -75,12 +75,20 @@ static func nose_colour(body: Color) -> Color:
 	# nudging saturation or value is not -- a saturated blue at full value is
 	# DARKER than a pale yellow at half, so "make it brighter" via HSV does not
 	# reliably make it brighter at all.
-	var lc: float = luminance(candidate)
-	if target > lc:
-		candidate = candidate.lerp(Color.WHITE, clampf((target - lc) / maxf(1.0 - lc, 0.0001), 0.0, 1.0))
-	else:
-		candidate = candidate.lerp(Color.BLACK, clampf(1.0 - target / maxf(lc, 0.0001), 0.0, 1.0))
-	return candidate
+	return to_luminance(candidate, target)
+
+# Slide a colour to a target luminance, keeping as much of its hue as the target
+# allows.
+#
+# TOWARD WHITE OR BLACK, because that is the one move that changes luminance
+# MONOTONICALLY and is exactly solvable. Nudging saturation or value is neither:
+# a saturated blue at full value is DARKER than a pale yellow at half, so "make
+# it brighter" via HSV does not reliably make it brighter at all.
+static func to_luminance(colour: Color, target: float) -> Color:
+	var l: float = luminance(colour)
+	if target > l:
+		return colour.lerp(Color.WHITE, clampf((target - l) / maxf(1.0 - l, 0.0001), 0.0, 1.0))
+	return colour.lerp(Color.BLACK, clampf(1.0 - target / maxf(l, 0.0001), 0.0, 1.0))
 
 # --- Eyes ---------------------------------------------------------------------
 #
@@ -186,6 +194,105 @@ static func is_asymmetric(character_seed: int) -> bool:
 # no body colour that hides both, so there is nothing here to derive.
 const EYE_SCLERA := Color(0.94, 0.94, 0.90)
 const EYE_PUPIL := Color(0.06, 0.06, 0.08)
+
+# --- The accessory slot -------------------------------------------------------
+#
+# ONE AT A TIME, or none (decided 2026-08-20). Horns, antlers, or a tail.
+#
+# The single slot is doing more work than it looks. The camera reads silhouette
+# from above, the head already carries a tower of hats, and independent toggles
+# would mean a player wearing horns AND antlers AND a tail is a shape nobody
+# designed. One slot keeps every possible player a shape somebody drew.
+#
+# STORED BY NAME, NEVER BY INDEX. These strings go in a config file and on the
+# wire, and an integer index into a list is a value that silently remaps the day
+# anybody reorders the list -- every saved character would quietly grow different
+# antlers. A name costs a handful of bytes on a packet sent once per session.
+const ACCESSORY_NONE := "none"
+const ACCESSORY_HORNS := "horns"
+const ACCESSORY_ANTLERS := "antlers"
+const ACCESSORY_TAIL := "tail"
+
+const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS, ACCESSORY_TAIL]
+
+# THE SPREAD CEILING, and it is the mirror of the nose's protrusion FLOOR.
+#
+# The nose has to break the body's top-down circle to say anything; an accessory
+# has to not break it so badly that the player stops reading as a player.
+# Contract rule 1 in art_direction.md: silhouette carries identity, and the
+# identity being carried is "that is a player, not a hazard". Measured as a
+# half-width from the centreline, against a body of radius 0.4.
+const ACCESSORY_SPREAD_MAX := 0.45
+
+# How far the accessory sits from the body in luminance. SUBTLER THAN THE NOSE'S
+# 0.35 on purpose -- a marker has to be found, an accessory only has to be seen,
+# and one that shouted would compete with the thing the dash depends on.
+const ACCESSORY_LUMA_GAP := 0.18
+
+# What horns are made of, before the body's colour is mixed into them.
+const ACCESSORY_BONE := Color(0.84, 0.80, 0.70)
+
+# An accessory's colour, derived from the body like the nose is.
+#
+# It could have been a flat constant the way the eyes are, and the reason it is
+# not is that eyes carry their own contrast in a pair -- a pale ring around a
+# dark dot reads on anything -- while a horn is one solid shape. A bone-coloured
+# horn on a bone-coloured player is a horn nobody can see, and unlike the nose
+# that is a disappointment rather than a bug, which is exactly why it would never
+# have been caught.
+static func accessory_colour(body: Color) -> Color:
+	var tinted: Color = body.lerp(ACCESSORY_BONE, 0.4)
+	var l: float = luminance(body)
+	var target: float = l - ACCESSORY_LUMA_GAP if l > 0.4 else l + ACCESSORY_LUMA_GAP
+	return to_luminance(tinted, target)
+
+# The primitives that make up one accessory, in the FACING pivot's space.
+#
+# DATA RATHER THAN CODE, so a test can measure the design instead of the drawing.
+# Each part is a cone: an origin, a tilt in degrees, a base radius and a length.
+# `rot` is applied as Euler degrees by the builder rather than as a hand-written
+# Basis -- CLAUDE.md has paid three times for those nine numbers, most recently
+# on the beak in this same feature.
+#
+# A cone's axis is +Y in its own space and its tip is at +length/2, so a tilt
+# about Z swings it sideways and a tilt about X swings it backwards.
+static func accessory_parts(kind: String) -> Array:
+	match kind:
+		ACCESSORY_HORNS:
+			# Short, thick, and curving OUT rather than up. The vertical column
+			# above the head belongs to hats; see the note on the hat mount.
+			return [
+				{"pos": Vector3(0.26, 0.72, 0.0), "rot": Vector3(0.0, 0.0, -38.0), "radius": 0.075, "length": 0.34},
+				{"pos": Vector3(-0.26, 0.72, 0.0), "rot": Vector3(0.0, 0.0, 38.0), "radius": 0.075, "length": 0.34},
+			]
+		ACCESSORY_ANTLERS:
+			# A beam and two tines a side. THE VARIANT THAT TESTS THE SPREAD
+			# CEILING -- it is visible from above precisely because it splays,
+			# which is the point and the risk in one property.
+			return [
+				{"pos": Vector3(0.22, 0.80, 0.0), "rot": Vector3(0.0, 0.0, -30.0), "radius": 0.035, "length": 0.42},
+				{"pos": Vector3(0.32, 0.95, 0.0), "rot": Vector3(0.0, 0.0, -55.0), "radius": 0.022, "length": 0.20},
+				{"pos": Vector3(0.28, 0.86, 0.0), "rot": Vector3(0.0, 0.0, -70.0), "radius": 0.020, "length": 0.16},
+				{"pos": Vector3(-0.22, 0.80, 0.0), "rot": Vector3(0.0, 0.0, 30.0), "radius": 0.035, "length": 0.42},
+				{"pos": Vector3(-0.32, 0.95, 0.0), "rot": Vector3(0.0, 0.0, 55.0), "radius": 0.022, "length": 0.20},
+				{"pos": Vector3(-0.28, 0.86, 0.0), "rot": Vector3(0.0, 0.0, 70.0), "radius": 0.020, "length": 0.16},
+			]
+		ACCESSORY_TAIL:
+			# Behind and drooping. 110 degrees about X takes the cone's +Y axis
+			# past horizontal into back-and-down.
+			#
+			# IT IS A REAR-POINTING FACING CUE, which is a small bonus and a small
+			# risk: it must reach less far back than the nose reaches forward
+			# (0.35) and be dimmer, or the player has two markers and the wrong
+			# one is louder. This one reaches about 0.26.
+			return [
+				{"pos": Vector3(0.0, -0.05, 0.42), "rot": Vector3(110.0, 0.0, 0.0), "radius": 0.09, "length": 0.50},
+			]
+		_:
+			return []
+
+static func is_accessory(kind: String) -> bool:
+	return ACCESSORIES.has(kind)
 
 # The body colour a player starts with: the blue the game has always used.
 #

@@ -8,17 +8,22 @@ extends CanvasLayer
 # closest model: a CanvasLayer built from a table, instantiated lazily, and
 # openable from the menu with no world running.
 #
-# WHAT IS AND IS NOT WIRED UP YET (2026-08-20). The preview is real -- it is the
-# actual player scene, so the beak you see is the beak the game ships. COLOUR is
-# fully wired: saved to user://player.cfg, read back at world construction, worn
-# by the body, and announced to everyone else. Eyes and the accessory slot do not
-# exist yet. See design_ideas/character_customization.md for the parts still to
-# build; this is the surface they will hang off.
+# THE PREVIEW IS THE REAL PLAYER SCENE, painted by the function the game paints
+# with -- so nothing here can show you a character the bridge will not.
 #
-# THE COLOUR ROW IS ALREADY WORTH LOOKING AT despite saving nothing, because it
-# is where the derived nose can be SEEN. Drag the picker to yellow and watch the
-# marker go dark rather than disappear -- that is CharacterStyle.nose_colour
-# doing the one job this feature's sharpest finding asked of it.
+# Two of the four rows are choices and two are not, which is the design rather
+# than a stage of construction:
+#
+#   colour     a free picker. Saved, replicated, worn.
+#   accessory  horns, antlers, a tail, or none. One at a time.
+#   nose       NOT a choice. It is the facing marker the dash depends on, and its
+#              colour is derived from the body so it can never be hidden.
+#   eyes       NOT a choice. Everybody has them; what varies comes from a saved
+#              seed, including whether the two match.
+#
+# The colour row is the one worth playing with, because it is where the derived
+# nose can be SEEN: drag the picker onto the old marker yellow and watch the beak
+# go dark instead of disappearing.
 
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const CharacterConfig = preload("res://scripts/character_config.gd")
@@ -57,7 +62,7 @@ const SLOTS := [
 	{"key": "colour", "label": "Colour", "state": "saved -- takes effect next time you play"},
 	{"key": "nose", "label": "Nose", "state": "Beak -- the only shape so far"},
 	{"key": "eyes", "label": "Eyes", "state": "everybody gets a pair -- yours are yours"},
-	{"key": "accessory", "label": "Accessory", "state": "not built -- horns, antlers or a tail"},
+	{"key": "accessory", "label": "Accessory", "state": "one at a time, or none"},
 ]
 
 var _root: Control = null
@@ -65,6 +70,7 @@ var _pivot: Node3D = null
 var _preview_body: Node3D = null
 var _body_colour: Color = CharacterStyle.DEFAULT_BODY
 var _character_seed: int = 0
+var _accessory: String = CharacterStyle.ACCESSORY_NONE
 
 func _ready() -> void:
 	layer = 80
@@ -75,6 +81,7 @@ func _ready() -> void:
 	# way to acquire a face -- there is no order in which you have a colour and no
 	# eyes.
 	_character_seed = CharacterConfig.load_character_seed()
+	_accessory = CharacterConfig.load_accessory()
 	_build()
 	visible = false
 	set_process(false)
@@ -234,17 +241,35 @@ func _row(slot: Dictionary) -> Control:
 	# ONE BRANCH PER SLOT THAT HAS A CONTROL, and a label for the ones that do
 	# not. An unbuilt slot is shown rather than hidden: a screen that lists what
 	# is coming is a screen somebody can tell you is missing something.
-	if str(slot.get("key", "")) == "colour":
-		var picker := ColorPickerButton.new()
-		picker.custom_minimum_size = Vector2(180, 28)
-		picker.color = _body_colour
-		picker.color_changed.connect(_on_colour_chosen)
-		head.add_child(picker)
-	else:
-		head.add_child(_label(str(slot.get("state", "")), 12, COLOR_DIM))
+	var key: String = str(slot.get("key", ""))
+	var has_control: bool = false
+	match key:
+		"colour":
+			var picker := ColorPickerButton.new()
+			picker.custom_minimum_size = Vector2(180, 28)
+			picker.color = _body_colour
+			picker.color_changed.connect(_on_colour_chosen)
+			head.add_child(picker)
+			has_control = true
+		"accessory":
+			# BUILT FROM CharacterStyle.ACCESSORIES, never from a list written out
+			# again here. A second copy of the catalogue is a second thing to keep
+			# in step, and the one that drifts is the one nobody is testing.
+			var choices := OptionButton.new()
+			choices.custom_minimum_size = Vector2(180, 28)
+			for i in CharacterStyle.ACCESSORIES.size():
+				var kind: String = CharacterStyle.ACCESSORIES[i]
+				choices.add_item(kind.capitalize(), i)
+				if kind == _accessory:
+					choices.select(i)
+			choices.item_selected.connect(_on_accessory_chosen)
+			head.add_child(choices)
+			has_control = true
+		_:
+			head.add_child(_label(str(slot.get("state", "")), 12, COLOR_DIM))
 
 	row.add_child(head)
-	if str(slot.get("key", "")) == "colour":
+	if has_control:
 		row.add_child(_label(str(slot.get("state", "")), 11, COLOR_DIM))
 	return row
 
@@ -274,6 +299,13 @@ func _on_colour_chosen(colour: Color) -> void:
 	_apply_preview_colour()
 	CharacterConfig.save_body_colour(colour)
 
+func _on_accessory_chosen(index: int) -> void:
+	if index < 0 or index >= CharacterStyle.ACCESSORIES.size():
+		return
+	_accessory = CharacterStyle.ACCESSORIES[index]
+	_apply_preview_colour()
+	CharacterConfig.save_accessory(_accessory)
+
 # THE SAME FUNCTION THE GAME CALLS, on the same scene the game spawns.
 #
 # This used to build its own materials here, which worked and was a lie waiting
@@ -289,7 +321,7 @@ func _on_colour_chosen(colour: Color) -> void:
 func _apply_preview_colour() -> void:
 	if _preview_body == null or not _preview_body.has_method("apply_look"):
 		return
-	_preview_body.apply_look(_body_colour, _character_seed)
+	_preview_body.apply_look(_body_colour, _character_seed, _accessory)
 
 # --- Layout -------------------------------------------------------------------
 

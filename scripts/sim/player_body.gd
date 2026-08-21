@@ -1085,7 +1085,7 @@ var _nose_material: StandardMaterial3D = null
 # the body behind it, and a player who could set both could set them equal. See
 # character_style.gd -- pick yellow for both and the thing the dash depends on is
 # gone.
-func apply_look(body_colour: Color, character_seed: int = 0) -> void:
+func apply_look(body_colour: Color, character_seed: int = 0, accessory: String = "none") -> void:
 	var mesh := get_node_or_null("Mesh") as MeshInstance3D
 	var nose := get_node_or_null("Facing/Nose") as MeshInstance3D
 	if mesh == null or nose == null:
@@ -1101,6 +1101,7 @@ func apply_look(body_colour: Color, character_seed: int = 0) -> void:
 	_body_material.albedo_color = body_colour
 	_nose_material.albedo_color = CharacterStyle.nose_colour(body_colour)
 	_apply_eyes(character_seed)
+	_apply_accessory(accessory, body_colour)
 
 # How far out of the head the eyes sit.
 #
@@ -1177,6 +1178,60 @@ func _place_eye(facing: Node3D, node_name: String, eye: Dictionary) -> void:
 		dark.albedo_color = CharacterStyle.EYE_PUPIL
 		dark.roughness = 0.4
 		pupil_node.material_override = dark
+
+# The chosen accessory: horns, antlers, a tail, or nothing.
+#
+# MESH ONLY. NO CollisionShape3D, NO LAYER, NO MASK, AND THAT IS A RULE RATHER
+# THAN AN OVERSIGHT. art_direction.md's contract rule 3 allows decorative
+# overhang exactly where nothing collides. A tail that catches a dash is a
+# cosmetic that changes a fight; a horn you can stand on is the "hat you can
+# stand on is a ladder" note in player.tscn, which is why worn hats have their
+# shapes disabled. This slot is the line the whole feature sits on the safe side
+# of -- the moment it acquires a collider it is equipment.
+#
+# It also cannot move the hats. `pose_stack` mounts a tower at
+# `PlayerBody.HALF_HEIGHT`, a CONSTANT, so nothing here can raise it -- and
+# test_accessory.gd asserts the spacing anyway, because that is only true for as
+# long as the mount stays a constant.
+#
+# REBUILT WHOLESALE ON EVERY CHANGE. Accessories are exclusive, so switching from
+# antlers to horns has to remove six parts and add two; growing the node list in
+# place is how you end up wearing both.
+func _apply_accessory(kind: String, body_colour: Color) -> void:
+	var facing := get_node_or_null("Facing") as Node3D
+	if facing == null:
+		return
+	var root := facing.get_node_or_null("Accessory") as Node3D
+	if root != null:
+		facing.remove_child(root)
+		root.queue_free()
+	var parts: Array = CharacterStyle.accessory_parts(kind)
+	if parts.is_empty():
+		return
+
+	root = Node3D.new()
+	root.name = "Accessory"
+	facing.add_child(root)
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = CharacterStyle.accessory_colour(body_colour)
+	material.roughness = 0.75
+
+	for part in parts:
+		var piece := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.bottom_radius = float(part["radius"])
+		# A POINT AT THE TOP. Horns and antlers taper; so does a tail.
+		cone.top_radius = 0.0
+		cone.height = float(part["length"])
+		piece.mesh = cone
+		piece.material_override = material
+		# EULER DEGREES, NOT A HAND-WRITTEN BASIS. Godot builds the matrix, which
+		# is the one way this project has repeatedly got wrong by hand -- three
+		# sign errors, the most recent on the beak in this same feature.
+		piece.position = part["pos"]
+		piece.rotation_degrees = part["rot"]
+		root.add_child(piece)
 
 # --- Ledges -------------------------------------------------------------------
 
