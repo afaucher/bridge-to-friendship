@@ -93,7 +93,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT, GRAVE }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -119,6 +119,15 @@ const CONTENT_GLYPHS := {
 	# A dormant rusher. Lowercase because it is the only content that is not
 	# there yet -- it is a thing that WILL exist, authored where it starts.
 	"m": Content.MOUND,
+	# A grave: a dormant PACK of zombies. Lowercase for the same reason `m` is --
+	# it is a thing that WILL exist, authored where it starts -- and `z` is the one
+	# letter nobody will ever wonder about in a grid full of them.
+	#
+	# ONE GLYPH IS ONE PACK, not one zombie. That is worth stating in the format
+	# rather than only in the code, because it is the first content in this game
+	# where a cell is worth more than a body: an author who reads `z` as "a zombie"
+	# will put five of them down and get twenty-five.
+	"z": Content.GRAVE,
 	# A loose hat, waiting to be picked up. Authorable ANYWHERE, not just at
 	# checkpoints: the interesting place for one is PAST a hazard, not beside the
 	# safe spot. Checkpoint segments get them by convention, never by rule.

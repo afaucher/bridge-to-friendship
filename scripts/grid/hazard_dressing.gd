@@ -34,13 +34,13 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 # WHAT A THEME CAN ASK FOR. Named rather than free-form so a typo is a missing
 # key rather than a silently empty budget, and so the set of things a theme can
 # vary is a list somebody can read.
-const KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes", "cover", "specials", "hearts",
-	"crumble", "timed"]
+const KINDS := ["shooters", "turrets", "rushers", "zombies", "plinko", "spikes", "cover", "specials",
+	"hearts", "crumble", "timed"]
 
 # The kinds that can take health off somebody who is not free to move. `cover`,
 # `specials` and `hearts` are deliberately absent: a lift with cover beside it is
 # a BETTER lift, and the whole complaint is that a rider has nothing.
-const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes",
+const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "zombies", "plinko", "spikes",
 	"crumble", "timed"]
 
 # THE FOUR THEMES, from the hazard mixes wanted for M17. They are budgets over
@@ -50,26 +50,36 @@ const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes",
 # `cover` is deliberately high wherever `shooters` is: cover is what makes a
 # shooting gallery a route with decisions rather than a corridor you cross while
 # being shot, and pairing them here is what stops a theme being authored unfair.
+#
+# `zombies` IS COUNTED IN GRAVES, NOT IN BODIES, and it is the only budget in this
+# table where those differ. One grave is three to five zombies, so a 2 here is
+# between six and ten enemies -- roughly what a `rushers` of 8 would be worth, and
+# it is why survival gets 3 and firefight gets none.
 const THEMES := {
 	"firefight": {
-		"shooters": 5, "turrets": 2, "rushers": 1, "plinko": 0,
+		"shooters": 5, "turrets": 2, "rushers": 1, "zombies": 0, "plinko": 0,
 		"spikes": 0, "cover": 10, "specials": 2, "hearts": 1,
 		"crumble": 0, "timed": 0,
 	},
 	"environmental": {
-		"shooters": 0, "turrets": 0, "rushers": 1, "plinko": 0,
+		"shooters": 0, "turrets": 0, "rushers": 1, "zombies": 1, "plinko": 0,
 		"spikes": 14, "cover": 2, "specials": 1, "hearts": 1,
 		# THE GROUND ITSELF IS THE HAZARD HERE, which is what separates this theme
 		# from "firefight with the shooters turned off".
 		"crumble": 5, "timed": 4,
 	},
 	"survival": {
-		"shooters": 1, "turrets": 1, "rushers": 6, "plinko": 4,
+		# THE THEME A PACK BELONGS TO. Survival's whole shape is "too many things
+		# at once, none of them individually clever", and a grave is the purest
+		# statement of that available -- so it gets the most, and it is paid for
+		# out of the rusher budget rather than added on top of it (6 was the old
+		# number; enemies-on-the-deck is what got rebalanced, not raised).
+		"shooters": 1, "turrets": 1, "rushers": 3, "zombies": 3, "plinko": 4,
 		"spikes": 2, "cover": 5, "specials": 3, "hearts": 2,
 		"crumble": 2, "timed": 0,
 	},
 	"quiet": {
-		"shooters": 1, "turrets": 0, "rushers": 2, "plinko": 0,
+		"shooters": 1, "turrets": 0, "rushers": 2, "zombies": 0, "plinko": 0,
 		"spikes": 3, "cover": 4, "specials": 1, "hearts": 1,
 		"crumble": 1, "timed": 1,
 	},
@@ -79,6 +89,7 @@ const CONTENT_FOR := {
 	"shooters": GridConfig.Content.SKIRMISHER,
 	"turrets": GridConfig.Content.TURRET,
 	"rushers": GridConfig.Content.MOUND,
+	"zombies": GridConfig.Content.GRAVE,
 	"plinko": GridConfig.Content.SHOOTER,
 	"spikes": GridConfig.Content.SPIKES,
 	"hearts": GridConfig.Content.HEART,
@@ -311,6 +322,22 @@ static func _wants(seg, kind: String, x: int, z: int) -> bool:
 			# OPEN GROUND. A rusher runs in a straight line and only chases what
 			# it can see, so a mound behind cover is a mound that never fires.
 			return _open_run(seg, x, z, 3) and not _near_content(seg, x, z, 1)
+		"zombies":
+			# EVERYTHING A MOUND WANTS, PLUS GROUND ON ALL EIGHT SIDES.
+			#
+			# A grave is one cell that places three to five bodies on a ring 0.95 m
+			# out, so with a 0.45 m radius the pack reaches 1.4 m from the centre
+			# and the cell is 2.0 m across: it spills into its neighbours by
+			# construction. A member over a hole falls the instant it exists, and
+			# what that looks like from the deck is an authored encounter arriving
+			# at half strength with nothing anywhere reporting it.
+			#
+			# The clearance is 2 rather than the mound's 1 for a second reason:
+			# five bodies rising inside another prop is five bodies being ejected
+			# by the solver, which is the coincident-bodies trap reached sideways.
+			return (_open_run(seg, x, z, 3)
+				and not _near_content(seg, x, z, 2)
+				and _solid_around(seg, x, z))
 		"spikes":
 			# A cell somebody has to walk PAST -- so, beside a hole or an edge,
 			# where the route is pinched and stepping around is a decision.
@@ -347,6 +374,16 @@ static func _open_run(seg, x: int, z: int, want: int) -> bool:
 			break
 		run += 1
 	return run >= want
+
+# Deck on this cell and on all eight around it. The opposite question to
+# _beside_a_gap, and worth its own name rather than `not _beside_a_gap`: that one
+# looks at four neighbours, and a pack spills diagonally too.
+static func _solid_around(seg, x: int, z: int) -> bool:
+	for dz in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if not seg.is_solid(x + dx, z + dz):
+				return false
+	return true
 
 static func _beside_a_gap(seg, x: int, z: int) -> bool:
 	for dir in 4:

@@ -359,6 +359,38 @@ static func _check_content_placement(seg, problems: Array) -> void:
 				# telegraph -- the entire fairness argument for this hazard -- is
 				# played somewhere the player cannot see it.
 				problems.append("a mound at (%d, %d) sits on a ramp" % [x, z])
+			if content == GridConfig.Content.GRAVE:
+				# The mound's rule, for the same reason: a pack rises straight up
+				# out of the deck over a fixed second and a half, so on a slope
+				# that animation emerges through the hillside and the telegraph --
+				# the fairness argument for the whole hazard -- plays where the
+				# player cannot see it.
+				if seg.kind_at(x, z) == GridConfig.Kind.RAMP:
+					problems.append("a grave at (%d, %d) sits on a ramp" % [x, z])
+				# AND IT NEEDS GROUND ON EVERY SIDE, which no other content does.
+				# A grave is one cell that places THREE TO FIVE bodies, on a ring
+				# 0.95 m out -- so with a body radius of 0.45 the pack reaches 1.4 m
+				# from the centre, and the cell is 2.0 m across. It spills into the
+				# neighbours by construction.
+				#
+				# A member over a hole falls the moment it exists, which is not a
+				# hazard being clever: it is an authored encounter that quietly
+				# arrives at half strength, and nothing downstream would report it.
+				# GameWorld skips a slot with nothing under it as a BACKSTOP; this
+				# is the rule that stops the backstop ever being needed.
+				#
+				# ONE PROBLEM PER GRAVE, not one per missing neighbour. Eight
+				# lines about the same slab is a report nobody reads, and the fix
+				# is the same whichever of them is named.
+				var hole := Vector2i(x, z)
+				for dz in [-1, 0, 1]:
+					for dx in [-1, 0, 1]:
+						if not seg.is_solid(x + dx, z + dz):
+							hole = Vector2i(x + dx, z + dz)
+				if hole != Vector2i(x, z):
+					problems.append(
+						"a grave at (%d, %d) has no deck at (%d, %d): part of its pack would spawn over a hole"
+							% [x, z, hole.x, hole.y])
 			if content == GridConfig.Content.MERCHANT and seg.kind_at(x, z) == GridConfig.Kind.RAMP:
 				# You buy from him by DASHING INTO HIM, and a dash up a slope is
 				# not the same move as a dash along the deck: it arrives short,

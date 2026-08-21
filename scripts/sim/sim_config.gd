@@ -490,6 +490,126 @@ const RUSHER_KNOCKBACK_LIFT := SHOVE_TRANSFER_LIFT
 # content decision, and this is the backstop for getting it wrong.
 const RUSHER_MAX := 12
 
+# --- Zombies ------------------------------------------------------------------
+#
+# THE FIRST ENEMY THAT ARRIVES AS A GROUP, and the first whose movement is not a
+# straight line. Both halves of that are the point.
+#
+# A rusher is one straight line at one player: answered by moving sideways, and
+# the answer is the same everywhere on the bridge. A pack cannot be answered by
+# moving sideways, because sideways is where the next one is -- so it asks for a
+# different thing entirely, which is GROUND. Backing onto a chokepoint, putting a
+# pillar behind you, or spending a blast is what a pack is for.
+#
+# ITS WALK IS THREES AND ONES. Every move is a commitment: a heading picked once,
+# then held until a fixed distance has been covered. It never re-aims mid-move.
+# That is the whole design -- a committed heading is a heading you can bait, and
+# it is what gives a weaponless player something to do besides run.
+#
+#     a ONE  -- a shuffle, ZOMBIE_SHUFFLE_DEG off the line to you, one step
+#     a THREE -- a lunge, ZOMBIE_LUNGE_DEG off that line, three steps
+#
+# Even odds between them, and the side it leans is a fresh coin every time. So it
+# closes on you in a drunken zigzag rather than a line: net progress every move
+# (both angles are inside a right angle), but never from a direction you can
+# predict, and never at a speed you can time.
+
+const ZOMBIE_RADIUS := 0.45
+# BETWEEN THE OTHER TWO ON PURPOSE (rusher 1.4, skirmisher 1.7). Across a bridge
+# you get an outline and a colour, so a third body has to be legible against BOTH
+# of the ones already there -- and it is the colour doing most of that work here,
+# green being the one loud hue the palette had not spent.
+const ZOMBIE_HEIGHT := 1.55
+
+# FURTHER THAN A MOUND'S (6.0), because more is coming. The trigger radius is
+# really a reading-time budget: one rusher needs you to see it, a pack of five
+# needs you to see it and decide where to stand.
+const ZOMBIE_TRIGGER_RADIUS := 9.0
+
+# And a longer telegraph than a rusher's 1.0 for the same reason.
+const ZOMBIE_RISE_SECONDS := 1.4
+
+# THE STEP. A one is a step, a three is three of them -- the names are literal, so
+# the ratio in the design is the arithmetic in the code and neither can drift from
+# the other.
+const ZOMBIE_STEP := 1.4
+const ZOMBIE_SHUFFLE_STEPS := 1
+const ZOMBIE_LUNGE_STEPS := 3
+
+const ZOMBIE_SHUFFLE_DEG := 60.0
+const ZOMBIE_LUNGE_DEG := 20.0
+
+# CHOSEN SO THE TWO MOVES TAKE ABOUT THE SAME TIME (0.64 s and 0.60 s). What
+# varies between a one and a three is the GROUND COVERED, not the cadence -- a
+# lunge that also lasted three times as long would read as the same shuffle
+# played slowly, and there would be nothing to react to.
+const ZOMBIE_SHUFFLE_SPEED := 2.2
+const ZOMBIE_LUNGE_SPEED := 7.0
+
+# Even odds, stated as a number so a test can assert the distribution rather than
+# assert that some branch exists.
+const ZOMBIE_LUNGE_CHANCE := 0.5
+
+# IT DOES NOT EXPEND ITSELF THE WAY A RUSHER DOES, and that is the difference a
+# group makes. A rusher is spent on contact precisely so ONE of them cannot
+# chain-tumble somebody already out of control; with five, being spent on contact
+# would simply mean the pack lands five hits and the rule protects nobody.
+#
+# So it recoils instead: knocked back, harmless, and it has to close again. Paired
+# with HIT_GRACE (0.75) that is what makes a pack a position problem rather than a
+# damage-per-second problem -- standing still in the middle of one costs about
+# three health, which is the right price for standing still in the middle of one.
+const ZOMBIE_RECOVER_SECONDS := 2.0
+const ZOMBIE_RECOIL_SPEED := 7.0
+
+const ZOMBIE_HIT_RADIUS := 1.05
+const ZOMBIE_DAMAGE := 1
+
+# A CHANCE OF A TUMBLE, NOT A CERTAINTY. A rusher always tumbles you because it
+# only ever gets to do it once; a zombie gets to do it repeatedly, and a hazard
+# that reliably takes your control away every time it touches you is one you
+# cannot play out of. Rolled per contact.
+#
+# Below it, the hit is damage and nothing else -- receive_hit tumbles on ANY push,
+# so "no tumble" has to mean no knockback at all. That reads as being bitten
+# rather than being run over, which is what it is.
+const ZOMBIE_TUMBLE_CHANCE := 0.35
+const ZOMBIE_KNOCKBACK := SHOVE_TRANSFER_SPEED
+const ZOMBIE_KNOCKBACK_LIFT := SHOVE_TRANSFER_LIFT
+
+# A dash deflects one, exactly as it deflects a rusher -- the free answer that
+# every player has, so nobody is ever stranded.
+const ZOMBIE_STAGGER_SECONDS := 1.6
+const ZOMBIE_DEFLECT_SPEED := 14.0
+
+# THE SAME FLOOR A RUSHER HAS, set longer because there are more of them. It is
+# the backstop under "no player is ever stranded": outliving a pack is grim, and
+# it is always available.
+#
+# The FAST answer is not this one, and it falls out of the walk rather than being
+# designed separately: a lunge commits to a heading and a distance, so a player
+# who stands with their back to a hole is inviting three metres of committed
+# travel to end past the edge. See design_ideas/hazards.md.
+const ZOMBIE_LIFETIME := 22.0
+
+# A pack. The count is rolled per grave inside these bounds.
+const ZOMBIE_PACK_MIN := 3
+const ZOMBIE_PACK_MAX := 5
+
+# THE RING RADIUS, AND THE REASON THERE IS A RING AT ALL: two perfectly coincident
+# bodies depenetrate into a degenerate normal that drives BOTH of them down
+# through the deck (CLAUDE.md, measured). Everything in this game that places more
+# than one body at once has to answer this, and a pack of five from a single cell
+# is the most concentrated instance of it yet.
+#
+# 0.95 leaves 1.12 m between neighbours at a pack of five, against a body 0.9 m
+# across -- clear, and inside the grave slab, which is a cell wide. Bigger would
+# look better and would start putting pack members over the NEIGHBOURING cell's
+# ground, which is not guaranteed to be there.
+const ZOMBIE_PACK_RADIUS := 0.95
+
+const ZOMBIE_MAX := 16
+
 # --- Hats ---------------------------------------------------------------------
 #
 # The first thing in the game that rewards taking a risk you did not have to
