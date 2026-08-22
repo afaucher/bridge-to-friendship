@@ -265,7 +265,15 @@ func _set_simulated(simulated: bool) -> void:
 		# is the 2026-08-16 gappy-tower bug rebuilt by hand.
 		var column := shape.shape as CylinderShape3D
 		if column != null:
-			shape.position = Vector3.ZERO
+			# CENTRED ON THE SLOT, NOT ON THE ORIGIN. It used to be Vector3.ZERO,
+			# which was correct only because every hat was placed at its slot's
+			# centre -- including the ordinary ones, which is the bug that left them
+			# floating. Now that a hat hangs at `mount_offset` inside its slot, the
+			# column has to be offset by the same amount in reverse or the art and
+			# the hit test drift apart, which is the 2026-08-16 gappy tower rebuilt
+			# by hand. Tall hats are unaffected: their offset is half a slot, so
+			# this is still zero for them.
+			shape.position = Vector3(0.0, slot_height() * 0.5 - mount_offset(), 0.0)
 			column.height = slot_height()
 			column.radius = SimConfig.HAT_HIT_RADIUS
 	else:
@@ -284,6 +292,12 @@ func _set_simulated(simulated: bool) -> void:
 # persist and reach a late joiner with nothing extra on the wire.
 func slot_height() -> float:
 	return HatStyle.slot_height(style_id)
+
+# Where inside its slot this hat's model hangs. See HatStyle.mount_offset -- an
+# ordinary hat stands on its origin and a tall one straddles it, and placing both
+# at the slot centre left every ordinary hat floating above the head.
+func mount_offset() -> float:
+	return HatStyle.mount_offset(style_id)
 
 # Is this the merchant's hat? Asked by the trade (he will not take one as
 # payment) and by the save rule (it does not survive a launch).

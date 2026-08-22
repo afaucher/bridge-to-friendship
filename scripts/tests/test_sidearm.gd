@@ -76,6 +76,7 @@ func _physics_process(_delta: float) -> void:
 	_test_a_special_puts_it_away_and_running_out_brings_it_back()
 	_test_tapped_is_accurate_and_held_is_not()
 	_test_it_does_not_out_gun_the_weapons_you_go_and_find()
+	_test_it_is_held_clear_of_the_body()
 	finish()
 
 # --- 1. Always there ----------------------------------------------------------
@@ -230,3 +231,39 @@ func _test_it_does_not_out_gun_the_weapons_you_go_and_find() -> void:
 		"and staying accurate costs under a second between shots (%.2f) -- a tap "
 			% tap_gap
 		+ "you cannot afford in a fight is not a mode, it is a footnote")
+
+# --- 5. It is held CLEAR of the body ------------------------------------------
+#
+# Reported from play 2026-08-22 as "the pistol looks like it is in the body", and
+# it was: the Grip sits BACK from the Sidearm node toward the torso, so at the old
+# offset its centre was 0.364 m from a hull of radius 0.4 and the box around it
+# was almost entirely inside the player. Only the barrel ever stuck out.
+#
+# ASSERTED AS GEOMETRY, NOT AS THE NUMBER. A test that restates the offset in
+# player.tscn agrees with whatever that file says and catches nothing; what has to
+# stay true is that the nearest corner of the grip is outside the hull, which is a
+# claim about the two of them together and survives either being retuned.
+
+func _test_it_is_held_clear_of_the_body() -> void:
+	var grip := body.get_node_or_null("Facing/Sidearm/Grip") as MeshInstance3D
+	check(grip != null, "the sidearm has a grip to measure")
+	if grip == null:
+		return
+	# Local to the player, so the body's own axis is x = z = 0 whatever it is doing.
+	var at: Vector3 = body.to_local(grip.global_position)
+	var box: BoxMesh = grip.mesh as BoxMesh
+	var half: float = 0.0
+	if box != null:
+		half = maxf(box.size.x, box.size.z) * 0.5
+	var radial: float = Vector2(at.x, at.z).length()
+	var hull: float = 0.4          # the player cylinder, mesh and collider alike
+	print("[sidearm] grip %.3f m from the axis, nearest corner %.3f, hull %.3f"
+		% [radial, radial - half, hull])
+	check(radial - half > hull,
+		"the grip is held outside the body (%.3f m clear) -- it used to sit "
+			% (radial - half - hull)
+		+ "inside the hull with only the barrel showing")
+	# AND NOT FLUNG OUT AT ARM'S LENGTH, which would pass the line above and look
+	# just as wrong the other way.
+	check(radial < hull * 2.0,
+		"and still looks held rather than floating beside you (%.3f m)" % radial)

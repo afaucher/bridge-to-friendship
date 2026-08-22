@@ -129,6 +129,26 @@ static func slot_height(style_id: int) -> float:
 		return SimConfig.HAT_HEIGHT * SimConfig.TALL_HAT_SLOTS
 	return SimConfig.HAT_HEIGHT
 
+# HOW FAR ABOVE THE BOTTOM OF ITS SLOT THIS HAT'S ORIGIN SITS.
+#
+# The two kinds of hat put their origin in different places -- see `floor_y` in
+# apply_style: an ordinary hat STANDS ON its origin, a tall one STRADDLES it --
+# and every stacking site was placing both at the slot's CENTRE regardless.
+#
+# For a tall hat that is right. For an ordinary one it lifts the brim half a slot
+# clear of whatever it is meant to be resting on: HAT_HEIGHT is 0.35, so **every
+# ordinary hat in the game floated 17.5 cm above the head**. Reported 2026-08-22
+# off the character screen, where a close side view made it obvious; in play the
+# camera looks down at 45 degrees and it read as a tall hat rather than as a bug.
+#
+# THE SLOT DOES NOT MOVE. Spacing and the worn hit column are still `slot_height`
+# and still tile with no seam -- this only says where inside its slot the model
+# hangs, which is the one thing that was wrong.
+static func mount_offset(style_id: int) -> float:
+	if is_tall(style_id):
+		return slot_height(style_id) * 0.5
+	return 0.0
+
 # THE TROPHY, and the reason it is not just an ordinary hat with the height knob
 # turned up: it is sized against the SLOT rather than against the catalogue.
 #

@@ -134,8 +134,23 @@ transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.35, -0.5)
 mesh = SubResource("Nose_1")
 material_override = SubResource("NoseMat_1")
 
+; HELD CLEAR OF THE BODY, and it was not until 2026-08-22 -- reported from play
+; as "the pistol looks like it is in the body".
+;
+; The body is a cylinder of radius 0.4, mesh and collider alike. The Grip sits at
+; the Sidearm node's local (0, -0.06, +0.06), so it is pulled BACK toward the
+; torso from wherever this node is: at the old (0.22, -0.35) that put the grip's
+; centre 0.364 m from the axis, with a box 7 cm wide around it -- almost entirely
+; inside the player. Only the barrel, which reaches further forward, was ever
+; outside.
+;
+; At (0.32, -0.42) the grip centre is 0.482 m out and its nearest corner clears
+; the hull by about 3 cm. Moving the NODE rather than the Grip keeps the gun's own
+; parts in the arrangement they were modelled in -- and the muzzle follows for
+; free, since _muzzle_of reads the Barrel's global transform rather than a
+; constant.
 [node name="Sidearm" type="Node3D" parent="Facing"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, 0.25, -0.35)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.25, -0.42)
 
 [node name="Grip" type="MeshInstance3D" parent="Facing/Sidearm"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.06, 0.06)

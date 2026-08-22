@@ -19,6 +19,9 @@ extends "res://scripts/test_support/test_case.gd"
 const CharacterScreenScript = preload("res://scripts/ui/character_screen.gd")
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
+const HatConfig = preload("res://scripts/hat_config.gd")
+const HatStyle = preload("res://scripts/sim/hat_style.gd")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
 
 func setup(_main) -> void:
 	var screen: CanvasLayer = CharacterScreenScript.new()
@@ -31,6 +34,7 @@ func setup(_main) -> void:
 	_test_preview_is_the_real_player(screen)
 	_test_colour_does_not_leak(screen)
 	_test_toggle(screen)
+	_test_it_wears_your_hat(screen)
 	finish()
 
 # --- 1. It exists at all ------------------------------------------------------
@@ -184,3 +188,51 @@ func _test_toggle(screen: CanvasLayer) -> void:
 	check(not screen.visible, "toggling again closes it")
 	check(vp.render_target_update_mode == SubViewport.UPDATE_DISABLED,
 		"and stops it, so a hidden menu costs nothing")
+
+# --- 7. It wears your hat -----------------------------------------------------
+#
+# EVERY OTHER TRAIT ON THIS SCREEN COMES FROM A `*Config` -- colour, seed,
+# accessory -- and the hat is the fourth. HatConfig calls it "the hat you own,
+# across launches", and starting a session wearing it is the whole premise; a
+# screen that showed the other three was showing most of a character.
+#
+# BOTH DIRECTIONS, because "there is a hat node" is satisfied by a screen that
+# always draws one. Bare means bare.
+#
+# THE SAVED FILE IS NOT TOUCHED. `HatConfig.path()` is under user://, which on a
+# developer machine is a real character somebody is playing -- CLAUDE.md's rule
+# about a test that quietly mutates user state. The screen is asked to render a
+# style directly instead.
+
+func _test_it_wears_your_hat(screen: CanvasLayer) -> void:
+	var tall: int = HatStyle.TALL_FIRST
+	screen._render_hats([tall])
+	var worn: Array = screen._hats_root.get_children()
+	check(worn.size() == 1, "a saved hat is drawn on the preview (%d)" % worn.size())
+	if worn.size() == 1:
+		var hat: Node3D = worn[0]
+		# ON THE HEAD, not at the model's feet: the stack starts at HALF_HEIGHT and
+		# each hat is centred in its own slot. Asked of HatStyle.slot_height, which
+		# is the same function HatPool.pose_stack and the worn collider both use --
+		# CLAUDE.md records what it cost when a stack was spaced one way and shot at
+		# another.
+		var wanted: float = PlayerBody.HALF_HEIGHT + HatStyle.mount_offset(tall)
+		near(hat.position.y, wanted, 0.01,
+			"and it sits in its slot on the head (%.3f, wants %.3f)"
+				% [hat.position.y, wanted])
+		check(hat.get_node_or_null("Crown") != null,
+			"and it is a real hat model, painted by HatStyle")
+
+	# STACKS, because the drawing is a stack even though the saved state is one
+	# hat. The second must sit above the first by exactly the first's slot.
+	screen._render_hats([tall, tall])
+	var two: Array = screen._hats_root.get_children()
+	check(two.size() == 2, "two hats stack (%d)" % two.size())
+	if two.size() == 2:
+		near(two[1].position.y - two[0].position.y, HatStyle.slot_height(tall), 0.01,
+			"one slot apart, by the same function the tower is spaced with")
+
+	screen._render_hats([])
+	eq(screen._hats_root.get_child_count(), 0,
+		"and a bare character shows no hat at all -- the other half, since a "
+		+ "screen that always draws one passes every claim above")

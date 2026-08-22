@@ -197,22 +197,30 @@ func _phase_measure_the_tower() -> void:
 			"with the trophy in the middle -- a tall hat on TOP would leave the "
 			+ "gap above the tower where nothing can find it")
 
-		# SPACED BY EACH HAT'S OWN SLOT. Centre to centre is half of mine plus half
-		# of yours, which is what "the slots tile" means arithmetically.
-		near(worn[1].global_position.y - worn[0].global_position.y,
-			(worn[0].slot_height() + worn[1].slot_height()) * 0.5, 0.005,
-			"the gap from the ordinary hat to the trophy is half of each")
-		near(worn[2].global_position.y - worn[1].global_position.y,
-			(worn[1].slot_height() + worn[2].slot_height()) * 0.5, 0.005,
-			"and from the trophy to the hat above it, likewise -- one bare "
+		# SPACED BY EACH HAT'S OWN SLOT, stated as the slots themselves rather than
+		# as centre-to-centre.
+		#
+		# IT USED TO BE CENTRE-TO-CENTRE and that stopped being the same statement
+		# on 2026-08-22, when hats began hanging at `mount_offset` inside their slot
+		# instead of at its middle -- an ordinary hat stands on its origin, so
+		# centring it lifted every one of them 17.5 cm off the head. The slots tile
+		# exactly as they always did; the model's origin is simply no longer in the
+		# middle of one, so "half of mine plus half of yours" is now a fact about
+		# two tall hats and nothing else.
+		#
+		# The bottom of a hat's slot is `position - mount_offset`, which is the one
+		# expression that means the same thing for both kinds.
+		near(_slot_floor(worn[1]) - _slot_floor(worn[0]), worn[0].slot_height(), 0.005,
+			"the trophy's slot starts exactly where the ordinary hat's ends")
+		near(_slot_floor(worn[2]) - _slot_floor(worn[1]), worn[1].slot_height(), 0.005,
+			"and the hat above it starts where the trophy's ends -- one bare "
 			+ "HAT_HEIGHT here would bury the top hat inside the tall one")
 
 		for i in worn.size():
 			var h: Node = worn[i]
 			print("[tall hat] slot %d: y %.3f slot %.3f column %.3f..%.3f tall=%s"
 				% [i, h.global_position.y, h.slot_height(),
-					h.global_position.y - h.slot_height() * 0.5,
-					h.global_position.y + h.slot_height() * 0.5, h.is_tall()])
+					_slot_floor(h), _slot_floor(h) + h.slot_height(), h.is_tall()])
 
 		# THE SPAN TO SWEEP, AS OFFSETS ABOVE THE FOOT OF THE TOWER, and taken off
 		# the real bodies rather than computed from the constants so that a spacing
@@ -225,8 +233,8 @@ func _phase_measure_the_tower() -> void:
 		# that had descended out from under them, and the test reported six gaps in
 		# a tower the diagnostics showed tiling perfectly. A height measured once is
 		# a fact about that moment, not a fact about the fixture.
-		var low: float = worn[0].global_position.y - worn[0].slot_height() * 0.5
-		var high: float = worn[2].global_position.y + worn[2].slot_height() * 0.5
+		var low: float = _slot_floor(worn[0])
+		var high: float = _slot_floor(worn[2]) + worn[2].slot_height()
 		# Inset by a hair at each end: the outermost millimetre of a collider is
 		# the one place a solver is allowed to disagree with arithmetic, and this
 		# test is about the metre in the MIDDLE.
@@ -280,7 +288,14 @@ func _phase_sweep_the_tower() -> void:
 		# THE FOOT OF THE TOWER AS IT IS NOW, not as it was when the offsets were
 		# chosen. This is the line that makes the sweep independent of where the
 		# player happens to be standing.
-		_recorded_base = worn[0].global_position.y - worn[0].slot_height() * 0.5
+		# ...and asked of `_slot_floor`, which is the same expression the offsets
+		# were measured against. It was `y - slot * 0.5` on both sides until
+		# 2026-08-22; when hats stopped hanging at the middle of their slot that
+		# stayed self-consistent for a TALL hat and slid 17.5 cm for an ordinary
+		# one, so the lowest sample was fired just under the tower and scored as a
+		# gap. Two copies of one expression, agreeing until the thing they describe
+		# moves -- the shape CLAUDE.md warns about twice.
+		_recorded_base = _slot_floor(worn[0])
 		_fire_at_height(_recorded_base + float(_heights[_sample]))
 		return
 	if step == SAMPLE_FRAMES - 1:
@@ -325,3 +340,10 @@ func _fire_at_height(y: float) -> void:
 	var muzzle: Vector3 = victim.position + Vector3(0.0, 0.0, -6.0)
 	muzzle.y = y
 	world._spawn_round(world.to_global(muzzle), Vector3(0.0, 0.0, 1.0), 0, RID())
+
+# The bottom of a worn hat's SLOT, which is what tiles -- not the bottom of its
+# model and not its origin. See HatStyle.mount_offset: an ordinary hat's origin is
+# the bottom of its slot and a tall one's is the middle, so this is the only
+# expression that reads the same for both.
+func _slot_floor(hat: Node) -> float:
+	return hat.global_position.y - hat.mount_offset()

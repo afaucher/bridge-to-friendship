@@ -44,6 +44,7 @@ const MineScene = preload("res://scenes/mine.tscn")
 const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
 const ShotSound = preload("res://scripts/ui/shot_sound.gd")
+const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
@@ -3089,9 +3090,21 @@ func _process_bullets() -> void:
 					blast_at(to_local(hit["position"]), SimConfig.BLAST_RADIUS,
 						Hit.Kind.EXPLOSIVE, int(bullet.owner_peer))
 				else:
-					_resolve_round_hit(hit.get("collider"), bullet.velocity.normalized(),
+					var struck_thing = hit.get("collider")
+					_resolve_round_hit(struck_thing, bullet.velocity.normalized(),
 						to_local(hit["position"]), bullet.origin,
 						int(bullet.owner_peer), int(bullet.damage))
+					# A ROCKET IS EXCLUDED, because it already draws a blast and two
+					# effects on one impact means one of them is lying about scale.
+					#
+					# CONNECTED IS ASKED OF THE TARGET, and it is the same question
+					# `_resolve_round_hit` asks to decide whether anything happens at
+					# all: something with no `receive_hit` is deck, parapet or a
+					# shooter's pillar, which is precisely the case where cover did
+					# its job.
+					_show_impact(to_local(hit["position"]),
+						global_transform.basis.inverse() * hit["normal"],
+						struck_thing != null and struck_thing.has_method("receive_hit"))
 
 		if struck or bullet.is_spent():
 			_bullets.remove_at(i)
@@ -3156,6 +3169,31 @@ func _play_blast(at: Vector3, radius: float) -> void:
 	if not view_active:
 		return
 	BlastEffect.spawn(self, at, radius)
+
+# WHERE A ROUND LANDED. Host resolves it and tells everyone, exactly as a blast
+# does -- a client cannot work this out for itself, because the only thing it sees
+# is a bullet id vanishing from a snapshot, and a round that ran out of range
+# vanishes the same way. Guessing would put a spark in mid-air every time somebody
+# fired at nothing.
+#
+# UNRELIABLE, which is the one place this differs from `_blast_seen`. A blast is a
+# damage event a client must not miss; a spark is a spark. Rounds are frequent
+# enough that they do not belong on the reliable channel.
+func _show_impact(at: Vector3, normal: Vector3, connected: bool) -> void:
+	_play_impact(at, normal, connected)
+	if networked and is_host:
+		_impact_seen.rpc(at, normal, connected)
+
+func _play_impact(at: Vector3, normal: Vector3, connected: bool) -> void:
+	if not view_active:
+		return
+	ShotImpact.spawn(self, at, normal, connected)
+
+@rpc("authority", "call_remote", "unreliable")
+func _impact_seen(at: Vector3, normal: Vector3, connected: bool) -> void:
+	if is_host:
+		return
+	_play_impact(at, normal, connected)
 
 @rpc("authority", "call_remote", "reliable")
 func _blast_seen(at: Vector3, radius: float) -> void:

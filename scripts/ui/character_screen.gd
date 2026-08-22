@@ -28,6 +28,9 @@ extends CanvasLayer
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const CharacterConfig = preload("res://scripts/character_config.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const HatStyle = preload("res://scripts/sim/hat_style.gd")
+const HatConfig = preload("res://scripts/hat_config.gd")
 
 # EXPLICIT, NEVER INHERITED. The headless viewport is 64x64 (CLAUDE.md), so a
 # SubViewport left to take its size from its parent renders a postage stamp in
@@ -72,6 +75,7 @@ const SLOTS := [
 
 var _root: Control = null
 var _pivot: Node3D = null
+var _hats_root: Node3D = null
 var _preview_body: Node3D = null
 var _body_colour: Color = CharacterStyle.DEFAULT_BODY
 var _character_seed: int = 0
@@ -93,6 +97,11 @@ func _ready() -> void:
 
 func toggle() -> void:
 	visible = not visible
+	# RE-READ ON OPEN. The hat on disk changes while you play -- steal one and it is
+	# yours -- so a stack built once in _ready() would be showing you the hat you
+	# had when the process started.
+	if visible:
+		_refresh_hats()
 	# The turntable only turns while anybody is looking at it. A SubViewport set
 	# to render every frame behind a hidden menu is a cost with no picture.
 	set_process(visible)
@@ -210,7 +219,75 @@ func _build_preview() -> Control:
 	_preview_body.process_mode = Node.PROCESS_MODE_DISABLED
 	_pivot.add_child(_preview_body)
 	_apply_preview_colour()
+
+	# THE HAT GOES ON THE PIVOT, NOT ON THE BODY, so it turns with the model
+	# without being parented to a physics body. Same rule HatPool.pose_stack
+	# follows for the opposite reason -- a RigidBody3D hung off another physics
+	# body is invisible to a raycast, which cost this game the "shoot a hat off"
+	# verb for a whole milestone.
+	_hats_root = Node3D.new()
+	_hats_root.name = "Hats"
+	_pivot.add_child(_hats_root)
+	_refresh_hats()
 	return frame
+
+# YOUR HAT, ON YOUR CHARACTER. Everything else on this screen is loaded from a
+# `*Config` -- colour, seed, accessory -- and the hat is the fourth thing in that
+# list: `HatConfig` calls it "the hat you own, across launches", and starting a
+# session wearing it is the whole premise. A character screen that showed the
+# other three and not this one is showing you most of a character.
+#
+# A STACK RATHER THAN A HAT, even though the saved state is currently one. The
+# spacing is the tricky part and it is already solved -- `HatStyle.slot_height` is
+# what HatPool.pose_stack and hat_body's worn collider BOTH ask, and CLAUDE.md
+# records what it cost when a stack was spaced one way and shot at another. Asking
+# the same function here means the preview cannot disagree with the tower either,
+# and a stack becomes a list rather than a rewrite.
+func _refresh_hats() -> void:
+	_render_hats(_worn_styles())
+
+# Split from the reader so a test can hand it a stack without touching the saved
+# file: HatConfig.path() is under user://, which on a developer machine is a real
+# character somebody is playing.
+func _render_hats(styles: Array) -> void:
+	if _hats_root == null:
+		return
+	# REMOVED, not just freed. queue_free defers to the end of the frame, so a
+	# caller that rebuilds and then counts would see the old hats and the new ones
+	# at once.
+	for old in _hats_root.get_children():
+		_hats_root.remove_child(old)
+		old.queue_free()
+	var base: float = PlayerBody.HALF_HEIGHT
+	for style_id in styles:
+		var hat := Node3D.new()
+		hat.name = "Hat"
+		# apply_style rather than apply: a plain Node3D has no `style_id`, and
+		# reading a property that does not exist raises. It writes these two meshes
+		# and skips the `Shape` child when there is none, which is what makes it
+		# reusable as a display model with no collider. Same trick merchant_body
+		# uses for the hat he holds up.
+		var crown := MeshInstance3D.new()
+		crown.name = "Crown"
+		hat.add_child(crown)
+		var brim := MeshInstance3D.new()
+		brim.name = "Brim"
+		hat.add_child(brim)
+		HatStyle.apply_style(hat, style_id)
+		var slot: float = HatStyle.slot_height(style_id)
+		# `mount_offset`, not half a slot -- an ordinary hat stands on its origin
+		# and a tall one straddles it, and using the slot centre for both is what
+		# left every ordinary hat floating 17.5 cm off the head.
+		hat.position = Vector3(0.0, base + HatStyle.mount_offset(style_id), 0.0)
+		_hats_root.add_child(hat)
+		base += slot
+
+# One entry, or none. It is a list because the drawing above is a stack and the
+# in-game tower is one too; the day this screen is opened over a live world, the
+# only change is where this reads from.
+func _worn_styles() -> Array:
+	var saved: int = HatConfig.load_style()
+	return [] if saved == HatConfig.NONE else [saved]
 
 func _build_controls() -> Control:
 	var rows := VBoxContainer.new()

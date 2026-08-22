@@ -119,7 +119,12 @@ func pose_stack(peer: int, body: Node, mount_y: float, dt: float) -> void:
 		# at another is the gappy tower of 2026-08-16, which players report as "I
 		# shot him in the hat and nothing happened".
 		var slot: float = hat.slot_height()
-		hat.global_transform = Transform3D(frame, base + up * (slot * 0.5))
+		# MOUNTED, NOT CENTRED. This was `slot * 0.5` for every hat, which is right
+		# for a tall one (it straddles its origin) and lifted every ordinary one
+		# 17.5 cm off the head (it stands on its origin). The SLOT is unchanged --
+		# `base` still advances by the full slot, so the spacing and the hit column
+		# tile exactly as before.
+		hat.global_transform = Transform3D(frame, base + up * hat.mount_offset())
 		base += up * slot
 
 # A wearer who is gone stops being tracked. Without this the dictionary is a slow
