@@ -115,11 +115,26 @@ const OPTIONS := {
 	# THREE SWITCHES FOR ONE FEATURE, because an A/B with one lever cannot say
 	# which half worked -- and a real possible outcome is that the assist alone
 	# fixes shooting at height and `point` never ships.
+	# POINT IS THE DEFAULT (M23 phase 0, 2026-08-20), AND THE A/B DECIDED IT.
+	# Played, and the verdict was "objectively better" -- which is the only kind of
+	# evidence that could settle this one, since M20 built three knobs precisely so
+	# a person could judge it rather than a test.
+	#
+	# It is also what M23 needs: put an enemy on high ground and level aim cannot
+	# answer it. A shot leaves flat from the muzzle, so a gunner on a two-unit
+	# tower is untouchable while it shoots down at you in full 3D -- the
+	# hazard-with-no-counter shape CLAUDE.md warns about, arriving the moment a
+	# tower carries anything.
+	#
+	# `level` STAYS IN THE REGISTRY. It is the control, the regression path, and
+	# what makes the next A/B possible; removing a choice because it lost once is
+	# how a project ends up unable to reproduce its own history. Flipping back is
+	# this one line.
 	"aim_mode": {
 		"section": "Aiming",
 		"label": "Aim mode",
 		"choices": ["level", "point"],
-		"default": 0,
+		"default": 1,
 		"help": "level is the shipped behaviour: a shot is aimed at a spot 30 m down the bearing at your own height, so it always leaves flat. point aims at the exact place the cursor rests on in the world, which is what lets you shoot up onto a deck or down into a pit -- and it makes the muzzle offset converge on the real target rather than on a fixed 30 m.",
 	},
 	"aim_assist": {
@@ -134,8 +149,41 @@ const OPTIONS := {
 		"kind": KIND_BOOL,
 		"view_only": true,
 		"label": "Laser sight",
-		"default": 0,
+		"default": 1,
 		"help": "Draws a line out of the barrel along the direction the shot will ACTUALLY take, built from the same function that fires it -- so if the line and the round ever disagree, the line is telling you about a bug. Works in both aim modes on purpose: a sight that only appeared in the new one would show you its aim with nothing to compare against.",
+	},
+
+	# FORCE ONE SET-PIECE, so a thing you are trying to look at can be found.
+	#
+	# Added 2026-08-21 after a playtest spent three exchanges on "I am just not
+	# seeing anything like that": a specific piece turns up in a few per cent of
+	# sections, so meeting the one you want to judge is a matter of replaying
+	# rounds until it happens. A generator you cannot aim is a generator whose
+	# output you cannot review.
+	#
+	# WHEN SET, EVERY SECTION THAT CAN CARRY THAT PIECE DOES. It is a dev tool and
+	# it is meant to be blunt.
+	#
+	# A SIMULATION KNOB, NOT A VIEW ONE, and this one has a caveat the others do
+	# not. The bridge is a pure function of (seed, count), which is what lets a
+	# joining client be told two numbers instead of a world -- so this changes what
+	# that function returns. It is replicated like every setting, and a host and
+	# client who both hold the same value build the same bridge; what is NOT safe
+	# is changing it mid-run, because segments already built are not rebuilt and a
+	# joiner may build its share before the snapshot lands. Set it before a run,
+	# use it solo, and treat a multiplayer session with it as unsupported.
+	#
+	# THE LIST IS LITERAL BECAUSE OPTIONS IS A CONST, and a literal list of names
+	# that lives beside a separate list of paths is a drift waiting to happen --
+	# `test_force_piece` asserts the two agree.
+	"force_piece": {
+		"section": "World",
+		"label": "Force set-piece",
+		"choices": ["off", "crossfire", "ladder_shelf", "crumble_causeway",
+			"spike_gallery", "timed_crossing", "ramp_duel", "plinko_funnel",
+			"rusher_pit", "lookout", "watchpost", "bunker", "zombie_choke"],
+		"default": 0,
+		"help": "Pins the generator to one set-piece so you can actually find the thing you are trying to judge. Every section that can carry it will. Set it BEFORE starting a run -- segments already built are not rebuilt -- and treat it as a solo tool: it changes what the terrain generator returns, and the bridge being a pure function of (seed, count) is what lets a joining client build the world from two numbers.",
 	},
 
 	"merchant_rarity": {

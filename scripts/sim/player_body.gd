@@ -106,6 +106,24 @@ var aim_point: Vector3 = Vector3.INF
 # would apply today's weight to ticks taken before the gun was picked up, and
 # GameWorld.corrections would climb every time somebody swapped weapons.
 var carry_speed: float = 1.0
+
+# --- The sidearm (M24) --------------------------------------------------------
+#
+# ON THE PLAYER, NOT IN THE WORLD. Every other gun is a SpecialBody: an item with
+# a magazine, one slot, dropped when replaced and destroyed when spent. The
+# pistol cannot be dropped, never runs out, and is back the instant a special is
+# gone -- which is not a rule you bolt onto an item, it is a statement that this
+# is not one. So it lives here, and the whole pickup-drop-spend lifecycle never
+# has to make an exception for it.
+
+# HOW WILD IT HAS GONE, 0 (cold, accurate) to 1 (hot, useless). A shot adds
+# PISTOL_HEAT_PER_SHOT and it bleeds off at PISTOL_HEAT_DECAY per second.
+#
+# CAPTURED, so a client's HUD can show it. Nothing about firing is predicted --
+# the host decides every round -- but the meter is on screen the whole time, and
+# a meter that only moves when a snapshot happens to land reads as broken.
+var pistol_heat: float = 0.0
+var pistol_timer: float = 0.0
 var dash_charges: int = SimConfig.DASH_CHARGES
 var dash_refill: float = 0.0
 
@@ -838,23 +856,29 @@ func _step_climb(move: Vector2) -> void:
 
 # Which way the cliff FACES: from the ladder's cell toward the lowest ground
 # beside it, which is the side a climber arrives on.
+# ASKED OF THE GRID, NOT RECOMPUTED HERE. This used to be its own copy of the
+# arithmetic, and the copy compared WORLD heights while the art compared
+# grid-local ones -- so on the bridge's 4 degree pitch a tie between deck-level
+# neighbours broke one way for the rungs and another for the body. A player saw
+# the ladder on the right and was snapped to the front.
+#
+# The grid owns the heights, so the grid owns the answer. See BridgeGrid.ladder_face.
 func _ladder_face(cell: Vector2i) -> Vector3:
-	var grid: Node = world.grid
-	var best: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_SOUTH]
-	var lowest: float = grid.cell_surface_world(cell).y
-	for dir in 4:
-		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if not grid.is_solid(side):
-			continue
-		var y: float = grid.cell_surface_world(side).y
-		if y < lowest:
-			lowest = y
-			best = GridConfig.DIR_VECTORS[dir]
-	return best
+	return world.grid.ladder_face(cell)
 
 # The ladder cell within reach, or (-1, -1). Asked of the GRID every tick rather
 # than remembered, so nothing about a climb has to ride capture_state beyond the
 # state enum itself.
+# HOW FAR OFF THE LADDER'S OWN FACE A BODY MAY BE AND STILL REACH IT.
+#
+# A cosine, so 0.35 is about 70 degrees either side of straight-on: a diagonal
+# approach still catches the rungs, and the opposite side of the block -- or
+# either flank of a free-standing post, which read as 0 -- does not. Generous on
+# purpose, because fumbling for a ladder you are standing against is not the
+# interesting kind of difficulty; the thing being refused is being TELEPORTED
+# around a tower you merely brushed.
+const CLIMB_FACE_DOT := 0.35
+
 func _ladder_cell() -> Vector2i:
 	if world == null or world.grid == null:
 		return Vector2i(-1, -1)
@@ -866,20 +890,47 @@ func _ladder_cell() -> Vector2i:
 			if grid.content_at(cell) != GridConfig.Content.LADDER:
 				continue
 			var at: Vector3 = grid.cell_surface_world(cell)
-			if Vector2(position.x - at.x, position.z - at.z).length() <= SimConfig.CLIMB_REACH:
+			var out := Vector2(position.x - at.x, position.z - at.z)
+			if out.length() > SimConfig.CLIMB_REACH:
+				continue
+			# ON THE FACE, NOT MERELY NEAR THE BLOCK.
+			#
+			# This asked only how CLOSE the body was, in any of the eight cells
+			# around it -- so touching any edge of a free-standing post grabbed the
+			# ladder, and `_step_climb` then pinned the body to the face it is
+			# actually on. Approach from the far side and you were teleported the
+			# best part of three metres around the tower. Reported from play as
+			# "you still snap to the ladder side when touching any edge of the
+			# block".
+			#
+			# A ladder is climbed from the side it is bolted to. The GRAB has to
+			# ask the same question the HOLD answers, or the difference between
+			# them is a distance the player gets moved.
+			# STANDING ON IT IS REACH TOO, and this is the top of the climb --
+			# the cell you arrive at, and the cell you step off to go back down.
+			# Excluding it would make a ladder one-way.
+			if out.length() <= GridConfig.CELL_SIZE * 0.5:
 				return cell
+			var face: Vector3 = grid.ladder_face(cell)
+			var toward := Vector2(face.x, face.z)
+			if toward.length_squared() > 0.0001 					and out.normalized().dot(toward.normalized()) < CLIMB_FACE_DOT:
+				continue
+			return cell
 	return Vector2i(-1, -1)
 
 # The deck a ladder is climbed FROM: the lowest solid neighbour, which is the
 # bottom of the drop it serves.
+# THE GROUND THE LADDER IS CLIMBED FROM -- the cell on its FACE, not the lowest
+# of all four neighbours. Those were the same answer while a ladder sat on a
+# cliff and are not on a free-standing post, where three neighbours are level and
+# the body is held against exactly one of them. Taking the minimum over all of
+# them could put the foot on a side the climber is nowhere near.
 func _ladder_foot(cell: Vector2i) -> float:
 	var grid: Node = world.grid
-	var lowest: float = grid.cell_surface_world(cell).y
-	for dir in 4:
-		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if grid.is_solid(side):
-			lowest = minf(lowest, grid.cell_surface_world(side).y)
-	return lowest
+	var side: Vector2i = cell + GridConfig.cell_step(grid.ladder_face(cell))
+	if not grid.is_solid(side):
+		return grid.cell_surface_world(cell).y
+	return grid.cell_surface_world(side).y
 
 # Grab a ladder from WALK. Called from the walk step: pushing INTO a ladder is
 # the whole input, because a dedicated button for "climb the thing you are
@@ -890,11 +941,32 @@ func _try_grab_ladder(move: Vector2) -> bool:
 	var cell: Vector2i = _ladder_cell()
 	if cell.x < 0:
 		return false
-	# Only from BELOW. A ladder is not a handrail: standing on the deck it serves
-	# and pushing at it should walk, not drop you onto a climb.
 	var top: float = world.grid.cell_surface_world(cell).y
 	if position.y - HALF_HEIGHT >= top - 0.1:
-		return false
+		# FROM THE TOP, AND ONLY BY WALKING OVER THE EDGE THE LADDER IS ON.
+		#
+		# This was a flat refusal -- "a ladder is not a handrail: standing on the
+		# deck it serves and pushing at it should walk, not drop you onto a
+		# climb". True of a ladder at a cliff, where the deck continues past it
+		# and you have somewhere to walk. On a free-standing post the top IS the
+		# ladder cell, so the rule made the tower one-way: climb up, then jump
+		# off. Asked for from play: "let's also make sure you can get down".
+		#
+		# The reason survives as the CONDITION rather than as a refusal. Pushing
+		# any old way on top still walks; pushing out over the ladder's own face
+		# -- the one direction that would otherwise step you into open air --
+		# starts the climb down. Nothing else changes what a cliff ladder does,
+		# because on one of those the face direction is off the edge anyway.
+		var face: Vector3 = world.grid.ladder_face(cell)
+		var toward := Vector2(face.x, face.z)
+		if toward.length_squared() < 0.0001:
+			return false
+		if move.normalized().dot(toward.normalized()) < CLIMB_FACE_DOT:
+			return false
+		# BELOW THE LIP, or `_step_climb` reads the body as having just arrived at
+		# the top and hands it straight back to WALK -- a grab that undoes itself
+		# in the same tick, which reads as the input doing nothing.
+		position.y = top + HALF_HEIGHT - 0.2
 	state = State.CLIMB
 	state_timer = 0.0
 	velocity = Vector3.ZERO
@@ -1509,7 +1581,7 @@ func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
 		shielding, shield_yaw, special_was_held, dash_charges, dash_refill,
-		carry_speed]
+		carry_speed, pistol_heat, pistol_timer]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1527,6 +1599,9 @@ func apply_state(s: Array) -> void:
 	ledge_cooldown = float(s[12])
 	# Tolerated short, so a blob from before the shield existed still applies
 	# rather than aborting the rest of this function on an out-of-range read.
+	if s.size() > 20:
+		pistol_heat = float(s[19])
+		pistol_timer = float(s[20])
 	if s.size() > 18:
 		carry_speed = float(s[18])
 	if s.size() > 17:

@@ -444,11 +444,51 @@ func _physics_process(_delta: float) -> void:
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
 	_apply_carry_weight()
 	_pose_held_specials()
+	_pose_sidearms()
 	_update_laser_sight()
 	_sync_hitboxes()
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
 	if camera != null:
 		camera.focus_held = _returning.has(local_peer)
+		_tell_camera_where_the_deck_ends()
+
+# HOW WIDE THE BRIDGE IS WHERE THE PLAYER IS STANDING (M22 phase C).
+#
+# The camera frames a fixed number of metres and pans within the deck rather than
+# zooming out to fit the canvas, so it needs the deck's real edges -- and the deck
+# is no longer the same width from one row to the next.
+#
+# READ FROM THE GRID HERE RATHER THAN FROM THE CAMERA, because the camera is also
+# driven by shot_runner with no world at all. A camera nobody tells stays on the
+# centre line, which is exactly what it did before this existed.
+#
+# AVERAGED OVER A FEW ROWS AHEAD AND BEHIND, not taken from the one row the body
+# is on. An edge may move a column per row (SegmentGen.INSET_RATE), so a
+# single-row read steps the clamp every time the player crosses a boundary --
+# small, but it is a sideways twitch under a cursor, and the aim is a world
+# position now. The follow lerp smooths what is left.
+func _tell_camera_where_the_deck_ends() -> void:
+	var body: Node = players.get(local_peer)
+	if body == null or grid == null:
+		return
+	var here: Vector2i = grid.cell_of_world(body.global_position)
+	var left := INF
+	var right := -INF
+	for dz in range(-2, 3):
+		var row: int = here.y + dz
+		for x in grid.width:
+			if not grid.is_solid(Vector2i(x, row)):
+				continue
+			var edge_x: float = GridConfig.cell_origin_x(x, grid.width)
+			left = minf(left, edge_x)
+			right = maxf(right, edge_x + GridConfig.CELL_SIZE)
+	if left > right:
+		return
+	# Into the parent's space, which is where the camera lives -- the grid itself
+	# is pitched and offset, and a bound taken in grid space would drift with it.
+	var to_world: Transform3D = grid.transform
+	camera.set_deck_bounds((to_world * Vector3(left, 0.0, 0.0)).x,
+		(to_world * Vector3(right, 0.0, 0.0)).x)
 
 # THE BOARD IS UP, SO THE WORLD STOPS.
 #
@@ -2363,8 +2403,24 @@ func _fire_specials() -> void:
 		var peer: int = int(peer_key)
 		var body: Node = players[peer]
 		var weapon: Node = _specials.held_by(peer)
+
+		# NOTHING IN THE SLOT MEANS THE SIDEARM, not nothing (M24).
+		#
+		# This was a bare `continue`, and that was the shape of the problem: a
+		# player whose special had run out had no verb at all until they walked to
+		# the next rack. The pistol fills the gap and needs no lifecycle to do it
+		# -- it is not an item, so there is nothing to pick up, drop or spend, and
+		# "immediately available after a special is used up" is just what falling
+		# through to here means.
 		if weapon == null:
+			_step_sidearm(peer, body)
 			continue
+
+		# AND IT COOLS WHILE A SPECIAL IS OUT. Otherwise a player who emptied a
+		# machine gun mid-burst would come back to a pistol still holding the heat
+		# of a fight that ended a minute ago.
+		body.pistol_heat = maxf(0.0,
+			body.pistol_heat - SimConfig.PISTOL_HEAT_DECAY * SimConfig.TICK_DELTA)
 
 		weapon.fire_timer = maxf(0.0, weapon.fire_timer - SimConfig.TICK_DELTA)
 
@@ -2425,6 +2481,65 @@ func _fire_specials() -> void:
 				_special_destroyed.rpc(id)
 
 # Held down, and every interval a round leaves.
+# THE SIDEARM: one accurate shot, or a burst that goes everywhere (M24).
+#
+# NO AMMO AND NO OBJECT. There is nothing to decrement and nothing to destroy,
+# which is why this takes a peer and a body rather than a weapon -- the pistol is
+# a property of the player, so the whole item lifecycle has nothing to say about
+# it and none of the pickup, drop or spend paths needed a special case.
+#
+# HEAT IS THE ENTIRE WEAPON. Cold it is a rifle; three rounds into a held trigger
+# it is worse than the machine gun. The relationship that makes it work is the
+# one between the fire rate and the decay: a shot adds more heat than the gap
+# between shots can bleed off, so a HELD trigger climbs and a TAPPED one does
+# not. Everything else here is tuning.
+#
+# THE SIGHT AND THE MUZZLE COME FOR FREE, because the sidearm node carries a
+# Barrel exactly as a special does -- `_muzzle_of` and `aim_direction` take it
+# unchanged, so the round leaves the barrel it is drawn leaving and the laser
+# points where it goes. That was worth arranging rather than special-casing:
+# this project has shipped a hit test that disagreed with its own art twice.
+func _step_sidearm(peer: int, body: Node) -> void:
+	body.pistol_timer = maxf(0.0, body.pistol_timer - SimConfig.TICK_DELTA)
+	# COOLS FIRST, so the shot below is billed at the heat it was fired WITH
+	# rather than at the heat it caused.
+	body.pistol_heat = maxf(0.0,
+		body.pistol_heat - SimConfig.PISTOL_HEAT_DECAY * SimConfig.TICK_DELTA)
+
+	if not _can_fire(peer, body):
+		return
+	var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
+	if (int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_SPECIAL_HELD) == 0:
+		return
+	if body.pistol_timer > 0.0:
+		return
+
+	var sidearm: Node3D = _sidearm_of(body)
+	if sidearm == null:
+		return
+	body.pistol_timer = SimConfig.PISTOL_FIRE_INTERVAL
+	var spread: float = lerpf(SimConfig.PISTOL_SPREAD_DEG,
+		SimConfig.PISTOL_SPREAD_HOT_DEG, clampf(body.pistol_heat, 0.0, 1.0))
+	_spawn_round(_muzzle_of(sidearm, body),
+		_spread(aim_direction(body, sidearm), spread, spread),
+		int(body.peer_id), body.get_rid(), false, SimConfig.PISTOL_DAMAGE)
+	body.pistol_heat = minf(1.0, body.pistol_heat + SimConfig.PISTOL_HEAT_PER_SHOT)
+
+# The sidearm's own node on a player, or null. Kept in one place because both the
+# muzzle and the visibility rule ask for it.
+func _sidearm_of(body: Node) -> Node3D:
+	return body.get_node_or_null("Facing/Sidearm") as Node3D
+
+# THE SIDEARM IS OUT WHEN THE HANDS ARE EMPTY, and it is the same question the
+# firing branch asks -- so a player never sees a pistol they cannot fire, or
+# fires one that is not drawn.
+func _pose_sidearms() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var sidearm: Node3D = _sidearm_of(players[peer])
+		if sidearm != null:
+			sidearm.visible = _specials.held_by(peer) == null
+
 func _step_machine_gun(body: Node, weapon: Node, held: bool) -> bool:
 	if not held or weapon.fire_timer > 0.0:
 		return false

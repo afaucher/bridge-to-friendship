@@ -15,9 +15,14 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
-# The playtest bridge's steep ramp: x 7-8, one cell at z 7, climbing 2 height
+# The playtest bridge's steep ramp: x 10-11, one cell at z 7, climbing 2 height
 # units over one 2 m cell -- 45 degrees, above max_walk_slope.
-const STEEP_LANE := 7
+#
+# IT WAS x 7-8 UNTIL 2026-08-20 (M22 phase C). The canvas went from 15 cells to
+# 21 and every authored file was padded with 3 columns of HOLE on each side,
+# which leaves the world POSITION of the ramp exactly where it was and moves its
+# column INDEX right by 3. The ramp itself has not moved.
+const STEEP_LANE := 10
 const RAMP_ROW := 7
 # AT the foot of the ramp, not a couple of cells back. That is how the move is
 # actually made -- your friend stands against the ramp and you dash into them --

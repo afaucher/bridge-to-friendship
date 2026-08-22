@@ -74,6 +74,22 @@ func is_piece() -> bool:
 # and a turret dropped in one is somebody else editing the piece.
 var piece_rows: Array = []       # int, section-local z
 
+# WHICH COLUMNS OF THOSE ROWS THE PIECE ACTUALLY OWNS (M23 phase 3), as
+# z -> Vector2i(from, to_exclusive).
+#
+# `piece_rows` was enough while every piece spanned the canvas: the row was the
+# footprint. A PATCH is narrower than the section, so the row is shared -- the
+# piece owns its columns and generated terrain owns the rest -- and "which rows"
+# stops being the same question as "which cells".
+#
+# Layer 3 still keeps out of whole ROWS, which is coarser than it needs to be and
+# deliberately so for now: a keep-out that is too big costs a few hazard slots,
+# while one that is too small lets the dressing pass edit a composition. This is
+# the record that makes the per-cell version free when it is wanted, and it is
+# what lets a test tell a patch from a full-width piece without inferring it from
+# the geometry -- which is how the first version of that test went wrong.
+var piece_footprints: Dictionary = {}
+
 # Row-major, indexed [z][x].
 var kinds: Array = []      # GridConfig.Kind
 var heights: Array = []    # int, in HEIGHT_UNITs above base_height
@@ -150,6 +166,26 @@ func is_solid(x: int, z: int) -> bool:
 # something you fall into. And railing every hole would make it impossible to
 # ever shove a stone through one, which the design calls out as the reward for
 # rearranging the bridge.
+#
+# THE EDGE IS WHERE THE VOID REACHES THE CANVAS, NOT WHERE THE COLUMN INDEX RUNS
+# OUT (M22). This used to ask only `nx < 0 or nx >= width`, which is the true
+# grid boundary -- so a section the generator had NARROWED had no railing at all.
+# `_section_attempt` cuts `margin` columns off each side as HOLE and says why in
+# its own comment: "the loader refuses a width mismatch, a fiction is cheaper
+# than a format". The fiction was free right up until you noticed that an
+# interior hole gets no parapet by the rule above, so every narrow stretch in the
+# game was an unrailed drop and read as missing floor rather than as a narrower
+# bridge.
+#
+# So the question became geometric instead of indexical: walk outward. Void all
+# the way off the canvas and this cell is ON THE EDGE, whatever its column index
+# says. Solid ground (or a WALL) first and it is a PIT, and pits stay unrailed
+# for both the reasons above.
+#
+# Both cases are the same glyph and the same authoring -- a run of `_` -- which
+# is exactly why the rule has to measure rather than trust a tag. Columns 0-2 cut
+# for five rows is a setback and gets a railing at column 3; columns 6-8 cut for
+# one row is a gap the deck closes around and gets nothing.
 func has_wall(x: int, z: int, dir: int) -> bool:
 	if not is_solid(x, z):
 		return false
@@ -166,10 +202,72 @@ func has_wall(x: int, z: int, dir: int) -> bool:
 	if kind_at(x, z) == GridConfig.Kind.RAMP:
 		return false
 	var step: Vector2i = GridConfig.DIR_CELLS[dir]
-	# Only the sides. The Z ends join the neighbouring segment, and walling them
-	# would seal every segment shut.
-	var nx := x + step.x
-	return nx < 0 or nx >= width
+	if step.x != 0:
+		# ACROSS THE BRIDGE. Walk outward: off the canvas is an edge.
+		var nx: int = x + step.x
+		while nx >= 0 and nx < width:
+			if kind_at(nx, z) != GridConfig.Kind.HOLE:
+				return false
+			nx += step.x
+		return true
+
+	# ALONG THE BRIDGE, and this used to return false outright.
+	#
+	# Reported from a playtest of M22's variable width: "walls for all exterior
+	# edges except where marked -- the always to the side thing looks funny". It
+	# did, and the reason is that a railing only ever ran across X while the deck's
+	# outline now steps in Z as well. Where an edge tapers, every step leaves an
+	# L-shaped corner with a rail down one face and nothing along the other, so the
+	# bridge came out fenced in dashes rather than following its own shape.
+	#
+	# THE ENDS OF THE SEGMENT STILL GET NOTHING, and that is the whole reason this
+	# was a blanket `false`: the Z ends join the neighbouring segment, and walling
+	# them seals every segment shut. Out of bounds in Z is that join. Out of bounds
+	# in X is the side of the bridge, which is why the branch above answers the
+	# opposite way to this one.
+	var nz: int = z + step.y
+	if nz < 0 or nz >= length:
+		return false
+
+	# THE RAILING FOLLOWS THE SIDE OF THE BRIDGE, AND ONLY THE SIDE.
+	#
+	# So a Z-facing rail exists only where this cell is ITSELF on an edge and the
+	# void ahead of it CONTINUES that same edge -- which is what a taper corner is,
+	# and is the whole of what was missing.
+	#
+	# The first version asked only "does the void ahead reach the side of the
+	# canvas", and measured on real content that is far too loose: a chasm ACROSS
+	# the bridge reaches the side trivially, by spanning it. It railed the front
+	# lip of every full-width gap -- 20 rails on piece_timed_crossing and 16 on
+	# piece_crumble_causeway, the two thinnest-bridge pieces in the library -- which
+	# turns a gap you may walk into off the front into a corridor you are funnelled
+	# down. That is a design change wearing a rendering fix, and those two pieces
+	# are the ones whose whole subject is a gap.
+	#
+	# Asking whether THIS cell is on the edge is what tells the two apart, and it
+	# costs one corner: where the bridge's side meets a chasm, the single cell at
+	# the join is railed, which is correct -- that IS the outline turning.
+	for side in [GridConfig.DIR_WEST, GridConfig.DIR_EAST]:
+		if has_wall(x, z, side) \
+				and _void_runs_off(x, nz, GridConfig.DIR_CELLS[side].x):
+			return true
+	return false
+
+# Does the void in this cell run off the canvas in ONE given lateral direction?
+#
+# The same walk the X branch does, asked of a cell one row away. Directional
+# rather than either-way on purpose: it has to be the SAME side the caller is
+# already railed on, or a chasm answers yes for a side the bridge does not have
+# an edge on.
+func _void_runs_off(x: int, z: int, dx: int) -> bool:
+	if dx == 0 or kind_at(x, z) != GridConfig.Kind.HOLE:
+		return false
+	var nx: int = x + dx
+	while nx >= 0 and nx < width:
+		if kind_at(nx, z) != GridConfig.Kind.HOLE:
+			return false
+		nx += dx
+	return true
 
 # --- Parsing ------------------------------------------------------------------
 

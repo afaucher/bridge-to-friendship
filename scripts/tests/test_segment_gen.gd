@@ -67,15 +67,39 @@ func _check_lobbies() -> void:
 			if seg.width < SegmentGen.LOBBY_MIN_WIDTH:
 				check(false, "a lobby came out %d wide, under the floor" % seg.width)
 				return
-			# A band at each end, full width. This is the regroup row the whole
-			# run leans on, so it is worth asserting rather than trusting.
+			# A band at each end, covering every STANDABLE cell. This is the regroup
+			# row the whole run leans on, so it is worth asserting rather than
+			# trusting.
+			#
+			# STANDABLE, NOT EVERY COLUMN (M22 phase C). The canvas is wider than
+			# the bridge now, so a lobby has holes either side of it -- and a gate
+			# marker on a hole is a boundary floating in the air, which
+			# `_check_content_placement` refuses outright. The property the round
+			# machine actually needs is that nobody can pass this row without
+			# standing on a gate cell, and a hole satisfies that by being a hole.
+			var band := 0
+			var banded := true
 			for x in seg.width:
+				if not seg.is_solid(x, 0):
+					continue
+				band += 1
 				if seg.content_at(x, 0) != GridConfig.Content.GATE:
 					check(false, "lobby entry band has a gap at x %d" % x)
-					return
+					banded = false
+					break
 				if seg.content_at(x, seg.length - 1) != GridConfig.Content.GATE:
 					check(false, "lobby exit band has a gap at x %d" % x)
-					return
+					banded = false
+					break
+			if not banded:
+				return
+			# COUNTED, because "every solid cell is a gate" is also true of a row
+			# with one solid cell in it -- and with the canvas now wider than the
+			# bridge, a lobby that came out a sliver would satisfy the loop above
+			# and fail every reason the band exists.
+			if not check(band >= SegmentGen.LOBBY_MIN_WIDTH,
+					"and the band is a lobby's worth of standing room wide (%d)" % band):
+				return
 			built += 1
 	check(built == 12, "every generated lobby is valid and banded (%d)" % built)
 
@@ -260,21 +284,33 @@ func _check_variation() -> void:
 			% [narrow_ramps, total_ramps]
 		+ "broad approach, and neither should be the norm")
 
-	# LADDERS ARE NOT USED, and this is the assertion that keeps it that way.
-	# ASCENDER_CONTENTS has counted LADDER since M2 but there is no climb mechanic
-	# yet, so a generated ladder would produce a run that VALIDATES and cannot be
-	# walked -- the worst possible failure for a rejection oracle. Phase 6 makes
-	# ladders real; until then this must stay zero.
+	# THE PROFILE LOOP PLACES NO LADDERS, and this is the assertion that keeps it
+	# that way. It is a rule about the GENERATOR'S OWN TERRAIN, not about the game:
+	# the loop's vocabulary is plateaus, ramps, lifts and drops, and a ladder
+	# dropped into it by rule would be a climb the profile never accounted for.
+	#
+	# THE REASON USED TO BE DIFFERENT AND IS NOW STALE. It read "there is no climb
+	# mechanic yet, so a generated ladder would VALIDATE and be impassable" --
+	# true when written and false since 2026-08-16, when `PlayerBody.State.CLIMB`
+	# was built and `LADDERS_CLIMBABLE` was flipped true. `test_ladder_climb`
+	# gates it.
+	#
+	# SO A PIECE MAY AUTHOR ONE (M23 phase 4), and piece_watchpost does: a ladder
+	# is the only ascender that fits a tall post in a small footprint. Piece rows
+	# are excluded here rather than the claim being weakened, because the claim is
+	# about the loop and the loop is what could regress.
 	var ladders := 0
 	for seed_value in [3, 777, 424242]:
 		for index in range(1, 6):
 			var seg = SegmentGen.section(WIDTH, seed_value, index)
 			for z in seg.length:
+				if seg.piece_rows.has(z):
+					continue
 				for x in seg.width:
 					if seg.content_at(x, z) == GridConfig.Content.LADDER:
 						ladders += 1
 	eq(ladders, 0,
-		"and NO ladders are generated: the validator counts them as ascenders and "
+		"and the profile loop places NO ladders of its own (a PIECE may, and "
 		+ "the game has no climb mechanic, so one would validate and be impassable")
 
 # --- 4. Generated and authored join ------------------------------------------
@@ -342,12 +378,23 @@ func _check_lifts() -> void:
 					x if x > 0 else 1, z - 1 if z > 0 else 0)
 				if rise < 2:
 					bad_rise += 1
-				# AND ITS ROW IS FULL WIDTH. A shaft with a hole beside it is
-				# somewhere a player falls off while standing still waiting.
-				for wx in seg.width:
-					if not seg.is_solid(wx, z):
-						narrowed += 1
-						break
+				# AND YOU CAN STEP OFF IT IN EITHER DIRECTION. A shaft with a
+				# hole beside it is somewhere a player falls off while standing
+				# still waiting.
+				#
+				# THE NEIGHBOURS, NOT THE WHOLE ROW (M22). This demanded the entire
+				# row be solid, which was the same claim while every generated row
+				# was full width and is a far bigger one now the deck varies. It was
+				# also the wrong claim: what a rider needs is ground to step onto,
+				# and `safe` guarantees that by construction -- a lift only ever
+				# sits in the middle columns, and the deepest either edge can be cut
+				# still leaves those and their neighbours solid. Demanding the whole
+				# row forced the profile flat around every lift, which is the
+				# STEEPEST possible width transition at the one place a player is
+				# standing still looking at it.
+				if not seg.is_solid(maxi(0, x - 1), z) \
+						or not seg.is_solid(mini(seg.width - 1, x + 1), z):
+					narrowed += 1
 				# AND NOTHING THAT HURTS YOU IS NEXT TO IT. Riding is seconds of
 				# standing still, elevated, with no cover and no verbs -- a
 				# skirmisher in range of that is shooting something that cannot
@@ -382,8 +429,8 @@ func _check_lifts() -> void:
 		"every lift climbs at least two units: below that a ramp does it in one "
 		+ "row and the wait buys nothing")
 	eq(narrowed, 0,
-		"and no lift row is narrowed -- waiting beside a hole is falling off "
-		+ "while standing still")
+		"and every lift has solid deck on BOTH sides to step off onto -- waiting "
+		+ "beside a hole is falling off while standing still")
 	eq(armed, 0,
 		"and nothing that can hurt you is within %d cells of one: a rider has no "
 			% HazardDressing.LIFT_CLEARANCE
@@ -397,17 +444,25 @@ func _check_lifts() -> void:
 # contents identical, heights identical after ONE constant offset. That is what
 # "reserve, then stamp" claims — the piece owns those rows outright — and a
 # partial overwrite is exactly the failure it exists to prevent.
-static func _piece_at(seg, piece, at: int) -> bool:
+# AND `px` IS WHERE IT STARTS ACROSS THE BRIDGE (M23 phase 3). This assumed
+# column 0, which was the only answer while every piece spanned the canvas. A
+# PATCH is placed at an offset, so a matcher pinned to column 0 finds nothing --
+# and "no piece here" is exactly what this file reads as "content that came from
+# nowhere", which is how 18 stray cells got reported for a correctly stamped
+# turret.
+static func _piece_at(seg, piece, at: int, px: int = 0) -> bool:
 	if at < 0 or at + piece.length > seg.length:
 		return false
-	var offset: int = seg.height_at(0, at) - piece.height_at(0, 0)
+	if px < 0 or px + piece.width > seg.width:
+		return false
+	var offset: int = seg.height_at(px, at) - piece.height_at(0, 0)
 	for pz in piece.length:
 		for x in piece.width:
-			if seg.kind_at(x, at + pz) != piece.kind_at(x, pz):
+			if seg.kind_at(px + x, at + pz) != piece.kind_at(x, pz):
 				return false
-			if seg.content_at(x, at + pz) != piece.content_at(x, pz):
+			if seg.content_at(px + x, at + pz) != piece.content_at(x, pz):
 				return false
-			if seg.height_at(x, at + pz) != piece.height_at(x, pz) + offset:
+			if seg.height_at(px + x, at + pz) != piece.height_at(x, pz) + offset:
 				return false
 	return true
 
@@ -687,9 +742,12 @@ func _check_pieces() -> void:
 		var found = null
 		for piece in library:
 			for at in seg.length:
-				if _piece_at(seg, piece, at):
-					found_at = at
-					found = piece
+				for px in range(0, seg.width - piece.width + 1):
+					if _piece_at(seg, piece, at, px):
+						found_at = at
+						found = piece
+						break
+				if found != null:
 					break
 			if found != null:
 				break

@@ -37,6 +37,7 @@ func setup(_main) -> void:
 	_check_a_broken_piece_is_refused()
 	_check_the_library_is_ordered()
 	_check_every_piece_names_a_real_theme()
+	_check_the_theme_lists_agree()
 	_check_for_theme_filters_and_falls_back()
 	_check_generated_sections_stamp_their_own_theme()
 	finish()
@@ -67,17 +68,53 @@ func _check_each_piece() -> void:
 			+ "author a whole level")
 
 		# 2. THE JOIN CONTRACT, one level down. A piece is stamped between two
-		# plateaus; if either end is not full-width solid, the party meets a step
-		# or a hole that nobody authored on the seam.
-		for x in seg.width:
+		# plateaus; if either end is not solid across the bridge, the party meets a
+		# step or a hole that nobody authored on the seam.
+		#
+		# ACROSS THE BASELINE, NOT ACROSS THE CANVAS (M22 phase C). This asked for
+		# every column of `seg.width` and the two were the same thing while the
+		# canvas was exactly as wide as the bridge. At a 21 canvas with a 15
+		# baseline they are different claims, and the canvas one is wrong twice
+		# over: every piece was padded with HOLE either side, so it would fail; and
+		# a piece that DID fill the canvas at its ends would be a piece six cells
+		# wider than the terrain it is stamped between, which is the seam this
+		# assertion exists to refuse.
+		# AND A PATCH IS A DIFFERENT CLAIM (M23 phase 3). Both rules below are about
+		# a piece that spans the canvas meeting the terrain at its two ENDS. A patch
+		# is narrower than the section and meets terrain on all FOUR sides, so its
+		# own column 0 is its own edge rather than the canvas's -- "does not reach
+		# the canvas edge" is not false for a patch, it is meaningless.
+		var patch: bool = SetPieces.is_patch(seg, GridConfig.DEFAULT_WIDTH)
+		var edge: int = 0 if patch else GridConfig.BASELINE_INSET
+		for x in range(edge, seg.width - edge):
 			check(seg.is_solid(x, 0),
 				"%s: entry row is solid at x=%d" % [who, x])
 			check(seg.is_solid(x, seg.length - 1),
 				"%s: exit row is solid at x=%d" % [who, x])
+		if patch:
+			# A PATCH SITS ON THE PLATEAU IT WAS STAMPED AT, all the way round. The
+			# terrain either side of it is at `piece_base`, so an edge row at any
+			# other height is a step running down both of its long sides -- which
+			# nobody authored and no rule would ever remove.
+			for z in [0, seg.length - 1]:
+				for x in seg.width:
+					eq(seg.height_at(x, z), 0,
+						"%s: patch edge row %d is level with the terrain at x=%d"
+							% [who, z, x])
+		else:
+			# NOT WIDER THAN THE BASELINE AT ITS ENDS, which is the other half of
+			# the same seam and was never asserted because it could not happen
+			# before.
+			for x in [0, seg.width - 1]:
+				check(not seg.is_solid(x, 0),
+					"%s: entry row does NOT reach the canvas edge at x=%d -- a "
+						% [who, x]
+					+ "piece joins terrain at the baseline width, not at the widest "
+					+ "the bridge can ever be")
 
 		# 3. THE DECLARATION MATCHES THE GEOMETRY.
-		var entry_h: int = seg.height_at(0, 0)
-		var exit_h: int = seg.height_at(0, seg.length - 1)
+		var entry_h: int = seg.height_at(edge, 0)
+		var exit_h: int = seg.height_at(edge, seg.length - 1)
 		eq(exit_h - entry_h, seg.piece_exit,
 			"%s: piece_exit says %d and the deck rises %d -- the generator carries "
 				% [who, seg.piece_exit, exit_h - entry_h]
@@ -142,11 +179,29 @@ func _check_every_piece_names_a_real_theme() -> void:
 		for tag in seg.tags:
 			if themes.has(tag):
 				named.append(tag)
-		eq(named.size(), 1,
-			"%s names exactly one real theme -- tags %s against themes %s"
+		# AT MOST ONE, NOT EXACTLY ONE. This asserted `== 1` and failed the moment
+		# M23's three pieces arrived tagged `enemy` -- a category rather than one
+		# of the five themes. The rule that survives contact is that a theme tag
+		# is an OPT-IN: name one and the piece belongs to that theme, name none
+		# and it is universal. Naming TWO is still a mistake, because the piece
+		# would then be claimed by neither in any readable way.
+		check(named.size() <= 1,
+			"%s names at most one theme -- tags %s against themes %s"
 				% [seg.name, seg.tags, themes])
 
+# The two copies of the theme list must agree. SetPieces names them itself rather
+# than importing the dressing pass -- see the comment there -- so this is the
+# thing that stops the two drifting.
+func _check_the_theme_lists_agree() -> void:
+	var themes: Array = HazardDressing.theme_names()
+	themes.sort()
+	var tags: Array = SetPieces.THEME_TAGS.duplicate()
+	tags.sort()
+	eq(tags, themes,
+		"SetPieces.THEME_TAGS names exactly the themes the dressing pass has")
+
 func _check_for_theme_filters_and_falls_back() -> void:
+	var themes: Array = HazardDressing.theme_names()
 	var all_fitting: Array = SetPieces.for_width(GridConfig.DEFAULT_WIDTH)
 	check(all_fitting.size() > 1, "there is more than one piece to filter (%d)"
 		% all_fitting.size())
@@ -156,13 +211,18 @@ func _check_for_theme_filters_and_falls_back() -> void:
 		check(pool.size() > 0, "%s always gets SOMETHING to stamp" % theme)
 		# Either every piece in the pool is tagged for this theme, or the pool IS
 		# the whole library -- the documented fallback, and nothing in between.
-		var tagged := 0
+		var claimed := 0
 		for seg in pool:
-			if seg.tags.has(theme):
-				tagged += 1
-		check(tagged == pool.size() or pool.size() == all_fitting.size(),
-			"%s draws only from its own pieces, or from all of them -- %d of %d tagged"
-				% [theme, tagged, pool.size()])
+			var names_one := false
+			for tag in seg.tags:
+				if themes.has(tag):
+					names_one = true
+			# Belongs here if it named THIS theme, or named none at all.
+			if seg.tags.has(theme) or not names_one:
+				claimed += 1
+		eq(claimed, pool.size(),
+			"%s draws only from pieces that claim it or claim nothing -- %d of %d"
+				% [theme, claimed, pool.size()])
 
 	# AND THE FILTER REALLY NARROWS, which the loop above does not say: a for_theme
 	# that ignored the tag and returned everything would satisfy every line of it

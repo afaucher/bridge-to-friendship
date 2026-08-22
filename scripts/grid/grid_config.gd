@@ -43,9 +43,50 @@ const BRIDGE_PITCH_DEG := 4.0
 # which fights the co-op premise -- see "how wide is too wide" in
 # design_ideas/bridge_grid.md. The test fixtures declare 30 explicitly and are
 # unaffected.
-const DEFAULT_WIDTH := 15
+#
+# RAISED TO 21 FOR M22 PHASE C, and the number that matters is the one below it.
+# The canvas was 15 and every authored file was 15, so "narrow" was the only
+# direction variety could go: 15 was simultaneously the default width and the
+# maximum, and no section could ever feel WIDE. A canvas with headroom on both
+# sides of the baseline is what makes "wider than usual" expressible at all.
+#
+# EVERY 15-WIDE FILE WAS PADDED BY 3 COLUMNS OF HOLE ON EACH SIDE, which is a
+# provable no-op rather than a re-authoring: `cell_centre` is
+# (x + 0.5 - width * 0.5) * CELL_SIZE, so a symmetric pad of 3 against a width
+# that grew by 6 leaves every existing cell at exactly the same world coordinate
+# -- old column 0 at width 15 and new column 3 at width 21 are both x = -14. And
+# because the padding runs unbroken to the canvas edge, M22's parapet rule grows
+# column 3 the railing column 0 used to have, in the same place.
+const DEFAULT_WIDTH := 21
+
+# WHAT "NORMAL WIDTH" IS, as an inset from each side of the canvas.
+#
+# 21 - 2*3 = 15, which is the width this game has been played and tuned at for
+# its whole life. Keeping it as the MEDIAN rather than as an extreme is the whole
+# point of the canvas bump: a section can now pinch tighter than usual OR open
+# out past it, and the shape a player thinks of as "the bridge" is unchanged.
+#
+# Deliberately NOT zero. A generator whose default is the full canvas would make
+# every section the widest it can be and put the variety entirely below it, which
+# is the situation the canvas bump exists to escape.
+const BASELINE_INSET := 3
 const DECK_THICKNESS := 1.0    # how far the deck slab hangs below its top face
-const WALL_HEIGHT := 2.0       # one cell -- contains plinko balls, blocks a walk-off
+# A RAILING, NOT A WALL (2026-08-20, from a playtest of M22's variable width:
+# "it might visually read better with half height walls").
+#
+# It was 2.0 -- a whole cell -- and the player is 1.8 m tall, so the bridge was
+# fenced by something you cannot see over. That reads as a trench rather than as
+# a structure in the air, and the effect got louder the moment the deck started
+# changing width, because the railing is what draws the outline. At 1.0 it is
+# waist-high on a 1.8 m body: still stops a walk-off (there is no jump in this
+# game and no step-up), and now the drop past it is visible, which is what makes
+# a narrow section read as narrow.
+#
+# THE OLD NUMBER WAS CHOSEN FOR CONTAINMENT, NOT FOR LOOKS -- its comment said
+# "contains plinko balls, blocks a walk-off". Deliberately NOT gated: a ball that
+# escapes over a low rail and rolls off the bridge is a fine thing to happen, and
+# writing a test that pins containment would make it a rule nobody agreed to.
+const WALL_HEIGHT := 1.0
 const WALL_THICKNESS := 0.3
 
 # --- Cell kinds ---------------------------------------------------------------
@@ -243,6 +284,22 @@ const DIR_NORTH := 0   # -Z, cell z + 1
 const DIR_EAST := 1    # +X, cell x + 1
 const DIR_SOUTH := 2   # +Z, cell z - 1
 const DIR_WEST := 3    # -X, cell x - 1
+
+# The cell step for a direction VECTOR, which is the inverse of DIR_VECTORS.
+#
+# Exists because `ladder_face` answers in world directions (the art needs one to
+# point the rungs) while the cell it names is needed too, and deriving one from
+# the other by hand at each call site is how the two ends of a ladder came to
+# disagree in the first place.
+static func cell_step(v: Vector3) -> Vector2i:
+	var best: int = DIR_SOUTH
+	var closest: float = INF
+	for dir in 4:
+		var d: float = DIR_VECTORS[dir].distance_to(v)
+		if d < closest:
+			closest = d
+			best = dir
+	return DIR_CELLS[best]
 
 const DIR_CELLS := [
 	Vector2i(0, 1),

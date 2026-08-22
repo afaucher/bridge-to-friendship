@@ -402,7 +402,12 @@ func _sync_slots(slots: Array) -> void:
 		# count is not decoration -- running dry is how you lose the slot, and it is
 		# the only number on this panel that only ever goes down.
 		if data.has("ammo") and bool(data.get("filled", false)):
-			caption.text = "%s\n%d" % [caption.text, int(data["ammo"])]
+			# A NEGATIVE COUNT MEANS UNLIMITED (M24, the sidearm). Every other
+			# special counts down to zero, so printing a literal number for a
+			# gun that never runs out would read as an empty one.
+			var rounds: int = int(data["ammo"])
+			caption.text = "%s\n%s" % [caption.text,
+				"∞" if rounds < 0 else str(rounds)]
 		if not bool(data.get("filled", false)):
 			# DELIBERATELY EMPTY, not broken -- an unexplained blank box in a
 			# playtest build reads as a bug and costs somebody a report.

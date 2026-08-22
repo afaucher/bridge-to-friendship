@@ -60,6 +60,30 @@ var focus_target: Node = null
 # for one that is not there.
 var bridge_width_cells: int = GridConfig.DEFAULT_WIDTH
 
+# HOW MANY CELLS THE SCREEN SHOWS, which is now a different question from how
+# many cells the bridge HAS (M22 phase C). The canvas is 21 and the baseline
+# bridge is 15; framing the canvas would zoom every player out by 40% to show six
+# cells of air, so the frame stays at the width the game was tuned at and a wider
+# bridge is handled by PANNING.
+#
+# Capped by `bridge_width_cells` in _ready: a bridge narrower than the frame is
+# framed whole, exactly as before, so nothing about a 15-wide run changes.
+var frame_width_cells: int = GridConfig.DEFAULT_WIDTH - 2 * GridConfig.BASELINE_INSET
+
+# WHERE THE DECK ACTUALLY ENDS, in world X, near whatever the camera is framing.
+# Pushed in by GameWorld each tick because the camera must not reach for a grid --
+# shot_runner drives one with no world at all.
+#
+# The sentinel is an empty bridge, which centres the camera and reproduces the old
+# behaviour exactly. That matters: every code path that does not set these gets
+# the camera it had before this existed.
+var deck_left_x: float = INF
+var deck_right_x: float = -INF
+
+func set_deck_bounds(left_x: float, right_x: float) -> void:
+	deck_left_x = left_x
+	deck_right_x = right_x
+
 var _distance: float = 0.0
 var _offset: Vector3 = Vector3.ZERO
 var _snapped: bool = false
@@ -73,7 +97,17 @@ func _ready() -> void:
 	keep_aspect = Camera3D.KEEP_WIDTH
 	fov = horizontal_fov_deg
 
-	var span: float = float(bridge_width_cells) * GridConfig.CELL_SIZE * width_margin
+	# THE FRAME IS A FIXED NUMBER OF METRES (M22 phase C), not a function of the
+	# canvas. `bridge_width_cells` used to be the whole story, and when the canvas
+	# went 15 -> 21 that would have pulled the camera back by the full 40% the
+	# canvas grew -- six cells of it empty air at the baseline -- and shrunk every
+	# player on screen for a reason that has nothing to do with the shot.
+	#
+	# So the screen always shows the same 46.5 m it has always shown, and a bridge
+	# WIDER than that is handled by moving instead of by zooming out. See
+	# desired_position.
+	var framed_cells: int = mini(bridge_width_cells, frame_width_cells)
+	var span: float = float(framed_cells) * GridConfig.CELL_SIZE * width_margin
 	_distance = (span * 0.5) / tan(deg_to_rad(fov) * 0.5)
 
 	var pitch := deg_to_rad(pitch_deg)
@@ -95,8 +129,36 @@ func _physics_process(delta: float) -> void:
 # can ask without running frames.
 func desired_position() -> Vector3:
 	var focus := focus_position()
-	# X is dropped on purpose: the camera rides the bridge's centre line.
-	return Vector3(0.0, focus.y, focus.z) + _offset
+	return Vector3(camera_x_for(focus.x), focus.y, focus.z) + _offset
+
+# WHERE THE CAMERA SITS ACROSS THE BRIDGE (M22 phase C).
+#
+# X used to be dropped outright -- the camera rode the centre line and nothing
+# moved it sideways, because "a camera that chased a player sideways would make a
+# 60 m bridge feel like a corridor and would slide the world under a player who
+# is lining up a dash". BOTH REASONS SURVIVE, and this is not that camera: it
+# does not chase, it REFUSES TO LOOK PAST THE EDGE OF THE DECK.
+#
+# The frame is a fixed width. Where the deck fits inside it -- which is every
+# baseline section, and every run before this change -- the answer is the deck's
+# own centre and the camera is as still as it ever was. Only a deck WIDER than
+# the frame lets it move, and then it is clamped so one parapet or the other is
+# always against the edge of the screen. Walk to the left edge of a wide section
+# and it looks exactly like a 15-wide bridge, except there is no wall on the
+# right: the bridge keeps going.
+#
+# THAT IS WHY IT CLAMPS TO THE DECK AND NOT TO THE CANVAS. Clamping to the canvas
+# would let the camera slide three cells into empty air beside a baseline
+# section, which is the "corridor" failure arriving by another route.
+func camera_x_for(focus_x: float) -> float:
+	if deck_left_x > deck_right_x:
+		return 0.0                      # nobody told us where the deck is
+	var half: float = visible_half_width()
+	var centre: float = (deck_left_x + deck_right_x) * 0.5
+	# The deck fits: frame it whole and hold still, exactly as before.
+	if deck_right_x - deck_left_x <= half * 2.0:
+		return centre
+	return clampf(focus_x, deck_left_x + half, deck_right_x - half)
 
 # WHILE THIS IS TRUE THE CAMERA STOPS FOLLOWING and holds where it was. Set by
 # GameWorld while the local player is being carried back by the drone.

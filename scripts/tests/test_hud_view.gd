@@ -93,8 +93,9 @@ func _phase_built() -> void:
 		return
 
 	check(hud._own_panel.visible, "the own panel is shown once there is a local avatar")
-	eq(hud._own_slots.get_child_count(), 2,
-		"two action slots -- the permanently-blank rope box was removed 2026-08-15")
+	eq(hud._own_slots.get_child_count(), 3,
+		"three action slots -- push, sidearm, special. The permanently-blank rope "
+		+ "box was removed 2026-08-15 and is not what the third one is")
 	eq(hud._friend_rows.size(), 1, "and a row for the one other player")
 
 	# An empty slot has to be visibly PRESENT rather than omitted, or the layout
@@ -111,7 +112,26 @@ func _phase_built() -> void:
 ", "/"), world.player_body(1).dash_charges])
 	check(push_caption.text.contains("PUSH"), "under the label it has always had")
 
-	var special: ColorRect = hud._own_slots.get_child(1)
+	# THE SIDEARM HAS ITS OWN BOX (M24), and it is the one that is never empty.
+	var sidearm: ColorRect = hud._own_slots.get_child(1)
+	var sidearm_caption: Label = sidearm.get_child(0)
+	check(sidearm.color != HudScript.COLOR_SLOT_EMPTY,
+		"the sidearm slot is drawn filled -- it cannot be dropped or run out")
+	check(sidearm_caption.text.contains("PISTOL"),
+		"and names the weapon (text %s)"
+			% sidearm_caption.text.replace("
+", "/"))
+	# THE INFINITY IS THE POINT OF THE VIEW HALF. The model returns -1 and the
+	# view has to turn that into something a player reads as "never runs out" --
+	# printing the number itself would put "-1" on the panel, which is the shape
+	# of bug this file exists to catch.
+	check(sidearm_caption.text.contains("∞"),
+		"showing an unlimited count rather than a number (text %s)"
+			% sidearm_caption.text.replace("
+", "/"))
+
+	# AND THE SPECIAL SLOT KEEPS THE EMPTY STATE IT IS THERE TO TEACH.
+	var special: ColorRect = hud._own_slots.get_child(2)
 	eq(special.color, HudScript.COLOR_SLOT_EMPTY,
 		"an empty special slot draws as deliberately empty, not missing")
 

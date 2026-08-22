@@ -41,6 +41,20 @@ const LIBRARY: Array[String] = [
 	"res://segments/piece_ramp_duel.seg",
 	"res://segments/piece_plinko_funnel.seg",
 	"res://segments/piece_rusher_pit.seg",
+	# THE FIRST PATCH (M23 phase 3): five columns wide, so the generator places
+	# it across the deck and terrain runs past on both sides. Appended, like
+	# everything else here -- the index is the wire protocol in all but name.
+	"res://segments/piece_lookout.seg",
+	# TWO MORE PATCHES (M23 phase 4), and the axis between them is the ASCENDER:
+	# a ladder makes a tall post a commitment, a ramp makes low ground contested.
+	"res://segments/piece_watchpost.seg",
+	"res://segments/piece_bunker.seg",
+	# THE ZOMBIE CHOKEPOINT, appended AFTER main's three on purpose. Both sides of
+	# the merge added to the end of this list, and the index of a piece is the wire
+	# protocol in all but name -- so the entries that already exist on main keep
+	# the indices they were pushed with, and the one that only exists here goes
+	# last. Resolving it the other way would have silently changed which piece
+	# every seed on main stamps.
 	"res://segments/piece_zombie_choke.seg",
 ]
 
@@ -67,10 +81,28 @@ static func all() -> Array:
 # SKIPPED, NOT STRETCHED. A composition scaled to fit is a shooter that no longer
 # covers the gap it was authored to cover -- the relationship is the piece, and
 # stretching is the one operation guaranteed to break it.
+#
+# WHICH IS AN ARGUMENT AGAINST SCALING, NOT AGAINST A SMALLER FOOTPRINT (M23
+# phase 3). This asked for `seg.width == width`, so every piece had to span the
+# whole canvas -- and `design_ideas/world_generation.md` has named the missing
+# capability since M17: "a set-piece is a 4-8 row full-width slice, OR A SMALLER
+# PATCH WITH A DECLARED FOOTPRINT". A tower is that patch, and there was no way
+# to select one.
+#
+# A PIECE'S OWN WIDTH IS ITS FOOTPRINT, which is why this needs no new header
+# key and no new format. A canvas-wide piece placed at offset 0 covers the row
+# exactly as it always did; a five-wide piece placed at offset k covers five
+# columns and the terrain runs past on both sides. One rule, one code path.
+#
+# The alternative was authoring a patch's outer columns as HOLE inside a
+# canvas-wide file, and it is worse than it looks: HOLE would then mean both "not
+# part of this piece" and "a gap inside this piece", so a tower with a deliberate
+# hole in it could not be expressed at all. Declaring the footprint by width has
+# no such ambiguity.
 static func for_width(width: int) -> Array:
 	var out: Array = []
 	for seg in all():
-		if seg.is_valid() and seg.is_piece() and seg.width == width:
+		if seg.is_valid() and seg.is_piece() and seg.width <= width:
 			out.append(seg)
 	return out
 
@@ -98,6 +130,35 @@ static func for_theme(width: int, theme: String) -> Array:
 		return fitting
 	var out: Array = []
 	for seg in fitting:
-		if seg.tags.has(theme):
+		if seg.tags.has(theme) or not _names_a_theme(seg):
 			out.append(seg)
 	return out if not out.is_empty() else fitting
+
+# Does this piece claim a theme at all?
+#
+# A PIECE THAT NAMES NONE IS UNIVERSAL, NOT ORPHANED, and getting that backwards
+# is a bug this very merge would have shipped. M23 added three pieces tagged
+# `enemy` -- a category, not one of the five themes -- and a filter that kept only
+# exact matches would have made all three unreachable from every theme, so a
+# tower would turn up only in the fallback case where a theme had no pieces at
+# all. Silently, because nothing counts how often a piece is stamped.
+#
+# So the tag is an OPT-IN to one theme rather than a requirement, which is also
+# the kinder rule for whoever authors the next piece: forget it and the piece is
+# everywhere, rather than nowhere.
+static func _names_a_theme(seg) -> bool:
+	for tag in seg.tags:
+		if tag in THEME_TAGS:
+			return true
+	return false
+
+# Named here rather than imported from HazardDressing, deliberately: this file is
+# a leaf that the generator preloads, and reaching into the dressing pass for a
+# list of five strings would tie the two together for no gain. test_set_pieces
+# asserts the two agree.
+const THEME_TAGS := ["firefight", "environmental", "survival", "quiet", "horde"]
+
+# True where a piece is narrower than the section it is going into, and therefore
+# has terrain either side of it rather than owning its rows outright.
+static func is_patch(piece, width: int) -> bool:
+	return piece != null and piece.width < width

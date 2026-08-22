@@ -1204,6 +1204,38 @@ var spike_lift: Dictionary = {}        # Vector2i -> 0..1, how far out they are
 # ladder that also had a body would be a second, disagreeing description of the
 # same thing -- and the one you collided with would fight the one you climbed.
 # This is scenery that tells you where the state can be entered.
+# WHICH WAY A LADDER FACES: toward the lowest ground beside it, which is the side
+# a climber arrives on.
+#
+# ONE FUNCTION, AND IT HAS TO BE. This was computed twice -- once here for the
+# rungs and once in `PlayerBody._ladder_face` for the body -- with a comment
+# warning that "if _ladder_face ever changes, this has to change with it or the
+# disagreement comes straight back". They never changed, and they disagreed
+# anyway, because they were never the same arithmetic: the art compared
+# grid-LOCAL surface heights and the climb compared WORLD ones, and the bridge is
+# pitched 4 degrees.
+#
+# On a cliff there is one clearly-lowest neighbour and both agreed however they
+# measured. On the M23 watchpost -- a free-standing post with THREE neighbours
+# tied at deck level -- the tie-break is the whole answer: local order picked
+# east, the pitch picked south. Reported from play as "it renders the ladder on
+# the right side, approaching it snaps you to the front side".
+#
+# INTEGER HEIGHTS, so there is nothing for the pitch to get into. The grid's own
+# height is the fact; a world Y is that fact plus presentation.
+func ladder_face(cell: Vector2i) -> Vector3:
+	var best: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_SOUTH]
+	var lowest: int = height_at(cell)
+	for dir in 4:
+		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+		if not is_solid(side):
+			continue
+		var h: int = height_at(side)
+		if h < lowest:
+			lowest = h
+			best = GridConfig.DIR_VECTORS[dir]
+	return best
+
 func _spawn_ladder(cell: Vector2i) -> void:
 	if _ladder_root == null:
 		_ladder_root = Node3D.new()
@@ -1229,18 +1261,11 @@ func _spawn_ladder(cell: Vector2i) -> void:
 	#
 	# Same face, same arithmetic, one place each. If _ladder_face ever changes,
 	# this has to change with it or the disagreement comes straight back.
-	var drop: float = 0.0
-	var face: Vector3 = GridConfig.DIR_VECTORS[GridConfig.DIR_SOUTH]
-	var lowest: float = cell_surface(cell).y
-	for dir in 4:
-		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if not is_solid(side):
-			continue
-		var y: float = cell_surface(side).y
-		if y < lowest:
-			lowest = y
-			face = GridConfig.DIR_VECTORS[dir]
-	drop = maxf(cell_surface(cell).y - lowest, GridConfig.HEIGHT_UNIT)
+	var face: Vector3 = ladder_face(cell)
+	var drop: float = maxf(
+		float(height_at(cell) - height_at(cell + GridConfig.cell_step(face)))
+			* GridConfig.HEIGHT_UNIT,
+		GridConfig.HEIGHT_UNIT)
 	# Half a cell out, plus a hair so the rails stand PROUD of the face rather
 	# than z-fighting with it.
 	rungs.position = cell_surface(cell) + face * (GridConfig.CELL_SIZE * 0.5 + 0.06)

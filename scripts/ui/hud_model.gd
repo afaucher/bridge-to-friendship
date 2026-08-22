@@ -173,11 +173,18 @@ static func _fraction(value: float, total: float) -> float:
 
 # --- Slots --------------------------------------------------------------------
 
-# TWO ACTION SLOTS. D5 asked for three and the third was ROPE, drawn permanently
+# THREE ACTION SLOTS. D5 asked for three and the third was ROPE, drawn permanently
 # blank against M4 landing -- removed 2026-08-15 because a box that has never
 # filled and cannot fill is not "deliberately empty", it is furniture. It was
 # reported from a playtest as a button that does nothing, which is exactly the
 # report the empty-versus-broken distinction was meant to prevent.
+#
+# THE THIRD IS THE SIDEARM (M24), AND IT IS THE OPPOSITE OF THAT ROPE BOX: it is
+# always filled, always usable, and the number in it moves every time the trigger
+# is pulled. It briefly shared the SPECIAL slot -- showing PISTOL whenever the
+# hands were empty -- and that conflated two different things. What you are
+# CARRYING varies and can be nothing; what you always have does not. One box each
+# says both at once, and it gives the special slot its empty state back.
 #
 # THE DISTINCTION ITSELF SURVIVES, and is better carried now: the SPECIAL slot
 # genuinely varies at runtime -- empty-handed one moment and holding a rocket the
@@ -205,8 +212,28 @@ static func _slots(world: Node, peer: int, body: Node) -> Array:
 			# and it needed no change at all to draw this.
 			"ammo": int(body.dash_charges),
 		},
+		_sidearm_slot(body),
 		_special_slot(world, peer),
 	]
+
+# THE WEAPON YOU ALWAYS HAVE, and the only slot whose bar means ACCURACY rather
+# than availability.
+#
+# `cooldown` carries the HEAT, not the fire timer. The timer is a third of a
+# second and unreadable, and it is not the thing a player needs to know: the
+# pistol is always ready and the question is whether the next shot will go where
+# they point it. A filling bar IS the accuracy going.
+static func _sidearm_slot(body: Node) -> Dictionary:
+	var slot := {"id": "sidearm", "label": "PISTOL", "filled": true,
+		"ready": true, "cooldown": 0.0, "ammo": -1}
+	if body == null or not is_instance_valid(body):
+		return slot
+	slot["ready"] = float(body.pistol_timer) <= 0.0
+	slot["cooldown"] = clampf(float(body.pistol_heat), 0.0, 1.0)
+	# UNLIMITED, AND -1 IS HOW THE VIEW IS TOLD SO. Every other slot counts down
+	# to zero, so a literal 0 here would read as an empty gun.
+	slot["ammo"] = -1
+	return slot
 
 # HOW FULL THE SLOT LOOKS, and it answers a different question depending on which
 # limit you are against.
@@ -230,6 +257,10 @@ static func _special_slot(world: Node, peer: int) -> Dictionary:
 		return slot
 	var weapon: Node = world.special_held_by(peer)
 	if weapon == null or not is_instance_valid(weapon):
+		# EMPTY IS A STATE, NOT AN ABSENCE, and this slot is the one that teaches
+		# it -- the player watches it fill and empty as they pick things up. The
+		# sidearm briefly lived in here, which took that away and said PISTOL over
+		# a box whose whole job is to report what you are CARRYING.
 		return slot
 	slot["label"] = str(weapon.kind_name())
 	slot["filled"] = true

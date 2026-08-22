@@ -1,0 +1,97 @@
+# TWO HEIGHTS SIDE BY SIDE, AND A RAISED PATCH SMALLER THAN THE DECK.
+#
+# M23 phase 1: the fixture that asks whether anything has to be BUILT for height
+# to vary across the bridge as well as along it. The generator's whole vocabulary
+# is one scalar per row -- `low[z]` is the height of the entire row -- so nothing
+# in this game has ever produced either shape, and the claim that the renderer
+# and the validator already handle them is a claim, not a fact.
+#
+# NO HOLES ANYWHERE. Every cell is solid, so anything that goes wrong here is
+# about HEIGHT and cannot be blamed on the width work that came before it.
+#
+# WHAT IS IN HERE:
+#
+#   A LATERAL CLIFF. Rows 4-7, columns 0-5 stay at height 0 while columns 6-14
+#   sit at height 2. That vertical face points ACROSS the screen rather than up
+#   it, which is the orientation nothing in this game has ever drawn -- every
+#   height change until now has been a horizontal line running the full width.
+#
+#   THE RAMP THAT MAKES IT LEGAL. Columns 6-7 climb one unit per row at rows 2
+#   and 3. Without it the high half is deck nothing can reach, which
+#   `_check_orphans` refuses outright -- and that refusal is itself worth
+#   proving, because it is the rule a generated split plateau will have to
+#   satisfy.
+#
+#   A TOWER. Rows 10-12, columns 11-13, two units above the deck around it,
+#   reached by its own two-row ramp at column 12. A patch smaller than the row,
+#   which is the footprint set-pieces cannot currently express.
+#
+#   THREE ROWS DEEP SO THE TEST CAN DISCRIMINATE, and the first draft was one.
+#   A one-row tower has low ground directly behind it, so its underside drops
+#   to the deck through a Z neighbour -- and an A/B that narrowed the eight-
+#   neighbour scan to Z only left the tower reading a correct 2.00 while the
+#   cliff fell to 1.00. The assertion was passing for the wrong reason. Three
+#   rows put a cell in the MIDDLE with high ground both ways along the bridge,
+#   so only its lateral neighbours can thicken it.
+#
+#   TWO RAMP ROWS, NOT ONE, and the first draft had one. A ramp climbs a single
+#   unit per row and `_can_step` allows a rise only where the DESTINATION is a
+#   ramp -- so one row cannot reach a height of two, and the tower came out as
+#   six cells of marooned deck the validator correctly refused. The fixture was
+#   wrong, not the rule, which is exactly what phase 1 is for.
+#
+# The entry and exit rows are flat and level so the segment joins a run normally.
+
+name = test_split_height
+base_height = 0
+width = 15
+length = 14
+tags = fixture, split_height
+
+[deck]
+...............
+...............
+....../........
+....../........
+...............
+...............
+...............
+...............
+............/..
+............/..
+...............
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000100000000
+000000200000000
+000000222222222
+000000222222222
+000000222222222
+000000222222222
+000000000000100
+000000000000200
+000000000002220
+000000000002220
+000000000002220
+000000000000000
+
+[content]
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............

@@ -1,0 +1,71 @@
+# A SETBACK AND A GAP, SIDE BY SIDE, DRAWN WITH THE SAME GLYPH.
+#
+# The fixture for M22's parapet rule. Both shapes below are runs of `_` -- the
+# format has no way to say which is which and should not gain one -- so the rule
+# has to tell them apart by GEOMETRY, and this file is the case that proves it
+# does.
+#
+#   ROWS 2-8, COLUMNS 0-2 AND 13-14: a SETBACK. The void runs unbroken off the
+#   side of the canvas, so this is the bridge being narrower here. Column 3 and
+#   column 12 are its edges and must grow a parapet, or a narrow section is an
+#   unrailed drop -- which is what every generated `narrow` stretch in the game
+#   was until this rule existed.
+#
+#   ROWS 4-6, COLUMNS 7-8: a GAP. Deck closes around it on both sides, so it is
+#   broken structure rather than a railed balcony. It must stay unrailed: you are
+#   supposed to be able to fall into it, and to shove a stone through it.
+#
+# THE TWO ARE DELIBERATELY OVERLAPPING IN Z. A rule that keyed off "is this row
+# narrowed" rather than off the void's own shape would rail the gap too on rows
+# 4-6, and a fixture that separated them could never catch that.
+#
+# Entry and exit rows are solid across so the segment validates and so a run can
+# join it, which is the invariant M22 leans on for the join contract.
+
+name = test_setback
+base_height = 0
+width = 15
+length = 12
+tags = fixture, setback
+
+[deck]
+...............
+...............
+___..........__
+___..........__
+___....__....__
+___....__....__
+___....__....__
+___..........__
+___..........__
+...............
+...............
+...............
+
+[height]
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+000000000000000
+
+[content]
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
+...............
