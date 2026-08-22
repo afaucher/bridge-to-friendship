@@ -692,6 +692,19 @@ the moment it is written.
   that is not at all what we show". **When a hazard is reported in the wrong
   place, sample its damage as a MAP and compare it against the mesh**; and when a
   test states a rule the art contradicts, the test is the thing that is wrong.
+- **"IS THIS CELL SOLID" IS A QUESTION ABOUT THE DECK, AND A PILLAR STANDING ON
+  THAT DECK IS A DIFFERENT QUESTION.** Observed 2026-08-21 giving skirmishers a
+  patrol. The grid is the right oracle for "is there floor that way" -- it is
+  cheaper than a raycast and it is the same record the level was validated
+  against -- but it answers about terrain, and a body steering at a solid cell
+  with an obstacle standing on it is held there by `move_and_slide` forever: the
+  walk never arrives, so no new destination is ever chosen. Measured: a gunner
+  leaned on the pillar at (7,8) of `test_flat` for the whole rest of the phase.
+  **Any "walk to a point" needs a way to give up**, and the first version of that
+  was a TIME BUDGET -- "twice as long as the walk should take", which is twelve
+  seconds at the edge of a patrol radius, correct by the formula and far too slack
+  to look like anything but a broken enemy. A progress check (did the distance
+  close at all in half a second) is the same fact noticed twenty times sooner.
 - **A one-of-something test cannot see a many-of-something bug.** Balls ghosted
   through each other for the whole life of the plinko feature while its tests all
   passed, because every one of them used a SINGLE ball — which is what you reach
@@ -1092,6 +1105,46 @@ about *method*, not about that game.
   between tick +0 and +1, and the sampling window began at +1 -- so the assertion
   was dead code and passed against the broken build. Found by A/B, which is the
   only thing that finds it. **Sample from the tick the event happens ON.**
+- **"IT SHOOTS YOU" IS A COIN FLIP AT THIS GAME'S SPREAD, so isolate the spread
+  before asserting damage.** Observed 2026-08-21. `MG_SPREAD_DEG` is 10, which at
+  a skirmisher's own 12 m band is a cone **4.2 m wide against a body 0.8 m wide**:
+  fewer than one shot in five lands, so "an awake gunner hurts you" measured over
+  three shots is a 45% assertion. It failed first run, and the round that missed
+  was **2 m wide of a stationary player** -- which reads as a gunner that never
+  fired, and sent a round of diagnosis into the alertness code that had just been
+  written. `DebugSettings.set_value("mg_spread_deg", 0.0)`, the same isolation as
+  `turret_arc_deg` in `test_gunners`. The general form: **when a claim is "X
+  happens", check whether the mechanism that delivers X is stochastic**, and take
+  the randomness out rather than widening the window until it usually passes.
+  **AND `test_gunners` HAD BEEN WINNING THAT COIN FLIP FOR MONTHS.** Two of its
+  phases -- "out of cover it does hurt you" and "inside the arc it gets hit" --
+  are the same claim over four shots, and both went red the day an unrelated edit
+  in an EARLIER phase changed how many `randf()` calls came before them. The
+  global seed makes a run repeatable; it does not make an assertion sound. **A
+  seeded suite hides a probabilistic assertion until something upstream shifts the
+  stream**, and what surfaces then looks like a regression in whatever you just
+  touched.
+- **AN ENEMY THAT STOPS ITSELF AT A PREFERRED DISTANCE CANNOT BE TESTED AGAINST
+  ANYTHING FURTHER AWAY THAN THAT.** Observed 2026-08-21 writing "a skirmisher
+  does not close across a hole". The fixture put the two 22 m apart down the
+  length of `test_flat` with the chasm between them -- and a skirmisher closes
+  only until it is inside its band, so it walks `start - 17` metres and parks,
+  **5 m short of a hole 10 m away**. The phase passed with the rule reverted.
+  Fixed by using the axis with room in it: the same fixture is 24 m long and 60 m
+  WIDE. **Before writing a "walks into X" test, compute how far the body will
+  actually walk** -- for anything with a standoff distance that is a subtraction,
+  not the distance between the two markers you placed.
+- **DOWNING THE SOLO PLAYER TO TAKE A TARGET AWAY HAS A FUSE ON IT.** Same day. A
+  party entirely in `_returning` is a wipe, and `_restart_at_checkpoint` frees
+  every gunner, rusher, ball, hat and special in the world -- so a phase that
+  downs the player and then measures an enemy for fifteen seconds is measuring an
+  enemy that gets deleted partway through, which presents as "the body under test
+  fell off the bridge". Worse, `_returning` SURVIVES a phase's own cleanup, so the
+  wipe can land on the FIRST tick of the next phase and delete something the
+  previous phase never touched. Clear `world._returning` in the per-phase reset,
+  and for a long quiet window remove the player from `world.players` instead --
+  which has no fuse and also makes `_trailing_edge_z()` infinite, taking the leash
+  out of the picture as well.
 - **NEVER `git checkout --` A FILE THAT HAS UNCOMMITTED WORK IN IT.** Observed
   2026-08-14 while A/B-ing the debug console: a loop that disabled one function,
   ran the gate, then "restored" with `git checkout -- scripts/sim/game_world.gd`

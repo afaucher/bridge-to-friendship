@@ -41,6 +41,7 @@ const MineScene = preload("res://scenes/mine.tscn")
 # raises at runtime and silently aborts the rest of the frame.
 const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
+const ShotSound = preload("res://scripts/ui/shot_sound.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
@@ -2672,6 +2673,22 @@ func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 	_bullets_root.add_child(bullet)
 	_bullets.append(bullet)
 	bullet.launch(to_local(from_global), direction, source, shooter_rid, as_rocket)
+	_play_shot(bullet.position)
+
+# THE REPORT, at the muzzle. Host and client both land here -- one from
+# `_spawn_round`, the other from a new id arriving in a snapshot -- so there is a
+# single description of what a shot sounds like, exactly as `_play_blast` is the
+# single description of what an explosion looks like.
+#
+# EVERY ROUND IN THE GAME, whoever fired it: the machine gun, the sidearm, the
+# rocket, a skirmisher and a turret all pass through one function. That is right
+# for a placeholder and wrong for long -- sound.md argues the skirmisher and the
+# turret must sound DIFFERENT, because cadence is the whole difference between
+# those two threats and a shared sample makes the split inaudible.
+func _play_shot(at: Vector3) -> void:
+	if not view_active:
+		return
+	ShotSound.spawn(self, at)
 
 # The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
 # somehow not been posed yet -- a round from slightly the wrong place beats a
@@ -3092,37 +3109,60 @@ func destroy_held_special(peer: int) -> void:
 # simulation reads and a client may switch it on the instant it is clicked.
 var _laser: MeshInstance3D = null
 
+# THE DOT, AND THE BAR UNDER IT. Added 2026-08-22, and together they are the
+# whole of what M21 was parked waiting for.
+#
+# The beam was pulled because a full-length line reads as a hitscan laser and
+# these rounds are slow visible balls. But removing it left a real hole: with
+# `point` aim shipped as the default, a PAD has no aim readout at all --
+# `AimSource.PAD_CURSOR_RANGE` projects 6 m along facing and draws nothing. A dot
+# at the point the shot reaches answers "where am I aiming" without claiming the
+# round travels in a straight instant line.
+#
+# THE BAR IS UNDER THE DOT RATHER THAN IN THE HUD, which is the correction M21's
+# own park note recorded: a player charging a throw is looking at the WORLD, not
+# at the corner of the screen. Putting the readout where the eye already is costs
+# nothing and is the only version that gets read.
+var _dot: MeshInstance3D = null
+var _bar_back: MeshInstance3D = null
+var _bar_fill: MeshInstance3D = null
+
+const DOT_RADIUS := 0.13
+const BAR_WIDTH := 0.9
+const BAR_HEIGHT := 0.11
+# Far enough under the dot not to sit on top of what you are aiming at.
+const BAR_DROP := 0.45
+
 func _update_laser_sight() -> void:
 	if not view_active:
 		return
-	var on: bool = DebugSettings.is_on("laser_sight")
+	var mode: String = DebugSettings.get_choice_name("laser_sight")
+	var on: bool = mode != "off"
 	var body: Node = players.get(local_peer)
 	var weapon: Node = _specials.held_by(local_peer) if body != null else null
-	# NO GUN, NO LINE. A sight on an empty hand would be aiming something that
-	# does not exist, and the muzzle fallback in _muzzle_of is the body centre --
-	# which would draw a beam out of the player chest.
+	# AND AN EMPTY SLOT IS THE SIDEARM (M24). This read "NO GUN, NO LINE -- a
+	# sight on an empty hand would be aiming something that does not exist, and
+	# the muzzle fallback in _muzzle_of is the body centre, which would draw a
+	# beam out of the player chest". Both halves were true and both stopped being
+	# true the day the pistol landed: the hand is not empty, and the sidearm
+	# carries a real Barrel, which is the entire reason it was built that way.
+	#
+	# It failed the quiet way. No error, no missing gun -- just no line, in the
+	# state a player is in MOST of the time, and with point aim shipped as the
+	# default that is the one state where a pad has no aim readout at all.
+	if weapon == null and body != null:
+		weapon = _sidearm_of(body)
 	if not on or body == null or weapon == null or not is_instance_valid(weapon):
-		if _laser != null:
-			_laser.visible = false
+		_hide_aim_readout()
 		return
-	if _laser == null:
-		_laser = MeshInstance3D.new()
-		_laser.name = "LaserSight"
-		_laser.mesh = BoxMesh.new()
-		var beam := StandardMaterial3D.new()
-		beam.albedo_color = Color(1.0, 0.25, 0.2, 0.85)
-		beam.emission_enabled = true
-		beam.emission = Color(1.0, 0.3, 0.25)
-		beam.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		beam.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_laser.material_override = beam
-		add_child(_laser)
-	_laser.visible = true
-
+	# ONE RAY, WHICHEVER READOUT IS ON. Both the beam's length and the dot's
+	# position are the same fact -- where this shot would arrive -- so they are
+	# computed once. Two copies of it is how a sight comes to disagree with the
+	# round it describes, which is the one thing this must never do.
 	var from: Vector3 = _muzzle_of(weapon, body)
 	var along: Vector3 = aim_direction(body, weapon)
-	# STOPS AT THE FIRST THING IT WOULD HIT, so the line reports the shot rather
-	# than a ray through the world. Same layers a round is stopped by.
+	# STOPS AT THE FIRST THING IT WOULD HIT, so it reports the shot rather than a
+	# ray through the world. Same layers a round is stopped by.
 	var reach: float = SimConfig.MG_RANGE
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if space != null:
@@ -3132,12 +3172,108 @@ func _update_laser_sight() -> void:
 		var hit := space.intersect_ray(query)
 		if not hit.is_empty():
 			reach = from.distance_to(hit["position"])
+	var point: Vector3 = from + along * reach
+
+	if mode == "beam":
+		_draw_beam(from, along, reach)
+	else:
+		if _laser != null:
+			_laser.visible = false
+		_draw_dot(point)
+	_draw_charge_bar(weapon, point)
+
+func _draw_beam(from: Vector3, along: Vector3, reach: float) -> void:
+	if _laser == null:
+		_laser = MeshInstance3D.new()
+		_laser.name = "LaserSight"
+		_laser.mesh = BoxMesh.new()
+		_laser.material_override = _flat_material(Color(1.0, 0.25, 0.2, 0.85))
+		add_child(_laser)
+	_laser.visible = true
 	var mesh: BoxMesh = _laser.mesh as BoxMesh
 	mesh.size = Vector3(0.02, 0.02, maxf(reach, 0.05))
 	_laser.global_position = from + along * (reach * 0.5)
 	if absf(along.dot(Vector3.UP)) < 0.999:
 		_laser.global_transform = _laser.global_transform.looking_at(
 			from + along * reach, Vector3.UP)
+
+func _draw_dot(at: Vector3) -> void:
+	if _dot == null:
+		_dot = MeshInstance3D.new()
+		_dot.name = "AimDot"
+		var ball := SphereMesh.new()
+		ball.radius = DOT_RADIUS
+		ball.height = DOT_RADIUS * 2.0
+		# Cheap: this is on screen every frame and is four pixels across.
+		ball.radial_segments = 8
+		ball.rings = 4
+		_dot.mesh = ball
+		_dot.material_override = _flat_material(Color(1.0, 0.3, 0.25, 0.9))
+		add_child(_dot)
+	_dot.visible = true
+	_dot.global_position = at
+
+# THE HOLD, DRAWN WHERE THE PLAYER IS LOOKING. Only a grenade charges, and rather
+# than ask what kind the weapon is, this asks whether it HAS a charge -- a missing
+# property would raise and silently abort the rest of this frame, which is the
+# GDScript trap CLAUDE.md warns about, and the sidearm is not a SpecialBody at all.
+func _draw_charge_bar(weapon: Node, at: Vector3) -> void:
+	var fraction: float = 0.0
+	if "charge" in weapon and weapon.has_method("charge_fraction") and weapon.charge > 0.0:
+		fraction = float(weapon.charge_fraction())
+	if fraction <= 0.0:
+		_hide_charge_bar()
+		return
+	if _bar_back == null:
+		_bar_back = _make_bar("ChargeBarBack", Color(0.05, 0.05, 0.07, 0.75), BAR_WIDTH)
+		_bar_fill = _make_bar("ChargeBarFill", Color(1.0, 0.72, 0.2, 0.95), BAR_WIDTH)
+	_bar_back.visible = true
+	_bar_fill.visible = true
+	var centre: Vector3 = at - Vector3(0.0, BAR_DROP, 0.0)
+	_bar_back.global_position = centre
+	# GROWS FROM THE LEFT, not from the middle: a bar that fills outwards from its
+	# centre reads as a meter rather than as a clock, and this is a clock.
+	var lit: float = BAR_WIDTH * fraction
+	(_bar_fill.mesh as QuadMesh).size = Vector2(lit, BAR_HEIGHT)
+	_bar_fill.global_position = centre + Vector3((lit - BAR_WIDTH) * 0.5, 0.0, 0.01)
+
+func _make_bar(bar_name: String, colour: Color, wide: float) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = bar_name
+	var quad := QuadMesh.new()
+	quad.size = Vector2(wide, BAR_HEIGHT)
+	node.mesh = quad
+	var mat: StandardMaterial3D = _flat_material(colour)
+	# FACES THE CAMERA. The camera is fixed-yaw, but it is also pitched 45 degrees
+	# and the bridge itself is pitched 4, so a quad left flat in the world reads as
+	# a sliver.
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.no_depth_test = true
+	node.material_override = mat
+	add_child(node)
+	return node
+
+func _flat_material(colour: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = colour
+	mat.emission_enabled = true
+	mat.emission = Color(colour.r, colour.g, colour.b)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return mat
+
+func _hide_charge_bar() -> void:
+	if _bar_back != null:
+		_bar_back.visible = false
+	if _bar_fill != null:
+		_bar_fill.visible = false
+
+func _hide_aim_readout() -> void:
+	if _laser != null:
+		_laser.visible = false
+	if _dot != null:
+		_dot.visible = false
+	_hide_charge_bar()
 
 # WHAT IS IN YOUR HANDS SLOWS YOU DOWN, IF IT IS HEAVY.
 #
@@ -4235,6 +4371,12 @@ func _apply_bullet_snapshot(section: Array) -> void:
 			bullet.name = "Bullet_%d" % id
 			_bullets_root.add_child(bullet)
 			_bullets.append(bullet)
+			# A ROUND APPEARING IS THE EVENT, so the report needs no packet of its
+			# own. A client never runs `_spawn_round` -- it is told about rounds --
+			# and the first snapshot carrying an id it has not seen is exactly the
+			# moment somebody pulled a trigger. Cheaper than an RPC and it cannot
+			# get out of step with the thing it describes.
+			_play_shot(entry[1])
 		bullet.apply_remote(entry[1])
 
 	for i in range(_bullets.size() - 1, -1, -1):

@@ -57,6 +57,25 @@ var explodes: bool = false
 # it still does what it always did.
 var damage: int = SimConfig.MG_DAMAGE
 
+# HOW HARD A ROUND FALLS, and the ONE place that answers it.
+#
+# A little drop, or none. Perfectly flat rounds read as a laser and this game is
+# full of arcs -- a plinko ball, a shoved player, a dislodged hat -- but that
+# argument was written when a round crossed the bridge in a blink. At
+# MG_BULLET_SPEED 10 the ball is plainly a ball on its way, so the arc is no
+# longer carrying the read on its own, and the drop ships OFF behind a toggle.
+#
+# STATIC, AND SHARED WITH THE TESTS ON PURPOSE. `test_tower_enemy` walks a round
+# along its own ray to ask whether a tilted shot actually reaches a turret, and it
+# was integrating drop with its own copy of the arithmetic -- at 9.8 m/s² against
+# this game's GRAVITY of 24, so its model of a round had been falling at 40% of
+# the real rate. That is the shape CLAUDE.md warns about twice: one fact with two
+# implementations, agreeing right up until they do not.
+static func drop_accel() -> float:
+	if not DebugSettings.is_on("bullet_drop"):
+		return 0.0
+	return SimConfig.GRAVITY * SimConfig.MG_BULLET_DROP
+
 func launch(from: Vector3, direction: Vector3, peer: int, rid: RID,
 		as_rocket: bool = false) -> void:
 	explodes = as_rocket
@@ -74,11 +93,7 @@ func launch(from: Vector3, direction: Vector3, peer: int, rid: RID,
 func step() -> Vector3:
 	var from: Vector3 = position
 	age += SimConfig.TICK_DELTA
-	# A LITTLE DROP, not none. Perfectly flat rounds read as a laser, and this game
-	# is full of arcs -- a plinko ball, a shoved player, a dislodged hat. At 45 m/s
-	# over the 30 m range that is about 20 cm of fall, which is felt at the far end
-	# and invisible at the near one.
-	velocity.y -= SimConfig.GRAVITY * SimConfig.MG_BULLET_DROP * SimConfig.TICK_DELTA
+	velocity.y -= drop_accel() * SimConfig.TICK_DELTA
 	position += velocity * SimConfig.TICK_DELTA
 	_face_travel()
 	return from

@@ -23,6 +23,12 @@ extends "res://scripts/test_support/test_case.gd"
 #      CLAUDE.md's "half a gate is not a gate": a turret that never fires passes
 #      the first half perfectly, so the same target inside the arc must be shown
 #      to get hit.
+#   6. NOR DOES IT ADVANCE OFF THE DECK. The twin of claim 2, added 2026-08-21:
+#      until then only RETREATING asked the grid for footing, so a skirmisher
+#      closing on you walked into a chasm and died for it.
+#
+# The alertness wake (2026-08-21) put 1-2 s in front of every one of these, so the
+# windows here are sized to contain it. See test_alertness for the wake itself.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
@@ -39,7 +45,7 @@ var phase_frame: int = 0
 var recorded: Dictionary = {}
 
 func setup(main) -> void:
-	timeout_seconds = 60.0
+	timeout_seconds = 90.0
 	world = Node3D.new()
 	world.name = "GunnerWorld"
 	world.set_script(GameWorldScript)
@@ -48,6 +54,17 @@ func setup(main) -> void:
 	# on the playtest map means live hazards tumbling the subject, and every one of
 	# those reads as the thing under test misbehaving.
 	world.segment_paths = ["res://segments/test_flat.seg"]
+	# NO SPREAD, added 2026-08-21, and it fixed a fault that had been latent here
+	# for months. MG_SPREAD_DEG is 10, a cone 4.2 m wide at 12 m against a body
+	# 0.8 m wide, so fewer than one round in five lands -- which makes "out of cover
+	# it does hurt you" (phase 4) and "inside the arc it gets hit" (phase 5) roughly
+	# 50/50 over the shots their windows allow. Both were passing on the luck of a
+	# seeded RNG stream, and phase 5 failed the moment an unrelated edit upstream
+	# shifted how many randf() calls came before it.
+	#
+	# These phases claim a gun FIRES, not that its spread was kind. Same isolation
+	# as turret_arc_deg below and as test_alertness.
+	DebugSettings.set_value("mg_spread_deg", 0.0)
 	world.start(true, 1, false)
 	world._spawn_player(1, 0)
 	victim = world.player_body(1)
@@ -64,6 +81,7 @@ func _physics_process(_delta: float) -> void:
 		2: _phase_turret_ignores_a_dash()
 		3: _phase_needs_line_of_sight()
 		4: _phase_turret_arc()
+		5: _phase_will_not_advance_off_the_edge()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -90,11 +108,21 @@ func _phase_holds_its_band() -> void:
 		# an offset of SKIRMISHER_RANGE * 2 put the gunner off the end of the map,
 		# where it fell and was culled. Twenty metres is outside the band and
 		# still on the bridge.
-		_park(Vector2i(15, 1))
-		recorded["id"] = _spawn(Vector2i(15, 11), GunnerBody.Kind.SKIRMISHER).gunner_id
+		#
+		# COLUMN 25, NOT 15, since 2026-08-21. The hole run of row 6 spans columns
+		# 4..21, so a lane down the middle of this fixture has a chasm across it --
+		# and once closing became grid-checked, "it stops in its band" would have
+		# been satisfied by a gunner stopped at the lip of a hole instead. It was
+		# worse before that: the gunner was walking INTO the hole and this phase
+		# ended a second before it fell in. Columns 22..29 are solid the whole way.
+		_park(Vector2i(25, 1))
+		recorded["id"] = _spawn(Vector2i(25, 11), GunnerBody.Kind.SKIRMISHER).gunner_id
 		recorded["start"] = float(_tracked().position.distance_to(victim.position))
 		return
-	if phase_frame == 150:
+	# WIDE ENOUGH TO CONTAIN THE WAKE. It stands still for GUNNER_WAKE_MAX before it
+	# starts closing, so a window sized for a gunner that moves on tick one leaves
+	# half a second of walking and a margin this assertion only just clears.
+	if phase_frame == 260:
 		if _lost(): return
 		var now: float = float(_tracked().position.distance_to(victim.position))
 		check(now < float(recorded["start"]) - 2.0,
@@ -115,7 +143,10 @@ func _phase_will_not_back_off_the_edge() -> void:
 		recorded["id"] = _spawn(Vector2i(15, 11), GunnerBody.Kind.SKIRMISHER).gunner_id
 		recorded["y"] = _tracked().position.y
 		return
-	if phase_frame == 120:
+	# Also widened for the wake: at 120 ticks a gunner may still be waking, and a
+	# gunner that has not started is trivially "still on the bridge" -- an assertion
+	# that cannot fail is not an assertion.
+	if phase_frame == 300:
 		# BY ID, never by holding the node. Assigning a freed object to a typed var
 		# raises before is_instance_valid can answer, and the raise silently aborts
 		# the rest of the frame -- which is how the first run of this test presented
@@ -221,6 +252,60 @@ func _phase_turret_arc() -> void:
 			"but the same target inside the arc gets hit (%d -> %d)"
 				% [recorded["health"], victim.health])
 		DebugSettings.set_value("turret_arc_deg", SimConfig.TURRET_ARC_DEG)
+		_advance(5)
+
+# --- 6. Nor does it advance off the deck --------------------------------------
+#
+# THE TWIN OF PHASE 2, and it did not exist until 2026-08-21. Retreating asked the
+# grid for footing and CLOSING did not, on the argument that "walking into the
+# party is what it is for" -- which is a rusher's affordance (hazards.md: baiting
+# one over a hole is the cheapest tool a weaponless player has) borrowed by an
+# enemy that already has two answers. A skirmisher that walks into a chasm on its
+# way to you is a free kill for standing still, which is the same fault phase 2
+# fixes pointing the other way.
+#
+# BOTH HALVES, per the house rule: a skirmisher that never moved would sit safely
+# on the near side forever and pass the first claim perfectly.
+
+func _phase_will_not_advance_off_the_edge() -> void:
+	if phase_frame == 1:
+		# ALONG ROW 6, NOT DOWN A COLUMN, and the first version of this phase was
+		# down a column and COULD NOT FAIL. A skirmisher closes only until it is
+		# inside its band, so it walks (start - 17) metres and no further: from one
+		# end of this fixture to the other is 22 m, which buys 5 m of walking and
+		# leaves it parked well short of the hole it was supposed to test. A/B
+		# caught it -- reverting the rule left the phase green.
+		#
+		# The fixture is 60 m WIDE and only 24 m long, so the room is on the X
+		# axis. Row 6 is deck at columns 0..3, a hole across 4..21, and deck again
+		# from 22. Fifty metres apart along it: the gunner has 29 m of closing to do
+		# and the chasm starts three cells in front of it.
+		_park(Vector2i(25, 6))
+		var g: Node = _spawn(Vector2i(1, 6), GunnerBody.Kind.SKIRMISHER)
+		recorded["id"] = g.gunner_id
+		recorded["start"] = g.position
+		return
+	# Reported here rather than through _lost(), which advances to a phase that does
+	# not exist and turns the failure into a 90 s timeout.
+	if _tracked() == null:
+		check(false, "a skirmisher closing on you walked into the hole field")
+		DebugSettings.set_value("mg_spread_deg", SimConfig.MG_SPREAD_DEG)
+		finish()
+		return
+	if phase_frame == 420:
+		var g: Node = _tracked()
+		var cell: Vector2i = world.grid.cell_of_world(g.position)
+		check(cell.x <= 3,
+			"a skirmisher closing on you stops at the lip of a chasm (column %d, wants <= 3)"
+				% cell.x)
+		check(world.grid.is_solid(cell), "and is standing on something")
+		# ...AND IT REALLY DID COME. Without this the claim above is satisfied by a
+		# skirmisher that never took a step -- and it is 44 m short of its band when
+		# it stops, so there is no question of it having arrived.
+		var closed: float = float(recorded["start"].distance_to(g.position))
+		check(closed > 2.0,
+			"and it got there by walking toward you (%.1f m closed)" % closed)
+		DebugSettings.set_value("mg_spread_deg", SimConfig.MG_SPREAD_DEG)
 		finish()
 
 # --- helpers ------------------------------------------------------------------

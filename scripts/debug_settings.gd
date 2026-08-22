@@ -133,11 +133,11 @@ const OPTIONS := {
 	},
 	"laser_sight": {
 		"section": "Aiming",
-		"kind": KIND_BOOL,
 		"view_only": true,
-		"label": "Laser sight",
-		"default": 1,
-		"help": "Draws a line out of the barrel along the direction the shot will ACTUALLY take, built from the same function that fires it -- so if the line and the round ever disagree, the line is telling you about a bug. Works in both aim modes on purpose: a sight that only appeared in the new one would show you its aim with nothing to compare against.",
+		"label": "Aim readout",
+		"choices": ["off", "beam", "dot"],
+		"default": 2,
+		"help": "How the shot's direction is shown. Both are built from `aim_direction`, the same function that fires -- so if the readout and the round ever disagree, the readout is telling you about a bug. BEAM is the original full-length line and reads as a laser weapon, which the rounds are not; DOT marks only the point the shot would reach and is the default from 2026-08-22. OFF is honest too, but note that a pad has no other aim readout at all: PAD_CURSOR_RANGE projects 6 m along facing and draws nothing.",
 	},
 
 	# FORCE ONE SET-PIECE, so a thing you are trying to look at can be found.
@@ -189,6 +189,13 @@ const OPTIONS := {
 		"default": 3, "min": 1, "max": 9,
 		"mirrors": "DASH_CHARGES",
 		"help": "How many dashes you hold. They come back one every DASH_REFILL_SECONDS, and the clock starts when you SPEND one rather than when you run dry. Separate from the dash cooldown, which bounds the rate rather than the total. Read live, so turning it down mid-round takes charges away instead of leaving somebody holding nine.",
+	},
+	"bullet_drop": {
+		"section": "Weapons",
+		"kind": KIND_BOOL,
+		"label": "Bullet drop",
+		"default": 0,
+		"help": "Whether a round falls as it flies. OFF is the shipped behaviour as of 2026-08-22: rounds are flat. It is a toggle rather than a slider because the question is whether the arc is wanted at all -- the MAGNITUDE is not free to pick, since drop goes with the SQUARE of flight time and MG_BULLET_SPEED has now fallen twice, so the constant behind this has had to be re-derived both times to mean the same thing on screen. NOT view-only: rounds are simulated on the host and clients are only told where they are, so this has to be the host's answer.",
 	},
 	"ammo_multiplier": {
 		"section": "Weapons",

@@ -42,12 +42,17 @@ const SAMPLE_STEP := 0.05
 # ONE SAMPLE PER WINDOW: rebuild the tower, let it settle, fire, read.
 #
 # THE READ HAS TO OUTLAST THE FLIGHT, and the first version of this did not. A
-# round leaves the muzzle 6 m out at MG_BULLET_SPEED (22 m/s), so it is in the air
-# for 16 frames -- read 9 frames after firing, EVERY sample missed and the test
-# reported 38 gaps in a tower that has none. A sampling window that closes before
-# the event is the twin of a window that opens after it, and both read as the
-# feature being broken.
-const SAMPLE_FRAMES := 45
+# round leaves the muzzle 6 m out, so it is in the air for `6 / MG_BULLET_SPEED`
+# seconds -- read 9 frames after firing, EVERY sample missed and the test reported
+# 38 gaps in a tower that has none. A sampling window that closes before the event
+# is the twin of a window that opens after it, and both read as the feature being
+# broken.
+#
+# DERIVED RATHER THAN THE 45 IT USED TO BE. That was 16 frames of flight plus 29
+# of margin at 22 m/s; when the speed fell to 10 on 2026-08-22 the flight became
+# 36 and the margin 9, so the number survived by luck and would not survive the
+# next change. MG_BULLET_SPEED has now moved twice.
+const SAMPLE_FRAMES := int(6.0 / (SimConfig.MG_BULLET_SPEED * SimConfig.TICK_DELTA)) + 29
 const FIRE_AT := 10
 
 var world: Node3D = null

@@ -701,26 +701,51 @@ const MG_SPREAD_VERTICAL_DEG := 2.0
 
 # --- What a round is ----------------------------------------------------------
 
-# 22 m/s, slowed from 45 after playtest. Under four times a walking player and
-# well under half a dash, which is the point: a round is now something you WATCH
-# cross the gap, and at long range something a moving target can be out from under
-# by the time it arrives. That is the whole reason these are balls and not lines.
+# 10 m/s, slowed from 22 after playtest 2026-08-22 (and from 45 before that).
+# LESS THAN TWICE A WALKING PLAYER, which is a different kind of number from the
+# last two: a round is no longer merely watchable, it is genuinely outrunnable.
+# At the full 30 m range the flight takes 3 s, and a target simply walking
+# sideways at WALK_SPEED covers 18 m of that. So long shots now land only on
+# somebody who is standing still or coming at you, and the 30 m in MG_RANGE
+# describes how far a round CAN go rather than how far it is worth firing.
 #
-# It crosses the 30 m range in about 1.4 s.
-const MG_BULLET_SPEED := 22.0
+# THAT CUTS BOTH WAYS and it was not the half being asked about: skirmishers and
+# turrets fire this same object through the same `_spawn_round`, so their fire got
+# much easier to walk out of on the same day. Stacked on the 1-2 s alertness wake
+# from 2026-08-21, two consecutive changes have moved in the player's favour --
+# worth watching in the next session rather than compounding a third time.
+const MG_BULLET_SPEED := 10.0
 
-# A fraction of gravity. Flat rounds read as a laser, and every other arc in this
-# game -- a plinko ball, a shoved player, a dislodged hat -- is an arc.
+# A fraction of gravity, and SHIPPED OFF as of 2026-08-22 -- see the `bullet_drop`
+# toggle in debug_settings.gd. Nothing reads this constant unless that is on; the
+# one place that decides is `Bullet.drop_accel()`.
 #
-# SMALL, and it had to shrink when the speed did: drop goes with the SQUARE of
-# flight time, so the same fraction that gave 20 cm at 45 m/s gives five metres at
-# 22. This is about a metre over the full range -- a visible lob at distance, and
-# eight centimetres at the four-metre range where fights actually happen.
-const MG_BULLET_DROP := 0.05
+# The old argument for having any was that flat rounds read as a laser, and every
+# other arc in this game -- a plinko ball, a shoved player, a dislodged hat -- is
+# an arc. That was written when a round crossed the bridge in a blink. At
+# MG_BULLET_SPEED 10 the ball is plainly a ball the whole way, so the arc is no
+# longer carrying the read on its own, and whether it is wanted is a question for
+# a playtest rather than for this file.
+#
+# THE MAGNITUDE IS NOT FREE TO PICK, which is why it stays here as a number rather
+# than becoming a slider. DROP GOES WITH THE SQUARE OF FLIGHT TIME, so a constant
+# left alone across 45 -> 22 -> 10 m/s would have gone from 20 cm of fall over the
+# full range, to 1.1 m, to **5.4 m** -- a mortar, not a rifle. This value is set to
+# HOLD the arc the 22 m/s round had: acceleration `GRAVITY * MG_BULLET_DROP` =
+# 0.24 m/s², which over the 3 s flight to 30 m is 1.08 m against 1.12 m before,
+# and two centimetres at the four metres where fights actually happen. So turning
+# the toggle on gives the arc the game last shipped with, not a surprise.
+const MG_BULLET_DROP := 0.010
 
 # Comfortably longer than range / speed, so the RANGE is what stops a round and
 # this is only the backstop for one fired off the side of the bridge.
-const MG_BULLET_LIFETIME := 1.6
+#
+# IT IS A FUNCTION OF THE SPEED AND MUST MOVE WITH IT. At 10 m/s the 30 m range
+# takes 3.0 s, so the old 1.6 s would have killed every round at 16 m -- barely
+# past a skirmisher's own 14 m band -- and MG_RANGE would have quietly become
+# decorative while the constant still said 30. Same ~15% margin over range/speed
+# as the value it replaces.
+const MG_BULLET_LIFETIME := 3.5
 
 # WHAT A ROUND DOES TO A PLINKO BALL. Asked for in playtest.
 #
@@ -919,6 +944,64 @@ const TURRET_FIRE_INTERVAL := 2.0
 # console rather than an argument in a design doc. Below about 90 a turret stops
 # being a hazard and becomes a door, which is a real design available on purpose.
 const TURRET_ARC_DEG := 360.0
+
+# --- Alertness: the telegraph a gunner never had ------------------------------
+#
+# EVERY OTHER HAZARD IN THIS GAME ANNOUNCES ITSELF AND THESE DID NOT. A rusher
+# spends RUSHER_RISE_SECONDS coming out of the ground and hazards.md calls that
+# emergence *the* telegraph; plinko balls are slow on purpose. A gunner picked the
+# nearest player it could see and fired on the first tick its cadence allowed --
+# so rounding a pillar at 8 m was an instant round with no window to answer, which
+# is the "hazard with no counter" shape the same document warns about twice.
+#
+# ONE SCALAR RATHER THAN A STATE MACHINE. `alert` rises while a target is in
+# sight and falls while it is not, and firing needs it FULL. Three behaviours fall
+# out of that one number instead of being written:
+#   * the wake window, which is the telegraph;
+#   * MEMORY -- a momentary sight break barely dents it, because the fall is much
+#     slower than the rise, so ducking behind cover for half a second does not
+#     reset anything;
+#   * a CHEAP RE-ACQUIRE, free and without a special case: an enemy that lost you
+#     at 0.6 resumes from 0.6. Without that, bobbing in and out of cover would
+#     re-buy the full window every time and cover would be an infinite stall.
+
+# THE WAKE, ROLLED PER ENEMY. Random so that two skirmishers who see you in the
+# same frame do not fire in the same frame -- a volley from a group reads as one
+# big hit rather than as several enemies, and the stagger is what lets a player
+# answer them one at a time. The floor is a second because that is the rusher's
+# telegraph and this should not be briefer than the one already shipped.
+const GUNNER_WAKE_MIN := 1.0
+const GUNNER_WAKE_MAX := 2.0
+
+# HOW LONG GOING BACK TO SLEEP TAKES, from full alert. Four times the longest
+# wake, which is what makes the number MEMORY rather than a light switch: a
+# player who breaks line of sight for half a second costs the gunner an eighth of
+# its alertness, and one who leaves entirely is forgotten in four seconds.
+#
+# It doubles as the search timer. A gunner with alert left over and no target
+# walks to where it last saw one; when the alert runs out it is patrolling. Two
+# behaviours, one clock, no second constant to keep in step with this one.
+const GUNNER_FORGET_SECONDS := 4.0
+
+# --- What a skirmisher does with nobody to shoot ------------------------------
+#
+# IT USED TO DO NOTHING. `move_for(null)` decelerated to a stop and it stood
+# there forever, which is defensible for a rusher (hazards.md argues the case:
+# searching is the pathfinding a rusher bought its way out of) and wrong for an
+# enemy that is supposed to be holding a piece of ground.
+
+# A STROLL, NOT A CHASE. Half the engaged speed: the difference between the two
+# gaits is the read, at the distance where the scene file says you get "an outline
+# and a colour and nothing else".
+const SKIRMISHER_PATROL_SPEED := 2.0
+
+# HOW FAR FROM WHERE IT WAS PLACED it will wander, in cells. A patrol is meant to
+# make a gunner feel posted rather than parked; it is not meant to relocate the
+# encounter the level author built.
+const SKIRMISHER_PATROL_RADIUS := 4
+
+# A beat at each end, so the walk reads as looking around rather than as pacing.
+const SKIRMISHER_PATROL_PAUSE := 1.2
 
 # --- The rocket launcher ------------------------------------------------------
 #

@@ -510,29 +510,90 @@ static func _height_behind(seg, x: int, z: int) -> int:
 
 # --- Walls --------------------------------------------------------------------
 
+# ONE BOX PER RUN, not one per cell -- and this is the same fix `_build_ramps`
+# got on 2026-08-08, arriving here on 2026-08-22 after a playtest report of
+# "players get snagged on walls".
+#
+# PER-CELL BOXES PUT A SEAM EVERY `CELL_SIZE` ALONG EVERY PARAPET. The player is
+# a `CylinderShape3D` -- flat-sided, with no radius at the corner to roll over a
+# join -- and the ramp note above records exactly what that costs: a body walking
+# a surface made of abutting boxes stops dead, `on_wall`, with every reported
+# contact reading clean. Two boxes placed face to face are a zero-width gap, and
+# CLAUDE.md's rule is that a gap and a flush join are the same bug.
+#
+# It was reported as a friction problem and suggested as a frictionless material.
+# THAT COULD NOT HAVE WORKED: `move_and_slide` does not consult a PhysicsMaterial
+# at all -- friction there governs `RigidBody3D` -- so a character slides on the
+# NORMALS it is handed, and a seam that hands back a bad one snags whatever the
+# surface claims to be made of.
+#
+# A run merges only where every cell agrees on HEIGHT as well as direction, since
+# the box's Y comes from that. Walls along the x-faces (east/west) run along Z;
+# walls along the z-faces (north/south) run along X.
 static func _build_walls(seg, z_offset: int, h_offset: int, body: StaticBody3D, meshes: Node3D,
 		palette: Dictionary, out: Built) -> void:
-	var width: int = seg.width
+	for dir in 4:
+		if dir == GridConfig.DIR_NORTH or dir == GridConfig.DIR_SOUTH:
+			_build_wall_runs_along_x(seg, dir, z_offset, h_offset, body, meshes, palette, out)
+		else:
+			_build_wall_runs_along_z(seg, dir, z_offset, h_offset, body, meshes, palette, out)
+
+# East and west faces: the wall is a plane of constant X, so a run extends in Z.
+static func _build_wall_runs_along_z(seg, dir: int, z_offset: int, h_offset: int,
+		body: StaticBody3D, meshes: Node3D, palette: Dictionary, out: Built) -> void:
+	for x in seg.width:
+		var z := 0
+		while z < seg.length:
+			if not seg.has_wall(x, z, dir):
+				z += 1
+				continue
+			var height: int = seg.height_at(x, z)
+			var first := z
+			while z < seg.length and seg.has_wall(x, z, dir) and seg.height_at(x, z) == height:
+				z += 1
+			var cells: int = z - first
+			_emit_wall_run(seg, dir, x, first, x, z - 1, height + h_offset, z_offset,
+				Vector3(GridConfig.WALL_THICKNESS, GridConfig.WALL_HEIGHT,
+					GridConfig.CELL_SIZE * float(cells)),
+				body, meshes, palette, out)
+
+# North and south faces: the wall is a plane of constant Z, so a run extends in X.
+static func _build_wall_runs_along_x(seg, dir: int, z_offset: int, h_offset: int,
+		body: StaticBody3D, meshes: Node3D, palette: Dictionary, out: Built) -> void:
 	for z in seg.length:
-		for x in width:
-			for dir in 4:
-				if not seg.has_wall(x, z, dir):
-					continue
-				var height: int = seg.height_at(x, z) + h_offset
-				var centre: Vector3 = GridConfig.cell_centre(x, z + z_offset, height, width)
-				centre.y = GridConfig.height_to_world(height) + GridConfig.WALL_HEIGHT * 0.5
+		var x := 0
+		while x < seg.width:
+			if not seg.has_wall(x, z, dir):
+				x += 1
+				continue
+			var height: int = seg.height_at(x, z)
+			var first := x
+			while x < seg.width and seg.has_wall(x, z, dir) and seg.height_at(x, z) == height:
+				x += 1
+			var cells: int = x - first
+			_emit_wall_run(seg, dir, first, z, x - 1, z, height + h_offset, z_offset,
+				Vector3(GridConfig.CELL_SIZE * float(cells), GridConfig.WALL_HEIGHT,
+					GridConfig.WALL_THICKNESS),
+				body, meshes, palette, out)
 
-				var size: Vector3
-				if dir == GridConfig.DIR_NORTH or dir == GridConfig.DIR_SOUTH:
-					size = Vector3(GridConfig.CELL_SIZE, GridConfig.WALL_HEIGHT, GridConfig.WALL_THICKNESS)
-				else:
-					size = Vector3(GridConfig.WALL_THICKNESS, GridConfig.WALL_HEIGHT, GridConfig.CELL_SIZE)
+# The centre comes from the two END CELLS through `cell_centre`, rather than from
+# re-deriving the coordinate maths for a run. Same reason the ramp's shape is made
+# from its own mesh: a second implementation of one fact is a disagreement waiting
+# for a case where the inputs differ.
+static func _emit_wall_run(seg, dir: int, x0: int, z0: int, x1: int, z1: int,
+		height: int, z_offset: int, size: Vector3,
+		body: StaticBody3D, meshes: Node3D, palette: Dictionary, out: Built) -> void:
+	var width: int = seg.width
+	var a: Vector3 = GridConfig.cell_centre(x0, z0 + z_offset, height, width)
+	var b: Vector3 = GridConfig.cell_centre(x1, z1 + z_offset, height, width)
+	var centre: Vector3 = (a + b) * 0.5
+	centre.y = GridConfig.height_to_world(height) + GridConfig.WALL_HEIGHT * 0.5
 
-				var offset: Vector3 = GridConfig.DIR_VECTORS[dir] \
-					* (GridConfig.CELL_SIZE * 0.5 - GridConfig.WALL_THICKNESS * 0.5)
-				_add_collision_box(body, centre + offset, size)
-				_add_mesh_box(meshes, centre + offset, size, palette["wall"])
-				out.wall_box_count += 1
+	var offset: Vector3 = GridConfig.DIR_VECTORS[dir] \
+		* (GridConfig.CELL_SIZE * 0.5 - GridConfig.WALL_THICKNESS * 0.5)
+	_add_collision_box(body, centre + offset, size)
+	_add_mesh_box(meshes, centre + offset, size, palette["wall"])
+	out.wall_box_count += 1
 
 # --- Content ------------------------------------------------------------------
 

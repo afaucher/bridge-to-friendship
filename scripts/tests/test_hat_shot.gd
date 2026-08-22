@@ -95,11 +95,24 @@ func _wear(n: int) -> void:
 	for i in n:
 		world._hats.spawn_loose(victim.position + Vector3(0.05 * float(i), 0.0, 0.0))
 
+# HOW FAR BACK THE MUZZLE SITS, and the distance every window below is derived
+# from.
+const SHOT_RANGE := 6.0
+
+# TICKS TO WAIT AFTER FIRING. DERIVED, because it was hardcoded at 30 and
+# MG_BULLET_SPEED has now changed twice: at 22 m/s six metres is 16 ticks and 30
+# was comfortable; at 10 it is 36, and every assertion in this file was being made
+# while the round was still in the air. The failure reads as 'a round at body
+# height does not hurt', which is a claim about the hat rule and nothing to do
+# with it.
+func _after_flight() -> int:
+	return int(SHOT_RANGE / (SimConfig.MG_BULLET_SPEED * SimConfig.TICK_DELTA)) + 24
+
 # The muzzle is placed at an explicit height and fires flat, which is what a
 # shooter standing higher than you produces. Through _spawn_round and the sweep:
 # a hand-built Hit would skip the raycast, and the raycast IS the feature.
 func _fire_at_height(y: float) -> void:
-	var muzzle: Vector3 = victim.position + Vector3(0.0, 0.0, -6.0)
+	var muzzle: Vector3 = victim.position + Vector3(0.0, 0.0, -SHOT_RANGE)
 	muzzle.y = y
 	world._spawn_round(world.to_global(muzzle), Vector3(0.0, 0.0, 1.0), 0, RID())
 
@@ -114,7 +127,7 @@ func _phase_body_shot_still_hurts() -> void:
 		recorded["health"] = int(victim.health)
 		_fire_at_height(victim.position.y)      # chest height
 		return
-	if frames == 90:
+	if frames == 60 + _after_flight():
 		check(int(victim.health) < int(recorded["health"]),
 			"a round at BODY height still hurts (%d -> %d) -- a hat is a target, "
 				% [recorded["health"], victim.health]
@@ -163,7 +176,7 @@ func _phase_hat_shot() -> void:
 		var y: float = stack_base + SimConfig.HAT_HEIGHT * 1.5
 		_fire_at_height(y)
 		return
-	if frames == 60:
+	if frames == 30 + _after_flight():
 		var left: int = world._hats.worn_by(1).size()
 		print("[hat shot] %d worn after a round through the tower, health %d, "
 			% [left, victim.health]
@@ -209,7 +222,7 @@ func _phase_a_miss_is_a_miss() -> void:
 		var top: Node = world._hats.worn_by(1).back()
 		_fire_at_height(top.global_position.y + 1.0)
 		return
-	if frames == 60:
+	if frames == 30 + _after_flight():
 		eq(world._hats.worn_by(1).size(), int(recorded["worn"]),
 			"a round a metre over the tower takes nothing -- a hat is %.2f m wide "
 				% SimConfig.HAT_HIT_RADIUS

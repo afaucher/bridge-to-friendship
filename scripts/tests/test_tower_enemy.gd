@@ -25,6 +25,7 @@ const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const Bullet = preload("res://scripts/sim/bullet.gd")
 
 const MAP := "res://segments/test_watchpost.seg"
 const PEER := 918447201
@@ -165,9 +166,12 @@ func _test_a_round_reaches_the_top() -> void:
 		at = muzzle + dir * flown + Vector3(0.0, -drop, 0.0)
 		closest = minf(closest, at.distance_to(target))
 		flown += step
-		# The same 5% gravity a round carries, integrated over the flight so far.
+		# ASKED OF THE ROUND, integrated over the flight so far. This used to be its
+		# own copy -- `MG_BULLET_DROP * 9.8`, against a GRAVITY of 24 -- so the model
+		# fell at 40% of the real rate, and it would not have noticed the drop being
+		# put behind a toggle at all.
 		var t: float = flown / SimConfig.MG_BULLET_SPEED
-		drop = 0.5 * SimConfig.MG_BULLET_DROP * 9.8 * t * t
+		drop = 0.5 * Bullet.drop_accel() * t * t
 	print("[tower] closest approach to the turret over the flight: %.3f m (drop %.3f m)"
 		% [closest, drop])
 	check(closest < 1.0,

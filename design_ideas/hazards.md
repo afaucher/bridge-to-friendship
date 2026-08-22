@@ -77,7 +77,7 @@ Cost tiers reflect what machinery already exists.
 | **saw-blades** | the first authored moving body | displacement | medium |
 | **damaged ground** | the first *mutable* deck cell | denial, late | high |
 | **rushers** | the first destructible enemy | displacement | medium |
-| **skirmisher** *(built 2026-08-14)* | holds a distance and shoots | displacement + damage | **shipped** |
+| **skirmisher** *(built 2026-08-14, alertness 2026-08-21)* | holds a distance and shoots | displacement + damage | **shipped** |
 | **turret** *(built 2026-08-14)* | bolted down, shoots, ignores a dash | displacement + damage | **shipped** |
 | **spiders** | patrol, aggro, pathfinding | — | own milestone |
 
@@ -210,9 +210,23 @@ preferred distance forever. It is deliberately **slower than a walk**: an enemy 
 its range against a walking player holds it forever, and then closing is not an
 answer at all.
 
-**It will not reverse off the bridge.** A body that retreats from you until it
-falls is a comedy nobody authored, and it hands the player a free kill for walking
-forwards. Retreating is refused with no deck behind it; approaching never is.
+**It will not walk off the bridge in either direction.** A body that retreats from
+you until it falls is a comedy nobody authored, and it hands the player a free kill
+for walking forwards.
+
+*Approaching was exempt until 2026-08-21*, on the argument that walking into the
+party is what it is for. That was a **rusher's** argument wearing a skirmisher's
+clothes: this document makes the walk-off-the-edge affordance specifically a
+rusher's, because a rusher is otherwise endable only by a weapon, so baiting one
+over a hole is the cheapest tool a weaponless player has. A skirmisher already has
+two answers — close on it, or break line of sight — and did not need a third that
+costs the player nothing but standing still. Both directions now ask the grid,
+which also makes it consistent with searching and patrolling.
+
+**The consequence to watch:** a skirmisher on the far side of a chasm now stops at
+the lip and shoots across it, because it can neither close nor retreat. That is
+coherent — flanking or shooting back is the answer — but it is a standing-off
+behaviour that did not exist before, and it is what a playtest will notice first.
 
 **A turret ignores `IMPACT`**, per the damage model -- dashing a bolted-down gun
 must do nothing, or the free verb answers the hazard and the weapon specials lose
@@ -240,6 +254,71 @@ argue about here.
 looking down-bridge, the direction players arrive from. Per-turret authoring is a
 glyph question -- the `T` glyph carries no direction today -- and the field exists
 on the body so that answering it later changes a loader and not the enemy.
+
+## Alertness — the telegraph the gunners never had *(built 2026-08-21)*
+
+**They were the exception to a rule this document states twice.** A rusher spends
+`RUSHER_RISE_SECONDS` coming out of the ground and that emergence is called *the*
+telegraph; plinko balls are slow on purpose; the fairness argument in both places
+is that a hazard has to announce itself before it can hurt you. A gunner picked
+the nearest player it could see and fired on the tick its cadence allowed —
+`fire_timer` starts at zero — so rounding a pillar at 8 m was a round in the chest
+with no window to answer. Reported from play as *"the pink ones are very good
+sharpshooters."*
+
+**One scalar, not a state machine.** `alert` rises while a target is in sight and
+falls while it is not, and firing requires it full. Three behaviours fall out of
+one number rather than being written separately:
+
+- **The wake window**, rolled per enemy between `GUNNER_WAKE_MIN` and
+  `GUNNER_WAKE_MAX` (1–2 s). Random so two skirmishers who see you in the same
+  frame do not fire in the same frame — a simultaneous volley reads as one big
+  hit rather than as several enemies, and the stagger is what lets a player answer
+  them one at a time.
+- **Memory.** The fall takes `GUNNER_FORGET_SECONDS` (4 s), four times the longest
+  rise, so half a second behind a pillar costs an eighth of its alertness and
+  leaving entirely is forgotten in four seconds.
+- **A cheap re-acquire, with no special case for it.** An enemy that lost you at
+  0.6 resumes from 0.6. This is the one that matters for balance: if re-acquiring
+  restarted the wake, bobbing in and out of cover would re-buy the whole window
+  every time and cover would be an infinite stall rather than a decision.
+
+**Nothing is drawn for it, and that is a decision.** The wake shipped with a glow
+ramping up with `alert` and it was pulled the same day: *"it shouldn't
+telegraph."* The window is a fairness margin, not an announcement — a hazard the
+player can *answer* rather than one that warns them it is about to fire. What they
+get is what a gun does anyway: **it turns to point at them**, from the first tick
+of the wake. That is honest, it is already replicated in `facing`, and it is real
+information rather than a badge — with two of them on a deck, the one looking at
+you is the one to answer first.
+
+Two consequences. `alert` is **host-only and not on the wire**, because with the
+glow gone nothing client-side reads it. And the wake is *quiet*, so its length is
+felt rather than seen: 1–2 s is short enough to be a beat and long enough to cross
+a gap or get behind something, and if it wants tuning the evidence will be a
+playtest report about being shot too fast, never a number in a log.
+
+**With nobody to shoot, a skirmisher now patrols.** It used to stand exactly where
+it was, forever. `hazards.md` argues that case for a *rusher* — searching is the
+pathfinding a rusher bought its way out of — and it does not transfer to an enemy
+whose whole job is holding a piece of ground. It wanders inside
+`SKIRMISHER_PATROL_RADIUS` of where it was posted, at half its engaged speed, and
+the difference between the two gaits is a read at the distance where the scene
+file says you get "an outline and a colour and nothing else". A turret does not
+patrol; it is bolted down.
+
+**It asks the grid where the floor is, rather than casting a ray.** One predicate,
+`footing_toward`, answers both "may I retreat out of my band" and "may I step there
+on patrol" — the same question, and this project has twice paid for one fact having
+two implementations that agreed until they did not. It refuses a bare step up for
+the same reason `SegmentValidator._can_step` does: there is no step-up in this game.
+
+**What is NOT decided: sight has no range limit.** A gunner sees any player with a
+clear line, at any distance, exactly as before. That is deliberate for now — the
+value of alertness is almost entirely in the case where sight is acquired suddenly
+at close range, which a sight radius does not affect — but it does mean a
+skirmisher will begin closing on somebody a long way off, and if that reads badly
+in play the answer is a sight range rather than a change to any of the above.
 
 ## The rocket launcher — direct fire *(built 2026-08-15)*
 

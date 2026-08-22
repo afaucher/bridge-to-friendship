@@ -100,6 +100,19 @@ func _arm() -> void:
 		SpecialBody.Kind.SHIELD)
 	weapon.hold(1)
 
+# TICKS TO WAIT FOR A ROUND TO CROSS `distance`, plus a margin. DERIVED, because
+# the fixed 20 here broke the day MG_BULLET_SPEED fell to 10 on 2026-08-22: six
+# metres is 36 ticks at that speed and the window closed at 20.
+#
+# NOTE WHICH HALF OF THE FILE NOTICED. Only the BEHIND phase failed, because it
+# is the only one asserting that damage DOES happen -- 'a shielded round does no
+# damage' is satisfied just as well by a round that has not arrived yet, so the
+# three front phases went on passing while testing nothing at all. That is
+# CLAUDE.md's rule about rejection oracles in a new costume: the live assertion is
+# the one that counts the thing HAPPENING.
+func _after_flight(distance: float) -> int:
+	return int(distance / (SimConfig.MG_BULLET_SPEED * SimConfig.TICK_DELTA)) + 20
+
 # A round fired from a muzzle `distance` metres dead ahead, aimed back at the
 # holder. Through _spawn_round and the sweep, deliberately: the whole bug lived
 # between those two and a hand-built Hit walks straight past it.
@@ -121,7 +134,7 @@ func _phase_front(distance: float, lateral: float, next: int, label: String) -> 
 		recorded["at"] = holder.position
 		_fire_from_ahead(distance, lateral)
 		return
-	if phase_frame == 40:
+	if phase_frame == 20 + _after_flight(distance):
 		eq(int(holder.health), int(recorded["health"]),
 			"a round fired %s into the front of a raised shield does no damage "
 				% label
@@ -146,7 +159,7 @@ func _phase_behind() -> void:
 		var muzzle: Vector3 = holder.position + Vector3(0.0, 0.0, 6.0)
 		world._spawn_round(world.to_global(muzzle), Vector3(0.0, 0.0, -1.0), 0, RID())
 		return
-	if phase_frame == 40:
+	if phase_frame == 20 + _after_flight(6.0):
 		check(int(holder.health) < int(recorded["health"]),
 			"the same round from BEHIND still hurts (%d -> %d) -- a shield that "
 				% [recorded["health"], holder.health]
