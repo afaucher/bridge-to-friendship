@@ -510,6 +510,14 @@ func _check_mazes() -> void:
 	var crowded: int = 0
 	var cells: int = 0
 	var links: int = 0
+	var lattice_mazes: int = 0
+	var wide_across: int = 0
+	var wide_along: int = 0
+	var wide_no_twin: int = 0
+	var wide_blocks: int = 0
+	var plain_blocks: int = 0
+	var plain_twins: int = 0
+	var overlong: int = 0
 
 	for i in 250:
 		var seed_i: int = 6400 + i * 71
@@ -551,30 +559,67 @@ func _check_mazes() -> void:
 		if not has_hat:
 			hatless += 1
 
-		# Corridors on EVEN columns since 2026-08-17, so the outer lanes sit against
-		# the bridge's own parapet instead of an explicit wall column.
-		var cols: int = (seg.width + 1) / 2
-		var rows: int = (seg.length - 4) / 2
-		for j in rows:
-			for i2 in cols:
-				cells += 1
-				var at := Vector2i(2 * i2, 2 + 2 * j)
-				# REWARDS ARE HATS AND HEARTS. Counting "any content" swept the
-				# floor traps in the moment they were added and turned a reward
-				# count of 127 into 331 -- a number that still passed its
-				# assertion while having stopped measuring what it named.
-				var what: int = seg.content_at(at.x, at.y)
+		# REWARDS, TIMED FLOORS AND SPIKES, COUNTED OVER THE WHOLE GRID rather
+		# than over the lattice positions. Contents only ever sit on corridor
+		# cells, so the two counts are the same number -- and this one does not
+		# have to know where the corridors are, which stopped being derivable
+		# from (width, length) the day a lane could be laid out two cells wide.
+		for z in seg.length:
+			for x in seg.width:
+				var what: int = seg.content_at(x, z)
 				if what == GridConfig.Content.HAT or what == GridConfig.Content.HEART:
 					rewards += 1
 				elif what == GridConfig.Content.TIMED:
 					timed += 1
 				elif what == GridConfig.Content.SPIKES:
 					spikes += 1
-				# Counted EAST and SOUTH only, so each link is counted once.
-				if i2 + 1 < cols and seg.is_solid(at.x + 1, at.y):
-					links += 1
-				if j + 1 < rows and seg.is_solid(at.x, at.y + 1):
-					links += 1
+
+		# --- THE WIDE LANE (M24) ---------------------------------------------
+		#
+		# MEASURED ON THE GEOMETRY AND NOT RE-DERIVED FROM THE SEED. The generator
+		# lays a lattice cell out at (2i, 2 + 2j) plus whatever a wide lane and its
+		# spare column have pushed it by; re-computing that here would be the same
+		# arithmetic in two places, which is the shape that produced the ladder
+		# whose art and climb disagreed. So the test asks the SEGMENT what it is.
+		var blocks: Array = _open_blocks(seg)
+		var is_across: bool = seg.tags.has("wide_across")
+		var is_along: bool = seg.tags.has("wide_along")
+		if is_across or is_along:
+			if is_across:
+				wide_across += 1
+			else:
+				wide_along += 1
+			wide_blocks += blocks.size()
+			if not _has_twin_lane(seg, is_along):
+				wide_no_twin += 1
+			# PAID FOR OUT OF THE LATTICE. A wide row costs a grid row, and the
+			# generator buys it by carving one fewer -- so a maze with a wide lane
+			# is no longer than the longest maze without one. The alternative was
+			# growing the section, which makes its length depend on a roll nobody
+			# can see.
+			if seg.length > SegmentGen.MAZE_MAX_ROWS * 2 + 4:
+				overlong += 1
+		else:
+			plain_blocks += blocks.size()
+			if _has_twin_lane(seg, true) or _has_twin_lane(seg, false):
+				plain_twins += 1
+			# THE LATTICE SWEEP RUNS ON COMPACT MAZES ONLY. `2 * i` is where a cell
+			# sits when every lane is one cell wide, and reading a wide maze
+			# through it would count links that are not there and miss ones that
+			# are -- a measurement of the wrong object, reported in the voice of
+			# the braid.
+			lattice_mazes += 1
+			var cols: int = (seg.width + 1) / 2
+			var rows: int = (seg.length - 4) / 2
+			for j in rows:
+				for i2 in cols:
+					cells += 1
+					var at := Vector2i(2 * i2, 2 + 2 * j)
+					# Counted EAST and SOUTH only, so each link is counted once.
+					if i2 + 1 < cols and seg.is_solid(at.x + 1, at.y):
+						links += 1
+					if j + 1 < rows and seg.is_solid(at.x, at.y + 1):
+						links += 1
 		for z in seg.length:
 			for x in seg.width:
 				if seg.kind_at(x, z) == GridConfig.Kind.WALL:
@@ -593,9 +638,14 @@ func _check_mazes() -> void:
 						crowded += 1
 
 
-	var loops: int = links - (cells - mazes)      # n-1 links per maze is a tree
+	# n-1 links per maze is a tree, so anything past that is a loop -- over the
+	# COMPACT mazes, which are the ones the sweep above measured.
+	var loops: int = links - (cells - lattice_mazes)
 	print("[gen maze] %d of %d sections, %d cells, %d links, %d loops, %d rewards"
 		% [mazes, sections, cells, links, loops, rewards])
+	print("[gen maze] wide lanes: %d across, %d along, %d compact; %d 2x2 blocks "
+		% [wide_across, wide_along, lattice_mazes, wide_blocks]
+		+ "in wide mazes, %d in compact ones" % plain_blocks)
 
 	check(mazes > 0,
 		"the generator emits maze sections at all (%d of %d)" % [mazes, sections])
@@ -635,6 +685,46 @@ func _check_mazes() -> void:
 		"and EVERY maze holds at least one hat: it is the only section with no "
 		+ "hazard in it, so nothing else in it drops one -- a maze that pays "
 		+ "nothing is time the party spent for no reason")
+
+	# --- THE WIDE LANE ---------------------------------------------------------
+	#
+	# A COMPACT MAZE CANNOT CONTAIN A 2x2 OPEN SQUARE, and that is arithmetic
+	# rather than a number somebody picked. Corridor cells sit on even lattice
+	# offsets and the cell carved between two neighbours is even on one axis and
+	# odd on the other -- so no cell is ever opened at odd-odd, every 2x2 square
+	# contains exactly one odd-odd cell, and every 2x2 square therefore contains a
+	# wall. A wide lane opens exactly those cells. So this pair of counters is the
+	# claim: the old code COULD NOT produce what the new one must.
+	eq(plain_blocks, 0,
+		"a maze with no wide lane has no 2x2 of open floor anywhere in it -- "
+		+ "one-cell corridors cannot make one")
+	check(wide_blocks > 0,
+		"and a maze with one does (%d squares over %d wide mazes)"
+			% [wide_blocks, wide_across + wide_along])
+
+	# BOTH AXES, because a lane that only ever ran one way would satisfy every
+	# other assertion here and be half the feature.
+	check(wide_across > 0 and wide_along > 0,
+		"lanes are widened both across the maze and along it (%d across, %d along)"
+			% [wide_across, wide_along])
+	check(lattice_mazes > 0,
+		"and plenty of mazes still have no wide lane at all (%d of %d)"
+			% [lattice_mazes, mazes])
+
+	# THE LANE RUNS THE WHOLE WAY. Two cells wide at one cell and one cell wide at
+	# the next is a wider room, not a lane -- so the pair of files has to agree
+	# about every cell in the maze's body, which is what being laid out twice
+	# means. Asserted per maze rather than in aggregate: one maze getting it right
+	# would otherwise cover for one getting it wrong.
+	eq(wide_no_twin, 0,
+		"every maze tagged with a wide lane really carries one -- a pair of "
+		+ "adjacent files that are open and shut in exactly the same places")
+	eq(plain_twins, 0,
+		"and no maze WITHOUT the tag has such a pair, so the detector above is "
+		+ "answering about the lane rather than about mazes in general")
+	eq(overlong, 0,
+		"a wide lane is paid for out of the lattice: no maze carrying one is "
+		+ "longer than the longest maze without one")
 
 	# THE BRAID ITSELF. Above one loop per ten cells the maze has real forks;
 	# a spanning tree scores exactly zero, which is what this is protecting
@@ -829,6 +919,55 @@ func _check_deterministic() -> void:
 	check(same,
 		"and the identical terrain -- the guarantee a joining client rides when it "
 		+ "is told two numbers instead of a world")
+
+# Every 2x2 square of open floor inside the maze's walled body, by its top-left
+# cell. The body is rows 1 .. length - 3: the two rows of arrival deck past the
+# exit wall are solid across and would swamp the count with squares that have
+# nothing to do with the maze.
+func _open_blocks(seg) -> Array:
+	var out: Array = []
+	for z in range(1, seg.length - 3):
+		for x in range(0, seg.width - 1):
+			if seg.is_solid(x, z) and seg.is_solid(x + 1, z) \
+					and seg.is_solid(x, z + 1) and seg.is_solid(x + 1, z + 1):
+				out.append(Vector2i(x, z))
+	return out
+
+# Is there a pair of adjacent files -- two columns if `along`, two rows if not --
+# that are open in exactly the same places over the maze's body?
+#
+# THE DOOR ROWS ARE LEFT OUT ON PURPOSE. A door is deliberately never widened
+# (one opening at each end is a design decision older than this one), so a wide
+# column that happens to carry the door is a mirror everywhere except that single
+# cell. Including those rows would fail the maze for obeying the other rule.
+func _has_twin_lane(seg, along: bool) -> bool:
+	if along:
+		for x in range(0, seg.width - 1):
+			var open_cells: int = 0
+			var mirrored := true
+			for z in range(2, seg.length - 3):
+				var a: bool = seg.is_solid(x, z)
+				if a != seg.is_solid(x + 1, z):
+					mirrored = false
+					break
+				if a:
+					open_cells += 1
+			if mirrored and open_cells >= 3:
+				return true
+		return false
+	for z in range(2, seg.length - 4):
+		var open_cells: int = 0
+		var mirrored := true
+		for x in seg.width:
+			var a: bool = seg.is_solid(x, z)
+			if a != seg.is_solid(x, z + 1):
+				mirrored = false
+				break
+			if a:
+				open_cells += 1
+		if mirrored and open_cells >= 3:
+			return true
+	return false
 
 func _is_trap(seg, x: int, z: int) -> bool:
 	if x < 0 or z < 0 or x >= seg.width or z >= seg.length:
