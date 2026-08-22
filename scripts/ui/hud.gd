@@ -31,6 +31,27 @@ const COLOR_DIM := Color(0.62, 0.64, 0.70)
 const COLOR_ALERT := Color(1.00, 0.45, 0.22)
 const COLOR_BAR_BACK := Color(0.11, 0.11, 0.14)
 
+# --- Identity outlines --------------------------------------------------------
+#
+# A player's chosen colour, drawn as a BORDER around their widget -- their own
+# panel, and one per friend row.
+#
+# AN OUTLINE RATHER THAN A FILL, and that is the rule this feature runs on
+# instead of taste. Every other colour in this file means something: alert
+# orange, grace yellow, the four states of a status bar. Identity colour is the
+# newcomer, and a newcomer does not get to overwrite a channel that already
+# carries a rule. A border is a zone nothing else was using -- the same answer
+# art_direction.md reaches for when it gives a style a jersey rather than tinting
+# the whole avatar.
+#
+# It is worth having because the HUD's whole job is to be read at a glance while
+# something is trying to kill you, and matching a row to a body currently means
+# READING A NAME. A colour is matched without reading.
+const OUTLINE_WIDTH := 3
+const OUTLINE_BG := Color(0.05, 0.05, 0.07, 0.72)
+const OUTLINE_RADIUS := 6
+const OUTLINE_PAD := 8
+
 # A FACE, WHERE THERE IS ONE. Small on purpose: this is a co-op game about where
 # your friends ARE, so the portrait is an identifier beside a name, not a
 # character card. At 26 px it reads as "who" without competing with the status
@@ -59,6 +80,7 @@ const COMPASS := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 var world: Node = null
 
 var _own_panel: Control = null
+var _own_outline: PanelContainer = null
 var _own_name: Label = null
 var _own_face: TextureRect = null
 var _own_slots: HBoxContainer = null
@@ -310,6 +332,15 @@ func _build_own_panel() -> void:
 	var box := _anchored_box(Control.PRESET_TOP_LEFT)
 	_own_panel = box.get_parent()
 
+	# Re-parent the column inside an outline panel. Built here rather than in
+	# _anchored_box because the round and board panels use that too and are not
+	# anybody's: an outline on them would be a colour that means nothing.
+	var margin: Node = box.get_parent()
+	margin.remove_child(box)
+	_own_outline = _outline_panel()
+	margin.add_child(_own_outline)
+	_own_outline.add_child(box)
+
 	# YOUR OWN FACE BESIDE YOUR OWN NAME. Beside rather than instead: the name is
 	# what a player says out loud to their friends, and a portrait cannot be said.
 	var own_header := HBoxContainer.new()
@@ -335,6 +366,7 @@ func _build_own_panel() -> void:
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
+	_set_outline(_own_outline, own.get("colour", Color.TRANSPARENT))
 	_set_avatar(_own_face, int(own.get("steam_id", 0)))
 
 	_sync_slots(own.get("slots", []))
@@ -419,9 +451,12 @@ func _update_friends(friends: Array) -> void:
 		_friend_rows.erase(peer_key)
 
 func _build_friend_row() -> Dictionary:
+	var outline := _outline_panel()
+	_friends_box.add_child(outline)
+
 	var row := VBoxContainer.new()
 	row.add_theme_constant_override("separation", 2)
-	_friends_box.add_child(row)
+	outline.add_child(row)
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 8)
@@ -443,11 +478,16 @@ func _build_friend_row() -> Dictionary:
 	var bar := _bar(FRIEND_BAR_SIZE)
 	row.add_child(bar)
 
-	return {"row": row, "name": name_label, "state": state,
+	# THE ROW HANDLE IS THE OUTLINE, not the VBox inside it. _update_friends
+	# removes `row` from _friends_box when a peer leaves, and the child of that
+	# box is now the panel -- handing back the inner column would leave an empty
+	# bordered frame on screen for every player who ever disconnected.
+	return {"row": outline, "outline": outline, "name": name_label, "state": state,
 		"bar": bar, "bearing": bearing, "face": face}
 
 func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	nodes["name"].text = str(entry.get("name", ""))
+	_set_outline(nodes.get("outline"), entry.get("colour", Color.TRANSPARENT))
 	_set_avatar(nodes.get("face"), int(entry.get("steam_id", 0)))
 	nodes["state"].text = str(entry.get("state_label", ""))
 	nodes["state"].visible = nodes["state"].text != ""
@@ -470,6 +510,35 @@ func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	_set_status_bar(nodes["bar"], entry.get("status", {}))
 
 # --- Small builders -----------------------------------------------------------
+
+# A panel whose border carries one player's colour.
+#
+# ITS OWN StyleBoxFlat, NEVER A SHARED ONE. A theme stylebox handed to two panels
+# is one resource with two owners, so setting a border colour on either would set
+# it on both -- the same trap player.tscn's materials have, which this project
+# has now paid for on hats, on the status bar, and on the player body. One panel,
+# one box, written through afterwards.
+func _outline_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = OUTLINE_BG
+	style.set_border_width_all(OUTLINE_WIDTH)
+	# Starts invisible rather than at some placeholder colour: a peer whose
+	# announcement has not arrived should show no outline at all, not the wrong
+	# one. _set_outline fills it in as soon as there is an answer.
+	style.border_color = Color.TRANSPARENT
+	style.set_corner_radius_all(OUTLINE_RADIUS)
+	style.set_content_margin_all(OUTLINE_PAD)
+	panel.add_theme_stylebox_override("panel", style)
+	return panel
+
+func _set_outline(panel: PanelContainer, colour: Color) -> void:
+	if panel == null:
+		return
+	var style := panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if style == null:
+		return
+	style.border_color = colour
 
 func _anchored_box(preset: int) -> VBoxContainer:
 	var margin := MarginContainer.new()

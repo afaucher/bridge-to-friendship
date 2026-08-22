@@ -31,6 +31,8 @@ var phase: int = 0
 var pressing: bool = false
 var phase_frame: int = 0
 var recorded: Dictionary = {}
+var flash_peak: float = 0.0
+var flash_frames: int = 0
 
 func setup(main) -> void:
 	timeout_seconds = 40.0
@@ -96,17 +98,33 @@ func _phase_it_tidies_up() -> void:
 	if phase_frame == 1:
 		world.blast_at(body.position + Vector3(6.0, 0.0, 0.0), SimConfig.BLAST_RADIUS)
 		return
-	# The flash finishes inside FLASH_SECONDS; sample right at the end of it.
-	if phase_frame == 13:
-		var fx: Array = _effects()
-		if fx.size() > 0:
-			var flash := fx[0].get_node_or_null("Flash") as Node3D
-			if flash != null:
-				check(flash.scale.x > SimConfig.BLAST_RADIUS * 0.6,
-					"the flash grows toward the real blast radius (%.1f m of %.1f)"
-						% [flash.scale.x, SimConfig.BLAST_RADIUS])
+	# THE PEAK, SAMPLED EVERY FRAME, not a reading on one chosen frame. This was
+	# `if phase_frame == 13` behind an `if flash != null`, and it never ran once:
+	# FLASH_SECONDS is 0.18 s and blast_effect.gd queue_free()s the flash the tick
+	# its ease reaches 1.0, so by frame 13 the node was already gone and the guard
+	# swallowed the claim in silence. A flash sized to anything at all passed.
+	# Found 2026-08-22 by logging get_stack() from the assertion helpers.
+	#
+	# A PEAK IS ALSO THE RIGHT MEASUREMENT. The claim is that it GROWS INTO the
+	# radius, and the frame it is widest on is a property of FLASH_SECONDS and the
+	# frame rate rather than of the thing under test -- so pinning a frame would
+	# make this die again the next time either moves.
+	if phase_frame < 90:
+		var live: Array = _effects()
+		if live.size() > 0:
+			var growing := live[0].get_node_or_null("Flash") as Node3D
+			if growing != null:
+				flash_frames += 1
+				flash_peak = maxf(flash_peak, growing.scale.x)
 		return
 	if phase_frame == 90:
+		# THE INSTRUMENT FIRST: a flash nobody ever saw would report a beautiful
+		# zero peak, which is exactly how the old assertion disappeared.
+		check(flash_frames > 0,
+			"the flash was on screen to be measured (%d frames)" % flash_frames)
+		check(flash_peak > SimConfig.BLAST_RADIUS * 0.6,
+			"and grows into the real blast radius (%.1f m of %.1f)"
+				% [flash_peak, SimConfig.BLAST_RADIUS])
 		eq(_effects().size(), 0,
 			"and the whole effect frees itself -- nothing is left owning it")
 		_advance(2)

@@ -8,6 +8,7 @@ extends Node3D
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
 const DebugConsoleScript = preload("res://scripts/ui/debug_console.gd")
+const CharacterScreenScript = preload("res://scripts/ui/character_screen.gd")
 const BuildVersion = preload("res://scripts/ui/build_version.gd")
 
 # A session plays an assembled RUN, not a fixed map -- see scripts/grid/
@@ -22,6 +23,7 @@ const BuildVersion = preload("res://scripts/ui/build_version.gd")
 var world: Node3D = null
 var hud: CanvasLayer = null
 var debug_console: CanvasLayer = null
+var character_screen: CanvasLayer = null
 
 func _ready() -> void:
 	# Headless entry points first, before any menu, network or Steam wiring: a
@@ -48,6 +50,17 @@ func _ready() -> void:
 	$CanvasLayer/Menu/HostButton.pressed.connect(_on_host_pressed)
 	$CanvasLayer/Menu/JoinButton.pressed.connect(_on_join_pressed)
 	$CanvasLayer/Menu/LocalButton.pressed.connect(_on_local_pressed)
+
+	# Added in code rather than to main.tscn for the same reason the build stamp
+	# above is: a headless run returns before this line, so the gate never builds
+	# a button nobody presses. Moved above the status label so the menu keeps
+	# reading as three ways to start a game, then everything else.
+	var character_button := Button.new()
+	character_button.name = "CharacterButton"
+	character_button.text = "Character"
+	character_button.pressed.connect(_toggle_character_screen)
+	menu.add_child(character_button)
+	menu.move_child(character_button, status_label.get_index())
 
 	NetworkManager.session_started.connect(_on_session_started)
 	NetworkManager.session_ended.connect(_on_session_ended)
@@ -174,6 +187,13 @@ func _toggle_debug_console() -> void:
 	# world somebody just left.
 	debug_console.world = world
 	debug_console.toggle()
+
+func _toggle_character_screen() -> void:
+	if character_screen == null:
+		character_screen = CharacterScreenScript.new()
+		character_screen.name = "CharacterScreen"
+		add_child(character_screen)
+	character_screen.toggle()
 
 func _set_status(text: String) -> void:
 	if status_label != null:

@@ -22,6 +22,8 @@ const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 const BallScene = preload("res://scenes/plinko_ball.tscn")
 const RusherScene = preload("res://scenes/rusher.tscn")
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
+const ZombieScene = preload("res://scenes/zombie.tscn")
+const ZombieBody = preload("res://scripts/sim/zombie_body.gd")
 const HatPool = preload("res://scripts/sim/hat_pool.gd")
 const SpecialPool = preload("res://scripts/sim/special_pool.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
@@ -46,6 +48,8 @@ const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatConfig = preload("res://scripts/hat_config.gd")
+const CharacterConfig = preload("res://scripts/character_config.gd")
+const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const AimSource = preload("res://scripts/sim/aim_source.gd")
@@ -222,6 +226,20 @@ var _rushers_root: Node3D = null
 # different mounds first would disagree about which rusher is which.
 var _next_rusher_id: int = 0
 
+# --- zombies ---
+#
+# A separate pool from the rushers even though both are enemies that walk. They
+# share nothing except the deck: different wake rule (a grave raises a PACK),
+# different contact rule (a zombie recoils, a rusher is spent), different walk.
+# Folding them together would be a list with a kind flag on every line of every
+# loop, which is the shape gunner_body.gd was already split out of on 2026-08-14.
+var _zombies: Array = []
+var _zombies_root: Node3D = null
+# Host-assigned and monotonic, for the same reason the rusher's is -- and it does
+# double duty here, because a zombie's WALK is drawn off its id. Two zombies with
+# the same id would perform the same choreography.
+var _next_zombie_id: int = 0
+
 # --- the run ---
 # CHECKPOINTS ARE GONE (M16). They existed to answer "where does the party
 # restart" for an endless bridge; with rounds the answer is always the lobby you
@@ -272,6 +290,10 @@ func _ready() -> void:
 	_rushers_root = Node3D.new()
 	_rushers_root.name = "Rushers"
 	add_child(_rushers_root)
+	# And zombies, for the identical reason.
+	_zombies_root = Node3D.new()
+	_zombies_root.name = "Zombies"
+	add_child(_zombies_root)
 	# Loose hats live in world space like the balls. A WORN hat is reparented onto
 	# its wearer's head and comes back here when it is knocked off.
 	_hats_root = Node3D.new()
@@ -299,6 +321,22 @@ func _ready() -> void:
 	# first pickup would look like a change and rewrite an identical file.
 	if view_active:
 		_remembered_hat = HatConfig.load_style()
+		# The chosen character, read once beside the hat and for the same reason.
+		# A world with no view is a test rig or a headless sim, and neither should
+		# touch a file on the developer's disk.
+		_chosen_body_colour = CharacterConfig.load_body_colour()
+		# Rolled here on a first-ever launch, and saved. A world with no view --
+		# every test rig and every headless sim -- deliberately never reaches this
+		# line, so the gate neither reads nor writes a developer's face.
+		_chosen_seed = CharacterConfig.load_character_seed()
+		_chosen_accessory = CharacterConfig.load_accessory()
+
+# What this machine's player looks like. Read from disk at construction and
+# announced at start(); a world that never read a config plays the default, which
+# is a real character rather than a missing one.
+var _chosen_body_colour: Color = CharacterStyle.DEFAULT_BODY
+var _chosen_seed: int = 0
+var _chosen_accessory: String = CharacterStyle.ACCESSORY_NONE
 
 func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
@@ -307,6 +345,7 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	_build_level()
 	running = true
 	_announce_name()
+	_announce_character()
 
 func stop() -> void:
 	running = false
@@ -590,6 +629,9 @@ func _host_tick() -> void:
 	# rescue pass is what notices they left the world. Running it after means the
 	# consequence lands on the same tick as the cause rather than the next one.
 	_process_rushers()
+	# Beside the rushers and for the same reason: a zombie can tumble somebody into
+	# a hole, and the rescue pass below is what notices they left the world.
+	_process_zombies()
 	_process_gunners()
 	# Before the rescue pass for the same reason rushers are: a blast is the single
 	# biggest way to put somebody off the bridge, and the consequence should land on
@@ -814,7 +856,7 @@ func _is_player(target) -> bool:
 # so a body that is not in one of them cannot be mistaken for an enemy however
 # many of an enemy's properties it happens to have.
 func _is_enemy(target) -> bool:
-	return _rushers.has(target) or _gunners.has(target)
+	return _rushers.has(target) or _gunners.has(target) or _zombies.has(target)
 
 # DEATHS, ON THE RISING EDGE OF BEING OUT OF PLAY.
 #
@@ -1131,6 +1173,12 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(rusher):
 			rusher.queue_free()
 	_rushers.clear()
+	# Zombies go with them, same rule and same exception: the bodies are cleared,
+	# the GRAVES stay empty. Ground the party already fought over does not reload.
+	for zombie in _zombies:
+		if is_instance_valid(zombie):
+			zombie.queue_free()
+	_zombies.clear()
 	for gunner in _gunners:
 		if is_instance_valid(gunner):
 			gunner.queue_free()
@@ -1695,6 +1743,188 @@ func _kill_rusher(rusher: Node) -> void:
 
 func rusher_count() -> int:
 	return _rushers.size()
+
+# --- Zombies ------------------------------------------------------------------
+#
+# The first enemy that arrives as a GROUP. See design_ideas/hazards.md; the walk
+# itself is in zombie_body.gd. This is the part only the host may do: deciding
+# when a grave opens, how many come out, who each of them is chasing, and what a
+# bite costs. A client is told the results and invents none of them.
+func _process_zombies() -> void:
+	if not is_host:
+		return
+	_wake_graves()
+
+	for i in range(_zombies.size() - 1, -1, -1):
+		var zombie: Node = _zombies[i]
+		if not is_instance_valid(zombie):
+			_zombies.remove_at(i)
+			continue
+
+		# Re-picked per tick, like the rusher's, and it matters MORE here: a pack
+		# that locked on at the moment it rose would all chase the same player
+		# forever, which is the one arrangement that turns a group into a single
+		# enemy with five bodies.
+		var target: Node = _nearest_target(zombie)
+		zombie.target_peer = int(target.peer_id) if target != null else 0
+		zombie.step(target.position if target != null else Vector3.ZERO, target != null)
+
+		if zombie.is_spent():
+			_zombies.remove_at(i)
+			zombie.queue_free()
+			continue
+
+		_resolve_zombie_contact(zombie)
+
+# A player within ZOMBIE_TRIGGER_RADIUS opens the grave they walked near. Same
+# shape as _wake_mounds, including the sight test -- a grave spent on a player who
+# never saw it is an authored encounter consumed without ever being one, and that
+# is worth three to five enemies here rather than one.
+func _wake_graves() -> void:
+	if grid == null:
+		return
+	# CHECKED AGAINST THE WHOLE PACK, not against one. The cap is a backstop for
+	# authored density being wrong, and a grave that opens with two slots left
+	# would deliver a pack of two -- which is not the hazard anybody authored. It
+	# opens in full or it waits.
+	if _zombies.size() + SimConfig.ZOMBIE_PACK_MAX > SimConfig.ZOMBIE_MAX:
+		return
+	# A COPY of the keys: take_grave() erases from the dictionary being iterated.
+	for cell in grid.grave_cells():
+		var at: Vector3 = grid.grave_surface_world(cell)
+		for peer_key in players.keys():
+			var body: Node = players[int(peer_key)]
+			if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
+				continue
+			if body.position.distance_to(at) > SimConfig.ZOMBIE_TRIGGER_RADIUS:
+				continue
+			if not _clear_line(to_global(at), body.global_position):
+				continue
+			if grid.take_grave(cell):
+				_spawn_pack(cell, at)
+				# A grave changes state exactly ONCE in its life, so this is a
+				# discrete event and goes RELIABLY -- unlike the zombies
+				# themselves, which ride the unreliable per-tick snapshot. Losing
+				# this packet would leave a client drawing a slab that is not
+				# there, forever, with nothing later to correct it.
+				if networked:
+					_grave_taken.rpc(cell.x, cell.y)
+			break
+
+# THE PACK. Three to five bodies from one cell, arranged in a RING.
+#
+# THE RING IS NOT DECORATION. Two perfectly coincident bodies depenetrate into a
+# degenerate normal that drives both of them DOWN through the deck -- measured,
+# and in CLAUDE.md as the trap every placement in this game has to answer. This is
+# the most concentrated instance of it the project has: five bodies, one cell, one
+# tick. ZOMBIE_PACK_RADIUS leaves 1.12 m between neighbours against a body 0.9 m
+# across.
+#
+# The count and the ring's rotation are drawn from the CELL, not from the global
+# RNG. A grave is authored terrain, so what comes out of it should be the same
+# thing every time that ground is replayed -- and it means a test can name a cell
+# and know what it will get.
+func _spawn_pack(cell: Vector2i, at: Vector3) -> Array:
+	var span: int = SimConfig.ZOMBIE_PACK_MAX - SimConfig.ZOMBIE_PACK_MIN + 1
+	var roll: int = ZombieBody._mix(cell.x * 73856093 + cell.y * 19349663)
+	var count: int = SimConfig.ZOMBIE_PACK_MIN + (roll % span)
+	# So two graves side by side do not produce two identically-oriented rings.
+	var phase: float = float(ZombieBody._mix(roll + 1) % 3600) * 0.1
+
+	var raised: Array = []
+	for i in count:
+		var angle: float = deg_to_rad(phase + 360.0 * float(i) / float(count))
+		var slot: Vector3 = at + Vector3(sin(angle), 0.0, cos(angle)) * SimConfig.ZOMBIE_PACK_RADIUS
+		# THE BACKSTOP, not the rule. The dressing pass and the validator both
+		# refuse a grave without deck on all eight sides, so this should never
+		# fire on authored or generated ground; it is here because the cost of
+		# being wrong is a body falling off the bridge the instant it exists, and
+		# because nothing downstream would report that as anything but a pack that
+		# turned up short.
+		if not _deck_under(slot):
+			continue
+		raised.append(_spawn_zombie(slot))
+	return raised
+
+# Is there something to stand on beneath this point? A short downward ray against
+# the world layer only, from head height.
+func _deck_under(at: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var from: Vector3 = to_global(at)
+	var to: Vector3 = from - Vector3(0.0, SimConfig.ZOMBIE_HEIGHT + 1.5, 0.0)
+	# Layer 1 only -- the deck. A pack member standing on another pack member's
+	# head is not "there is ground here", and neither is one resting on a stone
+	# that a blast is about to remove.
+	return not space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, 1)).is_empty()
+
+func _spawn_zombie(at: Vector3) -> Node:
+	var zombie: Node3D = ZombieScene.instantiate()
+	_next_zombie_id += 1
+	zombie.zombie_id = _next_zombie_id
+	zombie.name = "Zombie_%d" % _next_zombie_id
+	_zombies_root.add_child(zombie)
+	_zombies.append(zombie)
+	zombie.begin_rise(at)
+	return zombie
+
+# What a zombie does when it reaches somebody, and what a dashing player does to
+# it. Resolved here by proximity for the same reason every other contact in this
+# file is: the outcome is a game rule, not a physics response, and it has to be
+# decided in one place and once.
+#
+# STRUCTURALLY THE RUSHER'S, WITH ONE DIFFERENCE, and the difference is the whole
+# enemy: a rusher is SPENT on contact, a zombie RECOILS. See recoil_from() -- with
+# five of them, being spent on contact would mean the pack lands five hits and
+# deletes itself, and the rule that exists to stop one enemy chain-tumbling a
+# helpless player would be protecting nobody.
+func _resolve_zombie_contact(zombie: Node) -> void:
+	if not zombie.is_in_play():
+		return
+	for peer_key in players.keys():
+		var body: Node = players[int(peer_key)]
+		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
+			continue
+		if body.position.distance_to(zombie.position) > SimConfig.ZOMBIE_HIT_RADIUS + PlayerBody.HALF_HEIGHT:
+			continue
+
+		# A DASHING PLAYER WINS THE EXCHANGE, checked before the hit so the two can
+		# never both happen. The free answer available to everyone, which is what
+		# keeps a weaponless player from being stranded in front of a pack.
+		if body.state == PlayerBody.State.SHOVE:
+			zombie.deflect(GridConfig.yaw_vector(body.shove_yaw))
+			return
+
+		# Already deflected, or still recovering from its last bite, so it cannot
+		# collect on a counter it lost. `continue` rather than `return`: this
+		# zombie is harmless to THIS player, but another player may still be
+		# mid-dash and entitled to bat it further.
+		if not zombie.is_dangerous():
+			continue
+
+		# A CHANCE OF A TUMBLE, ROLLED PER CONTACT. A rusher always tumbles because
+		# it only gets to do it once; a zombie gets to do it repeatedly, and a
+		# hazard that reliably takes your control away every time it touches you is
+		# one you cannot play out of.
+		#
+		# Below the roll it is damage and NOTHING ELSE -- receive_hit tumbles on any
+		# push at all, so "no tumble" has to mean no knockback. That reads as being
+		# bitten rather than run over, which is what it is.
+		var tumbles: bool = zombie._draw() < SimConfig.ZOMBIE_TUMBLE_CHANCE
+		var push: float = SimConfig.ZOMBIE_KNOCKBACK if tumbles else 0.0
+		var lift: float = SimConfig.ZOMBIE_KNOCKBACK_LIFT if tumbles else 0.0
+		body.receive_hit(Hit.make(Hit.Kind.IMPACT, SimConfig.ZOMBIE_DAMAGE,
+			zombie.position, push, lift))
+		# KNOCKED OFF, NOT KILLED. Unconditional -- it happens whether or not the
+		# damage landed, because a player inside HIT_GRACE has still been walked
+		# into and a zombie that stayed pressed against them would bite again the
+		# tick the grace expires, forever.
+		zombie.recoil_from(body.position)
+		return
+
+func zombie_count() -> int:
+	return _zombies.size()
 
 # --- Gunners ------------------------------------------------------------------
 
@@ -2746,7 +2976,7 @@ func _snap_to_enemy(body: Node, target: Vector3) -> Vector3:
 	along /= span
 	var best: Vector3 = target
 	var best_distance: float = span
-	for list in [_rushers, _gunners]:
+	for list in [_rushers, _gunners, _zombies]:
 		for enemy in list:
 			if not is_instance_valid(enemy) or enemy.is_spent():
 				continue
@@ -2889,7 +3119,7 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE,
 		return 0
 	var affected := 0
 	if kind == Hit.Kind.EXPLOSIVE and grid != null:
-		var structures: int = grid.blast_mounds(centre, radius) 			+ grid.blast_shooters(centre, radius)
+		var structures: int = grid.blast_mounds(centre, radius) 			+ grid.blast_shooters(centre, radius) 			+ grid.blast_graves(centre, radius)
 		affected += structures
 		# TOLD, NOT INFERRED, and told the moment it happens. A mound or a shooter
 		# is rebuilt from the run seed on every machine, so a client that is not
@@ -2899,6 +3129,7 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE,
 		if structures > 0 and networked and is_host:
 			_sync_spent_mounds.rpc(grid.spent_mound_layout())
 			_sync_spent_shooters.rpc(grid.spent_shooter_layout())
+			_sync_spent_graves.rpc(grid.spent_grave_layout())
 
 	for target in _blast_targets(centre, radius):
 		var hit: RefCounted = Hit.make(kind, SimConfig.BLAST_DAMAGE, centre,
@@ -2944,7 +3175,7 @@ func _anything_walking_within(centre: Vector3, radius: float) -> bool:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and not body.is_awaiting_rescue() 				and body.position.distance_to(centre) <= radius:
 			return true
-	for group in [_rushers, _gunners]:
+	for group in [_rushers, _gunners, _zombies]:
 		for node in group:
 			if is_instance_valid(node) and node.position.distance_to(centre) <= radius:
 				return true
@@ -2960,7 +3191,7 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and body.position.distance_to(centre) <= radius:
 			out.append(body)
-	for group in [_rushers, _gunners, _balls, _hats.all(), _specials.all(), _deployables]:
+	for group in [_rushers, _gunners, _zombies, _balls, _hats.all(), _specials.all(), _deployables]:
 		for node in group:
 			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
 				out.append(node)
@@ -3329,6 +3560,16 @@ func _mound_taken(cx: int, cz: int) -> void:
 	if grid != null:
 		grid.take_mound(Vector2i(cx, cz))
 
+# THE SLAB GOES; THE PACK DOES NOT COME FROM HERE. A client is told the grave is
+# empty, and is told about the zombies themselves by the per-tick snapshot -- the
+# same split every other spawn in this file uses. Sending "raise five here" would
+# be a client inventing bodies, and the ring's arithmetic would then have to agree
+# on both machines forever.
+@rpc("authority", "call_remote", "reliable")
+func _grave_taken(cx: int, cz: int) -> void:
+	if grid != null:
+		grid.take_grave(Vector2i(cx, cz))
+
 # Drop-in: the newcomer built the bridge from the seed, so it has every mound
 # including the ones this run already used up.
 @rpc("authority", "call_remote", "reliable")
@@ -3342,6 +3583,11 @@ func _sync_spent_shooters(layout: PackedInt32Array) -> void:
 func _sync_spent_mounds(layout: PackedInt32Array) -> void:
 	if grid != null:
 		grid.apply_spent_mounds(layout)
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_spent_graves(layout: PackedInt32Array) -> void:
+	if grid != null:
+		grid.apply_spent_graves(layout)
 
 # MUTABLE TERRAIN (M17 phase 8). The WHOLE open set, not a single toggle.
 #
@@ -4108,7 +4354,7 @@ func _broadcast_snapshot() -> void:
 	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(keyframe), layout,
 		_rusher_snapshot(keyframe), _hat_snapshot(keyframe), _special_snapshot(keyframe),
 		_bullet_snapshot(keyframe), _gunner_snapshot(keyframe),
-		_deployable_snapshot(keyframe))
+		_deployable_snapshot(keyframe), _zombie_snapshot(keyframe))
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -4237,6 +4483,48 @@ func _rusher_by_id(id: int) -> Node:
 	for rusher in _rushers:
 		if is_instance_valid(rusher) and rusher.rusher_id == id:
 			return rusher
+	return null
+
+# ITS OWN SECTION, not a `kind` field bolted onto the rusher's.
+#
+# The gunners share one because a skirmisher and a turret genuinely differ only in
+# which scene to build; a client draws them from the same five numbers. A zombie
+# carries a sixth (`move_kind`), so sharing would mean padding every rusher entry
+# with a field it does not have, on every tick, for the whole life of the wire.
+func _zombie_snapshot(keyframe: bool) -> Array:
+	var out: Array = []
+	for zombie in _zombies:
+		if is_instance_valid(zombie):
+			out.append(zombie.capture_state())
+	return SnapshotDelta.encode(out, _section("zombies"), keyframe)
+
+# Self-healing like every other pool, and THIS IS ALSO HOW A CLIENT LEARNS A
+# ZOMBIE DIED -- it stops being mentioned. A dropped packet costs a frame of
+# staleness rather than an enemy that exists forever on one machine.
+func _apply_zombie_snapshot(section: Array) -> void:
+	var seen: Dictionary = _seen_from(section)
+	for entry in SnapshotDelta.changed_of(section):
+		var id: int = int(entry[0])
+		var zombie: Node = _zombie_by_id(id)
+		if zombie == null:
+			zombie = ZombieScene.instantiate()
+			zombie.zombie_id = id
+			zombie.name = "Zombie_%d" % id
+			_zombies_root.add_child(zombie)
+			_zombies.append(zombie)
+		zombie.apply_state(entry)
+
+	for i in range(_zombies.size() - 1, -1, -1):
+		var existing: Node = _zombies[i]
+		if not is_instance_valid(existing) or not seen.has(existing.zombie_id):
+			_zombies.remove_at(i)
+			if is_instance_valid(existing):
+				existing.queue_free()
+
+func _zombie_by_id(id: int) -> Node:
+	for zombie in _zombies:
+		if is_instance_valid(zombie) and zombie.zombie_id == id:
+			return zombie
 	return null
 
 # LOOSE AND FLYING HATS ONLY. Who is WEARING what travels reliably instead -- see
@@ -4395,29 +4683,30 @@ func _bullet_by_id(id: int) -> Node:
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array, zombies: Array) -> void:
 	if is_host:
 		return
 	_adopt_server_tick(server_tick)
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10], held[11])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array, zombies: Array) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
 			grid.apply_stone_layout(layout)
 	_apply_ball_snapshot(balls)
 	_apply_rusher_snapshot(rushers)
+	_apply_zombie_snapshot(zombies)
 	_apply_hat_snapshot(hats)
 	_apply_special_snapshot(specials)
 	_apply_bullet_snapshot(bullets)
@@ -4519,6 +4808,113 @@ func _submit_name(display: String, steam: int = 0) -> void:
 func _broadcast_names() -> void:
 	if networked:
 		_set_names.rpc(player_names, player_steam_ids)
+
+# --- Characters ---------------------------------------------------------------
+#
+# Body colours, peer -> Color. Chosen on the character screen, saved to disk, and
+# announced on join.
+#
+# THIS RIDES THE NAMES CHANNEL, NOT THE HATS ONE, and picking the right one of
+# those was the whole design decision.
+#
+# design_ideas/character_customization.md proposed copying the worn-hat shape --
+# a per-object RPC plus a dump replayed at join. That shape carries a known
+# ordering trap: _wear_hat opens with `if hat == null or body == null: return`,
+# so anything sent before the newcomer has been told who exists is silently
+# dropped. host_add_peer's long comment above exists because that bug shipped.
+#
+# But a colour is not per-OBJECT state like a worn hat. It is per-PEER metadata,
+# exactly like a display name -- and a name has no ordering trap at all, because
+# _set_names stores a dictionary and lets whoever needs it read it later. So this
+# stores too, and APPLIES from both ends: on spawn, and whenever the dictionary
+# changes. Whichever arrives second does the work, and there is no order in which
+# a player ends up the wrong colour.
+#
+# One consequence worth stating: a peer with no entry is not an error, it is the
+# default. That is what makes practice partners, late joiners and a client whose
+# announcement is still in flight all correct rather than merely tolerated.
+# TWO DICTIONARIES ON ONE CHANNEL, which is exactly what _set_names already does
+# with names and Steam ids. The seed is what the face is derived from -- eyes
+# today -- and it travels beside the colour because they are one announcement:
+# "here is what I look like".
+var player_colours: Dictionary = {}
+var player_seeds: Dictionary = {}
+var player_accessories: Dictionary = {}
+
+func _announce_character() -> void:
+	if is_host:
+		player_colours[local_peer] = _chosen_body_colour
+		player_seeds[local_peer] = _chosen_seed
+		player_accessories[local_peer] = _chosen_accessory
+		_apply_character_looks()
+		_broadcast_characters()
+	elif networked:
+		_submit_character.rpc_id(1, _chosen_body_colour, _chosen_seed, _chosen_accessory)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _submit_character(colour: Color, character_seed: int = 0, accessory: String = "none") -> void:
+	if not is_host:
+		return
+	var from: int = multiplayer.get_remote_sender_id()
+	player_colours[from] = colour
+	player_seeds[from] = character_seed
+	# VALIDATED, BECAUSE THIS ONE CAME OFF THE WIRE. A colour and a seed cannot be
+	# malformed -- every Color is a colour and every int is a seed -- but an
+	# accessory is a NAME, and a name from another machine can be anything at all:
+	# a build with a slot this one has never heard of, or a peer that is simply
+	# wrong. An unknown name wears nothing rather than propagating into everyone
+	# else's roster.
+	player_accessories[from] = accessory if CharacterStyle.is_accessory(accessory) else CharacterStyle.ACCESSORY_NONE
+	_apply_character_looks()
+	_broadcast_characters()
+
+@rpc("authority", "call_remote", "reliable")
+func _set_characters(colours: Dictionary, seeds: Dictionary = {}, accessories: Dictionary = {}) -> void:
+	if is_host:
+		return
+	player_colours = colours.duplicate()
+	player_seeds = seeds.duplicate()
+	player_accessories = accessories.duplicate()
+	_apply_character_looks()
+
+func _broadcast_characters() -> void:
+	if networked:
+		_set_characters.rpc(player_colours, player_seeds, player_accessories)
+
+# What a peer is wearing, or nothing. Like the seed, an absent entry is a real
+# answer rather than a gap.
+func player_accessory(peer: int) -> String:
+	var stored: String = str(player_accessories.get(peer, CharacterStyle.ACCESSORY_NONE))
+	return stored if CharacterStyle.is_accessory(stored) else CharacterStyle.ACCESSORY_NONE
+
+# The seed a peer's face is derived from, or 0.
+#
+# ZERO IS A REAL FACE, not a missing one -- eye_knobs answers for it like any
+# other number. That matters for practice partners and for a peer whose
+# announcement is still in flight: they get a face rather than a gap, and it is
+# the SAME face on every machine because zero is as deterministic as anything
+# else.
+func player_seed(peer: int) -> int:
+	return int(player_seeds.get(peer, 0))
+
+# What a peer looks like, or the default. Never fails, never returns null: an
+# unknown peer is a player who has not chosen, which is a real and correct state.
+func player_colour(peer: int) -> Color:
+	var stored: Variant = player_colours.get(peer)
+	return stored if stored is Color else CharacterStyle.DEFAULT_BODY
+
+# Paint everybody. Cheap -- four bodies at most, two material writes each -- so it
+# runs on any change rather than working out which peer moved.
+func _apply_character_looks() -> void:
+	for peer_key in players.keys():
+		_apply_character_look(int(peer_key))
+
+func _apply_character_look(peer: int) -> void:
+	var body: Node = players.get(peer)
+	if body == null or not is_instance_valid(body):
+		return
+	if body.has_method("apply_look"):
+		body.apply_look(player_colour(peer), player_seed(peer), player_accessory(peer))
 
 # Somebody's Steam id, or 0. The HUD asks so it can ask for a face.
 func player_steam_id(peer: int) -> int:
@@ -4693,6 +5089,11 @@ func host_add_peer(peer: int) -> void:
 		# newcomer has built the segments holding them. Both are reliable, so the
 		# order they are sent in is the order they arrive in.
 		_sync_spent_mounds.rpc_id(peer, grid.spent_mound_layout())
+		# And which graves have already opened. A joiner builds them from the seed,
+		# so without this it draws slabs with nothing under them -- and, worse, its
+		# own copy of the grid would still answer grave_cells() for ground the
+		# party cleared ten minutes ago.
+		_sync_spent_graves.rpc_id(peer, grid.spent_grave_layout())
 		_sync_spent_shooters.rpc_id(peer, grid.spent_shooter_layout())
 		_sync_open_cells.rpc_id(peer, grid.open_cell_layout())
 		# And which hearts have already been eaten, for the identical reason: the
@@ -4738,6 +5139,11 @@ func host_add_peer(peer: int) -> void:
 	# before the host had it in `players`. Republishing here costs one small
 	# reliable packet and removes the ordering question entirely.
 	_broadcast_names()
+	# And everyone's colour, on the same argument. Note this one does NOT have to
+	# be after the spawn loop the way the hats above do -- _set_characters stores
+	# a dictionary and _spawn_player applies from it, so either order works. It is
+	# here because it belongs with the names, not because it is load-bearing.
+	_broadcast_characters()
 
 func host_remove_peer(peer: int) -> void:
 	if not is_host:
@@ -4763,6 +5169,12 @@ func _spawn_player(peer: int, index: int) -> void:
 		_inbox[peer] = []
 	if peer == local_peer and camera != null:
 		camera.focus_target = body
+	# THE OTHER HALF OF THE ORDERING ANSWER. A colour that arrived before this
+	# body existed is sitting in player_colours doing nothing; this is where it
+	# lands. Together with _set_characters applying to whoever is already here,
+	# there is no order in which a player ends up the wrong colour -- which is the
+	# property the worn-hat channel had to be taught with a comment.
+	_apply_character_look(peer)
 	player_spawned.emit(peer)
 
 @rpc("authority", "call_local", "reliable")
@@ -4777,6 +5189,9 @@ func _despawn_player(peer: int) -> void:
 	_highest_queued.erase(peer)
 	_spawn_index.erase(peer)
 	player_names.erase(peer)
+	player_colours.erase(peer)
+	player_seeds.erase(peer)
+	player_accessories.erase(peer)
 	_hats.forget_wearer(peer)
 	player_despawned.emit(peer)
 

@@ -8,6 +8,25 @@ extends "res://scripts/test_support/test_case.gd"
 # is the assertion that makes the steep ramp a co-op GATE rather than a dead end,
 # and it is the one the brief describes in as many words: "they tie each other
 # together, one pushes the other up the ramp".
+#
+# AND FOR ITS WHOLE LIFE IT ASSERTED NONE OF THAT. Found 2026-08-22 by running the
+# suite with test_case.gd's assertion helpers printing get_stack() -- four of this
+# file's six assertion sites had NEVER EXECUTED. `finish()` and the assertion
+# above it were indented one tab OUT of the `if frame == 240:` block, so the test
+# ended at frame 21, one frame after the shove, and the four claims that are the
+# whole subject were dead code below it. The tell was in the log all along: the
+# `[shove-ramp] gained ...` print sits on the line above the first of them and had
+# never appeared in a run.
+#
+# THE INDENTATION IS THE ASSERTION HERE. A frame-gated test whose finish() sits
+# outside its own gate does not fail, it passes EARLY -- there is no error, no
+# missing marker and no slow run to notice, and the suite reports a green test
+# that measured a body 0.3 s into a 4 s manoeuvre. CLAUDE.md's "half a gate is not
+# a gate" one level down: the half that says something is POSSIBLE was written,
+# and then never run.
+#
+# Re-indented and measured 2026-08-22: the shoved player gains 4.84 m of the
+# 1.41 m needed and ends at row 12, in control. The verb was fine the whole time.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
@@ -103,14 +122,14 @@ func _physics_process(_delta: float) -> void:
 			"and comes to rest on it (y = %.2f)" % victim.position.y)
 		check(victim.grounded, "standing, not still in the air")
 		# AND THEY ARRIVED IN CONTROL. The boost used to land as a TUMBLE -- the same
-	# impulse a shove into open air gives -- so the player who had just been helped
-	# up lost control at the top and went wherever the bridge sent them. Measured
-	# 2026-08-16: the climb itself succeeded 25 times out of 26, so reliability was
-	# never the complaint; arriving unable to steer was.
-	#
-	# Tumbling everywhere ELSE is deliberate and stays. What decides which you get
-	# is what the shove is pushing you INTO, not how hard it was.
-	check(victim.state != PlayerBody.State.TUMBLE,
+		# impulse a shove into open air gives -- so the player who had just been helped
+		# up lost control at the top and went wherever the bridge sent them. Measured
+		# 2026-08-16: the climb itself succeeded 25 times out of 26, so reliability was
+		# never the complaint; arriving unable to steer was.
+		#
+		# Tumbling everywhere ELSE is deliberate and stays. What decides which you get
+		# is what the shove is pushing you INTO, not how hard it was.
+		check(victim.state != PlayerBody.State.TUMBLE,
 		"and arrives IN CONTROL rather than tumbling -- a climb you cannot land is "
 		+ "a climb a section cannot require (state %d)" % victim.state)
-	finish()
+		finish()

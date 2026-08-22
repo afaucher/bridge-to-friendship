@@ -25,6 +25,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 
 # THE LOBBY'S OWN FLOOR, independent of its neighbours. A lobby that merely fits
 # the section either side could come out three cells wide, and that is not a
@@ -332,7 +333,15 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	# a specific piece turns up in a few per cent of sections, so reviewing the
 	# one you just authored means replaying rounds until it happens.
 	var forced: String = DebugSettings.get_choice_name("force_piece")
-	for candidate in SetPieces.for_width(width):
+	# AND THEY COME FROM THIS SECTION'S THEME, not the whole library. Every piece
+	# has carried a theme tag since M18 and nothing read them, so a rusher pit
+	# landed in a `quiet` section as readily as a survival one. The theme is a
+	# pure function of (run_seed, index) and both are in hand, so this asks
+	# HazardDressing rather than taking another argument -- which keeps the
+	# skeleton and the dressing pass agreeing about which theme a section is by
+	# construction rather than by two callers being careful.
+	for candidate in SetPieces.for_theme(width,
+			HazardDressing.theme_for(run_seed, index)):
 		if forced != "off" and String(candidate.name) != "piece_" + forced:
 			continue
 		if SetPieces.is_patch(candidate, width):
@@ -924,6 +933,35 @@ const MAZE_DEAD_ENDS := 4
 const MAZE_TIMED := 3
 const MAZE_SPIKES := 3
 
+# A WIDE LANE. One row or one column of the lattice, laid out two cells across
+# instead of one, so the maze has somewhere in it that is not single file.
+#
+# THE PROBLEM IT ANSWERS is that a one-cell corridor is a place where nothing can
+# happen. Two players cannot pass, a dash is a commitment with no room to correct,
+# and a party of four is a queue for the whole section -- which is the same
+# complaint the braid answers for ROUTES ("a single-route maze is not a puzzle, it
+# is a queue") arriving one level down, about the corridor rather than the map.
+#
+# IT IS A LAYOUT DECISION AND NOT A CARVE. The lattice is built, braided and
+# pruned exactly as it always was; the only thing that changes is how far apart
+# the finished cells are placed. So the maze's topology -- every route, every
+# loop, every dead end and every reward -- is bit-identical to the maze the same
+# seed would have produced without it, and none of the reasoning above about
+# braids or dead ends has to be re-checked. What a wall crosses the lane, it
+# crosses two cells wide.
+#
+# HALF OF THEM, because a maze is already one section in five. A rarity inside a
+# rarity is a feature nobody sees: at one in five it would be one section in
+# twenty-five and most parties would never meet one.
+const MAZE_WIDE_PERCENT := 50
+
+# THE LANE IS PAID FOR OUT OF THE LATTICE, not added to the section. A wide lane
+# costs one grid column or one grid row; taking it from the lattice keeps a maze
+# the same size on the bridge whichever way the roll went, and the alternative --
+# growing the section by a row -- makes the length of a section depend on a dice
+# roll nobody can see, which the round machine and every walk-budget number are
+# denominated in.
+
 static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
 	var cols: int = (width + 1) / 2
@@ -931,13 +969,85 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	if cols < 3:
 		return null
 	var rows: int = MAZE_MIN_ROWS + salt % (MAZE_MAX_ROWS - MAZE_MIN_ROWS + 1)
+
+	# THE WIDE LANE, ROLLED BEFORE ANYTHING IS BUILT, because it is paid for out of
+	# the lattice and the lattice is the first thing decided.
+	#
+	# THE AXIS IT ROLLS MAY NOT BE AFFORDABLE, so it takes the other one rather
+	# than dropping the lane. A horizontal lane spends a lattice ROW and rows have
+	# a floor (MAZE_MIN_ROWS, below which a maze is a corridor with kinks in it);
+	# a vertical lane spends a COLUMN and needs three left to still be a maze. At
+	# the current tuning a 7-row maze is a quarter of them, so without the swap a
+	# quarter of the horizontal rolls would silently become no lane at all.
+	#
+	# IT BIASES THE AXIS AND THAT IS THE PRICE: measured over 250 sections, 12
+	# lanes ran along the maze and 8 across it, because the swap only ever runs one
+	# way. The alternative was rolling `rows` from a range that can always afford a
+	# row, which buys an even split by making every maze with a lane across it
+	# shorter than one with a lane along it -- a correlation between the axis and
+	# the length of the section, which is a worse thing to have than a 60/40.
+	var wide: bool = _mix(salt + 0x717D) % 100 < MAZE_WIDE_PERCENT
+	var wide_across: bool = _mix(salt + 0x717E) % 2 == 0
+	if wide:
+		var can_across: bool = rows - 1 >= MAZE_MIN_ROWS
+		var can_along: bool = cols - 1 >= 3
+		if wide_across and not can_across:
+			wide_across = false
+		elif not wide_across and not can_along:
+			wide_across = true
+		# And if the axis it swapped TO cannot afford one either, there is no lane.
+		# Unreachable at the 21 canvas, where a column is always affordable; it is
+		# here so a narrower bridge degrades into an ordinary maze rather than into
+		# a lattice with two columns in it.
+		wide = can_across if wide_across else can_along
+	if wide:
+		if wide_across:
+			rows -= 1
+		else:
+			cols -= 1
+
 	# Entry deck, a wall row with the door, the lattice, the far wall row, then two
 	# rows of deck to arrive on. Derived rather than picked so the two ends cannot
 	# disagree with the lattice between them.
-	var length: int = rows * 2 + 4
+	#
+	# TWO LENGTHS, AND THEY ARE DIFFERENT QUESTIONS. `compact` is the coordinate
+	# frame the carve works in -- every cell, link and door below is a compact
+	# coordinate -- and `length` is what the section really measures once a wide
+	# lane has pushed everything past it over by one. Keeping them apart is the
+	# whole reason the carve needed no changes at all: it never learns there is
+	# such a thing as a wide lane.
+	var compact: int = rows * 2 + 4
+	var length: int = compact + (1 if wide and wide_across else 0)
+
+	# WHICH LANE, IN COMPACT COORDINATES. -1 for "no wide lane on this axis", which
+	# is what every mapping below tests.
+	var wide_x: int = -1
+	var wide_z: int = -1
+	if wide:
+		if wide_across:
+			wide_z = 2 + 2 * (_mix(salt + 0x717F) % rows)
+		else:
+			wide_x = 2 * (_mix(salt + 0x7180) % cols)
+
+	# THE COLUMN THE LATTICE DOES NOT USE, offered to either side. A lattice of
+	# `cols` columns spans 2*cols-1 cells and a wide one spans 2*cols, so at the
+	# 21 canvas a wide maze has exactly one column spare -- and always parking it
+	# on the same side would make every wide maze lean the same way. Rolled ONLY
+	# when there is a wide lane, so a maze without one lays out exactly where it
+	# always did.
+	var used: int = 2 * cols - 1 + (1 if wide_x >= 0 else 0)
+	var x0: int = 0
+	if wide_x >= 0 and width - used > 0:
+		x0 = _mix(salt + 0x7181) % (width - used + 1)
+	var lay: Dictionary = {"wide_x": wide_x, "wide_z": wide_z, "x0": x0}
 
 	var seg = _blank("section_%d_maze" % index, width, length)
 	var maze_tags: Array[String] = ["foot", "generated", "maze"]
+	if wide:
+		# TAGGED SO THE INTENT CAN BE CHECKED AGAINST THE ARTIFACT. Nothing in the
+		# game reads it; test_segment_gen does, and a claim that the geometry
+		# matches what the generator meant needs both halves to be readable.
+		maze_tags.append("wide_across" if wide_across else "wide_along")
 	seg.tags = maze_tags
 	seg.no_dress = true
 
@@ -1029,12 +1139,30 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	# and puts everybody in the same corridor for the first moment.
 	var in_door: int = 2 * (_mix(salt + 1811) % cols)
 	var out_door: int = 2 * (_mix(salt + 3181) % cols)
-	open_cells[Vector2i(in_door, 1)] = true
-	open_cells[Vector2i(out_door, length - 3)] = true
+	# IN THE COMPACT FRAME, like every other cell here -- `_maze_at` puts the exit
+	# door back on `length - 3` once a wide row has moved it.
+	var doors: Dictionary = {
+		Vector2i(in_door, 1): true,
+		Vector2i(out_door, compact - 3): true,
+	}
+	for door in doors:
+		open_cells[door] = true
 
+	# LAY THE LATTICE OUT. Up to here every coordinate has been compact; this is
+	# the only place that knows a wide lane exists.
+	#
+	# A DOOR IS NEVER WIDENED, even when the wide lane runs through it. "One door
+	# each end" is a design decision with its own reasoning -- a single opening
+	# makes the entrance a PLACE and puts the whole party in one corridor for the
+	# first moment -- and it is worth more than the two cells it costs. Walking a
+	# one-cell door into a two-cell lane reads correctly; it is the mouth of the
+	# avenue.
 	for cell in open_cells:
-		seg.kinds[cell.y][cell.x] = GridConfig.Kind.DECK
-		seg.heights[cell.y][cell.x] = 0
+		var here: Array = [_maze_at(cell, lay)] if doors.has(cell) \
+			else _maze_cells(cell, lay)
+		for at in here:
+			seg.kinds[at.y][at.x] = GridConfig.Kind.DECK
+			seg.heights[at.y][at.x] = 0
 
 	# THE REWARDS, in whichever dead ends survived.
 	#
@@ -1050,12 +1178,12 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 			if _maze_degree(open_cells, Vector2i(i, j)) == 1:
 				kept.append(Vector2i(i, j))
 	for n in mini(kept.size(), MAZE_DEAD_ENDS):
-		var at: Vector2i = kept[n]
-		seg.contents[2 + 2 * at.y][2 * at.x] = \
+		var at: Vector2i = _maze_at(_maze_lattice(kept[n]), lay)
+		seg.contents[at.y][at.x] = \
 			GridConfig.Content.HEART if n == 1 else GridConfig.Content.HAT
 
 	_maze_traps(seg, open_cells, cols, rows, salt,
-		Vector2i((in_door) / 2, 0), Vector2i((out_door) / 2, rows - 1), kept)
+		Vector2i((in_door) / 2, 0), Vector2i((out_door) / 2, rows - 1), kept, lay)
 
 	# AND IF THE BRAID LEFT NO DEAD END AT ALL, the hat goes at the DEEPEST point
 	# instead -- the cell furthest from the entrance by actual walking distance
@@ -1071,7 +1199,8 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	if kept.is_empty():
 		var deep: Vector2i = _maze_deepest(open_cells, cols, rows,
 			Vector2i((in_door - 1) / 2, 0))
-		seg.contents[2 + 2 * deep.y][2 * deep.x] = GridConfig.Content.HAT
+		var deep_at: Vector2i = _maze_at(_maze_lattice(deep), lay)
+		seg.contents[deep_at.y][deep_at.x] = GridConfig.Content.HAT
 	# A MAZE JOINS THE RUN LIKE ANY OTHER SECTION. Its lattice keeps the full
 	# canvas -- a maze is a different kind of place and its outer columns are WALL
 	# rather than edge -- but the rows it is entered and left by are the baseline,
@@ -1103,7 +1232,8 @@ static func _maze_deepest(open_cells: Dictionary, cols: int, rows: int,
 # Traps, on corridor cells only, spaced apart and never on a door cell or a
 # reward. `entry` and `exit` are lattice coordinates.
 static func _maze_traps(seg, open_cells: Dictionary, cols: int, rows: int,
-		salt: int, entry: Vector2i, exit_cell: Vector2i, rewards: Array) -> void:
+		salt: int, entry: Vector2i, exit_cell: Vector2i, rewards: Array,
+		lay: Dictionary) -> void:
 	var taken: Dictionary = {entry: true, exit_cell: true}
 	for r in rewards:
 		taken[r] = true
@@ -1134,10 +1264,52 @@ static func _maze_traps(seg, open_cells: Dictionary, cols: int, rows: int,
 					break
 			if near:
 				continue
-			seg.contents[2 + 2 * j][2 * i] = kind
+			# ON THE FIRST OF THE PAIR when the cell is in a wide lane, which
+			# leaves the other half clear. That is the wide lane paying for itself:
+			# a spike in a one-cell corridor is a toll you cannot refuse, and the
+			# same spike in a two-cell one is a thing to walk around.
+			var at: Vector2i = _maze_at(_maze_lattice(here), lay)
+			seg.contents[at.y][at.x] = kind
 			taken[here] = true
 			placed.append(here)
 			break
+
+# --- Laying the lattice out ---------------------------------------------------
+#
+# Three functions, and they are the ONLY code that knows a lane can be two cells
+# wide. Everything above them works in the compact frame where a lattice cell
+# (i, j) is the grid cell (2i, 2 + 2j) and the cell between two neighbours is the
+# wall that separates them.
+
+# A lattice cell in the compact frame.
+static func _maze_lattice(cell: Vector2i) -> Vector2i:
+	return Vector2i(2 * cell.x, 2 + 2 * cell.y)
+
+# Compact -> laid out. Everything past a wide lane moves over by one, and the
+# whole lattice moves over by the spare column the wide one did not take.
+static func _maze_at(cell: Vector2i, lay: Dictionary) -> Vector2i:
+	var x: int = int(cell.x) + int(lay["x0"])
+	if int(lay["wide_x"]) >= 0 and int(cell.x) > int(lay["wide_x"]):
+		x += 1
+	var z: int = int(cell.y)
+	if int(lay["wide_z"]) >= 0 and int(cell.y) > int(lay["wide_z"]):
+		z += 1
+	return Vector2i(x, z)
+
+# The one or two cells a compact cell becomes. TWO for anything in the wide lane
+# -- its cells AND the links between them, which is what makes the lane a lane
+# rather than a row of wider rooms.
+#
+# Only one axis is ever wide, so this returns at most two cells; a maze wide both
+# ways would need the diagonal as well, and the roll above does not produce one.
+static func _maze_cells(cell: Vector2i, lay: Dictionary) -> Array:
+	var at: Vector2i = _maze_at(cell, lay)
+	var out: Array = [at]
+	if int(lay["wide_x"]) >= 0 and int(cell.x) == int(lay["wide_x"]):
+		out.append(at + Vector2i(1, 0))
+	elif int(lay["wide_z"]) >= 0 and int(cell.y) == int(lay["wide_z"]):
+		out.append(at + Vector2i(0, 1))
+	return out
 
 # The grid cell between two lattice neighbours -- the wall that separates them,
 # and the single cell that carving a link writes.

@@ -1,0 +1,87 @@
+[gd_scene load_steps=6 format=3 uid="uid://btfzombie1"]
+
+[ext_resource type="Script" path="res://scripts/sim/zombie_body.gd" id="1_zombie"]
+
+; BETWEEN THE OTHER TWO, DELIBERATELY: a rusher is 1.4 and a skirmisher is 1.7,
+; and this sits at 1.55 between them. That is the uncomfortable case for a
+; silhouette, and it is why the COLOUR is doing most of the identification work
+; here -- across a 60 m bridge you get an outline and a hue, and a third body has
+; to be legible against BOTH of the ones already out there.
+;
+; A cylinder like the rusher and the player: it never tips, so its footprint stays
+; predictable. Slightly narrower than a rusher (0.45 vs 0.5), which matters for
+; the one thing this enemy does that no other does -- five of them stand in a ring
+; 1.1 m across, and the gap between neighbours is what stops the pack behaving
+; like one body.
+[sub_resource type="CylinderShape3D" id="Cyl_1"]
+radius = 0.45
+height = 1.55
+
+; THE MESH IS A CAPSULE ON TOP OF NOTHING ELSE, which is the point: a rusher is a
+; CONE (wide at the deck, pointed up -- the shape of a thing that came through the
+; floor) and a skirmisher is a capsule that stands. This reads as a standing body
+; too, so the outline alone will not separate it from a skirmisher at range.
+;
+; What separates them is the ARMS. Two boxes held out front, which is the one
+; addition that makes a shambling silhouette unmistakable at any distance and
+; costs two meshes to draw.
+[sub_resource type="CapsuleMesh" id="Body_1"]
+radius = 0.45
+height = 1.55
+
+[sub_resource type="BoxMesh" id="Arm_1"]
+size = Vector3(0.16, 0.16, 0.75)
+
+; SICKLY GREEN. The palette was genuinely out of loud hues -- browns are scenery,
+; blue was the players until they picked their own, red-orange is a rusher,
+; magenta is a skirmisher, cold near-black is a plinko ball -- and green was the
+; last one unspent. Desaturated and rough rather than bright: it should read as
+; something that is not well, not as something that glows.
+;
+; NO EMISSION, which is a break from the rusher on purpose. A rusher glows because
+; it is the thing actively coming for you and there is one of it; five glowing
+; bodies would wash the whole area out and make the pack harder to count, and
+; counting the pack is the decision the player is being asked to make.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.35, 0.62, 0.24, 1)
+roughness = 0.9
+
+[node name="Zombie" type="CharacterBody3D"]
+; Layer 16 = enemy bodies, shared with rushers and gunners: a round's mask already
+; covers that bit, so every weapon in the game works on these from the day they
+; land without touching the weapons.
+;
+; Mask 31 = world | players | stones | balls | enemies. THE SELF-BIT (16) IS THE
+; ONE THAT MATTERS MOST HERE and it is the one everybody omits, because every
+; other entry in a mask is about something else. Without it a pack occupies one
+; point in space and arrives as a single enemy wearing five sprites -- and this is
+; the first enemy in the game that spawns five at once, so it is the first one
+; where getting that bit wrong is guaranteed rather than possible.
+collision_layer = 16
+collision_mask = 31
+script = ExtResource("1_zombie")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Body_1")
+material_override = SubResource("Mat_1")
+
+; ARMS OUT FRONT. Held at chest height and pointing -Z, which is the direction the
+; body's own forward is everywhere else in this project -- see GridConfig.
+; yaw_vector, and the CLAUDE.md note about the four sign errors this codebase has
+; shipped from hand-built direction vectors.
+;
+; They do not swing and they do not aim. A shambling enemy that ANIMATED would be
+; the first thing in this game with a skeleton, and none of that is what makes the
+; silhouette readable -- the outstretched pose is.
+[node name="ArmL" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0.28, -0.42)
+mesh = SubResource("Arm_1")
+material_override = SubResource("Mat_1")
+
+[node name="ArmR" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.28, -0.42)
+mesh = SubResource("Arm_1")
+material_override = SubResource("Mat_1")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Cyl_1")

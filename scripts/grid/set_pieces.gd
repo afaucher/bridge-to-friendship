@@ -49,6 +49,13 @@ const LIBRARY: Array[String] = [
 	# a ladder makes a tall post a commitment, a ramp makes low ground contested.
 	"res://segments/piece_watchpost.seg",
 	"res://segments/piece_bunker.seg",
+	# THE ZOMBIE CHOKEPOINT, appended AFTER main's three on purpose. Both sides of
+	# the merge added to the end of this list, and the index of a piece is the wire
+	# protocol in all but name -- so the entries that already exist on main keep
+	# the indices they were pushed with, and the one that only exists here goes
+	# last. Resolving it the other way would have silently changed which piece
+	# every seed on main stamps.
+	"res://segments/piece_zombie_choke.seg",
 ]
 
 # SMALLER THAN A SEGMENT IS THE POINT. Today a `.seg` is 16 to 30 rows and is a
@@ -98,6 +105,58 @@ static func for_width(width: int) -> Array:
 		if seg.is_valid() and seg.is_piece() and seg.width <= width:
 			out.append(seg)
 	return out
+
+# The ones this THEME should draw from.
+#
+# EVERY PIECE IN THE LIBRARY ALREADY CARRIES A THEME TAG -- `piece, survival`,
+# `piece, firefight` -- and until 2026-08-21 nothing read them. The generator drew
+# uniformly from everything that fitted the width, so a rusher pit landed in a
+# `quiet` section as readily as in a survival one, and the tags were documentation
+# of an intention the code did not have.
+#
+# That matters more with a pack than it did with anything before it. A composition
+# is a RELATIONSHIP -- this is why layer 2 exists -- and the relationship a zombie
+# piece poses is between a grave and the ground you retreat onto. Dropped into a
+# firefight section it is not a lesser version of itself; it is a chokepoint with
+# three shooters covering it, which is a different and worse question.
+#
+# FALLS BACK TO THE WHOLE LIBRARY when a theme has no piece of its own. A theme
+# with no matching piece should get generated terrain plus SOMETHING, not a
+# guarantee of nothing -- and an empty list here would silently turn off set
+# pieces for that theme, which is the kind of absence nothing reports.
+static func for_theme(width: int, theme: String) -> Array:
+	var fitting: Array = for_width(width)
+	if theme == "":
+		return fitting
+	var out: Array = []
+	for seg in fitting:
+		if seg.tags.has(theme) or not _names_a_theme(seg):
+			out.append(seg)
+	return out if not out.is_empty() else fitting
+
+# Does this piece claim a theme at all?
+#
+# A PIECE THAT NAMES NONE IS UNIVERSAL, NOT ORPHANED, and getting that backwards
+# is a bug this very merge would have shipped. M23 added three pieces tagged
+# `enemy` -- a category, not one of the five themes -- and a filter that kept only
+# exact matches would have made all three unreachable from every theme, so a
+# tower would turn up only in the fallback case where a theme had no pieces at
+# all. Silently, because nothing counts how often a piece is stamped.
+#
+# So the tag is an OPT-IN to one theme rather than a requirement, which is also
+# the kinder rule for whoever authors the next piece: forget it and the piece is
+# everywhere, rather than nowhere.
+static func _names_a_theme(seg) -> bool:
+	for tag in seg.tags:
+		if tag in THEME_TAGS:
+			return true
+	return false
+
+# Named here rather than imported from HazardDressing, deliberately: this file is
+# a leaf that the generator preloads, and reaching into the dressing pass for a
+# list of five strings would tie the two together for no gain. test_set_pieces
+# asserts the two agree.
+const THEME_TAGS := ["firefight", "environmental", "survival", "quiet", "horde"]
 
 # True where a piece is narrower than the section it is going into, and therefore
 # has terrain either side of it rather than owning its rows outright.

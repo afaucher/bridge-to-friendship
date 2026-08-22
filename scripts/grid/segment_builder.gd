@@ -45,6 +45,9 @@ class Built:
 	# Dormant rushers. The cell is authored; the enemy does not exist until a
 	# player walks close enough to wake it.
 	var mound_cells: Array = []
+	# Dormant PACKS of zombies. One cell is one pack, not one body -- see the `z`
+	# glyph in GridConfig, which is where that is stated for authors.
+	var grave_cells: Array = []
 	# Loose hats, waiting on the deck for somebody to walk over them.
 	var hat_cells: Array = []
 	# Specials -- the `*` glyph, declared in GridConfig since the grid was written
@@ -613,6 +616,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.heart_cells.append(Vector2i(x, z))
 				GridConfig.Content.MOUND:
 					out.mound_cells.append(Vector2i(x, z))
+				GridConfig.Content.GRAVE:
+					out.grave_cells.append(Vector2i(x, z))
 				GridConfig.Content.HAT:
 					out.hat_cells.append(Vector2i(x, z))
 				# [cell, kind] like gunner_cells, so which special is authored travels

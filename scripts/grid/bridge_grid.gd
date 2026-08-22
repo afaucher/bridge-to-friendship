@@ -21,6 +21,7 @@ const StoneBody = preload("res://scripts/sim/stone_body.gd")
 const HeartScene = preload("res://scenes/heart.tscn")
 const ShooterScene = preload("res://scenes/shooter.tscn")
 const MoundScene = preload("res://scenes/mound.tscn")
+const GraveScene = preload("res://scenes/grave.tscn")
 const MerchantBody = preload("res://scripts/sim/merchant_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
@@ -416,6 +417,9 @@ func load_segment(seg) -> void:
 	for local_cell in built.mound_cells:
 		_spawn_mound(Vector2i(local_cell.x, local_cell.y + z_offset))
 
+	for local_cell in built.grave_cells:
+		_spawn_grave(Vector2i(local_cell.x, local_cell.y + z_offset))
+
 	for local_cell in built.ladder_cells:
 		_spawn_ladder(Vector2i(local_cell.x, local_cell.y + z_offset))
 
@@ -797,6 +801,111 @@ func _spawn_mound(cell: Vector2i) -> void:
 	mound.position = cell_surface(cell) + Vector3(0.0, 0.17, 0.0)
 	_mound_root.add_child(mound)
 	_mounds[cell] = mound
+
+# --- Graves -------------------------------------------------------------------
+#
+# A dormant PACK of zombies: one authored cell that becomes several enemies when
+# somebody walks close enough. Grid-resident and spent-once, exactly like a mound
+# and for the identical reasons -- it is authored terrain, so a client that built
+# the same segments already has every one of them without being told, and a grave
+# that refilled would make authored density a function of how long you loiter
+# rather than of where the designer put it.
+#
+# ONE CELL IS ONE PACK. It is the first content in this game where a cell is worth
+# more than one body, which is why it is stated in three places (here, the `z`
+# glyph, and SegmentBuilder.grave_cells) rather than left to be inferred from the
+# spawn code.
+
+var _graves: Dictionary = {}     # Vector2i -> the node drawn there
+var _grave_root: Node3D = null
+# Which graves have already emptied, so a client that joins mid-run is told in one
+# message rather than left drawing a slab nothing is under.
+var _spent_graves: Array = []    # Vector2i
+
+func _spawn_grave(cell: Vector2i) -> void:
+	# ALREADY EMPTIED. A client told about this grave before it had built the
+	# segment holding it records the cell and nothing else; this is where that
+	# record is honoured. The spent set stays the single source of truth.
+	if _spent_graves.has(cell):
+		return
+	if _grave_root == null:
+		_grave_root = Node3D.new()
+		_grave_root.name = "Graves"
+		add_child(_grave_root)
+	var grave: Node3D = GraveScene.instantiate()
+	grave.name = "Grave_%d_%d" % [cell.x, cell.y]
+	# Sitting ON the deck, half the slab's own thickness proud of it.
+	grave.position = cell_surface(cell) + Vector3(0.0, 0.09, 0.0)
+	_grave_root.add_child(grave)
+	_graves[cell] = grave
+
+func grave_count() -> int:
+	return _graves.size()
+
+func grave_cells() -> Array:
+	return _graves.keys()
+
+# Where a zombie stands once it has finished rising, in the world's space -- the
+# CENTRE of the pack. Where each member actually stands is a ring around this, and
+# that ring is GameWorld's business rather than the grid's: the grid owns where
+# authored things ARE, and the pack's shape is a property of the enemy.
+func grave_surface_world(cell: Vector2i) -> Vector3:
+	return cell_surface_world(cell) + Vector3(0.0, SimConfig.ZOMBIE_HEIGHT * 0.5, 0.0)
+
+# Empty the grave at `cell`: the slab goes and it never comes back. Returns false
+# if there was nothing there, so a caller cannot raise two packs from one grave by
+# asking twice in a frame.
+func take_grave(cell: Vector2i) -> bool:
+	if not _graves.has(cell):
+		return false
+	var grave: Node3D = _graves[cell]
+	_graves.erase(cell)
+	if not _spent_graves.has(cell):
+		_spent_graves.append(cell)
+	if is_instance_valid(grave):
+		grave.queue_free()
+	return true
+
+# A GRAVE IS IMMUNE TO BULLETS AND EMPTIED BY A BLAST, the same rule a mound has
+# and for the same reason: it is flush with the deck, so there is nothing above
+# ground for a round to hit, and a blast reaches down.
+#
+# It matters MORE here than it does for a mound. Pre-empting a rusher with a
+# grenade saves you one enemy; pre-empting a grave saves you three to five, which
+# makes a charge spent on a slab you can see the best trade in the game -- and it
+# is built entirely out of parts that already existed.
+func blast_graves(centre: Vector3, radius: float) -> int:
+	var removed := 0
+	for cell in grave_cells():
+		if grave_surface_world(cell).distance_to(centre) <= radius:
+			if take_grave(cell):
+				removed += 1
+	return removed
+
+# The spent set as flat x,z pairs -- the same shape as spent_mound_layout(), and
+# sent on join rather than per tick because a grave changes state exactly once in
+# its life.
+func spent_grave_layout() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for cell in _spent_graves:
+		out.append(cell.x)
+		out.append(cell.y)
+	return out
+
+# RECORDED EVEN IF THE SEGMENT HOLDING IT IS NOT BUILT YET, which is the merchant's
+# behaviour rather than the mound's. A client can be told about a grave in a
+# segment its streaming window has not reached, and dropping that message would
+# raise the pack a SECOND time when it does reach it. A lump drawn wrongly is
+# cosmetic; five enemies that should not exist is not, so this one takes the
+# stricter of the two patterns already in the file. _spawn_grave reads the set back.
+func apply_spent_graves(layout: PackedInt32Array) -> void:
+	var i := 0
+	while i + 1 < layout.size():
+		var cell := Vector2i(layout[i], layout[i + 1])
+		if not _spent_graves.has(cell):
+			_spent_graves.append(cell)
+		take_grave(cell)
+		i += 2
 
 # --- Elevators (M17 phase 9) --------------------------------------------------
 #

@@ -77,6 +77,10 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		"peer": peer,
 		"steam_id": world.player_steam_id(peer),
 		"name": world.player_name(peer),
+		# The chosen body colour, riding exactly the channel the name rides. The
+		# HUD draws it as an outline so a row can be matched to a body on the
+		# bridge without reading anything.
+		"colour": world.player_colour(peer),
 		"health": int(body.health),
 		"max_health": int(SimConfig.MAX_HEALTH),
 		"state": int(body.state),
@@ -112,6 +116,7 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"peer": other_peer,
 			"steam_id": world.player_steam_id(other_peer),
 			"name": world.player_name(other_peer),
+			"colour": world.player_colour(other_peer),
 			"health": int(other.health),
 			"max_health": int(SimConfig.MAX_HEALTH),
 			"state": int(other.state),

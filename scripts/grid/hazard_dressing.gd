@@ -34,13 +34,13 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 # WHAT A THEME CAN ASK FOR. Named rather than free-form so a typo is a missing
 # key rather than a silently empty budget, and so the set of things a theme can
 # vary is a list somebody can read.
-const KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes", "cover", "specials", "hearts",
-	"crumble", "timed"]
+const KINDS := ["shooters", "turrets", "rushers", "zombies", "plinko", "spikes", "cover", "specials",
+	"hearts", "crumble", "timed"]
 
 # The kinds that can take health off somebody who is not free to move. `cover`,
 # `specials` and `hearts` are deliberately absent: a lift with cover beside it is
 # a BETTER lift, and the whole complaint is that a rider has nothing.
-const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes",
+const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "zombies", "plinko", "spikes",
 	"crumble", "timed"]
 
 # THE FOUR THEMES, from the hazard mixes wanted for M17. They are budgets over
@@ -50,28 +50,67 @@ const DANGEROUS_KINDS := ["shooters", "turrets", "rushers", "plinko", "spikes",
 # `cover` is deliberately high wherever `shooters` is: cover is what makes a
 # shooting gallery a route with decisions rather than a corridor you cross while
 # being shot, and pairing them here is what stops a theme being authored unfair.
+#
+# `zombies` IS COUNTED IN GRAVES, NOT IN BODIES, and it is the only budget in this
+# table where those differ. One grave is three to five zombies, so a 2 here is
+# between six and ten enemies -- roughly what a `rushers` of 8 would be worth, and
+# it is why survival gets 3 and firefight gets none.
 const THEMES := {
 	"firefight": {
-		"shooters": 5, "turrets": 2, "rushers": 1, "plinko": 0,
+		"shooters": 5, "turrets": 2, "rushers": 1, "zombies": 0, "plinko": 0,
 		"spikes": 0, "cover": 10, "specials": 2, "hearts": 1,
 		"crumble": 0, "timed": 0,
 	},
 	"environmental": {
-		"shooters": 0, "turrets": 0, "rushers": 1, "plinko": 0,
+		"shooters": 0, "turrets": 0, "rushers": 1, "zombies": 1, "plinko": 0,
 		"spikes": 14, "cover": 2, "specials": 1, "hearts": 1,
 		# THE GROUND ITSELF IS THE HAZARD HERE, which is what separates this theme
 		# from "firefight with the shooters turned off".
 		"crumble": 5, "timed": 4,
 	},
 	"survival": {
-		"shooters": 1, "turrets": 1, "rushers": 6, "plinko": 4,
+		# ONE GRAVE, AS AN ACCENT, and the rusher budget is back where it was.
+		#
+		# The first version of this took survival's rushers from 6 to 3 to "pay
+		# for" zombies: 3, which was arithmetic on the wrong units. A grave is
+		# three to five BODIES, so measured over 320 generated sections that turned
+		# survival from about eight things on the deck into about fifteen -- not a
+		# rebalance, a different difficulty, arrived at silently. A pack that wants
+		# to be the whole table has a table of its own below.
+		"shooters": 1, "turrets": 1, "rushers": 6, "zombies": 1, "plinko": 4,
 		"spikes": 2, "cover": 5, "specials": 3, "hearts": 2,
 		"crumble": 2, "timed": 0,
 	},
 	"quiet": {
-		"shooters": 1, "turrets": 0, "rushers": 2, "plinko": 0,
+		"shooters": 1, "turrets": 0, "rushers": 2, "zombies": 0, "plinko": 0,
 		"spikes": 3, "cover": 4, "specials": 1, "hearts": 1,
 		"crumble": 1, "timed": 1,
+	},
+	# THE PACK'S OWN TABLE. The fifth theme, and the first one built around a
+	# single enemy rather than around a mix.
+	#
+	# NOTHING THAT SHOOTS. A pack asks the player to choose ground and then hold
+	# it; a shooter asks them to keep moving, and asking for both at once is not a
+	# harder decision, it is no decision -- the player just runs and hopes. This is
+	# the same argument that keeps `zombies` at 0 in firefight.
+	#
+	# COVER IS THE HIGHEST IN THE TABLE, and it is not there to stop bullets --
+	# there are none. A half wall is a StaticBody on layer 1, which makes it a
+	# SIGHT BLOCKER, and a zombie that cannot see anybody has no target and stands
+	# still. So cover is what lets a party break a pack into pieces and fight it a
+	# third at a time, and it is the mechanical form of "ground is the answer".
+	#
+	# ONE RUSHER, deliberately. It is fast and straight where everything else here
+	# is slow and crooked, so it is the thing that punishes tunnel vision -- and it
+	# stops the theme being one enemy played four times.
+	"horde": {
+		"shooters": 0, "turrets": 0, "rushers": 1, "zombies": 4, "plinko": 0,
+		# One spike block, and no more. The ground a party retreats onto should
+		# have a cost, but a hazard whose reach is invisible sitting on the one
+		# square metre the theme is teaching them to stand on is the 2026-08-16
+		# playtest report waiting to happen again.
+		"spikes": 1, "cover": 12, "specials": 3, "hearts": 2,
+		"crumble": 0, "timed": 0,
 	},
 }
 
@@ -79,6 +118,7 @@ const CONTENT_FOR := {
 	"shooters": GridConfig.Content.SKIRMISHER,
 	"turrets": GridConfig.Content.TURRET,
 	"rushers": GridConfig.Content.MOUND,
+	"zombies": GridConfig.Content.GRAVE,
 	"plinko": GridConfig.Content.SHOOTER,
 	"spikes": GridConfig.Content.SPIKES,
 	"hearts": GridConfig.Content.HEART,
@@ -119,6 +159,22 @@ static func theme_for(run_seed: int, index: int) -> String:
 	var stride: int = int(strides[_mix(run_seed + 31) % strides.size()])
 	var base: int = _mix(run_seed) % n
 	return String(names[(base + index * stride) % n])
+
+# The first stride at or after `want` that is coprime with `n`, so a walk of n
+# steps visits all n cells exactly once instead of cycling through n/gcd of them.
+#
+# WALKED UPWARD rather than picked from a built list, because the list would be
+# rebuilt per kind per section and the answer is almost always `want` itself.
+# It always terminates: 1 is coprime with everything, and the walk reaches 1.
+static func _coprime_stride(want: int, n: int) -> int:
+	if n <= 1:
+		return 1
+	var stride: int = want
+	for _i in n:
+		if _coprime(stride, n):
+			return stride
+		stride = 1 + (stride % n)
+	return 1
 
 static func _coprime(a: int, b: int) -> bool:
 	while b != 0:
@@ -166,7 +222,20 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 		# Spread rather than clustered: walking the candidate list at a stride
 		# taken from the seed puts the Nth pick a long way from the (N-1)th
 		# without needing a distance check or a retry loop.
-		var stride: int = 1 + (salt + KINDS.find(kind) * 131) % maxi(1, cells.size())
+		#
+		# AND THE STRIDE MUST BE COPRIME WITH THE LIST, which this did not do until
+		# 2026-08-21 and which quietly cost every theme its budget. A stride
+		# sharing a factor with `cells.size()` walks a SHORT CYCLE and revisits it:
+		# measured over 320 generated sections, 68 of 117 budget shortfalls were
+		# this, worst case a list of 44 cells whose walk reached 2 of them. Spikes
+		# suffered most -- 28 of their 30 shortfalls -- because `environmental`
+		# asks for 14 of them and a cycle of 3 cannot deliver 14 wherever it looks.
+		#
+		# The tell was a section reporting 115 candidate cells and placing ZERO.
+		# `theme_for` twenty lines above gets this exactly right and explains why in
+		# a comment; this loop was written as if a stride were just a number.
+		var stride: int = _coprime_stride(
+			1 + (salt + KINDS.find(kind) * 131) % maxi(1, cells.size()), cells.size())
 		var at: int = (salt / 7 + KINDS.find(kind) * 17) % cells.size()
 		var done := 0
 		for _i in cells.size():
@@ -175,6 +244,28 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 			var cell: Vector2i = cells[at]
 			at = (at + stride) % cells.size()
 			if seg.content_at(cell.x, cell.y) != GridConfig.Content.NONE:
+				continue
+			# A CANDIDATE LIST IS A SNAPSHOT, AND A RULE ABOUT ITS OWN KIND IS STALE
+			# THE MOMENT THE FIRST ONE LANDS.
+			#
+			# `_candidates` runs once per kind, before any of that kind exists, so
+			# every rule in `_wants` is answered against a grid without them in it.
+			# For every kind before graves that was harmless: nothing cared how far
+			# it was from another of itself, and the one-line guard above -- is this
+			# cell still empty -- was the whole of what went stale.
+			#
+			# A grave cares. It is the only content that occupies its NEIGHBOURS,
+			# so two of them one cell apart is two packs rising into each other,
+			# which is the coincident-bodies trap with an extra step. Found by the
+			# assertion in test_hazard_dressing, which reported four occupied ring
+			# cells on a theme asking for four graves -- they were each other.
+			#
+			# Re-asked here for graves ALONE rather than re-running `_wants`
+			# wholesale: `_open_run` looks up-bridge for empty cells, so re-asking
+			# it for every kind would quietly tighten cover and the pickups too, and
+			# a density change to five other kinds does not belong inside a fix for
+			# this one.
+			if _near_grave(seg, cell.x, cell.y):
 				continue
 			seg.contents[cell.y][cell.x] = _content_for(kind, salt + done)
 			placed[kind] = int(placed.get(kind, 0)) + 1
@@ -286,6 +377,24 @@ static func _wants(seg, kind: String, x: int, z: int) -> bool:
 	# version is that a dash is also how you fight.
 	if kind in DANGEROUS_KINDS and _near_merchant(seg, x, z):
 		return false
+	# AND NOTHING AT ALL GOES ON A GRAVE'S RING -- every kind, not just the
+	# dangerous ones, which is what separates this from the two rules above.
+	#
+	# A grave is the only content in this game that occupies its NEIGHBOURS. Three
+	# to five bodies rise on a ring 0.95 m out, reaching 1.4 m from the centre of a
+	# 2.0 m cell, so anything standing in an adjacent cell is something the pack
+	# spawns inside -- and a body ejected by the solver is the coincident-bodies
+	# trap reached sideways.
+	#
+	# THE SHAPE IS THE MERCHANT'S, and so is the reason it lives here rather than
+	# in each branch: written into the branches, the next kind added would not have
+	# remembered. It also depends on graves being placed EARLY in KINDS -- `zombies`
+	# sits fourth, before cover and the pickups, so by the time anything asks this
+	# question the graves are already on the grid. Checked against an empty grid it
+	# would be green and worthless, which is the 2026-08-16 note about a test run on
+	# the wrong object.
+	if _near_grave(seg, x, z):
+		return false
 	match kind:
 		"merchant":
 			# OPEN GROUND WITH CLEARANCE, and NEVER BESIDE A LIFT -- the same
@@ -311,6 +420,22 @@ static func _wants(seg, kind: String, x: int, z: int) -> bool:
 			# OPEN GROUND. A rusher runs in a straight line and only chases what
 			# it can see, so a mound behind cover is a mound that never fires.
 			return _open_run(seg, x, z, 3) and not _near_content(seg, x, z, 1)
+		"zombies":
+			# EVERYTHING A MOUND WANTS, PLUS GROUND ON ALL EIGHT SIDES.
+			#
+			# A grave is one cell that places three to five bodies on a ring 0.95 m
+			# out, so with a 0.45 m radius the pack reaches 1.4 m from the centre
+			# and the cell is 2.0 m across: it spills into its neighbours by
+			# construction. A member over a hole falls the instant it exists, and
+			# what that looks like from the deck is an authored encounter arriving
+			# at half strength with nothing anywhere reporting it.
+			#
+			# The clearance is 2 rather than the mound's 1 for a second reason:
+			# five bodies rising inside another prop is five bodies being ejected
+			# by the solver, which is the coincident-bodies trap reached sideways.
+			return (_open_run(seg, x, z, 3)
+				and not _near_content(seg, x, z, 2)
+				and _solid_around(seg, x, z))
 		"spikes":
 			# A cell somebody has to walk PAST -- so, beside a hole or an edge,
 			# where the route is pinched and stepping around is a decision.
@@ -347,6 +472,29 @@ static func _open_run(seg, x: int, z: int, want: int) -> bool:
 			break
 		run += 1
 	return run >= want
+
+# Is this cell on a grave's ring? One cell of clearance and not two: the number is
+# not a taste, it is where the pack physically stands, so it should track the ring
+# rather than be rounded up for comfort. Two would cost a horde section a quarter
+# of its floor to four graves.
+static func _near_grave(seg, x: int, z: int) -> bool:
+	for dz in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if not seg.in_bounds(x + dx, z + dz):
+				continue
+			if seg.content_at(x + dx, z + dz) == GridConfig.Content.GRAVE:
+				return true
+	return false
+
+# Deck on this cell and on all eight around it. The opposite question to
+# _beside_a_gap, and worth its own name rather than `not _beside_a_gap`: that one
+# looks at four neighbours, and a pack spills diagonally too.
+static func _solid_around(seg, x: int, z: int) -> bool:
+	for dz in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if not seg.is_solid(x + dx, z + dz):
+				return false
+	return true
 
 static func _beside_a_gap(seg, x: int, z: int) -> bool:
 	for dir in 4:

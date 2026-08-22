@@ -28,8 +28,35 @@ height = 1.8
 albedo_color = Color(0.25, 0.6, 0.85, 1)
 roughness = 0.7
 
-[sub_resource type="BoxMesh" id="Nose_1"]
-size = Vector3(0.3, 0.3, 0.5)
+; A BEAK: a triangular prism that comes to a point along -Z.
+;
+; IT OCCUPIES EXACTLY THE BOX THE OLD WEDGE DID -- 0.3 wide, 0.3 tall, 0.5 deep,
+; same origin -- and that is the entire safety argument for the swap. See
+; design_ideas/character_customization.md: from the game's camera the body is a
+; CIRCLE of radius 0.4, so the only part of this that says anything is the part
+; outside that circle, and the tip sits at z = -0.75 for 0.35 m of protrusion.
+; That number is unchanged, so the one measured property of the facing marker is
+; untouched and only the plan-view outline moved.
+;
+; A PRISM AND NOT A CONE, because the two views want different things. From
+; directly above it is a triangle, which is a far crisper "this way" than the
+; square tab it replaces -- and from the side it is still a full-height
+; rectangle, so it keeps the visual mass a cone would have thrown away. A shape
+; that tapers in both axes is pointier and less visible at the same time.
+;
+; The apex is +Y in the mesh's own space, so the node below turns it a quarter
+; turn about X to aim it forward.
+;
+; THOSE NINE NUMBERS ARE ROW-MAJOR, AND GETTING IT BACKWARDS COSTS NOTHING YOU
+; CAN SEE. CLAUDE.md has paid for Godot's row-major Basis twice already, on a
+; bullet tail and on a muzzle offset; this was the third. Written column-major
+; the beak pointed at +Z -- INTO the player -- full width at the front and
+; tapering to a point where it met the body. And the AABB is IDENTICAL either
+; way, 0.3 x 0.3 x 0.5 with the same corner, so every extent assertion in
+; test_nose_shape.gd passed while the marker was backwards. Only the vertex
+; taper check could tell, which is why it is in there.
+[sub_resource type="PrismMesh" id="Nose_1"]
+size = Vector3(0.3, 0.5, 0.3)
 
 ; Brighter than the body so the facing marker reads at camera distance.
 [sub_resource type="StandardMaterial3D" id="NoseMat_1"]
@@ -103,7 +130,7 @@ material_override = SubResource("ShieldMat_1")
 visible = false
 
 [node name="Nose" type="MeshInstance3D" parent="Facing"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.5)
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.35, -0.5)
 mesh = SubResource("Nose_1")
 material_override = SubResource("NoseMat_1")
 
