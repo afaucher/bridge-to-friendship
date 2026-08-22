@@ -136,15 +136,26 @@ func _check_sections() -> void:
 				check(false, "the section generator returned NULL (seed %d, %d)"
 					% [seed_value, index])
 				return
+			# WHAT THIS RE-VALIDATION REALLY GUARDS, because it is not what it
+			# looks like. `section()` validates every attempt and rerolls up to 24
+			# times, then returns a flat fallback -- so any property the validator
+			# checks is true of EVERYTHING this loop can ever see, and a generator
+			# bug shows up as an absence rather than as a bad section. What is left
+			# for this branch to catch is the day somebody removes that filter from
+			# `section()`, which is worth catching and is a different claim from
+			# "generated terrain is crossable". Said in the message, so a reader
+			# does not bank the wrong one. See test_patch_piece's note at the
+			# bottom, and the counters below, which are the assertions with teeth.
 			var problems: Array = SegmentValidator.validate(seg)
 			if problems.size() > 0:
-				check(false, "generated section (seed %d, %d) is invalid: %s"
-					% [seed_value, index, problems[0]])
+				check(false, "section() handed back an INVALID segment (seed %d, %d): "
+					% [seed_value, index]
+					+ "%s -- its own validate-and-reroll has stopped running" % problems[0])
 				return
 			if seg.tags.has("fallback"):
 				fallbacks += 1
 			made += 1
-	check(made == 30, "every generated section validates (%d of them)" % made)
+	check(made == 30, "the sweep really ran (%d sections)" % made)
 	# A fallback is not a failure, but a generator that ALWAYS falls back is one
 	# that never really generates -- so the count is printed and bounded.
 	print("[gen] %d of %d sections fell back to flat" % [fallbacks, made])
@@ -594,7 +605,13 @@ func _check_mazes() -> void:
 		"and they are a minority (%d of %d) -- a maze has no hazard in it, and a "
 			% [mazes, sections]
 		+ "run made of them is a run with no threat")
-	eq(invalid, 0, "every generated maze validates: no marooned pocket, no sealed exit")
+	# THE SAME NARROW CLAIM AS _check_sections: a maze that marooned a pocket or
+	# sealed its exit is REJECTED and rerolled inside section(), so this cannot
+	# count one. It catches the filter going away, and nothing about the carve.
+	# The assertions that can really move are the presence counters either side.
+	eq(invalid, 0,
+		"section() never hands back an invalid maze -- if this fires, its own "
+		+ "validate-and-reroll has stopped running")
 	eq(undressed, 0,
 		"and every one is marked no_dress -- a hazard budget cannot see a corridor, "
 		+ "and the flood cannot see a spike, so a maze with every route spiked "

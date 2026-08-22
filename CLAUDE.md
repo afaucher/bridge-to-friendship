@@ -832,6 +832,34 @@ the moment it is written.
   a whole A/B chasing a failure that did not exist. **Identical timings across
   two runs means you are reading one run twice.** Prefer the invocation's own
   captured stdout.
+- **A FRAME-GATED TEST WHOSE `finish()` SITS OUTSIDE ITS OWN GATE DOES NOT FAIL,
+  IT PASSES EARLY -- and every assertion above it becomes dead code that nothing
+  reports.** Observed 2026-08-22 in `test_shove_up_ramp`, the file written to be
+  the POSITIVE half of the co-op gate. `finish()` and one assertion were indented
+  one tab out of the `if frame == 240:` block that held the other four, so the
+  test ended at frame 21 -- one frame after the shove was applied -- and four of
+  its six assertion sites had NEVER RUN in the file's whole life. There is no
+  error, no missing marker and no slow run to notice: it is a green test in 0.9 s
+  that measured a body 0.3 s into a 4 s manoeuvre. Re-indented, it passes (4.84 m
+  gained of the 1.41 m needed), so the VERB was right the whole time and only the
+  gate on it was missing. Same day, same shape from the other direction:
+  `test_blast_effect`'s stated central claim ("THE SIZE IS THE CLAIM") sat behind
+  `if flash != null` on a frame chosen two frames after `queue_free()` takes the
+  flash away, so a flash sized to anything at all passed. **An `if` around an
+  assertion is a silent skip, and a chosen frame is a guess about somebody else's
+  clock** -- sample every tick and assert the peak.
+- **THE CHEAPEST WAY TO FIND ALL OF THAT: MAKE THE ASSERTION HELPERS LOG WHERE
+  THEY WERE CALLED FROM.** `get_stack()` works in this engine build, so a
+  four-line patch to `test_case.gd` (`print(st[2].source, st[2].line)` from
+  `check`/`eq`/`near`), one whole-suite run, and a diff against every assertion
+  call site parsed out of `scripts/tests/*.gd` answers "which assertions actually
+  executed" as a fact about a RUN rather than a reading of the code. It found
+  three real defects in one pass over 1,441 assertion sites, and it is worth
+  re-running after any milestone that moves test code around. Restore the base
+  class from a COPY afterwards, never with `git checkout --` (see below).
+  The counting rule that keeps it honest: a `check(false, ...)` inside a failure
+  branch is SUPPOSED never to run -- 30 of the 36 unexecuted sites were those.
+  Count them separately or the signal drowns.
 
 ## GDScript traps
 

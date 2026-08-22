@@ -51,10 +51,17 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	worst_segments = maxi(worst_segments, world.grid.segment_count())
+	# NO checkpoint_row HERE. It was in this line until 2026-08-22, three
+	# milestones after M16 deleted the field -- so every 120th frame raised
+	# `Invalid access to property`, which ABORTS THE REST OF THE FUNCTION and
+	# changes neither the exit code nor the pass marker. Frame 720 is a multiple of
+	# 120, so the frame the assertions below were written to land on was the one
+	# frame this line threw away; they ran at 721 instead and the gate was green
+	# through all of it. A dead field reference in a PRINT is not cosmetic.
 	if frames % 120 == 0:
-		print("[spawnfall] t=%.1fs segments=%d rows=%d checkpoint_row=%d" % [
+		print("[spawnfall] t=%.1fs segments=%d rows=%d" % [
 			float(frames) / 60.0, world.grid.segment_count(),
-			world.grid.total_length(), world.checkpoint_row])
+			world.grid.total_length()])
 	if frames < 60 * 12:
 		# Let it fall the whole way and come back on its own. Nothing is forced:
 		# the point is that the ordinary path survives a negative row.

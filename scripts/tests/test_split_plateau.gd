@@ -177,5 +177,12 @@ func _test_the_bridge_divides() -> void:
 		+ "across at a single height, which is what keeps the join contract, the "
 		+ "round bands and the exit-row fixup unaware that a split happened -- a "
 		+ "split still running at the exit row is one the fixup silently levels")
+	# A ZERO THAT GUARDS THE FILTER, NOT THE SPLIT. `section()` returns only a
+	# segment SegmentValidator accepted, so a split that marooned the high half
+	# would come back here as a MISSING split rather than as an uncrossable
+	# section -- which is why `with_split > 0` above is the assertion carrying this
+	# feature. test_patch_piece.gd's closing note has the full reasoning; this one
+	# is kept, and reworded, because it still fires the day the reroll goes away.
 	eq(uncrossable, 0,
-		"and every section still validates for a SOLO player")
+		"section() never hands back a section a solo player cannot cross -- if "
+		+ "this fires, its own validate-and-reroll has stopped running")
