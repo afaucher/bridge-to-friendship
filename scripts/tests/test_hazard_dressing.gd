@@ -35,6 +35,8 @@ func setup(_main) -> void:
 	_check_authored_content_survives()
 	_check_deterministic()
 	_check_placement_rules()
+	_check_a_grave_owns_its_neighbours()
+	_check_the_stride_reaches_everything()
 	finish()
 
 func _fresh():
@@ -50,6 +52,25 @@ func _census(seg) -> Dictionary:
 			if c == GridConfig.Content.NONE:
 				continue
 			out[c] = int(out.get(c, 0)) + 1
+	return out
+
+# WHERE things are, not merely how many. A census is the right instrument for a
+# BUDGET question and the wrong one for a DETERMINISM question, and the two got
+# confused here: two dressings that place four spikes in four different places
+# have identical censuses.
+#
+# It went unnoticed because the stride bug meant two indices usually fell short of
+# their budgets by DIFFERENT amounts, so the counts happened to differ and the
+# assertion happened to pass. Fixing the stride made every index hit its budget
+# exactly -- and the "a different index dresses differently" claim failed against
+# code that was more correct than before. The assertion was reading a symptom.
+func _layout(seg) -> Array:
+	var out: Array = []
+	for z in seg.length:
+		for x in seg.width:
+			var c: int = seg.content_at(x, z)
+			if c != GridConfig.Content.NONE:
+				out.append([x, z, c])
 	return out
 
 # --- 1 and 2. The same ground, two ways --------------------------------------
@@ -123,13 +144,13 @@ func _check_deterministic() -> void:
 	var b = _fresh()
 	HazardDressing.dress(a, "survival", SEED, 4)
 	HazardDressing.dress(b, "survival", SEED, 4)
-	eq(_census(a), _census(b),
-		"the same seed and index dress identically -- which is what lets a client "
-		+ "be told two numbers instead of a world")
+	eq(_layout(a), _layout(b),
+		"the same seed and index dress identically, cell for cell -- which is what "
+		+ "lets a client be told two numbers instead of a world")
 
 	var c = _fresh()
 	HazardDressing.dress(c, "survival", SEED, 5)
-	check(_census(a) != _census(c), "and a different index does not")
+	check(_layout(a) != _layout(c), "and a different index does not")
 
 	# The theme choice is deterministic too, and never repeats back to back:
 	# two firefights in a row read as one long firefight.
@@ -153,3 +174,160 @@ func _check_placement_rules() -> void:
 				continue
 			eq(seg.content_at(x, z), GridConfig.Content.NONE,
 				"and nothing is placed on a RAMP, where nothing settles")
+
+# --- 6. A GRAVE OWNS ITS NEIGHBOURS -------------------------------------------
+#
+# The only content in this game that occupies cells it is not in. Three to five
+# bodies rise on a ring 0.95 m out, reaching 1.4 m from the centre of a 2.0 m
+# cell, so anything standing in an adjacent cell is something the pack spawns
+# INSIDE -- and a body ejected by the solver is the coincident-bodies trap
+# reached sideways.
+#
+# MEASURED ON `horde`, WHICH IS THE ONLY THEME WHERE IT CAN FAIL. It asks for
+# four graves and twelve cover, on one section: the two budgets are competing for
+# the same floor, which is exactly the arrangement `_near_grave` exists for. On a
+# theme with one grave and five cover the rule would be green whether or not it
+# was there -- the 2026-08-16 note about a sweep that survives its own rule being
+# deleted.
+
+func _check_a_grave_owns_its_neighbours() -> void:
+	# NOT `run_pillars`, WHICH IS THIS FILE'S FIXTURE EVERYWHERE ELSE. Measured:
+	# it offers 225 non-ramp solid cells and exactly ZERO grave candidates, because
+	# only 17 of them are two cells clear of a pillar. That is the rule working, not
+	# failing -- but a fixture that can never hold a grave cannot test a rule about
+	# what stands next to one, and the loop below would be a loop over nothing.
+	#
+	# `test_flat` is flat, empty and 79 candidates deep, so the graves and the
+	# twelve cover this theme asks for are really competing for the same floor,
+	# which is the only arrangement in which _near_grave can fail.
+	var seg = SegmentData.from_file("res://segments/test_flat.seg")
+	if not check(seg != null and seg.is_valid(), "the flat fixture parses"):
+		return
+	HazardDressing.dress(seg, "horde", SEED, 7)
+	var graves: Array = []
+	for z in seg.length:
+		for x in seg.width:
+			if seg.content_at(x, z) == GridConfig.Content.GRAVE:
+				graves.append(Vector2i(x, z))
+	# Without this the loop below is a loop over nothing, which passes.
+	check(graves.size() >= 2,
+		"the horde theme really placed graves to check -- %d" % graves.size())
+
+	var crowded := 0
+	for cell in graves:
+		for dz in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				if dx == 0 and dz == 0:
+					continue
+				if not seg.in_bounds(cell.x + dx, cell.y + dz):
+					continue
+				if seg.content_at(cell.x + dx, cell.y + dz) != GridConfig.Content.NONE:
+					crowded += 1
+	eq(crowded, 0,
+		"nothing at all stands on a grave's ring, not even cover -- %d neighbouring "
+			% crowded + "cells are occupied")
+
+	# AND THE HORDE THEME IS REALLY A DIFFERENT TABLE, not survival with a
+	# rename. Nothing that shoots, because a pack asks you to choose ground and
+	# hold it while a shooter asks you to keep moving, and asking for both at once
+	# is no decision at all.
+	var budget: Dictionary = HazardDressing.THEMES["horde"]
+	eq(int(budget.get("shooters", -1)), 0, "horde has no skirmishers")
+	eq(int(budget.get("turrets", -1)), 0, "and no turrets")
+	check(int(budget.get("zombies", 0)) > int(HazardDressing.THEMES["survival"].get("zombies", 0)),
+		"and more graves than any other theme")
+
+	# AND A SECTION WITH NO ROOM GETS NO GRAVES, rather than a pack squeezed in
+	# beside a pillar. run_pillars is that section -- 225 solid cells and not one
+	# of them two cells clear of something -- and it is the other half of the rule:
+	# without this, "nothing stands on a grave's ring" is satisfied just as well by
+	# a pass that never places a grave at all.
+	var dense = _fresh()
+	HazardDressing.dress(dense, "horde", SEED, 7)
+	var in_dense := 0
+	for z in dense.length:
+		for x in dense.width:
+			if dense.content_at(x, z) == GridConfig.Content.GRAVE:
+				in_dense += 1
+	eq(in_dense, 0,
+		"and a section with no clear ground anywhere gets none at all rather than "
+		+ "one wedged against a pillar")
+
+# --- 7. THE STRIDE REACHES THE WHOLE LIST -------------------------------------
+#
+# A budget is a TARGET, and until 2026-08-21 it was a soft ceiling nobody had
+# measured. The placement walk used a stride that could share a factor with the
+# candidate count, so it revisited a short cycle: over 320 generated sections, 68
+# of 117 budget shortfalls were this, worst case a list of 44 cells whose walk
+# reached 2 of them.
+#
+# ASSERTED THROUGH `dress`, NOT ON `_coprime_stride` ALONE. The first version of
+# this checked only the helper, and A/B proved it worthless: disconnecting the
+# helper from the placement loop -- putting the bug back exactly -- left it GREEN,
+# because the function it was asking still existed and was still correct. That is
+# CLAUDE.md's score-screen note in miniature: asserting the input to a layout is
+# not asserting the layout.
+#
+# The reason it was written that way was a real worry -- a placement shortfall has
+# a second explanation, that the section is genuinely too full -- and the fix is to
+# remove the second explanation rather than to stop asking the question. So it runs
+# on a roomy fixture and only asserts budgets for kinds with at least three times
+# the candidates they need.
+
+func _check_the_stride_reaches_everything() -> void:
+	# MANY INDICES, because the stride is drawn from the salt and only SOME salts
+	# share a factor with the candidate count. One index proves nothing either way.
+	var flat_shortfalls := 0
+	var checked := 0
+	for index in range(1, 25):
+		for theme in ["environmental", "firefight", "horde"]:
+			var seg = SegmentData.from_file("res://segments/test_flat.seg")
+			if seg == null or not seg.is_valid():
+				continue
+			var room := {}
+			for kind in HazardDressing.KINDS:
+				room[kind] = HazardDressing._candidates(seg, kind).size()
+			var placed: Dictionary = HazardDressing.dress(seg, theme, SEED, index)
+			for kind in HazardDressing.KINDS:
+				var want: int = int(HazardDressing.THEMES[theme].get(kind, 0))
+				# THREE TIMES THE ROOM IT NEEDS. That is what removes the second
+				# explanation: a kind with this much space to choose from can only
+				# fall short because the WALK failed to reach the space.
+				if want <= 0 or int(room[kind]) < want * 3:
+					continue
+				checked += 1
+				if int(placed.get(kind, 0)) < want:
+					flat_shortfalls += 1
+	check(checked > 100, "the sweep really asked about budgets -- %d of them" % checked)
+	eq(flat_shortfalls, 0,
+		"a budget with three times the room it needs is always met in full -- "
+		+ "%d of %d fell short" % [flat_shortfalls, checked])
+
+	var worst := 0
+	for n in range(1, 200):
+		for want in range(1, n + 1):
+			var stride: int = HazardDressing._coprime_stride(want, n)
+			# The walk visits n / gcd(stride, n) distinct cells. Coprime means all
+			# of them.
+			var a: int = stride
+			var b: int = n
+			while b != 0:
+				var t: int = b
+				b = a % b
+				a = t
+			if a != 1:
+				worst = n
+	eq(worst, 0, "every stride the pass can pick walks the WHOLE candidate list")
+
+	# And it is still a SPREAD rather than a scan. A stride of 1 walks the list in
+	# order, which clusters every pick of a kind into one corner of the section --
+	# the thing the stride exists to avoid. It is the correct answer only when
+	# nothing else is coprime, which for n > 2 is never.
+	var scanning := 0
+	for n in range(8, 200):
+		for want in range(2, n):
+			if HazardDressing._coprime_stride(want, n) == 1 and want != 1:
+				scanning += 1
+	check(scanning < 60,
+		"and hardly ever falls all the way back to walking in order -- %d of the "
+			% scanning + "37000 cases tried")

@@ -79,6 +79,7 @@ Cost tiers reflect what machinery already exists.
 | **rushers** | the first destructible enemy | displacement | medium |
 | **skirmisher** *(built 2026-08-14)* | holds a distance and shoots | displacement + damage | **shipped** |
 | **turret** *(built 2026-08-14)* | bolted down, shoots, ignores a dash | displacement + damage | **shipped** |
+| **zombies** *(built 2026-08-21)* | a PACK, arriving in threes and ones | damage + chance of tumble | **shipped** |
 | **spiders** | patrol, aggro, pathfinding | — | own milestone |
 
 Three notes the table cannot carry:
@@ -185,6 +186,213 @@ rides the per-tick snapshot in world-local coordinates like everything else. Ids
 are **host-assigned and monotonic**, not creation-order indices — a rusher is
 created mid-run by a trigger, so the stone list's "both machines loaded the same
 segments" trick does not apply. This is the same trap written up for hats.
+
+## Zombies -- the first enemy that is a GROUP
+
+**Decided and built 2026-08-21.** `scripts/sim/zombie_body.gd`, raised and judged
+by `GameWorld._process_zombies`, gated by `test_zombie`, `test_zombie_walk` and
+`test_zombie_replication`.
+
+### What it is for
+
+Every enemy before this one is answered by an individual reflex. A rusher runs a
+straight line at one player, so it is answered by **moving sideways**, and that
+answer is identical everywhere on the bridge. A skirmisher is answered by
+**closing**. A turret is answered by **cover**. All three are decisions you make
+about a body.
+
+A pack cannot be answered by moving sideways, because sideways is where the next
+one is. It asks for **ground** instead -- a chokepoint, a pillar at your back, a
+blast spent early on a slab you can see -- which is a decision about the *level*
+rather than about a body. Nothing in the game asked for that before, and it is
+the first hazard that makes the terrain the answer rather than the setting.
+
+### Threes and ones
+
+The walk is the enemy. Every move is a **commitment**: a heading picked once at
+the moment the move begins, then held until a fixed distance has been covered.
+It never re-aims mid-move.
+
+| move | angle off the line to you | distance |
+|---|---|---|
+| a **one** -- a shuffle | 60 degrees | one step (`ZOMBIE_STEP`, 1.4 m) |
+| a **three** -- a lunge | 20 degrees | three of them |
+
+Even odds between them, and a fresh coin for which side it leans. Both angles are
+inside a right angle, so **every move closes the distance** -- it arrives, it just
+never arrives from a direction you could have predicted. At even odds it banks
+about 80% of the ground it walks, against a rusher's 100%.
+
+The two moves are tuned to take about the same *time* (0.64 s and 0.60 s). What
+varies between a one and a three is the ground covered, not the cadence: a lunge
+that also lasted three times as long would read as the same shuffle played slowly,
+and there would be nothing to react to.
+
+**THE COMMITMENT IS THE COUNTERPLAY, and it is where the free answer comes from.**
+Three steps of held heading is four metres of travel that has already been
+decided, so a player who stands with a hole behind them is inviting a lunge to
+finish somewhere there is no deck. That is not a rule anybody wrote -- it falls
+out of the walk, and it is the reason the walk commits rather than steering.
+
+### Contact: the one place it is not a rusher
+
+A rusher **expends itself** on contact, and that rule exists so a single one
+cannot chain-tumble somebody who is already out of control and has no way to
+answer. With five, that rule protects nobody: the pack would land five hits and
+delete itself inside a second.
+
+So a zombie **recoils** instead -- knocked back off you, harmless for
+`ZOMBIE_RECOVER_SECONDS`, and it has to close again. Paired with `HIT_GRACE`
+(0.75 s) that is what makes a pack a *position* problem rather than a
+damage-per-second problem: standing still in the middle of one costs about three
+health, which is the right price for standing still in the middle of one.
+
+And the tumble is a **chance** (`ZOMBIE_TUMBLE_CHANCE`, 0.35) rather than a
+certainty, for the same reason. A rusher always tumbles you because it only ever
+gets to do it once; a hazard that takes your control away *every* time it touches
+you, repeatedly, is one you cannot play out of. Below the roll it is damage and
+nothing else -- `receive_hit` tumbles on any push at all, so "no tumble" has to
+mean no knockback, which reads as being bitten rather than run over.
+
+Otherwise it is a rusher: a dash deflects it and takes nothing, only a weapon ends
+it, and it rots on its own clock (`ZOMBIE_LIFETIME`, 22 s) so a weaponless player
+is never stranded.
+
+### The grave
+
+One authored cell (`z`) is one **pack** of three to five -- the first content in
+this game where a cell is worth more than a body, which is why it is stated in the
+glyph table, in `SegmentBuilder.grave_cells` and in `BridgeGrid` rather than left
+to be inferred. Spent once, like a mound, for the same reason: a grave that
+refilled would make authored density a function of how long you loiter.
+
+It opens on proximity at `ZOMBIE_TRIGGER_RADIUS` (9 m, further than a mound's 6)
+behind the same line-of-sight test, and rises over `ZOMBIE_RISE_SECONDS` (1.4 s,
+longer than a mound's 1.0). Both numbers are larger because a trigger radius is
+really a *reading-time* budget: one rusher needs you to see it, a pack of five
+needs you to see it **and decide where to stand**.
+
+Unlike a mound, the slab **announces itself** -- mossy green, a headstone, an
+object rather than disturbed earth. A rusher's whole warning is allowed to live in
+the rise because a rusher is something you dodge; choosing ground is a decision
+that has to be available *before* the trigger, not during it.
+
+**A blast empties a grave and a bullet does nothing to it**, exactly like a mound:
+it is flush with the deck, so there is nothing above ground for a round to hit,
+and a blast reaches down. That asymmetry is worth much more here -- pre-empting a
+rusher saves you one enemy, pre-empting a grave saves you three to five. A charge
+spent on a slab you can see is now the best trade in the game, and it is assembled
+entirely out of parts that already existed.
+
+### The ring, and the trap it exists for
+
+A pack rises on a ring of `ZOMBIE_PACK_RADIUS` (0.95 m) rather than on a point.
+Two perfectly coincident bodies depenetrate into a degenerate normal that drives
+**both** of them down through the deck -- CLAUDE.md records it measured -- and
+this is the most concentrated instance of that trap the project has: five bodies,
+one cell, one tick.
+
+It has a consequence that reaches back into level design. With a 0.45 m body the
+pack reaches 1.4 m from the centre and a cell is 2.0 m across, so **a grave spills
+into its neighbours by construction**. Both the dressing pass and the validator
+refuse a grave without deck on all eight sides, and `_spawn_pack` skips a slot
+with nothing under it as a backstop. Without those, a member over a hole falls the
+instant it exists and the authored encounter quietly arrives at half strength with
+nothing anywhere reporting it.
+
+### How they reach a generated run
+
+Measured over 320 generated sections, 40 seeds, after the pass below was fixed:
+
+| theme | graves/section | rushers | shooters | cover | ~bodies on the deck |
+|---|---|---|---|---|---|
+| horde | **3.32** | 1 | 0 | 12 | ~14 |
+| survival | 0.81 | 6 | 1 | 5 | ~11 |
+| firefight | 0 | 1 | 5 | 10 | ~8 |
+| environmental | 0.78 | 1 | 0 | 2 | ~4 |
+| quiet | 0 | 2 | 1 | 4 | ~3 |
+
+About **half of all generated sections** now carry at least one grave.
+
+**The first attempt at this budget was arithmetic on the wrong units.** It paid
+for `survival: zombies 3` by cutting that theme's rushers from 6 to 3 -- one for
+one, as if a grave were an enemy. A grave is three to five BODIES, so survival
+went from roughly eight things on the deck to roughly fifteen: not a rebalance, a
+different difficulty, arrived at silently and shipped. Survival now takes one
+grave as an accent with its rusher budget restored, and a pack that wants to be
+the whole table has one of its own.
+
+**`horde` is the fifth theme and the first built around a single enemy.** Nothing
+that shoots, because a pack asks the player to choose ground and hold it while a
+shooter asks them to keep moving -- and asking for both at once is not a harder
+decision, it is no decision. Its cover budget is the highest in the table and is
+not there to stop bullets: a half wall is a StaticBody on layer 1, which makes it
+a **sight blocker**, and a zombie that cannot see anybody has no target and stands
+still. Cover is what lets a party break a pack into pieces and fight it a third at
+a time. One rusher, because it is fast and straight where everything else there is
+slow and crooked, so it punishes tunnel vision.
+
+**A grave is the only content that occupies the cells it is not in.** The pack
+reaches 1.4 m from the centre of a 2.0 m cell, so anything standing next door is
+something the pack spawns inside. `_near_grave` therefore excludes every kind
+-- not just the dangerous ones -- from a grave's eight neighbours, which is the
+merchant's rule pointed the other way.
+
+**And `segments/piece_zombie_choke.seg`** is the composition: a grave in an open
+bay with a three-cell gate in a wall between it and the way you came. The gate is
+BEHIND you, so the decision is whether to give up the metres you spent -- placed
+ahead it would be a race, and a race has one right answer. The bay is deliberately
+empty; a second answer in the middle of it would let a party solve the piece
+without noticing the gate.
+
+#### Two bugs the pack found in the dressing pass
+
+Neither is about zombies. Both are the kind that only surface when something new
+asks a harder question of old code.
+
+**The placement stride was not coprime with the candidate list**, so the walk
+revisited a short cycle instead of the whole thing. Over 320 sections, **68 of 117
+budget shortfalls were this** -- worst case a list of 44 cells whose walk reached
+2 of them. Spikes suffered most, because `environmental` asks for 14 and a cycle
+of 3 cannot deliver 14 wherever it looks. The tell was a section reporting 115
+candidate cells and placing zero. `theme_for`, twenty lines above, gets this
+exactly right and explains why in a comment.
+
+**A candidate list is a snapshot, and a rule about its own kind goes stale the
+moment the first one lands.** `_candidates` runs once per kind, before any of that
+kind exists. Harmless for everything built so far -- nothing cared how far it was
+from another of itself -- and fatal for graves, which is two packs rising into
+each other.
+
+### Engineering shape
+
+- **Its own pool and its own snapshot section**, not a `kind` flag on the rusher's.
+  The gunners share a section because a skirmisher and a turret differ only in
+  which scene to build; a zombie carries a sixth field (`move_kind`), and sharing
+  would pad every rusher entry with a field it does not have for the life of the
+  wire.
+- **Facing is derived, not sent.** Each machine turns the body from its own
+  position history. That is safe *because facing has no consequences* -- nothing
+  reads `rotation`, no hit test uses it, and the collider is a cylinder. Contrast
+  the elevator, which was derived from the tick and *was* load-bearing.
+- **Its own RNG, never the global one.** Salted per zombie id, so a pack rising
+  from one grave in one tick does not draw consecutive values from one stream and
+  perform the same choreography.
+- **`zombies` is budgeted in GRAVES, not bodies** -- the only entry in the theme
+  table where those differ. A `zombies: 2` is six to ten enemies.
+
+### Open questions
+
+- **[open]** Is the lunge-off-the-edge answer discoverable, or does it only work
+  once somebody has been told about it? It is the counterplay the committed
+  heading exists to provide, and if players never find it the pack has no free
+  answer but the dash.
+- **[open]** Does a pack want a *leader* -- one member that never shuffles -- so
+  the group has a shape rather than being five independent drunks? Cheap to try
+  and easy to over-egg.
+- **[open]** `ZOMBIE_MAX` is 16 and `_wake_graves` refuses to open a grave that
+  cannot deliver a full pack, so two graves close together open one at a time.
+  Probably right; has not been played.
 
 ## The two gunners
 

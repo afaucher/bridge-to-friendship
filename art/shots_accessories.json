@@ -1,0 +1,54 @@
+{
+  "_comment": "The accessory line-up. A SEPARATE manifest from shots.json rather than more items in it, for the reason that file's own header gives: it is the artefact behind the art bake-off, and re-running it has to reproduce the same framings. Run: godot --path . --run-shots art/shots_accessories.json (WINDOWED -- --headless disables rendering).",
+
+  "output_dir": "res://tmp/shots/accessories",
+  "size": [900, 900],
+
+  "studio": {
+    "_comment": "THE ANGLES ARE CHOSEN TO MATCH REFERENCE PHOTOGRAPHY, not to flatter the model. Every accessory is rendered from the same five, so a version can be compared against a photograph taken from the equivalent angle AND against the previous version of itself. The subject's own yaw is set so it FACES the camera in each -- a rack judged from behind is a different shape.",
+    "cam_yaw": 0.0,
+    "cam_pitch": -45.0,
+    "ortho_size": 3.6,
+
+    "items": [
+      {"_comment": "THE GAME'S OWN CAMERA. bridge_camera.gd is a fixed 45-degree pitch looking down -Z, so this is the only view that decides whether the thing works in play. Every other shot here is diagnostic; this one is the verdict. The subject faces the camera, which is a player walking TOWARD you.",
+       "name": "moose_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -45.0},
+
+      {"_comment": "TRUE FRONT. The view field guides use for a moose, because spread and the brow shovels are both square-on to it.",
+       "name": "moose_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -6.0},
+
+      {"_comment": "TRUE PROFILE. What separates a moose from an elk fastest: an elk's beam sweeps back over the shoulders and a moose's does not. Any back-sweep shows here and nowhere else.",
+       "name": "moose_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "moose", "cam_yaw": 90.0, "cam_pitch": -6.0},
+
+      {"_comment": "TRUE TOP. Where palmation is unambiguous -- the plate's outline, the bay between brow and main palm, and the fringe of points are all in plan here.",
+       "name": "moose_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -88.0},
+
+      {"name": "moose_three_quarter", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 0.95,
+       "accessory": "moose", "cam_yaw": 35.0, "cam_pitch": -30.0},
+
+      {"_comment": "AND THE ELK FROM THE SAME FIVE ANGLES. Two racks in one picker are only worth having if a player can tell them apart, and the comparison is worthless unless both are shot identically.",
+       "name": "elk_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -45.0},
+      {"name": "elk_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -6.0},
+      {"name": "elk_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "antlers", "cam_yaw": 90.0, "cam_pitch": -6.0},
+      {"name": "elk_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -88.0},
+
+      {"_comment": "The rest of the picker, at the game's angle only -- they are settled, and they are here so a change to the shared machinery cannot break one of them unnoticed.",
+       "name": "acc_none", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.7,
+       "accessory": "none", "ortho_size": 2.6},
+      {"name": "acc_horns", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.8,
+       "accessory": "horns", "ortho_size": 2.6},
+      {"name": "acc_tail", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 0.6,
+       "accessory": "tail", "ortho_size": 2.6, "cam_yaw": 35.0, "cam_pitch": -30.0}
+    ]
+  },
+
+  "scenes": []
+}

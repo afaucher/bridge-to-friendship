@@ -25,6 +25,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 
 # THE LOBBY'S OWN FLOOR, independent of its neighbours. A lobby that merely fits
 # the section either side could come out three cells wide, and that is not a
@@ -332,7 +333,15 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	# a specific piece turns up in a few per cent of sections, so reviewing the
 	# one you just authored means replaying rounds until it happens.
 	var forced: String = DebugSettings.get_choice_name("force_piece")
-	for candidate in SetPieces.for_width(width):
+	# AND THEY COME FROM THIS SECTION'S THEME, not the whole library. Every piece
+	# has carried a theme tag since M18 and nothing read them, so a rusher pit
+	# landed in a `quiet` section as readily as a survival one. The theme is a
+	# pure function of (run_seed, index) and both are in hand, so this asks
+	# HazardDressing rather than taking another argument -- which keeps the
+	# skeleton and the dressing pass agreeing about which theme a section is by
+	# construction rather than by two callers being careful.
+	for candidate in SetPieces.for_theme(width,
+			HazardDressing.theme_for(run_seed, index)):
 		if forced != "off" and String(candidate.name) != "piece_" + forced:
 			continue
 		if SetPieces.is_patch(candidate, width):

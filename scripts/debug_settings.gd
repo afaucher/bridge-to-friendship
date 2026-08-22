@@ -79,6 +79,19 @@ const OPTIONS := {
 		"help": "Percentage of RUSHER_SPEED. Stepped at 25 so it is the four settings asked for -- 100, 75, 50, 25 -- rather than a slider nobody can report a number from. A PERCENTAGE and not a speed, because what a playtest is answering is 'is it too fast', which is a question about the shipped value.",
 	},
 
+	# THE SAME KNOB SHAPE THE RUSHER HAS, and it scales BOTH the shuffle and the
+	# lunge -- one number, so the 1:3 ratio between them is preserved at every
+	# setting. A knob that moved them independently would be a knob that can change
+	# what the enemy IS, and what a playtest needs to answer here is "is a pack too
+	# fast", not "should a three be three".
+	"zombie_speed_pct": {
+		"section": "Hazards",
+		"kind": KIND_FLOAT,
+		"label": "Zombie speed",
+		"default": 100.0, "min": 25.0, "max": 100.0, "step": 25.0,
+		"help": "Percentage of ZOMBIE_SHUFFLE_SPEED and ZOMBIE_LUNGE_SPEED together. Stepped at 25 for the same reason the rusher's is: four reportable settings rather than a slider nobody can quote a number from.",
+	},
+
 	"turret_arc_deg": {
 		"section": "Hazards",
 		"kind": KIND_FLOAT,
@@ -168,7 +181,7 @@ const OPTIONS := {
 		"label": "Force set-piece",
 		"choices": ["off", "crossfire", "ladder_shelf", "crumble_causeway",
 			"spike_gallery", "timed_crossing", "ramp_duel", "plinko_funnel",
-			"rusher_pit", "lookout", "watchpost", "bunker"],
+			"rusher_pit", "lookout", "watchpost", "bunker", "zombie_choke"],
 		"default": 0,
 		"help": "Pins the generator to one set-piece so you can actually find the thing you are trying to judge. Every section that can carry it will. Set it BEFORE starting a run -- segments already built are not rebuilt -- and treat it as a solo tool: it changes what the terrain generator returns, and the bridge being a pure function of (seed, count) is what lets a joining client build the world from two numbers.",
 	},

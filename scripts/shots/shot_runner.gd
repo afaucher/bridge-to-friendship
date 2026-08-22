@@ -25,6 +25,7 @@ const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 # the function.
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 
 # How far a body's ORIGIN sits above the deck it is standing on. A manifest's
 # `at` y is added on top of this, so 0 means "on the ground" and 2.6 means "2.6 m
@@ -142,8 +143,28 @@ func _dress(subject: Node3D, item: Dictionary) -> void:
 		subject.kind = int(item["special_kind"])
 		subject.apply_kind_look()
 
+	# A CHARACTER, THROUGH ITS OWN apply_look. Not by reaching into the node tree:
+	# that function builds the eyes, the nose colour and the accessory together
+	# from one seed, and a shot that assembled them by hand would be rendering
+	# something no player can ever be wearing.
+	#
+	# It also runs BEFORE the tint below on purpose -- apply_look installs a
+	# per-instance body material, so a tint applied first would be thrown away.
+	var dressed_as_character := false
+	if (item.has("accessory") or item.has("character_seed")) and subject.has_method("apply_look"):
+		var body := CharacterStyle.DEFAULT_BODY
+		var chosen: Array = item.get("tint", [])
+		if chosen.size() == 3:
+			body = Color(chosen[0], chosen[1], chosen[2])
+		subject.apply_look(body, int(item.get("character_seed", 1)),
+			str(item.get("accessory", CharacterStyle.ACCESSORY_NONE)))
+		dressed_as_character = true
+
 	var tint: Array = item.get("tint", [])
-	if tint.size() == 3:
+	# NOT `return` ABOVE, so an `attach` on a character still runs. An early exit
+	# here would have made accessory and hat silently exclusive, which is exactly
+	# the kind of "works for the case I tried" that a manifest hides.
+	if tint.size() == 3 and not dressed_as_character:
 		var node := subject.get_node_or_null(str(item.get("tint_node", "Mesh"))) as MeshInstance3D
 		if node != null and node.material_override != null:
 			var mat: StandardMaterial3D = node.material_override.duplicate()

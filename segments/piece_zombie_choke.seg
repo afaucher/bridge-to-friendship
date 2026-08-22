@@ -1,0 +1,62 @@
+# SET-PIECE: the chokepoint.
+#
+# A grave in an open bay, with a three-cell gate in a wall between it and the way
+# you came. That is the whole composition, and it states the pack's question in
+# geometry: a rusher is answered by MOVING, and a pack cannot be, because sideways
+# is where the next one is. A pack is answered by GROUND.
+#
+# THE GATE IS BEHIND YOU, NOT AHEAD. You walk through it, the grave opens three
+# cells later, and the good ground is the ground you have just left -- so the
+# decision is whether to give up the metres you spent. Placed ahead it would be a
+# race rather than a choice, and a race has one right answer.
+#
+# The bay is DELIBERATELY EMPTY. The dressing pass never writes into a piece's
+# rows (`seg.piece_rows`), so nothing will fill it in later, and that is the
+# point: a second answer in the middle of the bay would let the party solve this
+# without ever noticing the gate. A composition that can be ignored is texture.
+#
+# WHY A WALL AND NOT A GAP. `X` is Kind.WALL -- solid, unwalkable, and a sight
+# blocker on layer 1 -- and the sight test is the mechanism this piece is really
+# about. A zombie that cannot see anybody has no target and stands still, so the
+# wall does not merely narrow the frontage, it switches off the half of the pack
+# that has not come round yet. Holes would have narrowed the frontage too and
+# added a way to die to the answer, which is a different lesson.
+#
+# THE GRENADE IS PAST THE GRAVE, and it is the rusher pit's joke told again on
+# purpose: a blast is what EMPTIES a grave, so the tool that would have deleted
+# this encounter is what you get for having survived it. It is a pre-empt for the
+# next one, which is the only way a consumable is ever allowed to matter (2a-i).
+
+name = piece_zombie_choke
+base_height = 0
+width = 21
+length = 7
+piece_exit = 0
+tags = foot, piece, horde
+
+[deck]
+___...............___
+___XXXXXX...XXXXXX___
+___...............___
+___...............___
+___...............___
+___...............___
+___...............___
+
+[height]
+000000000000000000000
+000000000000000000000
+000000000000000000000
+000000000000000000000
+000000000000000000000
+000000000000000000000
+000000000000000000000
+
+[content]
+.....................
+.....................
+.....................
+.....................
+..........z..........
+.....................
+..........g..........

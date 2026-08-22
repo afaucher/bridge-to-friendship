@@ -1,0 +1,56 @@
+[gd_scene load_steps=5 format=3 uid="uid://btfgrave1"]
+
+; A dormant PACK: the authored cell where a group of zombies is waiting.
+;
+; NO COLLISION SHAPE, on purpose and for exactly the two reasons the mound has
+; none. A player has to be able to walk over it -- the trigger is proximity, and a
+; slab you bumped into would be a wall that hurts you. And the pack rises from a
+; ring centred on this spot, so a collider here is several bodies spawning inside
+; another body, which CLAUDE.md records as the thing that drops coincident bodies
+; through the floor.
+
+; A SLAB, WHERE A MOUND IS A LUMP. That is the whole silhouette job: a mound is a
+; tapered cylinder of disturbed earth, so anything that reused that shape would
+; read as "a rusher is here" and the player would prepare for the wrong thing.
+; Flat, square and wide says something is UNDER it rather than in it.
+;
+; It fills its cell (CELL_SIZE 2.0, less a hair so the seams do not z-fight with
+; the deck below), which is both what makes it read as an object rather than a
+; scuff AND what makes ZOMBIE_PACK_RADIUS look right: the ring is 0.95, so every
+; member of the pack claws out of the slab rather than out of bare deck beside it.
+[sub_resource type="BoxMesh" id="Slab_1"]
+size = Vector3(1.96, 0.18, 1.96)
+
+; A HEADSTONE, and it is doing more work than it looks. The slab alone is a flat
+; darker patch, which at the camera distance this game is played at reads as a
+; texture change rather than an object; one thing standing PROUD of the deck is
+; what makes it an object. It is also what keeps the grave legible when the party
+; is looking down-bridge at a shallow angle and the slab is nearly edge-on.
+[sub_resource type="BoxMesh" id="Stone_1"]
+size = Vector3(0.7, 0.85, 0.16)
+
+; MOSSY DARK GREEN-GREY, which is the grave stating in advance what comes out of
+; it. The mound deliberately does NOT do this -- it is the same earth as the deck,
+; because the fairness argument for a rusher puts the whole warning in the RISE.
+;
+; A pack needs its warning EARLIER than that. Five bodies at ZOMBIE_TRIGGER_RADIUS
+; is not a thing you dodge, it is a thing you choose your ground for, and that
+; decision has to be available before the trigger rather than during the rise. So
+; this one is allowed to announce itself, and the green is the announcement.
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.2, 0.26, 0.19, 1)
+roughness = 1.0
+
+[node name="Grave" type="Node3D"]
+
+[node name="Slab" type="MeshInstance3D" parent="."]
+mesh = SubResource("Slab_1")
+material_override = SubResource("Mat_1")
+
+; Set back down-bridge (+Z) so it stands at the near end and does not hide what is
+; rising. -Z is up-bridge, which is the way the party is walking and therefore the
+; way they are looking.
+[node name="Stone" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42, 0.86)
+mesh = SubResource("Stone_1")
+material_override = SubResource("Mat_1")

@@ -27,13 +27,19 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
 const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
+const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 
 func setup(_main) -> void:
-	timeout_seconds = 60.0
+	timeout_seconds = 180.0
 	_check_library()
 	_check_each_piece()
 	_check_a_broken_piece_is_refused()
 	_check_the_library_is_ordered()
+	_check_every_piece_names_a_real_theme()
+	_check_the_theme_lists_agree()
+	_check_for_theme_filters_and_falls_back()
+	_check_generated_sections_stamp_their_own_theme()
 	finish()
 
 func _check_library() -> void:
@@ -154,3 +160,124 @@ func _check_the_library_is_ordered() -> void:
 	for i in first.size():
 		eq(first[i].name, second[i].name,
 			"library entry %d is the same piece on both reads (%s)" % [i, first[i].name])
+
+# --- A PIECE BELONGS TO A THEME ------------------------------------------------
+#
+# Every piece in the library has carried a theme tag since M18 -- `piece,
+# survival`, `piece, firefight` -- and until 2026-08-21 NOTHING READ THEM. The
+# generator drew uniformly from everything that fitted the width, so a rusher pit
+# landed in a `quiet` section as readily as in a survival one and the tags were
+# documentation of an intention the code did not have.
+#
+# They are load-bearing now, which means a typo in one is a piece that silently
+# leaves its theme's pool and falls back into everybody's.
+
+func _check_every_piece_names_a_real_theme() -> void:
+	var themes: Array = HazardDressing.theme_names()
+	for seg in SetPieces.all():
+		var named: Array = []
+		for tag in seg.tags:
+			if themes.has(tag):
+				named.append(tag)
+		# AT MOST ONE, NOT EXACTLY ONE. This asserted `== 1` and failed the moment
+		# M23's three pieces arrived tagged `enemy` -- a category rather than one
+		# of the five themes. The rule that survives contact is that a theme tag
+		# is an OPT-IN: name one and the piece belongs to that theme, name none
+		# and it is universal. Naming TWO is still a mistake, because the piece
+		# would then be claimed by neither in any readable way.
+		check(named.size() <= 1,
+			"%s names at most one theme -- tags %s against themes %s"
+				% [seg.name, seg.tags, themes])
+
+# The two copies of the theme list must agree. SetPieces names them itself rather
+# than importing the dressing pass -- see the comment there -- so this is the
+# thing that stops the two drifting.
+func _check_the_theme_lists_agree() -> void:
+	var themes: Array = HazardDressing.theme_names()
+	themes.sort()
+	var tags: Array = SetPieces.THEME_TAGS.duplicate()
+	tags.sort()
+	eq(tags, themes,
+		"SetPieces.THEME_TAGS names exactly the themes the dressing pass has")
+
+func _check_for_theme_filters_and_falls_back() -> void:
+	var themes: Array = HazardDressing.theme_names()
+	var all_fitting: Array = SetPieces.for_width(GridConfig.DEFAULT_WIDTH)
+	check(all_fitting.size() > 1, "there is more than one piece to filter (%d)"
+		% all_fitting.size())
+
+	for theme in HazardDressing.theme_names():
+		var pool: Array = SetPieces.for_theme(GridConfig.DEFAULT_WIDTH, theme)
+		check(pool.size() > 0, "%s always gets SOMETHING to stamp" % theme)
+		# Either every piece in the pool is tagged for this theme, or the pool IS
+		# the whole library -- the documented fallback, and nothing in between.
+		var claimed := 0
+		for seg in pool:
+			var names_one := false
+			for tag in seg.tags:
+				if themes.has(tag):
+					names_one = true
+			# Belongs here if it named THIS theme, or named none at all.
+			if seg.tags.has(theme) or not names_one:
+				claimed += 1
+		eq(claimed, pool.size(),
+			"%s draws only from pieces that claim it or claim nothing -- %d of %d"
+				% [theme, claimed, pool.size()])
+
+	# AND THE FILTER REALLY NARROWS, which the loop above does not say: a for_theme
+	# that ignored the tag and returned everything would satisfy every line of it
+	# through the fallback clause.
+	var narrowed := 0
+	for theme in HazardDressing.theme_names():
+		if SetPieces.for_theme(GridConfig.DEFAULT_WIDTH, theme).size() < all_fitting.size():
+			narrowed += 1
+	check(narrowed > 0,
+		"and at least one theme really gets a SMALLER pool than the library")
+
+# --- AND THE GENERATOR ACTUALLY USES IT ----------------------------------------
+#
+# The claim above is about a function; this is about the game. CLAUDE.md's note on
+# the score screen is the reason they are separate: asserting the input to a
+# layout is not asserting the layout, and a `for_theme` that works perfectly is
+# worth nothing if `section()` still calls `for_width`.
+#
+# Measured through the one piece whose CONTENT names its theme: only
+# piece_zombie_choke contains a GRAVE, so a grave inside a piece's rows is a
+# horde piece by construction, and it must never appear under another theme.
+
+func _check_generated_sections_stamp_their_own_theme() -> void:
+	var horde_graves := 0
+	var wrong_theme := 0
+	var horde_sections := 0
+	# WIDE ON PURPOSE. A piece is stamped at most once per section and only about
+	# one section in four gets one, so a narrow sweep leaves the wrong-theme count
+	# near zero whether or not the rule is there -- and a count that is zero either
+	# way is not an assertion. Measured with the rule REMOVED this sweep reports a
+	# handful; with it, none.
+	for s in 40:
+		var run_seed: int = 700000 + s * 7919
+		for i in range(1, 9):
+			var seg = SegmentGen.section(GridConfig.DEFAULT_WIDTH, run_seed, i)
+			if seg == null:
+				continue
+			var theme: String = HazardDressing.theme_for(run_seed, i)
+			if theme == "horde":
+				horde_sections += 1
+			for z in seg.piece_rows:
+				for x in seg.width:
+					if seg.content_at(x, int(z)) != GridConfig.Content.GRAVE:
+						continue
+					if theme == "horde":
+						horde_graves += 1
+					else:
+						wrong_theme += 1
+	# The half that can fail if the generator ignores the tag.
+	eq(wrong_theme, 0,
+		"a zombie composition is never stamped into a section of another theme")
+	# The half that stops the line above passing because nothing was ever stamped.
+	check(horde_sections > 0, "the sweep saw horde sections at all (%d)" % horde_sections)
+	check(horde_graves > 0,
+		"and the horde piece really is being stamped -- %d graves across %d horde sections"
+			% [horde_graves, horde_sections])
+	print("[pieces] horde sections %d, grave cells inside horde pieces %d, in other themes %d"
+		% [horde_sections, horde_graves, wrong_theme])
