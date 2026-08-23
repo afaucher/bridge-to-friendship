@@ -46,6 +46,14 @@ const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
 const ShotSound = preload("res://scripts/ui/shot_sound.gd")
 const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
+const NetTelemetry = preload("res://scripts/net/net_telemetry.gd")
+
+# OFF UNLESS A REAL SESSION TURNS IT ON. Set by main.gd when a game actually
+# starts, so the hundred worlds the gate builds never open a file in user:// --
+# a test that quietly writes real user state is one nobody can trust twice, and
+# this project has the rule written down over the saved hat.
+var telemetry_enabled: bool = false
+var _telemetry = null
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
@@ -346,6 +354,11 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	networked = is_networked
 	_build_level()
 	running = true
+	# NETWORKED SESSIONS ONLY, and only when something asked for it. There is
+	# nothing to diagnose in a solo run and nothing to write in a test.
+	if networked and telemetry_enabled:
+		_telemetry = NetTelemetry.new()
+		_telemetry.open_for("host" if is_host else "client")
 	_announce_name()
 	_announce_character()
 
@@ -439,6 +452,13 @@ func _physics_process(_delta: float) -> void:
 		_host_tick()
 	else:
 		_client_tick()
+
+	# AFTER BOTH, AND UNCONDITIONALLY. The row must not be gated by anything the
+	# session can turn off, or a stall in the thing being measured also stops the
+	# measuring -- and a row that keeps arriving with zeroes in it says something
+	# very different from a log that simply stops.
+	if _telemetry != null:
+		_telemetry.step(self)
 	# AFTER THE TICK, AND ON BOTH SIDES. A worn stack leans against the head under
 	# it, so it has to be posed once every body has finished moving -- and it is a
 	# drawing decision with no authority attached, so a client does it for itself
@@ -449,6 +469,7 @@ func _physics_process(_delta: float) -> void:
 	_pose_held_specials()
 	_pose_sidearms()
 	_update_laser_sight()
+	_update_calls()
 	_update_lobby_music()
 	_sync_hitboxes()
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
@@ -934,7 +955,48 @@ func _count_edges() -> void:
 			var moved: float = step.length()
 			if moved < TELEPORT_TICK_DISTANCE:
 				_bump(peer, "distance", int(round(moved * 100.0)))
+				# GROUND GIVEN UP. Up-bridge is -Z, so a positive Z step is
+				# backwards. Inside the same teleport guard on purpose: a checkpoint
+				# return moves a player a long way down-bridge, and counting that as
+				# ground they gave up would hand the badge to whoever died furthest
+				# from a lobby.
+				if step.z > 0.0:
+					_bump(peer, "backwards", int(round(step.z * 100.0)))
 		_last_at[peer] = here
+		if running and not out:
+			_count_climb(peer, here)
+
+# HOW MUCH THIS PLAYER CLIMBED, in the GRID'S frame rather than the world's.
+#
+# The bridge is pitched BRIDGE_PITCH_DEG, so world Y rises for anyone walking
+# forwards and "altitude gained" would quietly be a slower copy of `distance`.
+# Everything under the grid inherits that rotation, so `to_local` divides it back
+# out and what is left is ramps, lifts, ladders and towers -- the things the badge
+# is about. It also keeps working on the day the bridge is untilted.
+#
+# A DEAD BAND, BECAUSE A RESTING BODY IS NOT STILL. `FLOOR_STICK` keeps a small
+# downward push on while grounded and `move_and_slide` answers it, so a player
+# standing on flat deck oscillates by millimetres forever -- accumulated per tick
+# that is a badge for standing around. The baseline only moves when the change is
+# worth counting, so a slow genuine climb still accrues rather than being filtered
+# away one sub-threshold tick at a time.
+const CLIMB_DEAD_BAND := 0.05
+
+func _count_climb(peer: int, at: Vector3) -> void:
+	if grid == null:
+		return
+	var y: float = grid.to_local(at).y
+	if not _last_climb_y.has(peer):
+		_last_climb_y[peer] = y
+		return
+	var rise: float = y - float(_last_climb_y[peer])
+	if absf(rise) < CLIMB_DEAD_BAND:
+		return
+	if rise > 0.0:
+		_bump(peer, "climbed", int(round(rise * 100.0)))
+	_last_climb_y[peer] = y
+
+var _last_climb_y: Dictionary = {}
 
 # --- The run: lookahead, checkpoints, wipes, and the leash --------------------
 
@@ -2897,6 +2959,19 @@ func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 	# through here -- the player's machine gun, the rocket, and both gunners' --
 	# so a source of 0 (the world) is filtered by _bump rather than by a branch.
 	_bump(source, "shots_fired")
+	# SHOTS TAKEN ON THE MOVE, at the same line and for the same reason: every
+	# round a player fires comes through here, so the machine gun, the sidearm and
+	# the rocket are all counted without any of them knowing about it.
+	#
+	# SPEED, NOT A STATE. There is no WALK state to test -- walking is the absence
+	# of the others -- so the predicate is half a walk, which a player shuffling on
+	# the spot to farm the badge cannot reach. Flattened, because falling is not
+	# walking.
+	var shooter_body: Node = players.get(source)
+	if shooter_body != null and is_instance_valid(shooter_body):
+		var pace: float = Vector2(shooter_body.velocity.x, shooter_body.velocity.z).length()
+		if pace >= SimConfig.WALK_SPEED * 0.5:
+			_bump(source, "walking_shots")
 	var scene: PackedScene = RocketScene if as_rocket else BulletScene
 	var bullet: Node3D = scene.instantiate()
 	_next_bullet_id += 1
@@ -2943,6 +3018,31 @@ func _update_lobby_music() -> void:
 	if _music == null:
 		_music = LobbyMusic.spawn(self)
 	_music.want(round_machine.is_lobby())
+
+# A CALL FOR HELP IS HEARD ONCE, ON THE TICK IT STARTS.
+#
+# WATCHED RATHER THAN SIGNALLED, and that is the whole reason it survives a bad
+# connection. `call_timer` rides `capture_state` like every other fact about a
+# player, so a client learns about a call by the same route it learns where
+# somebody is standing -- and a snapshot that goes missing is corrected by the
+# next one. An event RPC would have been a second mechanism whose failure mode is
+# silence, and a cry for help is the one message that must not be the one lost.
+#
+# THE EDGE, not the level: a rising `call_timer` is somebody pressing the key. The
+# cooldown on the body means the timer cannot rise again until the call is well
+# over, so an edge here cannot double-fire on a jittery snapshot.
+var _was_calling: Dictionary = {}
+
+func _update_calls() -> void:
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body == null or not is_instance_valid(body):
+			continue
+		var calling: bool = float(body.call_timer) > 0.0
+		if calling and not bool(_was_calling.get(peer, false)) and view_active:
+			ShotSound.call_for_help(self, body.position)
+		_was_calling[peer] = calling
 
 func _play_shot(at: Vector3, from_enemy: bool) -> void:
 	if not view_active:
@@ -4161,6 +4261,19 @@ func _client_tick() -> void:
 	tick += 1
 	_release_delayed_snapshots()
 
+	# THE ROUND'S CLOCKS, WHICH NOTHING WAS ADVANCING HERE. `round_machine.step()`
+	# is host-only, and rightly -- a client must not decide a transition. But the
+	# COUNTDOWN is not a decision, it is a number on a screen, and a client was
+	# being handed 30.0 on the state change and then showing it unchanged for the
+	# whole window. Reported from play 2026-08-23 as "the lobby closing countdown
+	# doesn't update for remote players".
+	#
+	# The authoritative values still arrive on every state change, so this can only
+	# ever be wrong by the frames since the last one -- which is what
+	# `_on_round_state_changed` predicted in writing and then nothing implemented.
+	if round_machine != null:
+		round_machine.advance_clocks()
+
 	var inp: Array = _gather_local_input(tick)
 	_pending_inputs.append(inp)
 	_send_input()
@@ -4419,10 +4532,34 @@ func _broadcast_snapshot() -> void:
 	var layout: PackedInt32Array = PackedInt32Array()
 	if grid != null and (tick % SimConfig.STONE_RESYNC_TICKS) == 0:
 		layout = grid.stone_layout()
-	_apply_snapshot.rpc(tick, entries, stones, _ball_snapshot(keyframe), layout,
-		_rusher_snapshot(keyframe), _hat_snapshot(keyframe), _special_snapshot(keyframe),
-		_bullet_snapshot(keyframe), _gunner_snapshot(keyframe),
-		_deployable_snapshot(keyframe), _zombie_snapshot(keyframe))
+
+	# NAMED LOCALS RATHER THAN CALLS IN THE ARGUMENT LIST, so the telemetry can
+	# measure each section separately. The point of a per-section size is that when
+	# the total climbs, the column that climbed says which pool -- a total alone
+	# only says that something did.
+	var balls: Array = _ball_snapshot(keyframe)
+	var rushers: Array = _rusher_snapshot(keyframe)
+	var hats: Array = _hat_snapshot(keyframe)
+	var specials: Array = _special_snapshot(keyframe)
+	var bullets: Array = _bullet_snapshot(keyframe)
+	var gunners: Array = _gunner_snapshot(keyframe)
+	var deployables: Array = _deployable_snapshot(keyframe)
+	var zombies: Array = _zombie_snapshot(keyframe)
+
+	if _telemetry != null:
+		_telemetry.note_sent(0)
+		# ONLY ON A SAMPLE TICK. Sizing every section every tick would be an
+		# instrument heavy enough to change what it is measuring.
+		if _telemetry.due_to_size():
+			_telemetry.note_sections({
+				"players": entries, "stones": stones, "layout": layout,
+				"balls": balls, "rushers": rushers, "hats": hats,
+				"specials": specials, "bullets": bullets, "gunners": gunners,
+				"deployables": deployables, "zombies": zombies,
+			})
+
+	_apply_snapshot.rpc(tick, entries, stones, balls, layout,
+		rushers, hats, specials, bullets, gunners, deployables, zombies)
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -4766,6 +4903,13 @@ func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Arr
 		bullets: Array, gunners: Array, deployables: Array, zombies: Array) -> void:
 	if is_host:
 		return
+	# COUNTED WHERE IT ARRIVES, before the delay queue and before anything can
+	# decide not to use it. "Attempted is not delivered" -- a counter on the send
+	# side measures what the host tried to do, which is the number that looks fine
+	# in exactly the case worth investigating.
+	if _telemetry != null:
+		_telemetry.note_received([entries, stones, balls, layout, rushers, hats,
+			specials, bullets, gunners, deployables, zombies])
 	_adopt_server_tick(server_tick)
 	if debug_inbound_delay_ticks > 0:
 		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies])
@@ -4806,7 +4950,26 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 			# extrapolation. Visual interpolation is a later, cosmetic concern;
 			# what matters is that a client never invents a position for someone
 			# else.
-			body.apply_state(e[S_STATE_BLOB])
+			#
+			# HOW FAR THIS MOVED THEM IS THE RUBBER-BAND, measured before the write
+			# because afterwards the evidence is gone. It is the one networking
+			# symptom a client can see WITHOUT knowing the host's truth: a teammate
+			# who teleports is a teammate whose last known position was wrong, and
+			# it is what a player actually reports.
+			#
+			# ADDED BECAUSE THE INSTRUMENT COULD NOT SEE ITS OWN TEST CASE.
+			# `corrections` counts the client's error about ITSELF, which injected
+			# delay does not disturb -- the client replays its own inputs and lands
+			# in the same place. Forty ticks of delay moved that number by 0.00 m,
+			# which is exactly the "probe that could only ever return zero" CLAUDE.md
+			# warns about, caught only because the instrument was validated against
+			# a case it had to report.
+			if _telemetry != null:
+				var was: Vector3 = body.position
+				body.apply_state(e[S_STATE_BLOB])
+				_telemetry.note_remote_jump(was.distance_to(body.position))
+			else:
+				body.apply_state(e[S_STATE_BLOB])
 
 # --- Client: reconciliation ---------------------------------------------------
 

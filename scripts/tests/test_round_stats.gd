@@ -245,3 +245,34 @@ func _test_display_ranks() -> void:
 	]
 	eq(RoundMachine.display_ranks(by_survival), [1, 2],
 		"equal hats but one was left behind is NOT a tie")
+
+	# HEIGHT SEPARATES EQUAL COUNTS (playtest 2026-08-23), and the ORDER and the
+	# NUMBER have to learn it together. `rank_entries` sorting on a key that
+	# `display_ranks` does not compare is a list in a deliberate order with two
+	# joint firsts printed on it -- which is worse than either rule alone, because
+	# it looks like a bug in the sort.
+	var by_height: Array = [
+		{"hats": 3, "hat_height": 550, "made_it": true},
+		{"hats": 3, "hat_height": 105, "made_it": true},
+	]
+	eq(RoundMachine.display_ranks(by_height), [1, 2],
+		"three hats including a trophy is not a tie with three ordinary ones")
+	eq(RoundMachine.display_ranks([
+			{"hats": 2, "hat_height": 70, "made_it": true},
+			{"hats": 2, "hat_height": 70, "made_it": true}]), [1, 1],
+		"but equal counts at equal height still are")
+
+	# ...AND THE SORT AGREES WITH THE NUMBER. Same table through rank_entries: the
+	# taller tower comes first, and COUNT still outranks HEIGHT, because the count
+	# is what the round is about and the height only settles an argument between
+	# two people who did equally well at it.
+	var ordered: Array = RoundMachine.rank_entries([
+		{"peer": 1, "hats": 3, "hat_height": 105, "made_it": true},
+		{"peer": 2, "hats": 3, "hat_height": 550, "made_it": true},
+		{"peer": 3, "hats": 4, "hat_height": 140, "made_it": true},
+	])
+	var order: Array = []
+	for e in ordered:
+		order.append(int(e["peer"]))
+	eq(order, [3, 2, 1],
+		"four short hats beat one trophy, and the trophy beats three short ones")

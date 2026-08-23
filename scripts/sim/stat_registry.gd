@@ -99,6 +99,35 @@ const STATS := {
 	# STORED IN CENTIMETRES for the same reason -- and see _count_edges for the
 	# teleport guard, which is the whole difficulty in this one.
 	"distance": {"label": "Furthest travelled", "best": MOST, "format": "metres"},
+
+	# --- The silly block (playtest 2026-08-23) ---------------------------------
+	#
+	# ASKED FOR AS A GROUP, and the group is the point: every stat above is
+	# something you were trying to do. These are things that merely HAPPENED to
+	# you, and a board with only virtues on it reads like a report card.
+	#
+	# "Most hats lost" was on the list and was already here -- registered in phase
+	# 4 with two live bump sites. Left where it is rather than moved down, since
+	# the order of this dictionary is part of the output.
+
+	# GROUND GIVEN UP, and it is NOT counted in "steps" -- the ask said steps and
+	# this game has no such unit, so it is the down-bridge component of the same
+	# per-tick travel `distance` measures, sharing its teleport guard.
+	"backwards": {"label": "Furthest backwards", "best": MOST, "format": "metres"},
+
+	# ALTITUDE, MEASURED IN THE GRID'S OWN FRAME rather than in world Y, and that
+	# is the whole difficulty. The bridge is pitched BRIDGE_PITCH_DEG, so a player
+	# who only ever walks forwards gains height for free and the badge would go to
+	# whoever travelled furthest -- which `distance` already says. Grid-local Y has
+	# the pitch divided out by construction, so this counts ramps, lifts, ladders
+	# and towers and nothing else. It also survives the bridge being untilted,
+	# which is on the table from the same playtest.
+	"climbed": {"label": "Most altitude gained", "best": MOST, "format": "metres"},
+
+	# SHOTS TAKEN ON THE MOVE. "Walking" is not a state in this game -- it is the
+	# absence of the others -- so the predicate is SPEED, at half a walk. A player
+	# shuffling on the spot to farm it has to actually be going somewhere.
+	"walking_shots": {"label": "Most shots on the move", "best": MOST},
 }
 
 static func keys() -> Array:

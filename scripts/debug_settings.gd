@@ -130,6 +130,22 @@ const OPTIONS := {
 	# what makes the next A/B possible; removing a choice because it lost once is
 	# how a project ends up unable to reproduce its own history. Flipping back is
 	# this one line.
+	#
+	# LEVEL + SNAP WAS TRIED AS THE NEW DEFAULT ON 2026-08-23 AND THE GATE REFUSED
+	# IT, which is the useful part. The 08-23 playtest asked for "aim at a targetable
+	# thing, otherwise horizontal", and level+snap looks like that for free -- two
+	# indices, no code. It is not that, and test_tower_enemy measured exactly where
+	# the difference is: M23's watchpost turret sits 2.47 m above the muzzle at
+	# 7.17 m, the level shot's closest approach is 2.54 m, and AIM_SNAP_RADIUS is
+	# 0.6. The assist is four times too small to reach a tower, so the pair ships the
+	# hazard-with-no-counter this comment warns about two paragraphs up.
+	#
+	# THE DIFFERENCE IS THE WORD "CURSOR". The request was aim there when THE CURSOR
+	# IS ON a targetable thing; `snap` works off the RAY, pulling shots that would
+	# already pass close. Those agree everywhere except the case that matters -- a
+	# target your cursor is on and your level ray is metres under. Building what was
+	# actually asked for is a third mode (point when the cursor rests on something
+	# aimable, level otherwise), not a combination of the two that exist.
 	"aim_mode": {
 		"section": "Aiming",
 		"label": "Aim mode",

@@ -98,7 +98,8 @@ static func markers_for(list: Array, cam: Camera3D, age_seconds: float) -> Array
 		var at: Vector3 = entry.get("at", Vector3.ZERO)
 		var marker: Dictionary = place(
 			cam.unproject_position(at), cam.is_position_behind(at), screen,
-			bool(entry.get("downed", false)), age_seconds)
+			bool(entry.get("downed", false)), age_seconds,
+			bool(entry.get("calling_at", false)))
 		if marker.is_empty():
 			continue
 		marker["peer"] = int(entry.get("peer", 0))
@@ -107,8 +108,13 @@ static func markers_for(list: Array, cam: Camera3D, age_seconds: float) -> Array
 
 # Where one marker goes. Empty means "draw nothing", which is now the answer for
 # ANY friend you can already see -- healthy or not.
+# HOW MUCH BIGGER A CALLING FRIEND'S MARKER IS. Large enough to be the thing you
+# notice in a row of markers, not so large it stops reading as the same object --
+# the marker still has to say WHERE, and a blob has no point.
+const CALL_SCALE := 1.9
+
 static func place(point: Vector2, behind: bool, screen: Vector2, downed: bool,
-		age_seconds: float) -> Dictionary:
+		age_seconds: float, calling: bool = false) -> Dictionary:
 	var centre: Vector2 = screen * 0.5
 
 	# BEHIND THE CAMERA IS THE CASE THAT GOES WRONG ON ITS OWN. unproject_position
@@ -146,19 +152,28 @@ static func place(point: Vector2, behind: bool, screen: Vector2, downed: bool,
 		# assert it. Steady green for a friend who is merely elsewhere; red
 		# alternating to white for one who needs somebody to come.
 		"colour": CrisisFlash.alternate(CrisisFlash.RED, age_seconds) if downed 			else CrisisFlash.FRIEND,
+		# SIZE IS PART OF THE DECISION, like the colour above and for the same
+		# reason: the gate can assert it, and _draw is left with nothing to decide.
+		#
+		# IT FLASHES rather than simply being big. A marker that grew and stayed
+		# grown would be read once and then become the new normal; alternating on
+		# the crisis clock is what makes it keep asking. Same clock the downed
+		# colour uses, so a friend who is both does one thing rather than two.
+		"size": TRIANGLE_SIZE * (CALL_SCALE if calling and CrisisFlash.on(age_seconds) 			else 1.0),
 	}
 
 # --- The drawing --------------------------------------------------------------
 
 func _draw() -> void:
 	for marker in markers_for(entries, camera, age):
-		_triangle(marker["pos"], float(marker["angle"]), marker["colour"])
+		_triangle(marker["pos"], float(marker["angle"]), marker["colour"],
+			float(marker.get("size", TRIANGLE_SIZE)))
 
-func _triangle(at: Vector2, angle: float, colour: Color) -> void:
+func _triangle(at: Vector2, angle: float, colour: Color, size: float) -> void:
 	var points := PackedVector2Array([
-		Vector2(TRIANGLE_SIZE, 0.0),
-		Vector2(-TRIANGLE_SIZE * 0.7, TRIANGLE_SIZE * 0.7),
-		Vector2(-TRIANGLE_SIZE * 0.7, -TRIANGLE_SIZE * 0.7),
+		Vector2(size, 0.0),
+		Vector2(-size * 0.7, size * 0.7),
+		Vector2(-size * 0.7, -size * 0.7),
 	])
 	var turned := PackedVector2Array()
 	for p in points:

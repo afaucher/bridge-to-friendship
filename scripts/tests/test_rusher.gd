@@ -220,7 +220,13 @@ func _phase_line_of_sight() -> void:
 		var rusher: Node = _tracked()
 		var closed: float = float(recorded["clear_gap"]) - rusher.position.distance_to(victim.position)
 		eq(rusher.target_peer, 1, "down a clear lane it has one")
-		check(closed > float(recorded["blocked_closed"]) + 3.0,
+		# A MARGIN OF 2, NOT 3, AND THE 3 WAS ALWAYS A COIN FLIP. The window is 45
+		# ticks and a rusher covers RUSHER_SPEED x 0.75 s in it -- exactly 3.00 m --
+		# so the old threshold was equal to the quantity it was testing and passed
+		# only on whatever the geometry rounded to. The tilt supplied that hair:
+		# flattening the deck on 2026-08-23 made the closing distance exactly 3.00
+		# and the assertion read 3.00 > 3.00.
+		check(closed > float(recorded["blocked_closed"]) + 2.0,
 			"and closes on a player it CAN see (%.2f m vs %.2f m blocked)"
 				% [closed, recorded["blocked_closed"]])
 		_advance(3)

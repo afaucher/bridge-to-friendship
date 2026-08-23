@@ -1,7 +1,8 @@
 extends RigidBody3D
 
 # A plinko ball. Lobbed up the bridge by a shooter, bounces down through the
-# pillar field, and arrives back at the party under the bridge's own pitch.
+# pillar field, and arrives back at the party under SimConfig.PLINKO_DRIFT --
+# which was the bridge's own pitch until the deck was flattened on 2026-08-23.
 #
 # THE ONE RIGID BODY IN THE GAME, and the exception proves the rule. Everything
 # else uses a hand-written integrator because its behaviour is a DESIGNED rule --
@@ -36,6 +37,12 @@ func _ready() -> void:
 	gravity_scale = SimConfig.GRAVITY / 9.8
 	linear_damp = SimConfig.PLINKO_ROLL_DRAG
 	continuous_cd = true          # a fast ball must not tunnel a parapet
+	# DOWN-BRIDGE, FOREVER. Up-bridge is -Z, so this pushes the ball back at the
+	# party -- which is what the four-degree tilt did for every loose object on the
+	# deck until 2026-08-23, and what only a ball ever wanted. A force rather than
+	# an acceleration, so it is scaled by the ball's own mass and a heavier ball
+	# does not drift faster than a light one.
+	constant_force = Vector3(0.0, 0.0, SimConfig.PLINKO_DRIFT * mass)
 
 # Bookkeeping only. The physics server moves the ball; this just ages it.
 func step() -> void:

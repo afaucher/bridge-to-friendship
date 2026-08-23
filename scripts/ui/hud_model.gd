@@ -92,6 +92,9 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		# THE ONE DECISION, taken in PlayerBody and shared with the bar over that
 		# body's head. See status_bar(): kind, fraction and both colours.
 		"status": body.status_bar(),
+		# CALLING FOR HELP. On your own row too, not only on a friend's: pressing
+		# it and seeing nothing happen is how a player concludes the key is broken.
+		"calling": float(body.call_timer) > 0.0,
 		"slots": _slots(world, peer, body),
 	}
 
@@ -125,12 +128,17 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"bleed_out": bleed_out_fraction(other),
 			"rescue": rescue_fraction(other),
 			"status": other.status_bar(),
+			"calling": float(other.call_timer) > 0.0,
 			"distance": to.length(),
 			"bearing": bearing_to(to),
 			# WHERE THEY ACTUALLY ARE. The bearing above is for the text row; a
 			# screen marker has to be projected through the camera, and a compass
 			# point cannot be. See teammate_markers.gd.
 			"at": other.global_position,
+			# ...and again for the offscreen marker, which is built from this list
+			# and is the half of the feature that addresses somebody looking the
+			# other way.
+			"calling_at": float(other.call_timer) > 0.0,
 			# What they are holding, as a short label -- D5's "each friend's name,
 			# health and special". Empty means empty-handed, which is exactly the
 			# thing worth knowing when a rusher is up: who can end it.

@@ -392,6 +392,21 @@ const PLINKO_BOUNCE_MIN_SPEED := 1.5
 # that is ~6.7 m/s -- a shade above a player's 6 m/s walk, so a ball on your tail
 # cannot simply be out-walked in a straight line and has to be dodged sideways,
 # which is the play the design asks for.
+# WHAT THE PITCH USED TO DO, applied to the one object that wanted it.
+#
+# The bridge was tilted four degrees so loose things rolled back at the party, and
+# it was flattened on 2026-08-23 because it did that to EVERYTHING -- see
+# GridConfig.BRIDGE_PITCH_DEG. A ball still has to arrive, so it now carries the
+# component of gravity the slope used to give it: GRAVITY * sin(4 deg), which is
+# 24 * 0.0698. Written as the number rather than the expression because a const
+# cannot call sin(), and written down here so the derivation is not lost.
+#
+# THE POINT IS THAT IT IS NOW A RULE ABOUT BALLS. The old note called it a virtue
+# that the tilt cost "one rotation on the grid root rather than a rule anywhere in
+# the sim" -- and that is exactly why it also moved every dropped gun and every
+# hat. One rule, on the object it is about, is the trade.
+const PLINKO_DRIFT := 1.674
+
 const PLINKO_ROLL_DRAG := 0.25
 
 const PLINKO_FIRE_INTERVAL := 2.5
@@ -1303,6 +1318,23 @@ const ACTION_SWITCH := 1 << 3
 # ACTION_SPECIAL itself level-triggered would have quietly spent the invariant
 # legs still need.
 const ACTION_SPECIAL_HELD := 1 << 4
+
+# CALL FOR HELP. Edge-triggered like the dash, and for the identical reason: a
+# level bit would re-fire on every replayed tick of a reconciliation.
+const ACTION_CALL := 1 << 5
+
+# HOW LONG A CALL LASTS. It has to outlive a glance -- the whole point is a
+# teammate who is looking somewhere else -- and it has to be short enough that two
+# calls in a fight are legibly two. Two and a half seconds is about four flashes
+# of the crisis clock.
+const CALL_SECONDS := 2.5
+
+# AND HOW OFTEN. Asked as an open question when this was specced: nothing about
+# three channels answers how often the button may be pressed. A cooldown measured
+# from the START of a call, so holding the key gives one call per five seconds
+# rather than a solid tone -- and so that the answer to "why is my friend
+# screaming" is never "because they are leaning on Q".
+const CALL_COOLDOWN := 5.0
 
 # --- Networking ---------------------------------------------------------------
 # How far the client's prediction may drift from the host's authoritative frame

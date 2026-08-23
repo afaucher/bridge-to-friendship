@@ -95,7 +95,13 @@ func _physics_process(_delta: float) -> void:
 		return
 	if frames < SETTLE_TICKS:
 		return
-	if frames <= SETTLE_TICKS + SAMPLE_TICKS:
+	# STRICTLY LESS THAN, so the measurement lands exactly SAMPLE_TICKS after the
+	# mark. It was <=, which sampled SAMPLE_TICKS + 1 ticks of travel and divided
+	# by SAMPLE_TICKS -- an 0.83% overshoot that only became visible when the
+	# bridge was flattened on 2026-08-23 and the up-bridge speed became exactly
+	# WALK_SPEED. It reported 6.05 m/s against a ceiling of 6.00, which is 121/120
+	# to the decimal, and the ceiling assertion is what caught it.
+	if frames < SETTLE_TICKS + SAMPLE_TICKS:
 		wander += absf(body.velocity.x) * SimConfig.TICK_DELTA
 		return
 

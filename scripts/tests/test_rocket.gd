@@ -110,6 +110,21 @@ func _phase_flies_flat() -> void:
 # --- 2. It explodes, and the blast is the point -------------------------------
 
 func _phase_explodes_on_contact() -> void:
+	# THE AIM MODE IS PINNED, NOT INHERITED, and this phase used to inherit it.
+	#
+	# It fired forward and trusted the world to put the target in the way, which
+	# it did only because the deck was TILTED: a level shot from row 3 arrived
+	# 0.7 m above the deck at row 8, which is where a rusher's head was. Flattened
+	# on 2026-08-23, the same shot passes over that head by eight centimetres and
+	# flies on until its lifetime expires -- measured, rocket y 0.98 against a
+	# rusher top of 0.90 -- so NOTHING detonated and three assertions failed at
+	# once while describing the blast.
+	#
+	# That is the precision the 2026-08-23 playtest knowingly gave up: on a flat
+	# deck a level shot never meets the ground. So the modes are now pinned and
+	# asserted separately, which is what a knob with two settings is for -- and it
+	# means the next change of default cannot silently rewrite what this file
+	# claims.
 	if phase_frame == 1:
 		_park(Vector2i(15, 3), 0.0)
 		_arm(SpecialBody.Kind.ROCKET)
@@ -119,19 +134,58 @@ func _phase_explodes_on_contact() -> void:
 		# large round.
 		recorded["target"] = _spawn_rusher(Vector2i(15, 8))
 		recorded["bystander"] = _spawn_rusher(Vector2i(16, 8))
+		return
+	# RISEN FIRST. A rusher spends RUSHER_RISE_SECONDS emerging and cannot be hurt
+	# while it does -- that is the telegraph. The old fixture fired on tick one and
+	# was measuring a half-buried enemy, which the tilt happened to make hittable.
+	if phase_frame < 90:
+		return
+
+	# --- point: aim AT the thing, and it goes there ---------------------------
+	if phase_frame == 90:
+		DebugSettings.set_value("aim_mode", 1)          # point
+		var target: Node = _rusher_by_id(int(recorded["target"]))
+		if target != null:
+			shooter.aim_point = target.global_position
 		recorded["before"] = world._rushers.size()
 		firing = true
 		return
-	if phase_frame == 3:
+	if phase_frame == 93:
 		firing = false
 		return
-	if phase_frame == 60:
+	if phase_frame == 150:
 		check(world._rushers.size() < int(recorded["before"]),
-			"a rocket kills what it hits (%d -> %d)"
+			"under POINT aim a rocket kills what it is aimed at (%d -> %d)"
 				% [recorded["before"], world._rushers.size()])
 		check(_gone(int(recorded["bystander"])),
 			"AND the one standing beside it -- a blast, not a bullet")
 		eq(world._bullets.size(), 0, "and the rocket is spent on impact")
+		return
+
+	# --- level: it leaves flat, and over open deck it meets nothing -----------
+	#
+	# THE OTHER HALF, and it is a real claim rather than a control: this is the
+	# behaviour the playtest chose when it asked for horizontal shots, and it is
+	# what makes "don't shoot at the ground" true. A rocket that quietly started
+	# hitting the deck again would mean the deck had regained a slope.
+	if phase_frame == 160:
+		DebugSettings.set_value("aim_mode", 0)          # level
+		shooter.aim_point = Vector3.INF
+		_park(Vector2i(15, 3), 0.0)
+		_arm(SpecialBody.Kind.ROCKET)
+		firing = true
+		return
+	if phase_frame == 163:
+		firing = false
+		return
+	if phase_frame == 200:
+		check(world._bullets.size() > 0,
+			"under LEVEL aim a rocket fired down an empty lane is still flying "
+			+ "(%d in the air) -- it leaves flat and the flat deck never rises to "
+				% world._bullets.size()
+			+ "meet it, which is the precision given up when the bridge was "
+			+ "untilted")
+		DebugSettings.set_value("aim_mode", 1)
 		_advance(2)
 
 # --- 3. One at a time, and then gone ------------------------------------------
@@ -180,6 +234,12 @@ func _spawn_rusher(cell: Vector2i) -> int:
 	var at: Vector3 = world.grid.cell_surface_world(cell) + Vector3(0.0, 1.0, 0.0)
 	var r: Node = world._spawn_rusher(at)
 	return int(r.rusher_id)
+
+func _rusher_by_id(id: int) -> Node:
+	for r in world._rushers:
+		if is_instance_valid(r) and int(r.rusher_id) == id:
+			return r
+	return null
 
 func _gone(id: int) -> bool:
 	for r in world._rushers:

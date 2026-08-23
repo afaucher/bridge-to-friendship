@@ -20,6 +20,16 @@ extends AudioStreamPlayer
 # resumes eleven seconds in, mid-phrase, sounds like a mistake, and this is a
 # fifty-second loop that will be heard from the start many times in a run.
 
+# MONO, AND IT WAS NOT WHEN IT ARRIVED. The take was marked stereo and measured as
+# one signal: correlation 0.94 between the channels, with LEFT being RIGHT at
+# -10.3 dB. So the file was collapsed to the right channel alone rather than
+# averaged -- which is what Godot's `force/mono` would have done, and averaging a
+# decorrelated quiet copy back in is comb filtering, not a downmix. Halved the
+# source, 8.95 MB to 4.48.
+#
+# It is also QUIET: peak -12.6 dBFS, RMS -36.5. That is a level decision rather
+# than a format one and is deliberately left alone here -- see FULL_DB below, which
+# then plays it 10 dB further down again.
 const STREAM := preload("res://sounds/hold_music.wav")
 
 # UNDER THE GAME. Music that competes with a gunshot loses the gunshot, and the

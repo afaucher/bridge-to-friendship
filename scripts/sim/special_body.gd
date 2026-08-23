@@ -87,7 +87,7 @@ func charge_fraction() -> float:
 func _ready() -> void:
 	gravity_scale = SimConfig.GRAVITY / 9.8
 	continuous_cd = true
-	# A DROPPED WEAPON MUST NOT ROLL. The deck is pitched 4 degrees by design, and
+	# A DROPPED WEAPON MUST NOT ROLL. The deck WAS pitched 4 degrees by design, and
 	# a body that keeps rolling never drops below SPECIAL_SETTLE_SPEED, so it never
 	# becomes LOOSE and is never collectable -- a gun that runs away down the
 	# bridge. Cost hat_body.gd a test to find; inherited here rather than

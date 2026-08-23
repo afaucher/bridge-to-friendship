@@ -379,6 +379,7 @@ func _update_own(own: Dictionary) -> void:
 	# through a pillar field does not empty your health. The pips used to carry it;
 	# washing the bar toward the same warm yellow keeps "that hit did not count"
 	# legible now that there is nothing else on screen to carry it.
+	_set_call_flash(_own_status, bool(own.get("calling", false)), BAR_SIZE)
 	_set_status_bar(_own_status, own.get("status", {}),
 		float(own.get("grace", 0.0)))
 
@@ -507,6 +508,7 @@ func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	# NO GRACE TINT FOR A FRIEND: the model does not publish theirs, and it should
 	# not. A 0.75 s window on somebody else's body is not something you can act on,
 	# and it exists to explain YOUR hits.
+	_set_call_flash(nodes["bar"], bool(entry.get("calling", false)), FRIEND_BAR_SIZE)
 	_set_status_bar(nodes["bar"], entry.get("status", {}))
 
 # --- Small builders -----------------------------------------------------------
@@ -621,6 +623,26 @@ func _bar_fill(bar: ColorRect) -> ColorRect:
 #
 # `grace` washes the bar toward the warm yellow for the invulnerable window after
 # a hit. Zero for anybody but yourself.
+# HOW MUCH TALLER A CALLING PLAYER'S BAR GETS. Height rather than width, because
+# the width is the READING -- how much health, how much countdown -- and a bar
+# that got longer would be saying something false about the number in it.
+const CALL_BAR_SCALE := 2.0
+
+# A CALL FLASHES THE BAR BIGGER, on the crisis clock.
+#
+# THE SAME CLOCK AS EVERYTHING ELSE THAT ASKS FOR ATTENTION -- the downed colour,
+# the offscreen marker -- so a player in trouble does ONE thing at whatever
+# frequency, rather than several things at several. A steady enlargement would be
+# read once and become the new normal.
+#
+# ON YOUR OWN BAR TOO. Pressing a key and seeing nothing happen is how a player
+# concludes it is broken, and the confirmation costs nothing: you already know you
+# are calling, so nothing is being told to you that you did not just do.
+func _set_call_flash(bar: ColorRect, calling: bool, base: Vector2) -> void:
+	var tall: bool = calling and CrisisFlash.on(CrisisFlash.now())
+	bar.custom_minimum_size = Vector2(base.x, base.y * (CALL_BAR_SCALE if tall else 1.0))
+	_bar_fill(bar).size.y = bar.custom_minimum_size.y
+
 func _set_status_bar(bar: ColorRect, status: Dictionary, grace: float = 0.0) -> void:
 	if bar == null:
 		return

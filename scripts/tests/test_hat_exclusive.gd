@@ -102,7 +102,60 @@ func _phase_dead_heat() -> void:
 		# and without a stated tie-break it is decided by dictionary order.
 		_stage(Vector3(0.5, 0.0, 0.0), Vector3(-0.5, 0.0, 0.0))
 		return
-	if phase_frame == 10:
+	# SETTLED FIRST, THEN MADE SYMMETRIC, and the order matters.
+	#
+	# The stage drops both bodies from 0.7 m and the hat from 0.3, and the pickup
+	# resolves while all three are still falling -- so "exactly symmetric" was only
+	# true on the frame it was written and the bodies had drifted 10 cm toward each
+	# other by the time anything read them. It passed anyway until 2026-08-23
+	# because the tilted deck made one of them incidentally nearer, which is the
+	# opposite of a stated tie-break: the assertion was reading a coincidence.
+	#
+	# Flattening the deck removed the coincidence and the phase started failing
+	# while measuring, at the moment of the pickup, a 30 cm difference it had
+	# called a dead heat.
+	if phase_frame == 30:
+		# EVERYTHING PLACED AT REST, not dropped. The stage above lobs the hat and
+		# both bodies from a height, and the pickup resolves while all three are
+		# still falling -- so "exactly symmetric" was true only on the frame it was
+		# written, and by the time anything read it the two had drifted 10 cm
+		# toward each other and the hat was already on somebody's head.
+		#
+		# It passed until 2026-08-23 anyway, because the tilted deck made one of
+		# them incidentally nearer -- which is the opposite of a stated tie-break:
+		# the assertion was reading a coincidence and calling it a rule. Flattening
+		# the deck removed the coincidence and the phase started failing while
+		# measuring a 30 cm gap it had called a dead heat.
+		world._hats.clear()
+		var deck: Vector3 = world.grid.cell_surface_world(Vector2i(25, 9))
+		var hat: Node = world._hats.spawn_loose(deck)
+		recorded["hat"] = hat
+		# Collectable NOW: a hat that has to settle first is a hat the fixture has
+		# to wait for, and waiting is what broke this.
+		hat.position = deck
+		hat.linear_velocity = Vector3.ZERO
+		hat.mode = HatBody.Mode.LOOSE
+		hat.settle_grace = 0.0
+		for body in [a, b]:
+			body.velocity = Vector3.ZERO
+			body.state = PlayerBody.State.WALK
+			body.grounded = true
+		a.position = deck + Vector3(0.5, PlayerBody.HALF_HEIGHT, 0.0)
+		b.position = deck + Vector3(-0.5, PlayerBody.HALF_HEIGHT, 0.0)
+		# MEASURED HERE, NOT NEXT FRAME. The pickup resolves on the very next tick
+		# and moves the hat onto the winner's head, so a distance read afterwards
+		# says 0.9 for whoever won and nothing at all about the contest -- which is
+		# how the previous version of this check came to compare a hat against the
+		# skull it was sitting on.
+		recorded["da"] = a.position.distance_to(deck)
+		recorded["db"] = b.position.distance_to(deck)
+		return
+	if phase_frame == 31:
+		var da: float = float(recorded["da"])
+		var db: float = float(recorded["db"])
+		near(da, db, 0.001,
+			"the fixture really is a dead heat (%.4f vs %.4f) -- a tie-break tested "
+				% [da, db] + "on unequal distances is testing the distances")
 		var total: int = world.hats_worn_by(1).size() + world.hats_worn_by(2).size()
 		eq(total, 1, "a dead heat still produces exactly one winner")
 		eq(world.hats_worn_by(1).size(), 1,

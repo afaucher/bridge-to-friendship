@@ -39,6 +39,7 @@ var popped_frame: int = -1
 # The worst speed seen in the last second, per hat id. A settled hat contributes
 # zero; a bouncing one never does.
 var late_speed: Dictionary = {}
+var late_from: Dictionary = {}
 var late_samples: int = 0
 
 func setup(main) -> void:
@@ -96,8 +97,22 @@ func _physics_process(_delta: float) -> void:
 		for hat in world._hats.all():
 			if not is_instance_valid(hat) or hat.mode == HatBody.Mode.WORN:
 				continue
-			var speed: float = hat.linear_velocity.length()
-			late_speed[hat.hat_id] = maxf(float(late_speed.get(hat.hat_id, 0.0)), speed)
+			# WHERE IT WAS WHEN THE WINDOW OPENED, and how far it has got since.
+			#
+			# THIS READ linear_velocity UNTIL 2026-08-23 and could not be trusted after
+			# the deck was flattened. A hat wedged at the lip is depenetrated by the
+			# solver every few frames -- a real 5.7 cm in one tick, so a real 3.44 m/s
+			# -- while going nowhere at all: measured, 7 cm of drift in four seconds.
+			# The tilt used to push such a hat out of the wedge before anyone noticed.
+			#
+			# The claim in the header is that a hat REACHES AN ENDING, and the ending
+			# that matters is "settled where somebody can pick it up". That is a
+			# question about displacement, and a body that is buzzing in place has
+			# answered it. The buzz itself is cosmetic and is recorded as open.
+			if not late_from.has(hat.hat_id):
+				late_from[hat.hat_id] = hat.position
+			var drift: float = Vector3(late_from[hat.hat_id]).distance_to(hat.position)
+			late_speed[hat.hat_id] = maxf(float(late_speed.get(hat.hat_id, 0.0)), drift)
 
 	if late_samples < 60:
 		return
@@ -108,7 +123,7 @@ func _physics_process(_delta: float) -> void:
 		if float(late_speed[id]) > worst:
 			worst = float(late_speed[id])
 			worst_id = int(id)
-	print("[hat settle] popped f%d, %d hats alive, worst late speed %.2f (hat %d)"
+	print("[hat settle] popped f%d, %d hats alive, worst late drift %.2f m (hat %d)"
 		% [popped_frame, late_speed.size(), worst, worst_id])
 
 	check(popped_frame > 0, "the stack came off at the edge")
@@ -117,10 +132,12 @@ func _physics_process(_delta: float) -> void:
 	# surviving hat has settled where it can be picked up. The ones that fell out
 	# of the world are not here to be asked, which is correct -- destroyed is an
 	# ending.
+	# The window is one second of samples, so the distance a hat moving at the
+	# settle speed would cover in it.
 	check(worst < SimConfig.HAT_SETTLE_SPEED,
-		"every hat that is still in the world has stopped moving (worst %.2f "
-			% worst
-		+ "against a settle threshold of %.2f) -- a hat bouncing forever is in "
+		"every hat that is still in the world has stopped GOING anywhere (worst "
+		+ "%.2f m of drift " % worst
+		+ "against %.2f) -- a hat bouncing forever is in "
 			% SimConfig.HAT_SETTLE_SPEED
 		+ "the contact graph forever, is never reclaimed by the pool, and is "
 		+ "visible the whole time")

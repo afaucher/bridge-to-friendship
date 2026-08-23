@@ -22,17 +22,35 @@ const CELL_SIZE := 2.0
 const HEIGHT_UNIT := 1.0
 const MAX_HEIGHT_DIGIT := 15
 
-# THE WHOLE BRIDGE IS TILTED, so that "up the bridge" is genuinely uphill.
+# THE BRIDGE IS FLAT, AS OF 2026-08-23, AND WAS TILTED FOUR DEGREES BEFORE THAT.
 #
-# This is what makes plinko work. A shooter drops spheres and they must come
-# DOWN the bridge at the players under their own weight -- not because something
-# pushes them, and not on a scripted path. A constant pitch gives every loose
-# object on the bridge a reason to roll toward the party, and it costs one
-# rotation on the grid root rather than a rule anywhere in the sim.
+# The tilt existed for exactly one thing, and its old note said so: "This is what
+# makes plinko work. A shooter drops spheres and they must come DOWN the bridge at
+# the players under their own weight -- not because something pushes them, and not
+# on a scripted path. A constant pitch gives every loose object on the bridge a
+# reason to roll toward the party, and it costs one rotation on the grid root
+# rather than a rule anywhere in the sim."
 #
-# Well under MAX_WALK_ANGLE_DEG: it must be free to walk up, so it reads as
-# atmosphere rather than as a slope you fight.
-const BRIDGE_PITCH_DEG := 4.0
+# EVERY LOOSE OBJECT was the problem. That sentence is a feature for a ball and a
+# bug for everything else, and two systems had already grown workarounds for it:
+# a dropped weapon that rolls never settles, so it never becomes collectable and
+# runs away down the bridge (special_body.gd); and a hat that lands on its side
+# rolls, so its rotation is locked (hat_body.gd). The pitch was doing one job it
+# was asked for and two nobody wanted.
+#
+# It was also a quiet tax on every height comparison in the project. Grid-local Y
+# and world Y disagreed by the pitch, which is what broke the ladder face (see
+# CLAUDE.md) and what "most altitude gained" would have measured if that stat had
+# used world space.
+#
+# So the ball gets an explicit force instead -- SimConfig.PLINKO_DRIFT, applied to
+# the one object that wanted it -- and "horizontal" becomes a stable definition,
+# which is what the 2026-08-23 playtest asked for.
+#
+# KEPT AS A CONSTANT RATHER THAN DELETED. It is one rotation on the grid root, so
+# putting the tilt back is this line; and a pitched bridge may well be what a bus
+# route or a ship corridor wants (see M25).
+const BRIDGE_PITCH_DEG := 0.0
 
 # Width is a property of the BRIDGE, not a global: a .seg declares its own, and
 # every cell<->world conversion below takes it as an argument. This exists only

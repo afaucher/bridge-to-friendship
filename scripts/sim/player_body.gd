@@ -124,6 +124,19 @@ var carry_speed: float = 1.0
 # a meter that only moves when a snapshot happens to land reads as broken.
 var pistol_heat: float = 0.0
 var pistol_timer: float = 0.0
+
+# CALLING FOR HELP. Counts down while the call is up; the HUD, the offscreen
+# markers and the sound all read it, and it is the only thing this feature adds to
+# the simulation.
+#
+# ON THE BODY RATHER THAN IN AN RPC, which is what makes it replicate for free: it
+# rides `capture_state` like everything else about a player, so a remote client
+# knows a teammate is calling by the same route it knows where they are standing.
+# An event RPC would have been a second mechanism, and one that a dropped packet
+# silently loses -- a cry for help is exactly the message that must not be the one
+# that goes missing.
+var call_timer: float = 0.0
+var call_cooldown: float = 0.0
 var dash_charges: int = SimConfig.DASH_CHARGES
 var dash_refill: float = 0.0
 
@@ -290,6 +303,17 @@ func step(move: Vector2, actions: int, aim: float = INF,
 	_tick_dash_charges()
 
 	invulnerable = maxf(0.0, invulnerable - SimConfig.TICK_DELTA)
+	call_timer = maxf(0.0, call_timer - SimConfig.TICK_DELTA)
+	call_cooldown = maxf(0.0, call_cooldown - SimConfig.TICK_DELTA)
+
+	# ANSWERED IN EVERY STATE, deliberately. The moments worth calling from are the
+	# ones where you have no other verb -- hanging off a ledge, downed, tumbling
+	# across a gap -- so a call gated on WALK would be a call you cannot make when
+	# you need it. It changes nothing about movement, so there is nothing for a
+	# state to disagree with.
+	if (actions & SimConfig.ACTION_CALL) != 0 and call_cooldown <= 0.0:
+		call_timer = SimConfig.CALL_SECONDS
+		call_cooldown = SimConfig.CALL_COOLDOWN
 
 	# Tracked for EVERY state, not just walking. Being tumbled while holding the
 	# button and coming back up still holding it must not launch you: the edge is
@@ -308,7 +332,18 @@ func step(move: Vector2, actions: int, aim: float = INF,
 		State.CLIMB:
 			_step_climb(move)
 		State.DOWNED:
-			pass          # immobile; the world runs the countdown and the rescue
+			# IMMOBILE, and still asking. DOWNED_SECONDS is fifteen and a call lasts
+			# two and a half, so without this a downed player is loud for a sixth of
+			# their bleed-out and silent for the rest of it -- and the rest of it is
+			# the part where somebody is deciding whether to come.
+			#
+			# Re-issued on the ordinary cooldown rather than held on: three cries
+			# over a bleed-out, which reads as somebody calling, where a continuous
+			# one reads as an alarm nobody can locate. The bar and the marker keep
+			# flashing on the crisis clock throughout either way.
+			if call_cooldown <= 0.0:
+				call_timer = SimConfig.CALL_SECONDS
+				call_cooldown = SimConfig.CALL_COOLDOWN
 		_:
 			_step_inert()
 
@@ -1446,6 +1481,17 @@ func begin_downed() -> void:
 	# LEDGE_HANG -- and DOWNED is almost always reached through a tumble that has
 	# already taken them. Changing that is a separate decision from this one.
 	_drop_special()
+	# AND IT CALLS FOR HELP BY ITSELF. Asked for 2026-08-23, right after the manual
+	# call shipped, and it is the obvious half: the state where you most need
+	# somebody is also the state where you are least likely to be composed enough
+	# to press a key for it -- you have just been tumbled off something.
+	#
+	# THE COOLDOWN IS CLEARED RATHER THAN CONSULTED, which is the whole point of
+	# "at least once". A player who called two seconds before going down would
+	# otherwise be the one player whose collapse is silent, and that is exactly
+	# backwards.
+	call_cooldown = 0.0
+	call_timer = SimConfig.CALL_SECONDS
 
 func revive() -> void:
 	state = State.WALK
@@ -1581,7 +1627,7 @@ func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
 		shielding, shield_yaw, special_was_held, dash_charges, dash_refill,
-		carry_speed, pistol_heat, pistol_timer]
+		carry_speed, pistol_heat, pistol_timer, call_timer]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1602,6 +1648,10 @@ func apply_state(s: Array) -> void:
 	if s.size() > 20:
 		pistol_heat = float(s[19])
 		pistol_timer = float(s[20])
+	# Tolerant tail read, the house pattern: a blob from before the call existed
+	# leaves a player not calling rather than aborting the rest of this function.
+	if s.size() > 21:
+		call_timer = float(s[21])
 	if s.size() > 18:
 		carry_speed = float(s[18])
 	if s.size() > 17:

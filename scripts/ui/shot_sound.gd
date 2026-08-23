@@ -49,6 +49,8 @@ const UNIT_SIZE := 14.0
 #
 # The line between them is `source == 0`, which is what `_spawn_round` already
 # means by "the world" -- no new fact, just one that had nowhere to go.
+const CALL_STREAM := preload("res://sounds/call_for_help.wav")
+
 const PLAYER_STREAM := preload("res://sounds/player_shot.wav")
 const ENEMY_STREAM := preload("res://sounds/enemy_shot.wav")
 
@@ -78,6 +80,35 @@ static func spawn(parent: Node, at: Vector3, from_enemy: bool) -> Node:
 	# round here: a test counting nodes by name found one of the two it had just
 	# made. Set after, and the uniquifier does the sensible thing.
 	player.name = "ShotSound"
+	player.position = at
+	player.finished.connect(player.queue_free)
+	player.play()
+	return player
+
+# A CRY FOR HELP, and it is not a gunshot with a different sample.
+#
+# IT CARRIES MUCH FURTHER. A shot is a thing that happened somewhere and 45 m is
+# plenty; a call is about a PERSON, and the one distance it exists for is the one
+# where you cannot see them. A cry you cannot hear from the far end of the bridge
+# fails at exactly the moment it is for, so this reaches the length of a run.
+#
+# STILL POSITIONAL, though. Flat would be simpler and would throw away the useful
+# half: WHICH WAY to go is most of what a listener needs, and the offscreen marker
+# only helps somebody already looking at the edge of their screen.
+#
+# NO PITCH WOBBLE. A gunshot repeats and needs variation or it machine-guns; a
+# call is rate-limited to one per CALL_COOLDOWN and is a VOICE, and two calls at
+# two pitches would read as two different people.
+const CALL_STREAM_MAX_DISTANCE := 120.0
+
+static func call_for_help(parent: Node, at: Vector3) -> Node:
+	var player := AudioStreamPlayer3D.new()
+	player.set_script(load("res://scripts/ui/shot_sound.gd"))
+	player.stream = CALL_STREAM
+	player.max_distance = CALL_STREAM_MAX_DISTANCE
+	player.unit_size = UNIT_SIZE * 2.0
+	parent.add_child(player)
+	player.name = "CallForHelp"
 	player.position = at
 	player.finished.connect(player.queue_free)
 	player.play()

@@ -79,6 +79,8 @@ func step(world) -> void:
 	if world.grid == null or world.players.is_empty():
 		return
 
+	advance_clocks()
+
 	# THE CORRIDOR IS RE-ASKED EVERY TICK WHILE IT IS UNKNOWN. A run builds
 	# lazily, so at the moment a lobby is entered the next boundary may not exist
 	# yet; the plan's R2 applies to this as much as to the crossing check. An
@@ -102,8 +104,37 @@ func _step_lobby(world) -> void:
 		return
 	_cross(world)
 
+# THE CLOCKS, AND NOTHING THAT DECIDES ANYTHING. Split out of the three `_step_`
+# functions on 2026-08-23, from a playtest report that the closing countdown sat
+# at 30 s for everyone but the host.
+#
+# It did. `step()` runs from `_host_tick` only, so a client's copy was written
+# once by `_round_sync` at the moment CLOSING began and never moved again -- and
+# `hud_model` faithfully showed the stale number. THE FIX WAS ALREADY WRITTEN
+# DOWN: `_on_round_state_changed` says "a client ticking its own copy down between
+# those is right to within a frame", and nothing ticked it.
+#
+# ITS TWIN WAS FROZEN TOO and nobody had reported it: `round_clock` accumulates in
+# the same two places, so a client's round timer was stopped as well. A clock
+# counting UP from zero looks perfectly plausible while it is wrong, which is the
+# whole reason to fix them together rather than the one that was noticed.
+#
+# ONE ARITHMETIC, CALLED FROM BOTH SIDES. A client that advanced its clocks with
+# its own copy of these three lines would be two implementations of one fact, and
+# this project has paid for that twice. The host reaches it through `step()`
+# before any transition is evaluated, which is exactly the order the three
+# functions had it in.
+func advance_clocks() -> void:
+	match state:
+		State.RUNNING:
+			round_clock += SimConfig.TICK_DELTA
+		State.CLOSING:
+			round_clock += SimConfig.TICK_DELTA
+			close_timer = maxf(0.0, close_timer - SimConfig.TICK_DELTA)
+		State.SCORING:
+			close_timer = maxf(0.0, close_timer - SimConfig.TICK_DELTA)
+
 func _step_running(world) -> void:
-	round_clock += SimConfig.TICK_DELTA
 	if _everyone_is_out(world):
 		# THE ONLY OTHER ENDING. With no clock to fire, reaching the strip is the
 		# one way forward, so a wiped party would otherwise have no exit from a
@@ -119,8 +150,6 @@ func _step_running(world) -> void:
 	_mark_arrivals(world)
 
 func _step_closing(world) -> void:
-	round_clock += SimConfig.TICK_DELTA
-	close_timer = maxf(0.0, close_timer - SimConfig.TICK_DELTA)
 	# EVERY TICK OF THE WINDOW, not at its end. Anyone who gets over the line
 	# while the clock runs has made it, and marking them here is what makes that
 	# true of the last tick as well as the first.
@@ -139,7 +168,6 @@ func _step_closing(world) -> void:
 	_begin_scoring(world)
 
 func _step_scoring(world) -> void:
-	close_timer = maxf(0.0, close_timer - SimConfig.TICK_DELTA)
 	if close_timer > 0.0:
 		return
 	_enter_lobby(world)
@@ -256,9 +284,21 @@ func _rearmost_row(world) -> int:
 
 # --- Scoring ------------------------------------------------------------------
 
-# N HATS > 1 HAT > MADE IT > DIDN'T. The first criterion, and deliberately the
-# only one: each future game type gets its own, and the difference between "a
-# scorer per mode" and a growing if-chain is decided now, while there is one.
+# N HATS > TALLER TOWER > MADE IT > DIDN'T. The first criterion, and deliberately
+# nearly the only one: each future game type gets its own, and the difference
+# between "a scorer per mode" and a growing if-chain is decided now, while there
+# is one.
+#
+# HEIGHT BREAKS A TIE ON COUNT (playtest 2026-08-23), and it is a real distinction
+# rather than a restatement only because of the merchant: HatStyle.slot_height
+# gives a trophy TALL_HAT_SLOTS (3.5) against an ordinary hat's 1. So three hats
+# including a trophy stands visibly taller than three ordinary ones, and this is
+# what makes the board agree with what the players can already see from across the
+# bridge.
+#
+# IT IS SECOND, NOT FIRST. Four hats still beats one trophy: the count is what the
+# round is about and the height is what settles an argument between two people who
+# did equally well at it.
 #
 # A pure function of (who reached, how many hats), so the ranking is testable as
 # a table of cases rather than by playing a round.
@@ -269,6 +309,12 @@ static func rank_entries(entries: Array) -> Array:
 		var bh: int = int(b.get("hats", 0))
 		if ah != bh:
 			return ah > bh
+		# In centimetres, so the comparison is exact and the wire carries an int
+		# like every other field on the board.
+		var at: int = int(a.get("hat_height", 0))
+		var bt: int = int(b.get("hat_height", 0))
+		if at != bt:
+			return at > bt
 		var ar: bool = bool(a.get("made_it", false))
 		var br: bool = bool(b.get("made_it", false))
 		if ar != br:
@@ -304,10 +350,25 @@ static func display_ranks(ordered: Array) -> Array:
 			continue
 		var here: Dictionary = ordered[i]
 		var above: Dictionary = ordered[i - 1]
+		# EVERY KEY THE SORT USES, or the list is ordered by one rule and numbered
+		# by another -- two players separated by tower height would be printed as
+		# joint first while sitting in a deliberate order.
 		var same: bool = int(here.get("hats", 0)) == int(above.get("hats", 0)) \
+			and int(here.get("hat_height", 0)) == int(above.get("hat_height", 0)) \
 			and bool(here.get("made_it", false)) == bool(above.get("made_it", false))
 		out.append(int(out[i - 1]) if same else i + 1)
 	return out
+
+# HOW TALL THE TOWER ACTUALLY IS, asked of the same function that SPACES it.
+# HatStyle.slot_height is what HatPool.pose_stack and the worn hit column both
+# use, so a board that measured height any other way would be a third opinion
+# about one fact -- and CLAUDE.md records what the last two cost.
+static func _tower_cm(world, peer: int) -> int:
+	var total: float = 0.0
+	for hat in world.hats_worn_by(peer):
+		if is_instance_valid(hat):
+			total += float(hat.slot_height())
+	return int(round(total * 100.0))
 
 func rank(world) -> Array:
 	var entries: Array = []
@@ -318,6 +379,7 @@ func rank(world) -> Array:
 			"name": world.player_name(peer),
 			"steam_id": int(world.player_steam_id(peer)),
 			"hats": int(world.hats_worn_by(peer).size()),
+			"hat_height": _tower_cm(world, peer),
 			"made_it": bool(reached.get(peer, false)),
 			# THE ROUND'S NUMBERS RIDE THE BOARD. It already goes out reliably on
 			# every state change, so a separate stats RPC would only add a way for

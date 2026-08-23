@@ -61,6 +61,12 @@ var stack_index: int = 0
 # Counts down once the hat has stopped moving. Only at zero is it collectable.
 var settle_grace: float = 0.0
 
+# Where it was last tick, for the displacement test in step(). `_has_last` rather
+# than a sentinel position, because the first tick after a launch has nothing to
+# compare against and must not read as "it moved a very long way".
+var _last_at: Vector3 = Vector3.ZERO
+var _has_last: bool = false
+
 # HOW FAR THIS HAT LEANS AGAINST THE ONE BELOW IT, in radians, as a tilt toward
 # world +X (x) and toward world +Z (y). Only meaningful while WORN.
 #
@@ -78,7 +84,7 @@ func _ready() -> void:
 	# A HAT MUST NOT ROLL, and this is not a nicety.
 	#
 	# The generated shapes made some hats tall cylinders, and a cylinder that
-	# lands on its side ROLLS -- down a bridge that is pitched 4 degrees by
+	# lands on its side ROLLS -- down a bridge that WAS pitched 4 degrees by
 	# design, forever. It never drops below HAT_SETTLE_SPEED, so it never becomes
 	# LOOSE, so it is never collectable: a hat that runs away down the deck and
 	# can never be picked up again. Caught by test_hat_tumble the moment the
@@ -98,14 +104,47 @@ func _ready() -> void:
 func step() -> void:
 	if mode != Mode.FLYING:
 		return
-	# "Landed" is a speed test rather than a contact test: a hat that slid to a
+	# "Landed" is a movement test rather than a contact test: a hat that slid to a
 	# halt against a parapet has landed just as much as one that dropped flat, and
 	# a contact callback would also fire on the way past.
-	if linear_velocity.length() > SimConfig.HAT_SETTLE_SPEED:
+	#
+	# GROUND COVERED, NOT `linear_velocity`, AND THE DIFFERENCE IS A HAT THAT NEVER
+	# SETTLES. Observed 2026-08-23, the day the bridge was flattened: a hat wedged
+	# at the lip of a hole sat visibly STILL -- 7 cm/s of creep, sampled at zero --
+	# while the solver depenetrated it every few ticks and spiked `linear_velocity`
+	# to 3.44. Every spike reset the grace, so it stayed FLYING forever: exactly
+	# the "hat stuck in an infinite bounce loop" this file's test was written for,
+	# arriving by a different route.
+	#
+	# The tilt had been hiding it. A four-degree slope gave every loose body a
+	# constant push, which worked a wedged hat out of the wedge before the grace
+	# could matter -- a third job the pitch was doing that nobody had written down.
+	#
+	# Velocity and displacement disagree the moment anything is in the way, and it
+	# is precisely the blocked case a settle test has to get right. zombie_body's
+	# walk budget makes the same choice for the same reason, and CLAUDE.md's rule
+	# about reading velocity around a collision is the same fact a third time.
+	# OVER THE WHOLE WINDOW, not per tick, and the per-tick version was tried
+	# first. A depenetration spike is a REAL 5.7 cm in one frame, so it defeats an
+	# instantaneous test whether that test reads velocity or displacement -- the
+	# hat is genuinely moved, it just arrives back where it started. What "settled"
+	# actually means is "it is not getting anywhere", and that is a question about
+	# a span of time.
+	#
+	# So: every HAT_SETTLE_GRACE, ask how far it really got. Under the distance
+	# HAT_SETTLE_SPEED would have carried it, it has landed.
+	if not _has_last:
+		_last_at = position
+		_has_last = true
 		settle_grace = SimConfig.HAT_SETTLE_GRACE
 		return
 	settle_grace = maxf(0.0, settle_grace - SimConfig.TICK_DELTA)
-	if settle_grace <= 0.0:
+	if settle_grace > 0.0:
+		return
+	var drift: float = _last_at.distance_to(position)
+	_last_at = position
+	settle_grace = SimConfig.HAT_SETTLE_GRACE
+	if drift < SimConfig.HAT_SETTLE_SPEED * SimConfig.HAT_SETTLE_GRACE:
 		mode = Mode.LOOSE
 
 # One tick of the lean spring. `kick` is an impulse straight onto the angular

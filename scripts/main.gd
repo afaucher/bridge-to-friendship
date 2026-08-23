@@ -163,6 +163,10 @@ func _create_world(is_host: bool, local_peer: int, networked: bool) -> void:
 		world.run_seed = randi()
 	# This is the world a human is looking at, so its camera takes the viewport.
 	world.view_active = true
+	# ...and the only place a net telemetry file should ever be opened. A real
+	# session is exactly the thing under investigation; the hundred worlds the gate
+	# builds are not, and must not write into user://.
+	world.telemetry_enabled = true
 	add_child(world)
 	# Started after being added to the tree: the RPC paths a GameWorld uses are
 	# resolved from its position in the tree, so it must be parented first.
