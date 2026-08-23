@@ -47,8 +47,10 @@ var _flash_material: StandardMaterial3D = null
 static func spawn(parent: Node, at: Vector3, radius: float) -> Node3D:
 	var fx := Node3D.new()
 	fx.set_script(load("res://scripts/ui/blast_effect.gd"))
-	fx.name = "Blast"
 	parent.add_child(fx)
+	# After the add -- see the note in shot_sound.gd. Latent here rather than
+	# broken, two blasts in one frame being rare, but it is the same fault.
+	fx.name = "Blast"
 	fx.position = at
 	fx._setup(radius)
 	return fx

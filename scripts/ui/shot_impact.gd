@@ -41,8 +41,10 @@ var _age: float = 0.0
 static func spawn(parent: Node, at: Vector3, normal: Vector3, connected: bool) -> Node3D:
 	var fx := Node3D.new()
 	fx.set_script(load("res://scripts/ui/shot_impact.gd"))
-	fx.name = "Impact"
 	parent.add_child(fx)
+	# After the add -- see the note in shot_sound.gd: a name set first is
+	# thrown away when a sibling has it, and several rounds land at once.
+	fx.name = "Impact"
 	fx.position = at
 	fx._setup(normal, connected)
 	return fx

@@ -12,9 +12,11 @@ extends "res://scripts/test_support/test_case.gd"
 # `max_distance` are exactly the same kind of bet.
 #
 # The claims:
-#   1. THE STREAM IS REAL. It loads, it has a length, and it is the mono 44.1 kHz
-#      placeholder that was prepared -- not a null that AudioStreamPlayer3D would
-#      accept in silence.
+#   1. BOTH STREAMS ARE REAL, and they are DIFFERENT. sound.md's argument for the
+#      split: on a bridge whose camera frames 60 m, half of it behind you,
+#      "somebody is shooting" and "somebody is shooting AT ME" have to be
+#      different sounds or the channel carries nothing. A player's report and an
+#      enemy's being the same file would satisfy every other claim here.
 #   2. SPAWNING ONE RUNS EVERY LINE OF `ShotSound.spawn`, so a property that does
 #      not exist on this engine version fails here rather than in someone's hands.
 #   3. THE PITCH WOBBLE STAYS IN BAND, and -- the part that matters -- it does NOT
@@ -44,18 +46,23 @@ func _physics_process(_delta: float) -> void:
 		return
 	set_physics_process(false)
 
-	# --- 1. The stream ---------------------------------------------------------
-	var stream: AudioStream = ShotSound.STREAM
-	check(stream != null, "the placeholder stream loaded")
-	if stream == null:
+	# --- 1. Both streams -------------------------------------------------------
+	var mine: AudioStream = ShotSound.PLAYER_STREAM
+	var theirs: AudioStream = ShotSound.ENEMY_STREAM
+	check(mine != null and theirs != null, "both shot streams loaded")
+	if mine == null or theirs == null:
 		finish()
 		return
-	var seconds: float = stream.get_length()
-	print("[sound] mg_shot.wav is %.3f s" % seconds)
-	check(seconds > 0.05 and seconds < 1.0,
-		"and is a shot rather than a silence or a loop (%.3f s) -- this fires "
-			% seconds
-		+ "several times a second, so length is a gameplay property")
+	print("[sound] player %.3f s, enemy %.3f s" % [mine.get_length(), theirs.get_length()])
+	for stream in [mine, theirs]:
+		var seconds: float = stream.get_length()
+		check(seconds > 0.01 and seconds < 1.0,
+			"a shot is a shot rather than a silence or a loop (%.3f s) -- this "
+				% seconds
+			+ "fires several times a second, so length is a gameplay property")
+	check(mine != theirs,
+		"and yours is not the enemy's -- one file for both would make the whole "
+		+ "split inaudible while passing every other claim in this file")
 
 	# --- 2 and 3. Spawning one -------------------------------------------------
 	#
@@ -73,7 +80,7 @@ func _physics_process(_delta: float) -> void:
 	var _burn2: int = randi()
 	var made: Array = []
 	for i in 4:
-		made.append(ShotSound.spawn(world, Vector3(float(i) * 2.0, 1.0, -4.0)))
+		made.append(ShotSound.spawn(world, Vector3(float(i) * 2.0, 1.0, -4.0), false))
 	var after_spawns: int = randi()
 
 	eq(after_spawns, expected_next,
@@ -86,7 +93,7 @@ func _physics_process(_delta: float) -> void:
 		check(node != null, "a shot sound was created")
 		if node == null:
 			continue
-		check(node.stream == stream, "with the placeholder on it")
+		check(node.stream == mine, "with the player's report on it")
 		check(node.max_distance == ShotSound.MAX_DISTANCE,
 			"and its falloff set (%.1f m)" % node.max_distance)
 		check(node.unit_size == ShotSound.UNIT_SIZE, "and its unit size")
@@ -113,13 +120,35 @@ func _physics_process(_delta: float) -> void:
 	var root: Node = world
 	var before_count: int = root.get_child_count()
 	root.view_active = false
-	root._play_shot(Vector3.ZERO)
+	root._play_shot(Vector3.ZERO, false)
 	eq(root.get_child_count(), before_count,
 		"a world nobody is looking at makes no sound")
 	root.view_active = true
-	root._play_shot(Vector3.ZERO)
+	root._play_shot(Vector3.ZERO, false)
 	check(root.get_child_count() > before_count,
 		"and a world somebody is looking at does -- both halves, because a gate "
 		+ "stuck shut passes the first one perfectly")
+
+	# --- 5. And it picks the right one -----------------------------------------
+	#
+	# THROUGH `_play_shot`, not through `spawn`. The flag is derived from
+	# `source == 0` at the call sites, and a test that hands `spawn` a literal
+	# would agree with itself about a translation it never made.
+	for child in root.get_children():
+		if child.name.begins_with("ShotSound"):
+			root.remove_child(child)
+			child.queue_free()
+	root._play_shot(Vector3.ZERO, true)
+	root._play_shot(Vector3(1.0, 0.0, 0.0), false)
+	var heard: Array = []
+	for child in root.get_children():
+		if child.name.begins_with("ShotSound"):
+			heard.append(child.stream)
+	eq(heard.size(), 2, "two shots, two sounds")
+	if heard.size() == 2:
+		check(heard[0] == ShotSound.ENEMY_STREAM,
+			"a round from the world uses the ENEMY report")
+		check(heard[1] == ShotSound.PLAYER_STREAM,
+			"and one from a peer uses the player's")
 	root.view_active = false
 	finish()

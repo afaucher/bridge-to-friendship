@@ -39,23 +39,45 @@ const PITCH_SPREAD := 0.08
 const MAX_DISTANCE := 45.0
 const UNIT_SIZE := 14.0
 
-const STREAM := preload("res://sounds/mg_shot.wav")
+# TWO SAMPLES, AND THE SPLIT IS THE POINT. Until 2026-08-22 every round in the
+# game -- yours, a skirmisher's, a turret's -- reported with one placeholder, and
+# sound.md says in as many words why that cannot stand: cadence is the defining
+# property of the ranged enemies, so if they sound like you the split between "I
+# am shooting" and "I am being shot at" is inaudible. On a bridge where the camera
+# frames sixty metres and half of it is behind you, that is the difference between
+# a warning and noise.
+#
+# The line between them is `source == 0`, which is what `_spawn_round` already
+# means by "the world" -- no new fact, just one that had nowhere to go.
+const PLAYER_STREAM := preload("res://sounds/player_shot.wav")
+const ENEMY_STREAM := preload("res://sounds/enemy_shot.wav")
+
+# `sounds/mg_shot.wav` is the original recorded "pew" and is deliberately still in
+# the tree, unreferenced, for future use -- it is the only sound here that is
+# obviously a human being, which makes it the right placeholder for whatever gets
+# built next.
 
 # `at` is in the PARENT's space — the GameWorld's — like every other position that
 # crosses this boundary. Two worlds in one process sit a kilometre apart, so a
 # sound placed in global coordinates would come from the wrong one.
-static func spawn(parent: Node, at: Vector3) -> Node:
+static func spawn(parent: Node, at: Vector3, from_enemy: bool) -> Node:
 	if _rng == null:
 		_rng = RandomNumberGenerator.new()
 		_rng.randomize()
 	var player := AudioStreamPlayer3D.new()
 	player.set_script(load("res://scripts/ui/shot_sound.gd"))
-	player.name = "ShotSound"
-	player.stream = STREAM
+	player.stream = ENEMY_STREAM if from_enemy else PLAYER_STREAM
 	player.max_distance = MAX_DISTANCE
 	player.unit_size = UNIT_SIZE
 	player.pitch_scale = 1.0 + _rng.randf_range(-PITCH_SPREAD, PITCH_SPREAD)
 	parent.add_child(player)
+	# NAMED AFTER THE ADD, and that is not style. A name assigned before
+	# add_child is DISCARDED when a sibling already holds it -- Godot falls back
+	# to a generated "@AudioStreamPlayer3D@342" rather than to "ShotSound2" --
+	# so with several shots alive at once most of them end up anonymous. Cost a
+	# round here: a test counting nodes by name found one of the two it had just
+	# made. Set after, and the uniquifier does the sensible thing.
+	player.name = "ShotSound"
 	player.position = at
 	player.finished.connect(player.queue_free)
 	player.play()

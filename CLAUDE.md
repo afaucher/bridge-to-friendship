@@ -812,6 +812,24 @@ the moment it is written.
   runtime: `ProgressBar.tint_progress` is Godot 3 and raises on the first frame
   and nowhere earlier. If nothing in the gate ever instantiates a UI script, it
   ships having never been executed once (see `test_hud_view`).
+- **`node.name = "X"` BEFORE `add_child` IS DISCARDED WHEN A SIBLING ALREADY HAS
+  THAT NAME**, and what you get is not `X2` but a generated `@AudioStreamPlayer3D@342`.
+  Observed 2026-08-22 spawning several gunshots in one frame: a test counting
+  nodes by name found ONE of the two it had just made, and the tree was full of
+  anonymous nodes. Set the name AFTER the add and the uniquifier does the
+  sensible thing. Every self-spawning effect in `scripts/ui/` had this — the two
+  new ones broke, `blast_effect` never did only because two blasts in one frame
+  are rare, which is the shape of a bug that waits.
+- **A WAV IMPORTS WITH LOOPING OFF, and `edit/loop_mode=1` in the `.import` does
+  not necessarily reach the resource.** Observed 2026-08-22 wiring 50 s of hold
+  music: set in the `.import`, cache cleared, re-imported, and `loop_mode` still
+  read `LOOP_DISABLED` (the file is QOA-compressed, `compress/mode=2`). A track
+  wired up perfectly then plays once and leaves the lobby silent — nothing in the
+  code is wrong, the RESOURCE is. Set `loop_mode` in the script instead, so the
+  fact lives where the thing depending on it can be read, and note that
+  `loop_end` defaults to 0: `LOOP_FORWARD` over that is a loop of NOTHING rather
+  than a loop of everything. **Assert the loop, not the wiring** — every
+  behavioural claim about the music passed while it was set to play once.
 - **A CONTROL PARENTED TO A CanvasLayer IS NOT LAID OUT BY ANYTHING, and its
   anchors are four correct numbers about a rect of zero.** Observed 2026-08-17,
   reported from play as "the score screen is top left". `PRESET_FULL_RECT` on a

@@ -45,6 +45,7 @@ const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
 const ShotSound = preload("res://scripts/ui/shot_sound.gd")
 const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
+const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
 const Deployable = preload("res://scripts/sim/deployable.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
@@ -448,6 +449,7 @@ func _physics_process(_delta: float) -> void:
 	_pose_held_specials()
 	_pose_sidearms()
 	_update_laser_sight()
+	_update_lobby_music()
 	_sync_hitboxes()
 	# The camera lets go of a player the drone has. See BridgeCamera.focus_held.
 	if camera != null:
@@ -2904,22 +2906,48 @@ func _spawn_round(from_global: Vector3, direction: Vector3, source: int,
 	_bullets_root.add_child(bullet)
 	_bullets.append(bullet)
 	bullet.launch(to_local(from_global), direction, source, shooter_rid, as_rocket)
-	_play_shot(bullet.position)
+	_play_shot(bullet.position, source == 0)
 
 # THE REPORT, at the muzzle. Host and client both land here -- one from
 # `_spawn_round`, the other from a new id arriving in a snapshot -- so there is a
 # single description of what a shot sounds like, exactly as `_play_blast` is the
 # single description of what an explosion looks like.
 #
-# EVERY ROUND IN THE GAME, whoever fired it: the machine gun, the sidearm, the
-# rocket, a skirmisher and a turret all pass through one function. That is right
-# for a placeholder and wrong for long -- sound.md argues the skirmisher and the
-# turret must sound DIFFERENT, because cadence is the whole difference between
-# those two threats and a shared sample makes the split inaudible.
-func _play_shot(at: Vector3) -> void:
+# WHOSE ROUND IT IS decides which of the two samples plays, and `source == 0` is
+# already what `_spawn_round` means by "the world". sound.md's argument for the
+# split: on a bridge the camera frames sixty metres of, half of it behind you,
+# "somebody is shooting" and "somebody is shooting AT ME" have to be different
+# sounds or the channel carries no information.
+#
+# STILL ONE SAMPLE PER SIDE. A skirmisher and a turret share the enemy report,
+# which sound.md also argues against -- cadence is the whole difference between
+# those two threats -- but that is a third recording rather than a change here.
+# THE HOLD MUSIC, while the party is between rounds.
+#
+# ASKED EVERY TICK RATHER THAN ON THE TRANSITION, which is what makes this work on
+# a client at all: `_on_round_state_changed` is a host path, and a client learns
+# the state from `_round_sync`. A per-tick question about the current state is
+# right on both, and it is the same reason `is_lobby()` exists as a predicate
+# rather than as an event.
+#
+# `is_lobby()` COVERS SCORING TOO, deliberately. The board goes up, the party
+# regroups, and somebody walks over the line -- that is one stretch of waiting from
+# the player's side, and a track that cut out for the scoreboard and back in for
+# the lobby would be announcing a distinction only the state machine cares about.
+#
+# BUILT LAZILY, so a headless world never constructs a 50 s stream it will not
+# play. Every other effect in here is gated the same way.
+func _update_lobby_music() -> void:
 	if not view_active:
 		return
-	ShotSound.spawn(self, at)
+	if _music == null:
+		_music = LobbyMusic.spawn(self)
+	_music.want(round_machine.is_lobby())
+
+func _play_shot(at: Vector3, from_enemy: bool) -> void:
+	if not view_active:
+		return
+	ShotSound.spawn(self, at, from_enemy)
 
 # The tip of the barrel, in GLOBAL space. Falls back to the body if a weapon has
 # somehow not been posed yet -- a round from slightly the wrong place beats a
@@ -3376,6 +3404,8 @@ func destroy_held_special(peer: int) -> void:
 #
 # LOCAL PLAYER ONLY, and view-only in the registry, so it changes nothing the
 # simulation reads and a client may switch it on the instant it is clicked.
+var _music: Node = null
+
 var _laser: MeshInstance3D = null
 
 # THE DOT, AND THE BAR UNDER IT. Added 2026-08-22, and together they are the
@@ -4678,7 +4708,14 @@ func _bullet_snapshot(keyframe: bool) -> Array:
 			# The EXPLODES flag rides along because a client picks the scene from
 			# it. A rocket drawn as a bullet would be the one thing on screen that
 			# gives no warning of what is about to happen.
-			out.append([bullet.bullet_id, bullet.position, bullet.explodes])
+			#
+			# AND THE OWNER, for the same shape of reason one field along: a client
+			# picks the SOUND from it, and a round arriving from an enemy has to be
+			# audibly not one of yours. `0` is the world, exactly as `_spawn_round`
+			# already means it -- the fact existed on the host and simply had no way
+			# across. Per-bullet constant, so the delta encoder sends it once.
+			out.append([bullet.bullet_id, bullet.position, bullet.explodes,
+				bullet.owner_peer])
 	return SnapshotDelta.encode(out, _section("bullets"), keyframe)
 
 # Self-healing like the ball set: a round the host stops mentioning has hit
@@ -4702,7 +4739,12 @@ func _apply_bullet_snapshot(section: Array) -> void:
 			# and the first snapshot carrying an id it has not seen is exactly the
 			# moment somebody pulled a trigger. Cheaper than an RPC and it cannot
 			# get out of step with the thing it describes.
-			_play_shot(entry[1])
+			#
+			# Tolerant tail read, the house pattern: a snapshot from before the
+			# owner rode along sounds like a player's round rather than raising.
+			var fired_by: int = int(entry[3]) if entry.size() > 3 else 1
+			bullet.owner_peer = fired_by
+			_play_shot(entry[1], fired_by == 0)
 		bullet.apply_remote(entry[1])
 
 	for i in range(_bullets.size() - 1, -1, -1):
