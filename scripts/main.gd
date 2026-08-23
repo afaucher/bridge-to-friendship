@@ -92,6 +92,15 @@ func _unhandled_input(_event: InputEvent) -> void:
 		_set_status("Practice partner %d added (F3 to switch)" % world.debug_add_practice_player())
 	elif Input.is_action_just_pressed("debug_switch_player"):
 		_set_status("Controlling player %d" % world.debug_cycle_control())
+	# F4 marks the moment. The playtest report this exists for is "networking gets
+	# worse over time", which is a shape rather than a value and a feeling rather
+	# than a number -- so the missing piece was never another counter, it was a way
+	# to say WHEN it felt bad. Any player may press it, including a client: the
+	# press rides that client's next telemetry row up to the host, so the person
+	# with the symptom is the one who gets to point at it.
+	elif Input.is_action_just_pressed("debug_mark"):
+		world.debug_mark_moment()
+		_set_status("Marked this moment in the network log.")
 
 # --- Menu --------------------------------------------------------------------
 

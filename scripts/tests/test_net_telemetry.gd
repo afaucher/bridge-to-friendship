@@ -28,6 +28,15 @@ extends "res://scripts/test_support/test_case.gd"
 #      host diverges and the correction columns move. An instrument that has never
 #      said anything is bad news is not evidence.
 #   4. It costs the gate nothing: a world that was not told to opens no file.
+#   5. THE HOST'S FILE HOLDS EVERY MACHINE'S NUMBERS. A client's row arrives over
+#      the real socket and is filed under `from`. This is the half that decides
+#      whether the instrument gets used at all: the two sides count disjoint
+#      things, and a trace that needs two people to go and find user:// afterwards
+#      is one nobody collects.
+#   6. AND A MARK LANDS BESIDE THE NUMBERS. The only column here that comes from a
+#      human, because "worse over time" is a feeling until it has a timestamp.
+#   7. `from` IS THE TRANSPORT'S ID, NOT THE PAYLOAD'S, and a row of the wrong
+#      width is dropped rather than joined to the header a column out.
 
 const PORT := 28788
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
@@ -71,6 +80,7 @@ func _on_ready() -> void:
 	client_world._telemetry = NetTelemetry.new()
 	client_world._telemetry.open_for("test_client")
 	recorded["client_csv"] = client_world._telemetry.path()
+	recorded["host_csv"] = host_world._telemetry.path()
 	phase = 1
 
 func _physics_process(_delta: float) -> void:
@@ -80,6 +90,7 @@ func _physics_process(_delta: float) -> void:
 	match phase:
 		1: _phase_it_records()
 		2: _phase_it_can_report_a_fault()
+		3: _phase_the_host_holds_everything()
 
 # --- 1 and 2. It writes, and it counts arrivals -------------------------------
 
@@ -151,7 +162,105 @@ func _phase_it_can_report_a_fault() -> void:
 		+ "instrument that has never reported a fault is not evidence, and this "
 		+ "project has twice believed a probe that could only ever return zero")
 	client_world.debug_inbound_delay_ticks = 0
+	phase = 3
+	frame = 0
+
+# --- 5, 6 and 7. One file, every machine -------------------------------------
+
+func _phase_the_host_holds_everything() -> void:
+	if frame == 1:
+		# THE PRESS HAPPENS ON THE CLIENT, which is the whole point: the person with
+		# the symptom is the one who can say when it happened, and they are never
+		# the host.
+		client_world.debug_mark_moment()
+		client_world.debug_mark_moment()
+		return
+	if frame < NetTelemetry.SAMPLE_TICKS * 2 + 10:
+		return
+
+	var rows: Array = _rows(recorded["host_csv"])
+	var from_at: int = _index(rows, "from")
+	var role_at: int = _index(rows, "role")
+	var mark_at: int = _index(rows, "mark")
+	var peer: int = int(client_world.local_peer)
+
+	var own: int = 0
+	var reported: int = 0
+	var marked: int = 0
+	for i in range(1, rows.size()):
+		var f: PackedStringArray = rows[i].split(",")
+		if f.size() <= maxi(from_at, maxi(role_at, mark_at)):
+			continue
+		if f[role_at] == "host":
+			own += 1
+		elif int(f[from_at]) == peer:
+			reported += 1
+			marked += int(f[mark_at])
+	print("[net] host file: %d own rows, %d rows reported by peer %d, %d marks"
+		% [own, reported, peer, marked])
+
+	check(own > 0, "the host writes its own rows")
+	check(reported > 0,
+		"and the CLIENT's rows arrive in the host's file (%d) under `from` -- the "
+			% reported
+		+ "two sides count disjoint things, and a trace that needs somebody else to "
+		+ "go and find user:// afterwards is one nobody collects")
+	eq(marked, 2,
+		"and a mark pressed on the client lands beside the numbers taken at that "
+		+ "moment -- counted, not flagged, so two presses read as two")
+
+	# ...AND THE FILE IS STILL RECTANGULAR with two writers in it. The failure this
+	# guards is not a missing row, it is a row joined to the header one column out,
+	# which makes every number after it quietly wrong rather than absent.
+	var header: int = rows[0].split(",").size()
+	var ragged: int = 0
+	for i in range(1, rows.size()):
+		if rows[i].split(",").size() != header:
+			ragged += 1
+	eq(ragged, 0, "every row in a two-writer file has the header's width")
+
+	_it_does_not_trust_the_payload()
 	finish()
+
+# --- 7. Whose row is it -------------------------------------------------------
+
+func _it_does_not_trust_the_payload() -> void:
+	# Asserted directly on the object rather than over the socket, because the
+	# claim is about what note_peer_row DOES with what it is handed -- and a test
+	# that hand-builds its input is the right shape here for exactly the reason it
+	# was the wrong shape for the shield: the input really does come from
+	# somewhere else, and being able to lie is the property under test.
+	var before: int = _rows(recorded["host_csv"]).size()
+	var claim: Array = []
+	for name in NetTelemetry.COLUMNS:
+		claim.append(999 if name == "from" else 0)
+	host_world._telemetry.note_peer_row(7, claim)
+
+	# AND ONE OF THE WRONG WIDTH, which is what a peer on an older build sends.
+	#
+	# ONE COLUMN SHORT, NOT THREE COLUMNS LONG, and the difference is the whole
+	# assertion. The first version passed `[1, 2, 3]` and the A/B showed the claim
+	# was DEAD: with the guard deleted, writing `from` at index 3 of a 3-element
+	# array raises, and a GDScript runtime error ABORTS THE REST OF THE FUNCTION
+	# (CLAUDE.md) -- so no row was written either way and a crash was
+	# indistinguishable from a guard. A row that is short but still long enough to
+	# index is the case where the guard is the only thing doing any work.
+	var short: Array = claim.duplicate()
+	short.resize(claim.size() - 1)
+	host_world._telemetry.note_peer_row(7, short)
+
+	var after: Array = _rows(recorded["host_csv"])
+	eq(after.size(), before + 1,
+		"a row of the wrong width is dropped rather than joined to the header a "
+		+ "column out -- the gap is legible, a shifted column is not")
+	for i in range(1, after.size()):
+		eq(after[i].split(",").size(), after[0].split(",").size(),
+			"and row %d still has the header's width after a malformed one was "
+				% i + "offered")
+	var last: PackedStringArray = after[after.size() - 1].split(",")
+	eq(int(last[_index(after, "from")]), 7,
+		"and `from` is the id the TRANSPORT reports, not the one in the payload -- "
+		+ "a row is a claim about somebody's own machine, never about which machine")
 
 # --- helpers ------------------------------------------------------------------
 
@@ -166,12 +275,15 @@ func _rows(path: String) -> Array:
 			out.append(line)
 	return out
 
-func _column(rows: Array, name: String, row_index: int) -> String:
+func _index(rows: Array, name: String) -> int:
 	var header: PackedStringArray = rows[0].split(",")
-	var at: int = -1
 	for i in header.size():
 		if header[i] == name:
-			at = i
+			return i
+	return -1
+
+func _column(rows: Array, name: String, row_index: int) -> String:
+	var at: int = _index(rows, name)
 	if at < 0 or row_index >= rows.size():
 		return "0"
 	var fields: PackedStringArray = rows[row_index].split(",")

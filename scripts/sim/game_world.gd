@@ -459,6 +459,15 @@ func _physics_process(_delta: float) -> void:
 	# very different from a log that simply stops.
 	if _telemetry != null:
 		_telemetry.step(self)
+		# ...AND A CLIENT SENDS ITS FINISHED ROW UP. The host's file is the one
+		# anybody will actually read -- it is the machine you can reach afterwards --
+		# and the columns a client owns are structurally zero on the host, so
+		# without this the host's log answers half the question. Unreliable on
+		# purpose: see the note in net_telemetry.gd about a missing row being data.
+		if networked and not is_host:
+			var report: Array = _telemetry.take_report()
+			if report.size() > 0:
+				_report_telemetry.rpc_id(1, report)
 	# AFTER THE TICK, AND ON BOTH SIDES. A worn stack leans against the head under
 	# it, so it has to be posed once every body has finished moving -- and it is a
 	# drawing decision with no authority attached, so a client does it for itself
@@ -4475,6 +4484,32 @@ func _consume_remote_input(peer: int) -> void:
 	# packet instead of stuttering, and holding the ack keeps the client's replay
 	# aligned -- acknowledging an input we never applied would make the client
 	# discard it and replay from a state the host never reached.
+
+# A CLIENT'S TELEMETRY ROW, ONCE A SECOND. Deliberately the lowest-value packet
+# in the game: unreliable, unordered, and dropped without ceremony if it is the
+# wrong width. It must never be able to cost the session anything -- an
+# instrument that degrades the thing it is measuring is worse than no instrument,
+# and this one exists to investigate a session that is already struggling.
+@rpc("any_peer", "call_remote", "unreliable")
+func _report_telemetry(row: Array) -> void:
+	if not is_host or _telemetry == null:
+		return
+	var peer: int = multiplayer.get_remote_sender_id()
+	if not players.has(peer):
+		return
+	_telemetry.note_peer_row(peer, row)
+
+# THE MARKER KEY. "Worse over time" is a feeling until it has a timestamp against
+# it -- so this is the one column in the file that comes from a human, and the
+# whole point is that it lands in the SAME row as the numbers taken at that
+# moment. A client's press rides its next report up, so it can be a second late;
+# that is inside the instrument's own resolution and is not worth a packet of its
+# own.
+func debug_mark_moment() -> void:
+	if _telemetry == null:
+		return
+	_telemetry.mark()
+	print("[net] marked at tick %d" % tick)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func _submit_input(batch: Array) -> void:
