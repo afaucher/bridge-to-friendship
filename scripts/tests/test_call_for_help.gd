@@ -25,8 +25,14 @@ extends "res://scripts/test_support/test_case.gd"
 #   6. IT CAN BE CALLED FROM THE STATES THAT MATTER. Hanging off a ledge is the
 #      case the feature is FOR, and a call gated on WALK would be one you cannot
 #      make when you need it.
-#   7. GOING DOWN CALLS BY ITSELF, at least once, THROUGH the cooldown -- and
-#      keeps asking for as long as you are down.
+#   7. FALLING INTO TROUBLE CALLS ONCE, BY ITSELF, THROUGH the cooldown. Once is
+#      the whole rule: the crisis announces itself, and every call after that is
+#      the player choosing to ask again.
+#   8. AND IT IS EVERY CRISIS, not the one that happened to be wired first.
+#      Asserted over every state `is_awaiting_rescue()` admits rather than over a
+#      list written here, because the bug this catches was exactly that: the
+#      automatic call lived in begin_downed() and in the DOWNED arm of the step
+#      match, so a hanging player got nothing. Reported from play 2026-08-23.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
@@ -35,6 +41,7 @@ const HudModel = preload("res://scripts/ui/hud_model.gd")
 const Markers = preload("res://scripts/ui/teammate_markers.gd")
 const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 const SCREEN := Vector2(1280.0, 720.0)
 
@@ -72,6 +79,7 @@ func _physics_process(_delta: float) -> void:
 	_the_marker_flashes()
 	_it_works_where_it_is_needed()
 	_going_down_calls_by_itself()
+	_every_crisis_calls_by_itself()
 	finish()
 
 # --- 1. The key does something ------------------------------------------------
@@ -212,16 +220,16 @@ func _it_works_where_it_is_needed() -> void:
 		+ "you cannot make when you need it")
 	caller.state = PlayerBody.State.WALK
 
-# --- 7. And it does not wait to be asked ---------------------------------------
+# --- 7. And it does not wait to be asked -------------------------------------
 
 func _going_down_calls_by_itself() -> void:
 	# THE COOLDOWN IS FULLY CHARGED, which is the whole claim. A player who called
 	# two seconds before being tumbled is the likeliest caller there is -- they
 	# already knew they were in trouble -- and under a cooldown that is consulted
 	# rather than cleared, they are the one player whose collapse is silent.
+	caller.revive()
 	caller.call_timer = 0.0
 	caller.call_cooldown = SimConfig.CALL_COOLDOWN
-	caller.state = PlayerBody.State.WALK
 	caller.begin_downed()
 	eq(int(caller.state), int(PlayerBody.State.DOWNED), "the player is down")
 	check(caller.call_timer > 0.0,
@@ -229,34 +237,74 @@ func _going_down_calls_by_itself() -> void:
 			% caller.call_timer
 		+ "the state where you most need somebody is the one where you are least "
 		+ "likely to be composed enough to ask")
-
-	# AND IT KEEPS ASKING. Two and a half seconds of call against fifteen seconds
-	# of bleeding out: without the repeat a downed player is loud for a sixth of
-	# their timer and silent for the part where somebody is deciding whether to
-	# come. Counted as RISES rather than as ticks-with-a-call, because the thing
-	# being asserted is that it is re-issued, not that it is held on.
-	var calls: int = 1
-	var last: float = caller.call_timer
-	var quiet: int = 0
-	for _i in int(SimConfig.DOWNED_SECONDS / SimConfig.TICK_DELTA):
-		caller.step(Vector2.ZERO, 0)
-		if caller.call_timer > last:
-			calls += 1
-		if caller.call_timer <= 0.0:
-			quiet += 1
-		last = caller.call_timer
-	print("[call] %d calls over a %.0f s bleed-out, quiet for %.1f s of it"
-		% [calls, SimConfig.DOWNED_SECONDS, float(quiet) * SimConfig.TICK_DELTA])
-	check(calls >= 2,
-		"and it keeps asking while they are down (%d calls) -- one cry at the "
-			% calls
-		+ "moment of a tumble is heard by whoever happened to be looking")
-	# ...with gaps in it. A call that never stops is an alarm nobody can locate,
-	# and it would also make the marker's flash the new normal.
-	check(quiet > 0,
-		"with silence between them (%.1f s) rather than one continuous siren"
-			% (float(quiet) * SimConfig.TICK_DELTA))
 	caller.revive()
+
+# --- 8. Every crisis, once each, and then only when asked ---------------------
+
+func _every_crisis_calls_by_itself() -> void:
+	# DRIVEN OFF is_awaiting_rescue(), WHICH IS THE POINT. A list of states written
+	# out here would have been written the same way the bug was -- DOWNED, because
+	# that is what was asked for -- and would have passed while a hanging player
+	# stayed silent. Asking the body which states count means a THIRD kind of
+	# trouble, if one is ever added, fails here on the day it is added.
+	for entry in [
+			{"name": "downed", "enter": func(b): b.begin_downed()},
+			{"name": "hanging", "enter": func(b): _hang(b)}]:
+		caller.revive()
+		caller.call_timer = 0.0
+		# A LIVE COOLDOWN, because "at least once" means the automatic call is not
+		# subject to it -- and because a player who called just before losing their
+		# footing is the likeliest caller there is.
+		caller.call_cooldown = SimConfig.CALL_COOLDOWN
+		entry["enter"].call(caller)
+		check(caller.is_awaiting_rescue(),
+			"%s is a state that wants a teammate" % entry["name"])
+		check(caller.call_timer > 0.0,
+			"...and %s calls for help by itself (%.2f s) through a live cooldown"
+				% [entry["name"], caller.call_timer])
+
+		# ONCE. NOT A SIREN. The whole countdown runs with no input at all, and
+		# there must be exactly the one call in it -- a cry that repeats on its own
+		# is not the player speaking, and it says nothing the bar and the marker are
+		# not already saying continuously for free.
+		var calls: int = 1
+		var last: float = caller.call_timer
+		var quiet: int = 0
+		for _i in int(caller.rescue_total() / SimConfig.TICK_DELTA):
+			caller.step(Vector2.ZERO, 0)
+			if caller.call_timer > last:
+				calls += 1
+			if caller.call_timer <= 0.0:
+				quiet += 1
+			last = caller.call_timer
+		print("[call] %s: %d call over its %.0f s countdown, silent for %.1f s"
+			% [entry["name"], calls, caller.rescue_total(),
+				float(quiet) * SimConfig.TICK_DELTA])
+		eq(calls, 1,
+			"and %s calls exactly ONCE with no input (%d) -- what a fresh call "
+				% [entry["name"], calls]
+			+ "carries is that somebody CHOSE to ask again, which a repeat destroys "
+			+ "by making every call look automatic")
+		check(quiet > 0,
+			"...so most of the countdown is silent (%.1f s of %.0f)"
+				% [float(quiet) * SimConfig.TICK_DELTA, caller.rescue_total()])
+
+		# ...AND THEN ONLY ON THE KEY. The other half of "once, then only on Q":
+		# having called for you, it must not have taken your voice away.
+		caller.call_cooldown = 0.0
+		caller.step(Vector2.ZERO, SimConfig.ACTION_CALL)
+		check(caller.call_timer > 0.0,
+			"and you can still ask again yourself while %s (%.2f s)"
+				% [entry["name"], caller.call_timer])
+	caller.revive()
+
+# THROUGH THE REAL ENTRY POINT. The first version of this set `state` by hand and
+# then called `_call_for_help_automatically()` itself -- which would have passed
+# against the broken build, because the missing call was in `_begin_hang` and this
+# would have been testing the helper it failed to invoke. A test that hand-builds
+# the thing it is checking for has checked nothing.
+func _hang(target) -> void:
+	target._begin_hang(target.position, GridConfig.DIR_NORTH)
 
 # A moment when the crisis clock is showing, and one when it is not. Taken from
 # the clock itself rather than assumed, so a change to its period cannot make

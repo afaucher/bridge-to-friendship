@@ -342,20 +342,19 @@ func step(move: Vector2, actions: int, aim: float = INF,
 		State.CLIMB:
 			_step_climb(move)
 		State.DOWNED:
-			# IMMOBILE, and still asking. DOWNED_SECONDS is fifteen and a call lasts
-			# two and a half, so without this a downed player is loud for a sixth of
-			# their bleed-out and silent for the rest of it -- and the rest of it is
-			# the part where somebody is deciding whether to come.
-			#
-			# Re-issued on the ordinary cooldown rather than held on: three cries
-			# over a bleed-out, which reads as somebody calling, where a continuous
-			# one reads as an alarm nobody can locate. The bar and the marker keep
-			# flashing on the crisis clock throughout either way.
-			if call_cooldown <= 0.0:
-				call_timer = SimConfig.CALL_SECONDS
-				call_cooldown = SimConfig.CALL_COOLDOWN
+			pass          # immobile; the world runs the countdown and the rescue
 		_:
 			_step_inert()
+
+	# NO AUTOMATIC REPEAT. There was one, re-issuing on the cooldown for as long as
+	# the countdown ran, and it is deliberately gone (2026-08-23): the crisis
+	# announces itself ONCE, and after that a call is something the player asks for.
+	#
+	# A cry that repeats on its own is not the player speaking, it is an alarm --
+	# and an alarm attached to somebody who is simply still down says nothing that
+	# the bar and the marker are not already saying, continuously, for free. What
+	# a fresh call carries is that the person CHOSE to ask again, which is exactly
+	# what a repeat would have destroyed by making every call look automatic.
 
 	# THE LEDGE CATCH IS A PROPERTY OF THE FALL, NOT OF HOW IT STARTED.
 	#
@@ -1451,6 +1450,10 @@ func _try_catch_ledge() -> bool:
 func _begin_hang(lip: Vector3, dir: int) -> void:
 	state = State.LEDGE_HANG
 	state_timer = 0.0
+	# AND IT SHOUTS. Same as going down, and for a better reason: a hang is eight
+	# seconds where a bleed-out is fifteen, so the state with less time in it is
+	# the one that most needs somebody told immediately.
+	_call_for_help_automatically()
 	_roll_self_revive_window()
 	velocity = Vector3.ZERO
 	grounded = false
@@ -1561,13 +1564,20 @@ func begin_downed() -> void:
 	# "at least once". A player who called two seconds before going down would
 	# otherwise be the one player whose collapse is silent, and that is exactly
 	# backwards.
-	call_cooldown = 0.0
-	call_timer = SimConfig.CALL_SECONDS
+	_call_for_help_automatically()
 	_roll_self_revive_window()
 
 # ONE WINDOW PER CRISIS, fixed at the moment the crisis starts. The world tick is
 # the seed because it is a number both machines already agree on -- but it is
 # STORED rather than re-derived later, for the reason in self_revive_gate().
+# THE COOLDOWN IS CLEARED RATHER THAN CONSULTED, which is the whole point of "at
+# least once". A player who called two seconds before going down -- or before
+# losing their footing -- is the likeliest caller there is, and under a consulted
+# cooldown they would be the one player whose crisis is silent.
+func _call_for_help_automatically() -> void:
+	call_cooldown = 0.0
+	call_timer = SimConfig.CALL_SECONDS
+
 func _roll_self_revive_window() -> void:
 	self_revive_seed = int(world.tick) if world != null else 0
 	self_revive_cooldown = 0.0
