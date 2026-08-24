@@ -134,8 +134,18 @@ func _it_replicates() -> void:
 
 	# AND A BLOB FROM BEFORE THE FEATURE STILL APPLIES. The house pattern, and the
 	# thing that makes a tail field safe to add.
+	#
+	# TRUNCATED TO A NAMED LENGTH, NOT TO `size() - 1`. It was the latter, and it
+	# broke the day a LATER tail field was appended (self_revive_seed, 2026-08-23):
+	# "drop the last one" silently became "drop the self-revive seed", the call
+	# field survived, and the assertion failed claiming the tolerant read was
+	# broken. **"The last field" is not "the field I mean"** as soon as somebody
+	# adds another -- and every tail-field test in this project is one append away
+	# from the same mistake.
+	const CALL_AT := 21
 	var old: Array = blob.duplicate()
-	old.resize(blob.size() - 1)
+	eq(blob.size() > CALL_AT, true, "call_timer is still a tail field")
+	old.resize(CALL_AT)
 	mate.call_timer = 0.0
 	mate.apply_state(old)
 	eq(snappedf(mate.call_timer, 0.01), 0.0,

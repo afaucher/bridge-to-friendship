@@ -128,6 +128,11 @@ const STATS := {
 	# absence of the others -- so the predicate is SPEED, at half a walk. A player
 	# shuffling on the spot to farm it has to actually be going somewhere.
 	"walking_shots": {"label": "Most shots on the move", "best": MOST},
+
+	# GOT THEMSELVES OUT. Counted where the minigame is won rather than beside
+	# `rescued`, which is about somebody coming for you -- the whole point of the
+	# self-revive is that nobody did.
+	"self_revives": {"label": "Most self-rescues", "best": MOST},
 }
 
 static func keys() -> Array:

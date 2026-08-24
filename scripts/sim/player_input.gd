@@ -92,6 +92,11 @@ static func sample(tick: int, aim: float = AIM_NONE,
 	# rather than by the bit, so that the rule lives with the behaviour.
 	if Input.is_action_just_pressed("call_help"):
 		actions |= SimConfig.ACTION_CALL
+	# Edge-triggered, and here it matters more than anywhere else: a level bit
+	# would spend every self-revive attempt a player has in the six ticks their
+	# finger is on the key, and the penalty for a miss is time off a countdown.
+	if Input.is_action_just_pressed("use"):
+		actions |= SimConfig.ACTION_USE
 	return [tick, move, actions, aim, aim_point]
 
 # Older inputs on the wire, and every test that builds a 3-element array by hand,

@@ -69,6 +69,20 @@ const SLOT_SIZE := Vector2(58.0, 40.0)
 # Bigger than the old crisis bar because it inherited the pips' job: this is the
 # number you act on.
 const BAR_SIZE := Vector2(160.0, 13.0)
+
+# THE SELF-REVIVE LINE, drawn INSIDE the status bar rather than as a strip of its
+# own -- because THE STATUS BAR IS THE MOVING PART. Its countdown fill already
+# sweeps across this rect once per crisis, and all this adds is the thing that
+# fill has to cross. A second sweeping marker beside it would be two moving parts
+# telling one story, and the panel is allowed exactly one bar anyway: a rule paid
+# for twice (pips beside a crisis bar; two crisis bars, one of them black). A line
+# is not a second reading of your condition, it is a target.
+#
+# The thinnest it may be drawn. The window is a DURATION (0.25 s), so on the
+# slower of the two countdowns it works out at 2.7 px -- and a line thinner than
+# it is aimable would make the timing harder than the number says.
+const REVIVE_LINE_MIN_WIDTH := 3.0
+const COLOR_REVIVE_WINDOW := Color(0.35, 0.85, 0.45, 0.85)
 const FRIEND_BAR_SIZE := Vector2(120.0, 9.0)
 
 # Eight-point compass, because the game already is one: the dash locks to four
@@ -355,6 +369,12 @@ func _build_own_panel() -> void:
 	_own_status = _bar(BAR_SIZE)
 	box.add_child(_own_status)
 
+	# ON THE COUNTDOWN BAR ITSELF, not under it. The panel is allowed exactly one
+	# bar (see the note on _own_status) and this does not spend that budget: the
+	# window and the marker are drawn INSIDE the status bar, over the very clock
+	# they are a gamble against.
+	_build_revive_overlay(_own_status)
+
 	_own_slots = HBoxContainer.new()
 	_own_slots.add_theme_constant_override("separation", 8)
 	box.add_child(_own_slots)
@@ -382,6 +402,7 @@ func _update_own(own: Dictionary) -> void:
 	_set_call_flash(_own_status, bool(own.get("calling", false)), BAR_SIZE)
 	_set_status_bar(_own_status, own.get("status", {}),
 		float(own.get("grace", 0.0)))
+	_set_revive_bar(_own_status, own.get("self_revive", {}))
 
 func _sync_slots(slots: Array) -> void:
 	while _own_slots.get_child_count() < slots.size():
@@ -638,6 +659,50 @@ const CALL_BAR_SCALE := 2.0
 # ON YOUR OWN BAR TOO. Pressing a key and seeing nothing happen is how a player
 # concludes it is broken, and the confirmation costs nothing: you already know you
 # are calling, so nothing is being told to you that you did not just do.
+# THE SELF-REVIVE BAR: a window to hit and a marker sweeping toward it.
+#
+# THREE RECTS AND NO ANIMATION STATE. Both positions come from the model every
+# frame -- ultimately from `state_timer`, which is the same number the host judges
+# the press against -- so this widget cannot drift out of step with the rule. A
+# marker tweened locally would look identical and be wrong by however far the two
+# clocks had wandered, which is the whole class of bug the sweep was made a pure
+# function to avoid.
+func _build_revive_overlay(back: ColorRect) -> void:
+	var line := ColorRect.new()
+	line.name = "Window"
+	line.color = COLOR_REVIVE_WINDOW
+	# ADDED AFTER THE FILL, so it draws on top of it. The line has to stay visible
+	# through the moment the fill's edge is ON it, which is the moment it exists
+	# for -- underneath, it would disappear exactly when it matters.
+	back.add_child(line)
+	line.visible = false
+
+# HIDDEN IS A STATEMENT. An empty dictionary means a press would do nothing right
+# now -- you are on your feet, or somebody is already hauling you -- and the line
+# going away says so without a word. A line left sitting there while the button is
+# inert would be the HUD promising something the game will refuse.
+#
+# NO ANIMATION STATE. The position comes from the model every frame, ultimately
+# from `state_timer` -- the same number the host judges the press against -- so
+# this cannot drift out of step with the rule it is drawing.
+func _set_revive_bar(bar: ColorRect, spec: Dictionary) -> void:
+	if bar == null:
+		return
+	var line: ColorRect = bar.get_node_or_null("Window") as ColorRect
+	if line == null:
+		return
+	line.visible = not spec.is_empty()
+	if spec.is_empty():
+		return
+	var full: float = maxf(bar.size.x, BAR_SIZE.x)
+	var width: float = maxf(full * float(spec.get("width", 0.0)), REVIVE_LINE_MIN_WIDTH)
+	# CENTRED ON THE MARK, and clamped so it stays inside its own track. The mark
+	# is where the fill's edge WILL BE at the winning moment, so the line has to
+	# straddle it rather than start at it.
+	line.size = Vector2(width, maxf(bar.size.y, bar.custom_minimum_size.y))
+	line.position = Vector2(
+		clampf(full * float(spec.get("line", 0.0)) - width * 0.5, 0.0, full - width), 0.0)
+
 func _set_call_flash(bar: ColorRect, calling: bool, base: Vector2) -> void:
 	var tall: bool = calling and CrisisFlash.on(CrisisFlash.now())
 	bar.custom_minimum_size = Vector2(base.x, base.y * (CALL_BAR_SCALE if tall else 1.0))

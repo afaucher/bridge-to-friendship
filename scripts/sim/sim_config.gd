@@ -1336,6 +1336,76 @@ const CALL_SECONDS := 2.5
 # screaming" is never "because they are leaning on Q".
 const CALL_COOLDOWN := 5.0
 
+# --- Getting yourself out -----------------------------------------------------
+#
+# THE SELF-REVIVE MINIGAME. A marker sweeps a bar; press USE while it is inside
+# the window and you get up, miss and you lose time off the very countdown you
+# are trying to beat.
+#
+# IT IS A RISK, NOT AN ALTERNATIVE, and that is the whole design. A teammate haul
+# is fast and certain; this is what you do when nobody is coming. If it were
+# merely slower it would still be strictly better than waiting, and a party would
+# stop coming for each other -- the cost has to be paid out of the thing you are
+# short of.
+#
+# IT REVERSES A WRITTEN DECISION ON PURPOSE. game_world.gd recorded that "a lone
+# player still has no way out of a hang, which is by design: hanging is a co-op
+# state and solo is a practice mode." Solo being survivable is worth more than
+# that rule, and the risk is what stops it costing co-op anything.
+
+# Edge-triggered, like the dash and the call: a level bit re-fires on every
+# replayed tick of a reconciliation, which here would be several attempts from
+# one press and a dead player.
+const ACTION_USE := 1 << 6
+
+# ONE WINDOW PER STATE, and the COUNTDOWN BAR ITSELF IS THE MARKER. There is no
+# second moving thing on the screen: the bleed-out bar drains as it always did,
+# a thin line sits somewhere along it, and the moment the draining edge crosses
+# that line is the moment to press.
+#
+# THE WINDOW IS A DURATION, NOT A FRACTION OF THE BAR, and that distinction is
+# the whole reason it is written this way. The two states drain at different
+# speeds -- 160 px over 15 s downed, over 8 s hanging -- so the same 0.25 s draws
+# as a 2.7 px line on one and a 5.0 px line on the other. The DIFFICULTY is
+# identical and the line honestly shows how fast the edge is coming.
+#
+# WHY A QUARTER OF A SECOND. The edge is visibly approaching, so this is
+# anticipation rather than reaction: practised timing lands inside +/-50-80 ms,
+# casual timing inside +/-100-150 ms, with another +/-17-50 ms of display and
+# input latency and +/-1-2 ticks of prediction jitter on top. A +/-125 ms window
+# sits just under a stressed casual player's precision -- hittable with attention
+# and missable while panicking, which is what a gamble should be.
+#
+# Network latency does NOT shift it: a client predicts its own `state_timer` in
+# step(), so the bar it is looking at and the countdown the host judges against
+# are the same simulated tick. Only prediction jitter remains, and that is inside
+# the tolerance above.
+const SELF_REVIVE_WINDOW_SECONDS := 0.25
+
+# WHERE THE ONE WINDOW SITS, as a fraction of the countdown. Never at the very
+# start (there would be no time to see it coming) and never at the very end
+# (which would be indistinguishable from having no chance at all). Between a
+# quarter and three quarters of the way through: 3.8-11.3 s of a downed timer,
+# 2.0-6.0 s of a hang.
+const SELF_REVIVE_EARLIEST := 0.25
+const SELF_REVIVE_LATEST := 0.75
+
+# WHAT A MISS COSTS, in seconds off the countdown. Flat rather than scaled per
+# state, deliberately: it is 10% of a downed bar and 19% of a hang, so gambling
+# on a ledge bites nearly twice as hard -- which is right, because a haul takes a
+# teammate only 0.8 s and waiting for one is clearly the better play there.
+#
+# It is also allowed to KILL you. `state_timer` is what the countdown is measured
+# against and the check runs immediately after the attempt, so the last 1.5 s is
+# a visible do-not-gamble zone. The bet has to be losable.
+#
+# AND IT CAN SKIP THE WINDOW ENTIRELY. A miss jumps the bar forward, so pressing
+# early may fast-forward straight past the one chance you had. With a single
+# window that is the real punishment; the seconds are only the arithmetic.
+const SELF_REVIVE_PENALTY := 1.5
+
+const SELF_REVIVE_COOLDOWN := 0.35
+
 # --- Networking ---------------------------------------------------------------
 # How far the client's prediction may drift from the host's authoritative frame
 # before we rewind and replay. Too small and the client replays constantly for no

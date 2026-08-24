@@ -1224,6 +1224,13 @@ func _front_position() -> Vector3:
 # wipes, exactly like any other -- the grab delays the restart instead of causing
 # it. A lone player still has no way out of a hang, which is by design: hanging
 # is a co-op state and solo is a practice mode.
+#
+# AMENDED 2026-08-23: they do have a way out now, and it is a BET. `_try_self_revive`
+# lets anybody attempt a timed press, at the price of time off this very countdown
+# when they miss. The rule above was about a lone player having no OPTION; the
+# objection it was really making is that a reliable solo escape would make coming
+# for each other optional, and a gamble that can kill you does not. Everything
+# below is unchanged: a party entirely down is still a wipe, however they got there.
 func _check_wipe() -> void:
 	if players.is_empty():
 		return
@@ -3841,13 +3848,16 @@ func _helper_peer_near(peer: int, body: Node) -> int:
 # "cannot get out AT ALL" is a dead end, and until the rope exists a teammate
 # standing right there is the only puller available.
 func _tick_haul(peer: int, body: Node) -> void:
-	if _helper_near(peer, body):
+	var helped: bool = _helper_near(peer, body)
+	if helped:
 		body.rescue_progress += SimConfig.TICK_DELTA
 		if body.rescue_progress >= SimConfig.LEDGE_HAUL_SECONDS:
 			body.mantle()
 			return
 	else:
 		body.rescue_progress = 0.0
+
+	_try_self_revive(peer, body, helped)
 
 	if body.state_timer >= SimConfig.LEDGE_HANG_SECONDS:
 		body.release_ledge()
@@ -3868,8 +3878,57 @@ func _tick_revive(peer: int, body: Node) -> void:
 		# Reset rather than pause: wandering off and back should not bank credit.
 		body.rescue_progress = 0.0
 
+	_try_self_revive(peer, body, helper > 0)
+
 	if body.state_timer >= SimConfig.DOWNED_SECONDS:
 		_begin_drone_return(peer)
+
+# GETTING YOURSELF OUT, AT A PRICE. A marker sweeps the bar; press USE inside the
+# window and you are up, miss and SELF_REVIVE_PENALTY comes off the countdown you
+# are trying to beat. See the block in sim_config.gd for why it is a bet rather
+# than a slower certainty.
+#
+# JUDGED ON THE HOST, WHERE THE REST OF THE RESCUE IS. The client presses, the
+# input arrives by the route every input arrives by, and the outcome comes back in
+# the state blob -- so there is no second decision-maker and nothing to reconcile.
+# The client can still DRAW the bar exactly right, because the sweep is a pure
+# function of `state_timer` and that already replicates.
+#
+# NO EFFECT WHILE SOMEBODY IS HELPING, which was specified and is also the rule
+# that keeps the two routes from competing. Not merely "the success is ignored":
+# the whole attempt is, penalty included. A player who gambles at the moment a
+# teammate arrives must not be killed by the arrival -- from inside the game that
+# is being punished for being rescued.
+func _try_self_revive(peer: int, body: Node, helped: bool) -> void:
+	body.self_revive_cooldown = maxf(0.0, body.self_revive_cooldown - SimConfig.TICK_DELTA)
+	if helped:
+		return
+	var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
+	if int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_USE == 0:
+		return
+	if body.self_revive_cooldown > 0.0:
+		return
+	body.self_revive_cooldown = SimConfig.SELF_REVIVE_COOLDOWN
+
+	if body.self_revive_hit():
+		# A MANTLE CAN REFUSE -- the cell above the lip has to be solid, and a hang
+		# on the underside of something has nowhere to go. A refusal costs nothing:
+		# the timing was right and the geometry was not, and charging for that
+		# would be a penalty the player cannot see the reason for.
+		if body.state == PlayerBody.State.LEDGE_HANG:
+			if body.mantle():
+				_bump(peer, "self_revives")
+		else:
+			body.revive()
+			_bump(peer, "self_revives")
+		return
+
+	# THE MISS. One `+=`, and it does both halves of the punishment: the countdown
+	# is shorter AND the sweep jumps forward into a freshly-hashed window, so a
+	# player cannot learn one pattern and lean on it. The caller checks the
+	# countdown immediately after this, so a miss with less than the penalty left
+	# ends the state on this very tick -- which is the bet, stated.
+	body.state_timer += SimConfig.SELF_REVIVE_PENALTY
 
 func _begin_drone_return(peer: int) -> void:
 	if _returning.has(peer):

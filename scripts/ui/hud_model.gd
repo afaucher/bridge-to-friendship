@@ -96,6 +96,10 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		# it and seeing nothing happen is how a player concludes the key is broken.
 		"calling": float(body.call_timer) > 0.0,
 		"slots": _slots(world, peer, body),
+		# THE SELF-REVIVE BAR. On your own row only: it is a thing you DO, and a
+		# teammate can neither press it for you nor act on seeing it -- the row that
+		# tells them to come running is `needs_help`, which they already have.
+		"self_revive": self_revive(world, peer, body),
 	}
 
 static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
@@ -173,6 +177,32 @@ static func bleed_out_fraction(body: Node) -> float:
 static func rescue_fraction(body: Node) -> float:
 	var value: float = body.haul_fraction()
 	return value if value >= 0.0 else NO_BAR
+
+# THE SELF-REVIVE LINE: where it is, and how thin.
+#
+# THERE IS NO MARKER IN HERE, AND THAT IS THE POINT. The moving thing is the
+# countdown bar itself -- the fill this panel already draws -- and all this adds
+# is a thin line for its edge to cross. An earlier version drew a second sweeping
+# marker beside it, which is two moving things saying one thing.
+#
+# EMPTY WHEN A TEAMMATE IS ON THE WAY, because that is exactly when a press does
+# nothing (GameWorld._try_self_revive returns early). A line still sitting there
+# over an inert button is the HUD promising what the game will refuse -- and the
+# player would read the dead press as the mechanic being broken rather than as
+# being rescued.
+#
+# DELEGATES TO THE BODY for the position, which is the lesson the two black bars
+# above were paid for: a second copy of this arithmetic is a second answer, and
+# here it would be a line drawn somewhere other than where the press is judged.
+static func self_revive(world, peer: int, body: Node) -> Dictionary:
+	if not body.is_awaiting_rescue():
+		return {}
+	if world != null and world.has_method("_helper_near") and world._helper_near(peer, body):
+		return {}
+	var at: float = float(body.self_revive_mark())
+	if at < 0.0:
+		return {}
+	return {"line": at, "width": float(body.self_revive_mark_width())}
 
 static func _fraction(value: float, total: float) -> float:
 	if total <= 0.0:

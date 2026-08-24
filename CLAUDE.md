@@ -968,6 +968,17 @@ the moment it is written.
   tests for the old name — the gate will not tell you. Same shape as the
   `test_ramp_traversal` half-a-gate note above: a test that cannot fail is not a
   test.
+- **"THE LAST FIELD" IS NOT "THE FIELD I MEAN", and a tolerant-tail test written
+  relatively breaks the day somebody appends another one.** Observed 2026-08-23.
+  Every new field on `capture_state()` comes with a test that truncates the blob
+  and checks the old-blob path, and `test_call_for_help` wrote that as
+  `old.resize(blob.size() - 1)` — correct while `call_timer` was last, and
+  silently a test of the NEXT field the moment `self_revive_seed` was appended.
+  It then failed claiming the tolerant read was broken, in a file that had
+  nothing to do with the change. **Truncate to a NAMED length**, and note that
+  the gate catching this is the system working: every tail-field test in the tree
+  is one append away from the same mistake, so the fix is the convention rather
+  than the one file.
 - **Assigning a freed object to a typed `var x: Node` raises BEFORE
   `is_instance_valid(x)` can say no.** So the usual guard does not guard: the
   raise aborts the frame, and if that frame was advancing a state machine the

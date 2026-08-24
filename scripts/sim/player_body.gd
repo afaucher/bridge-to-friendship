@@ -55,6 +55,16 @@ enum State {
 var state: int = State.WALK
 var state_timer: float = 0.0
 
+# Time until the next self-revive attempt is allowed. Host-side only -- it is
+# consumed where the attempt is judged (GameWorld._try_self_revive) and ticked
+# there too, so it never has to agree with anything on a client.
+var self_revive_cooldown: float = 0.0
+
+# WHICH WINDOW THIS PARTICULAR CRISIS GOT. Set once when the state is entered and
+# never touched again, so the miss penalty cannot move the window it is punishing
+# you for missing. On the wire, because the client draws the line from it.
+var self_revive_seed: int = 0
+
 # Our own floor flag, refreshed from is_on_floor() after every move_and_slide.
 #
 # NOT a convenience wrapper. is_on_floor() is derived state living inside the
@@ -585,6 +595,66 @@ func rescue_fraction() -> float:
 # GameWorld already treats these as one situation wearing two hats -- same
 # countdown, same teammate-can-end-it-early, same drone at the end. The thing
 # over your head should not be the one place they are different.
+# --- The self-revive minigame -------------------------------------------------
+#
+# THE COUNTDOWN BAR IS THE MARKER. Not a second sweeping thing beside it -- the
+# bleed-out bar drains as it always did, one thin line sits somewhere along it,
+# and the instant the draining edge crosses that line is the instant to press.
+# ONE window per state: you get a chance, not a rhythm game.
+#
+# THE WINDOW IS AN ABSOLUTE TIME, so everything about it is a comparison against
+# `state_timer` -- which already replicates, and which a client already predicts
+# in step(). That is what keeps the bar a player is looking at and the countdown
+# the host is judging on the same simulated tick.
+#
+# THE SEED IS STORED RATHER THAN DERIVED, and it cost a design round to see why.
+# The obvious trick is to reconstruct the entry tick as `world.tick -
+# state_timer / TICK_DELTA` and hash that, needing no new field. But a MISS adds
+# to `state_timer` -- so the derived entry tick would move, the hash would change,
+# and the single window would silently relocate: a second chance, out of the
+# punishment for using the first. A stored seed cannot do that.
+func self_revive_gate() -> float:
+	var total: float = rescue_total()
+	if total <= 0.0:
+		return -1.0
+	var h: int = (self_revive_seed * 2654435761 + peer_id * 40503) % 1000003
+	var spread: float = SimConfig.SELF_REVIVE_LATEST - SimConfig.SELF_REVIVE_EARLIEST
+	return total * (SimConfig.SELF_REVIVE_EARLIEST + spread * float(h % 1000) / 1000.0)
+
+func self_revive_hit() -> bool:
+	var gate: float = self_revive_gate()
+	if gate < 0.0:
+		return false
+	var window: float = gate + SimConfig.SELF_REVIVE_WINDOW_SECONDS
+	return state_timer >= gate and state_timer <= window
+
+# WHERE TO DRAW THE LINE, in the same 0..1 the bar's own fill uses. The fill is
+# `remaining / total`, so a gate at time g sits at `(total - g) / total` and the
+# edge reaches it exactly when state_timer == g. One number, one meaning, and no
+# arithmetic in the HUD that could disagree with the arithmetic in the rule.
+func self_revive_mark() -> float:
+	var gate: float = self_revive_gate()
+	var total: float = rescue_total()
+	if gate < 0.0 or total <= 0.0:
+		return -1.0
+	return clampf((total - gate) / total, 0.0, 1.0)
+
+func self_revive_mark_width() -> float:
+	var total: float = rescue_total()
+	if total <= 0.0:
+		return 0.0
+	return SimConfig.SELF_REVIVE_WINDOW_SECONDS / total
+
+# How long this state gives you in total. The denominator every fraction above
+# divides by, and the one place the two countdowns are named together.
+func rescue_total() -> float:
+	match state:
+		State.DOWNED:
+			return SimConfig.DOWNED_SECONDS
+		State.LEDGE_HANG:
+			return SimConfig.LEDGE_HANG_SECONDS
+	return -1.0
+
 func rescue_seconds_left() -> float:
 	match state:
 		State.DOWNED:
@@ -1381,6 +1451,7 @@ func _try_catch_ledge() -> bool:
 func _begin_hang(lip: Vector3, dir: int) -> void:
 	state = State.LEDGE_HANG
 	state_timer = 0.0
+	_roll_self_revive_window()
 	velocity = Vector3.ZERO
 	grounded = false
 	hang_dir = dir
@@ -1492,6 +1563,14 @@ func begin_downed() -> void:
 	# backwards.
 	call_cooldown = 0.0
 	call_timer = SimConfig.CALL_SECONDS
+	_roll_self_revive_window()
+
+# ONE WINDOW PER CRISIS, fixed at the moment the crisis starts. The world tick is
+# the seed because it is a number both machines already agree on -- but it is
+# STORED rather than re-derived later, for the reason in self_revive_gate().
+func _roll_self_revive_window() -> void:
+	self_revive_seed = int(world.tick) if world != null else 0
+	self_revive_cooldown = 0.0
 
 func revive() -> void:
 	state = State.WALK
@@ -1627,7 +1706,7 @@ func capture_state() -> Array:
 	return [position, velocity, state, state_timer, grounded, shove_yaw, shove_cooldown,
 		facing, health, invulnerable, hang_dir, rescue_progress, ledge_cooldown,
 		shielding, shield_yaw, special_was_held, dash_charges, dash_refill,
-		carry_speed, pistol_heat, pistol_timer, call_timer]
+		carry_speed, pistol_heat, pistol_timer, call_timer, self_revive_seed]
 
 func apply_state(s: Array) -> void:
 	position = s[0]
@@ -1652,6 +1731,11 @@ func apply_state(s: Array) -> void:
 	# leaves a player not calling rather than aborting the rest of this function.
 	if s.size() > 21:
 		call_timer = float(s[21])
+	# The window this crisis rolled. A blob from before it existed leaves the seed
+	# at whatever it was rather than aborting the rest of this function -- the
+	# house pattern, and the reason a tail field is safe to add.
+	if s.size() > 22:
+		self_revive_seed = int(s[22])
 	if s.size() > 18:
 		carry_speed = float(s[18])
 	if s.size() > 17:
