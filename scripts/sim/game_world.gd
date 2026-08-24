@@ -327,10 +327,10 @@ func _ready() -> void:
 	_deployables_root.name = "Deployables"
 	add_child(_deployables_root)
 	# Read once, before anything can overwrite it. Deliberately not in start():
-	# _remembered_hat must hold what is ON DISK from the first moment, or the
+	# _remembered_hats must hold what is ON DISK from the first moment, or the
 	# first pickup would look like a change and rewrite an identical file.
 	if view_active:
-		_remembered_hat = HatConfig.load_style()
+		_remembered_hats = HatConfig.load_styles()
 		# The chosen character, read once beside the hat and for the same reason.
 		# A world with no view is a test rig or a headless sim, and neither should
 		# touch a file on the developer's disk.
@@ -2096,15 +2096,18 @@ func _gunner_by_id(id: int) -> Node:
 # user:// would rewrite the developer's own saved hat every time the gate ran --
 # a test that quietly mutates real user state is one nobody can trust twice.
 # view_active is the same gate _poll_aim uses for the same reason.
-func _remember_hat(style: int) -> void:
-	if not view_active or style == _remembered_hat:
+func _remember_hats(styles: Array) -> void:
+	if not view_active or styles == _remembered_hats:
 		return
-	_remembered_hat = style
-	HatConfig.save_style(style)
+	_remembered_hats = styles.duplicate()
+	HatConfig.save_styles(_remembered_hats)
 
 # What is on disk, so a pickup that changes nothing does not rewrite the file --
-# a dash through five hats is five acquisitions in one tick.
-var _remembered_hat: int = HatConfig.NONE
+# a dash through five hats is five acquisitions in one tick. COMPARED AS A WHOLE
+# ARRAY now that a stack is saved: the top hat being unchanged is no longer the
+# same question as the stack being unchanged, and comparing only the top would
+# miss a hat lost from underneath.
+var _remembered_hats: Array = []
 
 func hat_count() -> int:
 	return _hats.count()
@@ -2169,11 +2172,13 @@ func _wear_hat(id: int, peer: int, index: int) -> void:
 	hat.wear(peer, index)
 	# ACQUIRING A HAT MAKES IT YOURS, TOMORROW TOO. Steal one and you keep it.
 	#
-	# ASKED OF THE WHOLE STACK rather than of the hat just picked up, because the
-	# answer is no longer "the newest one": a merchant's hat does not persist, so
-	# what gets saved is the topmost hat that CAN. See _persistable_top.
+	# ASKED OF THE WHOLE STACK rather than of the hat just picked up. It has always
+	# been the stack rather than the newest hat -- the old reason was that a
+	# merchant's hat did not persist, so the answer was "the topmost one that CAN".
+	# Now every worn hat is saved and the whole stack IS the answer, which is
+	# simpler and keeps the same call site. See _persistable_stack.
 	if peer == local_peer:
-		_remember_hat(_persistable_top(peer))
+		_remember_hats(_persistable_stack(peer))
 	# NOT REPARENTED ONTO THE HEAD, which is what M8.5 did and what 2026-08-16
 	# had to undo. Sitting under the player followed it for free, but A
 	# RIGIDBODY3D THAT IS A CHILD OF ANOTHER PHYSICS BODY IS NOT RETURNED BY A
@@ -2227,7 +2232,7 @@ func dislodge_hats(body: Node) -> void:
 func _forget_hat_if_bare(peer: int) -> void:
 	if peer != local_peer:
 		return
-	_remember_hat(_persistable_top(peer))
+	_remember_hats(_persistable_stack(peer))
 
 # WHICH HAT FOLLOWS YOU TO THE NEXT LAUNCH: the topmost one that is allowed to,
 # or nothing at all.
@@ -2248,13 +2253,12 @@ func _forget_hat_if_bare(peer: int) -> void:
 # saves the ordinary one, and trading away your only hat really does cost you your
 # saved hat -- which is the same rule as losing it to a fall, and the reason the
 # trade is a bet rather than a freebie.
-func _persistable_top(peer: int) -> int:
-	var worn: Array = _hats.worn_by(peer)
-	for i in range(worn.size() - 1, -1, -1):
-		var hat: Node = worn[i]
-		if is_instance_valid(hat) and not hat.is_tall():
-			return int(hat.style_id)
-	return HatConfig.NONE
+func _persistable_stack(peer: int) -> Array:
+	var out: Array = []
+	for hat in _hats.worn_by(peer):
+		if is_instance_valid(hat):
+			out.append(int(hat.style_id))
+	return out
 
 # DESTROYED, not dropped. A player who leaves the world -- fell, drone-returned,
 # disconnected -- takes their hats with them.
@@ -3132,7 +3136,21 @@ func _snap_to_enemy(body: Node, target: Vector3) -> Vector3:
 			# it, which the tight radius exists to preserve.
 			if along_ray <= 0.0 or along_ray > span:
 				continue
-			if (offset - along * along_ray).length() > SimConfig.AIM_SNAP_RADIUS:
+			# THE MISS, SPLIT INTO THE AXIS THE PLAYER AIMED ON AND THE ONE THEY
+			# DID NOT. Tight sideways, because that is where the decision is --
+			# aiming at the ground BESIDE something is a real play for an area
+			# weapon. Generous vertically, because in `level` mode there is no
+			# vertical aim to respect: the ray is flat at the shooter own height
+			# by construction, so a turret on a tower was unreachable by an assist
+			# that measured the two together. See SimConfig.AIM_SNAP_RISE.
+			#
+			# Measured 2026-08-23 against M23's watchpost: with the two axes taken
+			# together the shot leaves at y -0.009 and misses by 2.61 m; split, it
+			# leaves at y 0.313 and arrives within 1.6 cm.
+			var miss: Vector3 = offset - along * along_ray
+			if Vector2(miss.x, miss.z).length() > SimConfig.AIM_SNAP_RADIUS:
+				continue
+			if absf(miss.y) > SimConfig.AIM_SNAP_RISE:
 				continue
 			# NEAREST WINS. A second enemy further down the same line must not
 			# steal the aim off the one in front of it.
@@ -5402,16 +5420,37 @@ func host_spawn(peer: int) -> void:
 func _give_saved_hat(peer: int) -> void:
 	if not is_host or not view_active or peer != local_peer:
 		return
-	var style: int = _remembered_hat
-	if style == HatConfig.NONE:
-		return
 	var body: Node = players.get(peer)
 	if body == null:
 		return
-	var hat: Node = _hats.spawn_loose(body.position, style)
-	_wear_hat(hat.hat_id, peer, 0)
-	if networked:
-		_wear_hat.rpc(hat.hat_id, peer, 0)
+	# SNAPSHOT FIRST, AND THAT IS THE WHOLE BUG. `_wear_hat` calls `_remember_hats`
+	# on every hat it puts on, which REASSIGNS the very array this loop is reading
+	# -- to whatever is worn so far. So iteration 0 dressed you in the first hat
+	# and cut `_remembered_hats` down to one entry, iteration 1 read index 1 of a
+	# one-element array, and the out-of-bounds aborted the rest of this function
+	# (CLAUDE.md: a bad read does not fail loudly, it takes the function with it).
+	#
+	# THE HALF THAT MAKES IT URGENT: the truncated array was written to disk on the
+	# way past, so the first restart after saving a tower left you wearing one hat
+	# AND destroyed the record of the other three. The evidence of what you owned
+	# went with them.
+	#
+	# Reported from play 2026-08-23, one restart after the stack format shipped.
+	var wanted: Array = _remembered_hats.duplicate()
+	for i in wanted.size():
+		var style: int = int(wanted[i])
+		if style == HatConfig.NONE:
+			continue
+		# SPREAD, NOT STACKED, FOR THE ONE FRAME BEFORE THEY ARE WORN. A hat is a
+		# RigidBody3D and spawn_loose puts it in the world; several at one point is
+		# the coincident-bodies trap CLAUDE.md opens with, and depenetration would
+		# fling them before pose_worn ever got to place them. A few centimetres
+		# apart costs nothing and cannot be got wrong later.
+		var at: Vector3 = body.position + Vector3(float(i) * 0.05, float(i) * 0.05, 0.0)
+		var hat: Node = _hats.spawn_loose(at, style)
+		_wear_hat(hat.hat_id, peer, i)
+		if networked:
+			_wear_hat.rpc(hat.hat_id, peer, i)
 
 func host_add_peer(peer: int) -> void:
 	if not is_host:

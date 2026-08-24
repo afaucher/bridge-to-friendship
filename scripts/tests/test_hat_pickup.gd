@@ -117,8 +117,12 @@ func _phase_stack_of_three() -> void:
 		# be a tower.
 		check(worn[1].position.y > worn[0].position.y, "stacked upward")
 		check(worn[2].position.y > worn[1].position.y, "in order")
-		near(worn[1].position.y - worn[0].position.y, SimConfig.HAT_HEIGHT, 0.01,
-			"spaced by HAT_HEIGHT")
+		# BY THE HAT BELOW'S OWN SLOT, not by a constant -- see the same change in
+		# test_hat_lean. A hat's slot became its drawn height on 2026-08-23, and an
+		# assertion against HAT_HEIGHT was a claim about the catalogue rather than
+		# about the stacking.
+		near(worn[1].position.y - worn[0].position.y, worn[0].slot_height(), 0.01,
+			"spaced by the slot of the hat underneath (%.3f m)" % worn[0].slot_height())
 		_advance(2)
 
 # --- 3. A tumbling player picks up nothing ------------------------------------

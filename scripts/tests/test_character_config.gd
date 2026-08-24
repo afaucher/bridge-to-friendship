@@ -74,16 +74,16 @@ func _test_round_trip() -> void:
 func _test_shares_a_file_with_the_hat() -> void:
 	var colour := Color(0.8, 0.2, 0.6)
 	CharacterConfig.save_body_colour(colour)
-	HatConfig.save_style(4242)
+	HatConfig.save_styles([4242])
 
 	near(CharacterConfig.load_body_colour().r, colour.r, 1.0 / 255.0,
 		"saving a hat did not clobber the colour")
-	eq(HatConfig.load_style(), 4242, "and the hat is still there")
+	eq(HatConfig.load_styles(), [4242], "and the hat is still there")
 
 	# And the other order, because "A then B" working says nothing about "B then A"
 	# -- one of the two writes could be the destructive one.
 	CharacterConfig.save_body_colour(Color(0.1, 0.9, 0.3))
-	eq(HatConfig.load_style(), 4242, "saving a colour did not clobber the hat")
+	eq(HatConfig.load_styles(), [4242], "saving a colour did not clobber the hat")
 
 # --- 4. A hand-edited file cannot take the game down --------------------------
 #

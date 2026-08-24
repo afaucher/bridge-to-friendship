@@ -118,16 +118,34 @@ static func _between(style_id: int, salt: int, low: float, high: float) -> float
 
 # HOW TALL A SLOT THIS HAT OCCUPIES IN A WORN TOWER.
 #
-# `HAT_HEIGHT` was never "how tall a hat is" -- ordinary hats are 0.10 to 0.55 and
-# always have been. It is how tall a SLOT is, and it was a bare constant at every
-# site that stacked or shot at one. It is a per-hat question now, and every one of
-# those sites has to ask it: get the SPACING from here and leave the HIT COLUMN on
-# the constant and you have rebuilt the 2026-08-16 gappy tower on purpose, with
-# 0.88 m of hat a round passes straight through.
+# THE SLOT IS THE HAT. One number for the spacing, the hit column, the art and the
+# score, so none of them can disagree with any other -- and every site that stacks
+# or shoots at a hat asks this one function. Get the SPACING from here and leave
+# the HIT COLUMN on a constant and you have rebuilt the 2026-08-16 gappy tower on
+# purpose, with 0.88 m of hat a round passes straight through.
+#
+# IT USED TO BE A FLAT `HAT_HEIGHT` FOR ORDINARY HATS, on the reasoning that a
+# fixed slot is what makes the hit columns tile. That is true and it is not the
+# only way to be true: columns tile whenever the spacing equals the column, and
+# equal-to-the-art tiles just as exactly as equal-to-a-constant. What the constant
+# bought was uniformity; what it cost was the art.
+#
+# MEASURED 2026-08-23, from a playtest of the character screen -- "the first hat
+# was flat on the head but the second was floating above the first". Ordinary hats
+# are drawn 0.10 to 0.55 tall against a 0.35 slot, so a stacked hat floated by up
+# to **0.226 m** or sank **0.183 m** into the one below. Tall hats never had the
+# problem: `_tall_knobs` sizes the model FROM the slot, so theirs already agreed.
+# This makes ordinary hats behave the way tall ones already did.
+#
+# WHAT IT COSTS, stated because a hit column is a fairness question: a short hat is
+# now a genuinely smaller target, 0.12 m against 0.55 m at the extremes. That is
+# the honest version -- the hit test matches what the shooter can see, which is
+# the rule this project keeps relearning, most recently on the spikes whose damage
+# ring bore no relation to the cones drawn in it.
 static func slot_height(style_id: int) -> float:
 	if is_tall(style_id):
 		return SimConfig.HAT_HEIGHT * SimConfig.TALL_HAT_SLOTS
-	return SimConfig.HAT_HEIGHT
+	return float(knobs(style_id)["height"])
 
 # HOW FAR ABOVE THE BOTTOM OF ITS SLOT THIS HAT'S ORIGIN SITS.
 #

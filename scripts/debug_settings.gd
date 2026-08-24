@@ -131,33 +131,42 @@ const OPTIONS := {
 	# how a project ends up unable to reproduce its own history. Flipping back is
 	# this one line.
 	#
-	# LEVEL + SNAP WAS TRIED AS THE NEW DEFAULT ON 2026-08-23 AND THE GATE REFUSED
-	# IT, which is the useful part. The 08-23 playtest asked for "aim at a targetable
-	# thing, otherwise horizontal", and level+snap looks like that for free -- two
-	# indices, no code. It is not that, and test_tower_enemy measured exactly where
-	# the difference is: M23's watchpost turret sits 2.47 m above the muzzle at
-	# 7.17 m, the level shot's closest approach is 2.54 m, and AIM_SNAP_RADIUS is
-	# 0.6. The assist is four times too small to reach a tower, so the pair ships the
-	# hazard-with-no-counter this comment warns about two paragraphs up.
+	# LEVEL + SNAP IS THE DEFAULT FROM 2026-08-23, confirmed in play as "exactly
+	# what was asked for in the playtest". The 08-23 request was "aim at a targetable
+	# thing, otherwise horizontal", and that is these two indices -- no third mode
+	# and no new code path.
 	#
-	# THE DIFFERENCE IS THE WORD "CURSOR". The request was aim there when THE CURSOR
-	# IS ON a targetable thing; `snap` works off the RAY, pulling shots that would
-	# already pass close. Those agree everywhere except the case that matters -- a
-	# target your cursor is on and your level ray is metres under. Building what was
-	# actually asked for is a third mode (point when the cursor rests on something
-	# aimable, level otherwise), not a combination of the two that exist.
+	# IT WAS REFUSED ONCE, EARLIER THE SAME DAY, AND THE DIAGNOSIS WAS WRONG. The
+	# gate was right that it failed: test_tower_enemy measured M23's watchpost
+	# turret 2.47 m above the muzzle, a level shot passing 2.54 m under it, against
+	# an AIM_SNAP_RADIUS of 0.6 -- four times too small to reach a tower, shipping
+	# the hazard-with-no-counter this comment warns about above. The conclusion
+	# drawn was that the request needed a THIRD mode (point when the cursor is on
+	# something aimable, level otherwise).
+	#
+	# It did not. The radius was never the problem; the AXIS was. That number is
+	# entirely about LATERAL choice -- aiming at the ground beside a rusher is a
+	# real play -- and height is not a choice the player takes in `level` at all,
+	# where the ray is flat at their own eye height by construction. Measuring the
+	# miss in 3D applied a rule about a decision to an axis where no decision was
+	# made. Split it (SimConfig.AIM_SNAP_RISE) and the same shot leaves at y 0.313
+	# and arrives within 1.6 cm of the turret, against 2.61 m before.
+	#
+	# The lesson is the transferable part: a failing gate said the PAIR was wrong,
+	# and what was wrong was one rule inside one of them. "This combination cannot
+	# work" is a conclusion worth re-deriving before it becomes a feature.
 	"aim_mode": {
 		"section": "Aiming",
 		"label": "Aim mode",
 		"choices": ["level", "point"],
-		"default": 1,
+		"default": 0,
 		"help": "level is the shipped behaviour: a shot is aimed at a spot 30 m down the bearing at your own height, so it always leaves flat. point aims at the exact place the cursor rests on in the world, which is what lets you shoot up onto a deck or down into a pit -- and it makes the muzzle offset converge on the real target rather than on a fixed 30 m.",
 	},
 	"aim_assist": {
 		"section": "Aiming",
 		"label": "Aim assist",
 		"choices": ["off", "snap"],
-		"default": 0,
+		"default": 1,
 		"help": "snap pulls the aim onto an enemy centre of mass when the shot would already pass close to one. The radius is deliberately TIGHT: pointing at the ground near something is a real strategy for an area weapon against a slow target, and a generous bubble would eat that decision and quietly make the rocket worse.",
 	},
 	"laser_sight": {

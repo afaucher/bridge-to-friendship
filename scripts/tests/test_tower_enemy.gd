@@ -65,6 +65,7 @@ func _physics_process(_delta: float) -> void:
 	done = true
 	_test_the_pieces_are_towers()
 	_test_a_round_reaches_the_top()
+	_test_level_and_snap_reach_the_top()
 	finish()
 
 # --- Phase 4: the library holds more than one kind of climb --------------------
@@ -133,6 +134,14 @@ func _test_a_round_reaches_the_top() -> void:
 	weapon.fire_timer = 0.0
 	world._pose_held_special(weapon, body)
 
+	# THE MODE IS PINNED, NOT INHERITED. This phase is a claim about `point`
+	# aiming -- it hands the shot an `aim_point` and asserts what comes out -- and
+	# reading the default instead meant it silently changed meaning on 2026-08-23
+	# when the default became `level`, where `aim_point` is ignored by
+	# construction. A test that depends on a setting has to say which one.
+	DebugSettings.set_choice("aim_mode", 1)          # point
+	DebugSettings.set_choice("aim_assist", 0)        # off -- point alone is the claim
+
 	# AIMED THE WAY THE GAME AIMS IT. `aim_point` is what a client resolves from
 	# the cursor and puts on the wire, and `aim_direction` is what the shot is
 	# built from -- so this is the caller's input, not one invented here.
@@ -179,3 +188,80 @@ func _test_a_round_reaches_the_top() -> void:
 			% closest
 		+ "that matters: a direction with pitch in it is not a hit, and a round "
 		+ "that aims at a post and falls under it is exactly as useless")
+
+# --- Phase 6: and LEVEL + SNAP reaches it too ---------------------------------
+#
+# THE DEFAULT SINCE 2026-08-23, and the case that had never been measured. The
+# playtest asked for "aim at a targetable thing, otherwise horizontal", level+snap
+# was tried, and the conclusion recorded at the time was that it could not work:
+# this very turret sits 2.47 m above the muzzle, a level ray passes 2.54 m under
+# it, and AIM_SNAP_RADIUS is 0.6. Four times too small.
+#
+# THE RADIUS WAS NOT THE PROBLEM -- THE AXIS WAS. That number is entirely about
+# LATERAL choice: aiming at the ground beside a rusher rather than at it is a real
+# play for an area weapon, and a generous bubble would eat the decision. Height is
+# not a decision the player takes in `level` mode at all; the ray is flat at their
+# own eye height by construction. Measuring the miss in 3D applied a rule about a
+# choice to an axis where no choice was made. Split, with AIM_SNAP_RISE for the
+# axis nobody aimed on, and a tower becomes answerable without a third aim mode.
+#
+# NOTE WHAT THE CURSOR IS DOING HERE: NOTHING. `aim_point` is deliberately left
+# invalid, so this cannot pass by accident through the `point` path -- the whole
+# claim is that a player firing flat, with no vertical aim available to them, can
+# still answer a turret standing over them.
+func _test_level_and_snap_reach_the_top() -> void:
+	DebugSettings.set_choice("aim_mode", 0)          # level
+	DebugSettings.set_choice("aim_assist", 1)        # snap
+	body.aim_point = PlayerInput.AIM_POINT_NONE
+
+	# THE REAL GUNNER, not a coordinate. Snap searches the live pools, so a phase
+	# that invented a target position would be testing arithmetic against a thing
+	# that is not there -- and this file opens by saying that is how this project
+	# shipped a shield that blocked nothing.
+	var turret: Node = null
+	for g in world._gunners:
+		if is_instance_valid(g) and g.global_position.y > body.global_position.y + 1.0:
+			turret = g
+	check(turret != null, "there is a real gunner up on the post to shoot at")
+	if turret == null:
+		return
+
+	var muzzle: Vector3 = world._muzzle_of(weapon, body)
+	var rise: float = turret.global_position.y - muzzle.y
+	var flat: float = Vector2(turret.global_position.x - muzzle.x,
+		turret.global_position.z - muzzle.z).length()
+	# FACING THE POST, because `level` builds its ray from the bearing and nothing
+	# else -- a shooter looking the other way would fail this for a reason that has
+	# nothing to do with the assist.
+	body.facing = GridConfig.yaw_of_vector(turret.global_position - body.global_position)
+	var dir: Vector3 = world.aim_direction(body, weapon)
+	print("[tower] level+snap: post %.2f m up and %.2f m out, shot leaves at y %.3f"
+		% [rise, flat, dir.y])
+
+	check(rise > SimConfig.AIM_SNAP_RADIUS * 2.0,
+		"the turret is well above what the old 3D radius could ever reach (%.2f m "
+			% rise + "against a %.2f m radius)" % SimConfig.AIM_SNAP_RADIUS)
+	check(dir.y > 0.05,
+		"and a LEVEL shot leaves the barrel tilted UP (y %.3f) -- under level the "
+			% dir.y
+		+ "ray is flat by construction, so any pitch here came from the assist")
+
+	# AND IT ARRIVES. Direction is not the claim; the same walk phase 5 does.
+	var target: Vector3 = turret.global_position
+	var travel: float = muzzle.distance_to(target)
+	var closest: float = INF
+	var step: float = SimConfig.TICK_DELTA * SimConfig.MG_BULLET_SPEED
+	var flown := 0.0
+	var drop := 0.0
+	while flown < travel * 1.6:
+		var at: Vector3 = muzzle + dir * flown + Vector3(0.0, -drop, 0.0)
+		closest = minf(closest, at.distance_to(target))
+		flown += step
+		var t: float = flown / SimConfig.MG_BULLET_SPEED
+		drop = 0.5 * Bullet.drop_accel() * t * t
+	print("[tower] level+snap closest approach: %.3f m" % closest)
+	check(closest < 1.0,
+		"and the round reaches the turret (%.2f m) -- which is what makes the "
+			% closest
+		+ "playtest request answerable with the two modes that already existed, "
+		+ "rather than with a third one")

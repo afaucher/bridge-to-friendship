@@ -168,11 +168,29 @@ func _check_the_slot_sizes() -> void:
 		near(HatStyle.slot_height(HatStyle.TALL_FIRST + i),
 			HatStyle.slot_height(HatStyle.TALL_FIRST), 0.0001,
 			"every trophy is the same height (style %d)" % (HatStyle.TALL_FIRST + i))
-	# And an ordinary hat is exactly one slot however tall its MESH is -- the
-	# catalogue runs 0.10 to 0.55 and always has.
-	var ordinary: int = HatStyle.random_ordinary_style()
-	near(HatStyle.slot_height(ordinary), SimConfig.HAT_HEIGHT, 0.0001,
-		"and an ordinary hat still takes exactly one slot")
+	# AND AN ORDINARY HAT'S SLOT IS ITS OWN HEIGHT, which is the 2026-08-23 change.
+	# It was a flat HAT_HEIGHT, and the catalogue runs 0.10 to 0.55 -- so a stacked
+	# hat floated up to 0.226 m above the one below or sank 0.183 m into it, which
+	# is what a playtest of the character screen reported. Tall hats never had the
+	# problem because `_tall_knobs` sizes the model FROM the slot; this is ordinary
+	# hats being made to behave the same way.
+	#
+	# SAMPLED ACROSS THE CATALOGUE, not on one draw. A single style could agree
+	# with a constant by luck -- 0.35 is inside the range -- and the claim is about
+	# every hat, so it is asserted about every hat.
+	var spread: Dictionary = {}
+	for i in 24:
+		var ordinary: int = HatStyle.random_ordinary_style()
+		var drawn: float = float(HatStyle.knobs(ordinary)["height"])
+		spread[snappedf(drawn, 0.01)] = true
+		near(HatStyle.slot_height(ordinary), drawn, 0.0001,
+			"an ordinary hat's slot IS its drawn height (style %d, %.3f m)"
+				% [ordinary, drawn])
+	check(spread.size() > 4,
+		"and the sample really did span the catalogue (%d distinct heights) -- "
+			% spread.size()
+		+ "0.35 is inside the range, so a narrow sample could agree with the old "
+		+ "constant by luck")
 
 # --- 4. The tower, and the columns that tile ----------------------------------
 
@@ -330,8 +348,32 @@ func _advance(next: int) -> void:
 # The trophy goes in the MIDDLE, because that is where a gap has hats on both
 # sides of it to be measured against -- on top, the space above it is outside the
 # tower and nothing would notice.
+# THE SAME TOWER EVERY TIME, and it has to be said out loud now.
+#
+# The sweep rebuilds the stack for every sample and fires at an offset measured
+# once, on the first one -- so it has always depended on a rebuilt tower being
+# geometrically identical to the one the offsets came from. That was FREE while
+# an ordinary hat took a flat HAT_HEIGHT slot whatever its mesh looked like: the
+# style was rolled (`-1`) and the geometry did not care.
+#
+# It stopped being free on 2026-08-23, when a hat's slot became its own drawn
+# height. Rolled styles then gave a tower of a different height on every sample,
+# offsets from the first one landed above the top of a later shorter one, and the
+# test reported three GAPS in a tower whose own diagnostics showed it tiling with
+# no seam at all -- 1.800..2.191..3.416..3.733, not a millimetre between them.
+#
+# The tell was the shape of the failure: the misses were the TOP samples and they
+# were not contiguous, which is not what a gap in a column looks like. A hole is
+# in one place; this moved.
+const LOWER_STYLE := 4242
+const UPPER_STYLE := 909
+
 func _build_tower(slot: int) -> void:
-	var style: int = HatStyle.TALL_FIRST if slot == 1 else -1
+	var style: int = LOWER_STYLE
+	if slot == 1:
+		style = HatStyle.TALL_FIRST
+	elif slot == 2:
+		style = UPPER_STYLE
 	world._hats.spawn_loose(victim.position, style)
 
 # Through _spawn_round and the sweep. A hand-built Hit would skip the raycast,

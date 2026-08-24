@@ -1278,3 +1278,22 @@ about *method*, not about that game.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
   cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no
   game state can gate. *(inherited — diagnosing its absence cost hours.)*
+- **A CONSTANT CAN BE SILENTLY GUARANTEEING A FIXTURE'S ASSUMPTION, and the test
+  that depended on it never said so.** Observed 2026-08-23 making a worn hat's
+  slot its own drawn height (it had been a flat `HAT_HEIGHT` while the meshes are
+  drawn 0.10 to 0.55, so a stacked hat floated up to 0.226 m above the one below
+  or sank 0.183 m into it -- reported from the character screen, which is the one
+  place a stack is seen side-on). `test_tall_hat` sweeps a tower for gaps and
+  **rebuilds the stack for every sample**, firing at offsets measured once on the
+  first one. That is only sound if a rebuilt tower is geometrically identical, and
+  it was -- for free, because the styles were ROLLED and the constant slot made
+  the roll irrelevant. The moment a slot varied, every sample got a different
+  tower, offsets from the first landed above the top of a later shorter one, and
+  the test reported three GAPS in a tower whose own diagnostics showed it tiling
+  with no seam at all. **The tell was the SHAPE of the failure: the misses were
+  the top samples and they were NOT CONTIGUOUS.** A hole in a column is in one
+  place; this moved. Fixed by pinning the styles, which is the assumption written
+  down. And its twin, in two other files: a spacing assertion written as
+  `near(gap, HAT_HEIGHT)` is a claim about the CATALOGUE, not about the stacking
+  code it exists to watch -- `near(gap, worn[0].slot_height())` says the
+  load-bearing thing and holds either side of the change.

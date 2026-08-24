@@ -908,6 +908,24 @@ const MG_RANGE := 30.0
 # the rocket stops being placeable.
 const AIM_SNAP_RADIUS := 0.6
 
+# ...AND IT IS MEASURED SIDEWAYS. The paragraph above is entirely about LATERAL
+# choice -- aiming at the ground beside a rusher rather than at it -- and height
+# is not a thing the player is choosing at all in `level` mode: that mode fires
+# flat at your own eye height by definition. Measuring the miss in 3D therefore
+# applied a rule about a decision to an axis where no decision was taken.
+#
+# WHAT IT COST, measured 2026-08-23: M23's watchpost turret sits 2.47 m above the
+# muzzle at 7.17 m, so a level shot's closest approach is 2.54 m against a 0.6
+# radius. The assist was four times too small to reach it, level+snap could not
+# shoot a tower at all, and the conclusion drawn at the time was that the playtest
+# request needed a THIRD aim mode. It did not. It needed the assist to stop
+# treating up-and-down as if the player had aimed there.
+#
+# Three metres of rise clears a watchpost and nothing else in the game: it is a
+# little over a body height plus the tower it stands on, so it cannot reach an
+# enemy on a deck above you the way an unbounded tolerance would.
+const AIM_SNAP_RISE := 3.0
+
 const MG_DAMAGE := 1
 
 # --- Two more guns, for the M20 aim A/B ---------------------------------------

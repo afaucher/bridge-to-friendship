@@ -237,12 +237,19 @@ func _build_preview() -> Control:
 # session wearing it is the whole premise. A character screen that showed the
 # other three and not this one is showing you most of a character.
 #
-# A STACK RATHER THAN A HAT, even though the saved state is currently one. The
-# spacing is the tricky part and it is already solved -- `HatStyle.slot_height` is
-# what HatPool.pose_stack and hat_body's worn collider BOTH ask, and CLAUDE.md
-# records what it cost when a stack was spaced one way and shot at another. Asking
-# the same function here means the preview cannot disagree with the tower either,
-# and a stack becomes a list rather than a rewrite.
+# A STACK, AND THE SPACING IS ASKED OF THE GAME. `HatStyle.slot_height` is what
+# HatPool.pose_stack and hat_body's worn collider BOTH ask, and CLAUDE.md records
+# what it cost when a stack was spaced one way and shot at another. Asking the
+# same function here means the preview cannot disagree with the tower.
+#
+# AND THIS SCREEN IS WHERE THAT PAYS OFF, TWICE NOW. It is the one place a stack
+# is seen side-on and close up, so it has caught two spacing faults the 45-degree
+# in-game camera hid: ordinary hats floating 17.5 cm off the head (2026-08-22, the
+# mount offset), and hats floating off EACH OTHER because an ordinary slot was a
+# flat 0.35 while the mesh was drawn 0.10 to 0.55 (2026-08-23, reported as "the
+# first hat was flat on the head but the second was floating above the first").
+# Both were bugs in the game, surfaced by the preview -- which is the argument for
+# the preview borrowing the real function rather than owning a copy.
 func _refresh_hats() -> void:
 	_render_hats(_worn_styles())
 
@@ -282,12 +289,16 @@ func _render_hats(styles: Array) -> void:
 		_hats_root.add_child(hat)
 		base += slot
 
-# One entry, or none. It is a list because the drawing above is a stack and the
-# in-game tower is one too; the day this screen is opened over a live world, the
-# only change is where this reads from.
+# THE WHOLE SAVED STACK. It was one entry or none, and the list was already the
+# right shape for the day the file learned to hold more than one (2026-08-23) --
+# which is now, so this reads it straight through. The day this screen is opened
+# over a live world, the only change is still where it reads from.
 func _worn_styles() -> Array:
-	var saved: int = HatConfig.load_style()
-	return [] if saved == HatConfig.NONE else [saved]
+	var out: Array = []
+	for style in HatConfig.load_styles():
+		if int(style) != HatConfig.NONE:
+			out.append(int(style))
+	return out
 
 func _build_controls() -> Control:
 	var rows := VBoxContainer.new()

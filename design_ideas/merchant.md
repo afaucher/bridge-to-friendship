@@ -224,6 +224,25 @@ for-one head really does cost you your saved hat. Both call sites go through the
 same helper, which also makes `_wear_hat` stop assuming the hat it was handed is
 the top one.
 
+#### REVERSED 2026-08-23 — the whole stack is saved, tall hats included
+
+*"I am fine with the tradeoff — it is more fun to keep your big hat."* So the
+selection is no longer a selection: `_persistable_stack` returns every worn style
+in order and the config holds an array.
+
+**Name what it costs, because that is the only thing that makes a reversal worth
+anything.** The trade is a *purchase* now rather than a bet, and a fall is the
+only thing left that can take a trophy off you. That was the argument for the old
+rule and it was a good one; it lost to the game being more fun.
+
+**The load-bearing half of this finding is untouched, and it is worth saying so
+explicitly.** Everything above about SELECTION VERSUS A GUARD still holds — the
+save is rebuilt from what you are wearing every time, so a hat you spent is gone
+from the file the moment it leaves your head. A guard with an early return would
+still leave the disk naming the hat you paid with and still make the merchant
+free across sessions. `test_merchant_save` still asserts exactly that, and it is
+the assertion that did not change when the rule around it did.
+
 ## Where he stands
 
 `hazard_dressing.gd` places content by rule against a per-theme budget, and a
@@ -261,7 +280,7 @@ being false.
 |---|---|
 | `test_merchant_trade` | a dash into him takes the TOP hat and returns a tall one; **a second dash does nothing** (spent); a player with no hats gets nothing and loses nothing |
 | the refusal | a player whose top hat is tall dashes in, keeps every hat, and gets nothing — **and the merchant is still unspent afterwards**, because a refused trade that burns the sale is a merchant the next player finds empty for no reason |
-| the save rule | `[tall]` saves `NONE`; `[ordinary, tall]` saves the ordinary one; **trading your only hat leaves the disk naming nothing, not naming the hat you spent** — that last case is the one the naive guard passes and is the whole point of finding 5 |
+| the save rule | *(reversed 2026-08-23)* `[tall]` saves the tall one; `[ordinary, tall]` saves both, bottom-first; **trading your only hat leaves the disk naming the trophy and NOT the hat you spent** — that last clause is the one the naive guard fails and is still the whole point of finding 5 |
 | `test_merchant_reach` | the mask bit is set AND a body dashed at him under power actually stops — a blocker that exists is not a blocker that blocks |
 | the tall slot | a stack of `[normal, tall, normal]` is spaced by each hat's own slot, **and the hit columns tile with no gap** — sample a ray at several heights up the tall hat, not once at its centre |
 | the reserved band | 10k rolls of `spawn_loose` produce no hat in the band; the band's hats are 3–4x a slot |
@@ -286,8 +305,9 @@ places hazards at load; `SegmentGen.section()` output has none in it.
    reads as pointless in playtest.
 
 **Answered 2026-08-18:** he will not accept a tall hat as payment (see The three
-decisions), and a tall hat does not persist across launches (see finding 5, which
-is where the non-obvious half of that lives).
+decisions), and a tall hat persists across launches like any other (reversed
+2026-08-23 — see finding 5, which is where the non-obvious half of that lives and
+where what the reversal costs is written down).
 
 ## Tunables
 

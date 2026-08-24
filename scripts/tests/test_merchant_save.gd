@@ -1,29 +1,38 @@
 extends "res://scripts/test_support/test_case.gd"
 
-# A TALL HAT DOES NOT SURVIVE A LAUNCH, and that is a rule about WHICH HAT IS
-# SAVED rather than a guard on saving. See design_ideas/merchant.md finding 5 --
-# this file exists because the obvious implementation is wrong, and wrong in the
-# direction that makes the merchant free.
+# WHAT THE DISK SAYS YOU OWN IS WHAT YOU ARE WEARING -- the whole stack of it,
+# tall hats included.
 #
-#   * Guarding _remember_hat with an early return on a tall style leaves whatever
-#     was on disk BEFORE. Own one ordinary hat, trade it, and the trade consumed
-#     it while the guard rejected the trophy -- so the file still names the hat
-#     you just spent, and the next launch hands it straight back. Invisible until
-#     somebody restarts the game, and free forever after.
-#   * Saving NONE whenever the top is tall throws away an ordinary hat you are
-#     still wearing, in a stack of [ordinary, tall].
+# THIS FILE USED TO ASSERT THE OPPOSITE, and the reversal is the point of reading
+# it. Until 2026-08-23 a tall hat was deliberately excluded: it comes only from
+# the merchant, so refusing to persist it made the trade a bet rather than a
+# purchase (design_ideas/merchant.md finding 5). Overruled by the person whose
+# game it is -- "it is more fun to keep your big hat" -- and the trade-off was
+# named when it was overruled, which is the only way a reversal is worth
+# anything.
 #
-# So the claims are about the DISK, read back through HatConfig, and the first is
-# the one the naive guard passes:
-#   1. Trading your only hat leaves the disk naming NOTHING -- not the hat you
-#      paid with.
-#   2. [ordinary, tall] saves the ordinary one: the trophy does not evict a hat
-#      you still own.
-#   3. [tall] alone saves NONE.
+# THE HARD-WON PART SURVIVES INTACT, and it is why this file still exists.
+# Saving is a SELECTION FROM WHAT YOU WEAR, never a guard on writing:
+#
+#   * A guard with an early return leaves whatever was on disk BEFORE. Own one
+#     ordinary hat, trade it away, and the trade consumed it while the guard
+#     rejected the trophy -- so the file still names the hat you just spent and
+#     the next launch hands it straight back. Invisible until somebody restarts,
+#     and the merchant is free forever after.
+#
+# That failure is unchanged by the reversal: what makes it impossible is that the
+# save is rebuilt from the worn stack every time, so a hat that is gone is gone.
+#
+# The claims, all about the DISK, read back through HatConfig:
+#   1. Trading your only hat leaves the disk naming THE TROPHY and NOT the hat
+#      you paid with. The second half is the one a naive guard fails.
+#   2. [ordinary, tall] saves BOTH, bottom-first -- the stack you built is the
+#      stack you get back.
+#   3. [tall] alone saves the tall one, which is the reversed rule stated plainly.
 #
 # DRIVEN THROUGH THE REAL TRADE for case 1, not by calling the selection helper
 # with a hand-built stack. A test that hand-builds its own input has not tested
-# the caller, and both wrong implementations above live in the caller.
+# the caller, and the wrong implementation above lives in the caller.
 #
 # Everything here writes to a DISPOSABLE path. A test that rewrote the real
 # user:// file would quietly change the developer's own saved hat every time the
@@ -105,7 +114,7 @@ func _phase_trading_your_only_hat() -> void:
 		# because the disk was empty the whole time rather than because the trade
 		# cleared it -- an instrument has to be shown capable of reporting the
 		# wrong answer before its right answer means anything.
-		eq(HatConfig.load_style(), _ordinary_style,
+		eq(HatConfig.load_styles(), [_ordinary_style],
 			"and acquiring it wrote it to disk: that is the hat the next launch "
 			+ "would give back")
 		_dash_at()
@@ -116,14 +125,19 @@ func _phase_trading_your_only_hat() -> void:
 			finish()
 			return
 		check(worn[0].is_tall(), "and the player is wearing the trophy")
-		# THE WHOLE POINT.
-		eq(HatConfig.load_style(), HatConfig.NONE,
-			"trading your only hat leaves the disk naming NOTHING. Saving is a "
-			+ "SELECTION, not a guard: a guard would have left the file naming the "
-			+ "hat you just spent, and the next launch would hand it back -- the "
-			+ "merchant free across sessions, and no symptom until a restart")
-		check(HatConfig.load_style() != _ordinary_style,
-			"and specifically not the hat that paid for the trade (%d)" % _ordinary_style)
+		# THE WHOLE POINT, AND IT SURVIVED THE REVERSAL. The trophy is saved now,
+		# so the first half of this reads the other way round -- but the second
+		# half is the one that was ever load-bearing, and it is untouched.
+		eq(HatConfig.load_styles(), [int(worn[0].style_id)],
+			"trading your only hat leaves the disk naming THE TROPHY -- since "
+			+ "2026-08-23 a tall hat persists like any other")
+		check(not HatConfig.load_styles().has(_ordinary_style),
+			"and specifically NOT the hat that paid for the trade (%d). Saving is "
+				% _ordinary_style
+			+ "a SELECTION FROM WHAT YOU WEAR, not a guard on writing: a guard "
+			+ "would have left the file naming the hat you just spent, the next "
+			+ "launch would hand it back, and the merchant would be free across "
+			+ "sessions with no symptom until a restart")
 		_advance(1)
 
 # --- 2. [ordinary, tall] saves the ordinary one -------------------------------
@@ -144,9 +158,12 @@ func _phase_ordinary_under_tall() -> void:
 			finish()
 			return
 		check(not worn[0].is_tall() and worn[1].is_tall(), "in that order")
-		eq(HatConfig.load_style(), int(worn[0].style_id),
-			"a stack of [ordinary, tall] saves the ORDINARY one -- the trophy is "
-			+ "not allowed to evict a hat you still own and are still wearing")
+		eq(HatConfig.load_styles(),
+			[int(worn[0].style_id), int(worn[1].style_id)],
+			"a stack of [ordinary, tall] saves BOTH, bottom-first -- the tower you "
+			+ "built is the tower you get back. It used to save only the ordinary "
+			+ "one, on the rule that a trophy must not evict a hat you still own; "
+			+ "keeping the whole stack answers that objection by not choosing")
 		_advance(2)
 
 # --- 3. A tall hat alone saves nothing ----------------------------------------
@@ -164,9 +181,10 @@ func _phase_tall_alone() -> void:
 			finish()
 			return
 		check(worn[0].is_tall(), "and it is the tall one")
-		eq(HatConfig.load_style(), HatConfig.NONE,
-			"a lone tall hat saves NONE -- it is yours for the run and the next "
-			+ "session starts you bare")
+		eq(HatConfig.load_styles(), [int(worn[0].style_id)],
+			"a lone tall hat is SAVED -- the reversed rule, stated plainly. It was "
+			+ "yours for the run only, on the argument that persisting it made the "
+			+ "trade a purchase rather than a bet; it is a purchase now, on purpose")
 
 		HatConfig.reset()
 		HatConfig.path_override = ""

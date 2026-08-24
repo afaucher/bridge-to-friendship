@@ -113,8 +113,14 @@ func _phase_upright_at_rest() -> void:
 				% [i, _tilt(worn[i])])
 	# And still spaced correctly, which is what says the pose function did not
 	# quietly start shortening the tower to pay for the lean.
-	near(worn[1].global_position.y - worn[0].global_position.y, SimConfig.HAT_HEIGHT, 0.01,
-		"spaced by HAT_HEIGHT")
+	# BY THE HAT BELOW'S OWN SLOT, not by a constant. It was `SimConfig.HAT_HEIGHT`
+	# until 2026-08-23, when a slot became the hat's drawn height -- and a spacing
+	# assertion written against a constant is a claim about the CATALOGUE rather
+	# than about the pose function it is here to watch. This form says the thing
+	# that is actually load-bearing, and would have held either side of that change.
+	near(worn[1].global_position.y - worn[0].global_position.y,
+		worn[0].slot_height(), 0.01,
+		"spaced by the slot of the hat underneath (%.3f m)" % worn[0].slot_height())
 	# GLOBAL, not local. Worn hats used to be children of the player, so "over the
 	# middle of the head" was `position.x == 0`. They now live at the pool root and
 	# are driven by global transform (a RigidBody3D parented under another physics
