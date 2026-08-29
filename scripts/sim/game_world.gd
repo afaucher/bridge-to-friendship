@@ -3208,6 +3208,25 @@ func _spawn_deployable(kind: int) -> Node:
 func _process_deployables() -> void:
 	if not mode_runs("deployables"):
 		return
+
+	# MINES THE TERRAIN PLACED, ALREADY ARMED.
+	#
+	# `place_at` starts a MINE_ARM_SECONDS fuse, which is right for one a player
+	# has just thrown -- it is the window in which you can still get away from
+	# your own mistake. A mine that is part of the track was not thrown by
+	# anybody: it has been sitting there since the section was built, and a fuse
+	# would mean the first car past is safe and the second is not. So the timer is
+	# zeroed outright rather than allowed to run down.
+	#
+	# THROWN BY NOBODY -- peer 0, which is what `_spawn_round` already means by the
+	# world. That matters downstream: a mine with a thrower would credit a kill to
+	# whichever player id happened to be nearest to zero.
+	if grid != null:
+		for cell in grid.take_authored_mine_cells():
+			var mine: Node = _spawn_deployable(Deployable.Kind.MINE)
+			mine.place_at(grid.cell_surface_world(cell) + Vector3(0.0, 0.07, 0.0),
+				0, true)
+			mine.timer = 0.0
 	for i in range(_deployables.size() - 1, -1, -1):
 		var d: Node = _deployables[i]
 		if not is_instance_valid(d):

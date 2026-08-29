@@ -55,6 +55,10 @@ class Built:
 	var special_cells: Array = []
 	# Enemies that shoot. Authored where they stand, like a shooter pillar.
 	var gunner_cells: Array = []       # [[cell, kind], ...]
+	# ARMED MINES the terrain scattered. Copied straight off the segment rather
+	# than read out of the content grid: a placed mine is not the `x` PICKUP, and
+	# it has no glyph of its own precisely so the two cannot be confused.
+	var mine_cells: Array = []
 	# Cover, and spike blocks. Collected like every other authored prop: the grid
 	# owns the bodies, the builder only says where the author put one.
 	var tree_cells: Array = []
@@ -83,6 +87,12 @@ class Built:
 
 static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 	var out := Built.new()
+	# CARRIED ACROSS EXPLICITLY, because `Built` is not a SegmentData and reading
+	# a field off the wrong one raises -- which in GDScript aborts the rest of the
+	# function in silence. That is exactly what happened here: BridgeGrid asked
+	# `built.mine_cells`, got nothing, and stopped partway through recording the
+	# segment with no error anybody would see.
+	out.mine_cells = seg.mine_cells.duplicate()
 	out.root = Node3D.new()
 	out.root.name = "Segment_%s" % seg.name
 

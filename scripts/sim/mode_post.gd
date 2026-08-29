@@ -53,6 +53,7 @@ const MODE_COLOURS := {
 	GameMode.BASE: Color(0.42, 0.62, 0.86),
 	GameMode.BLANK: Color(0.86, 0.84, 0.52),
 	GameMode.TRACK: Color(0.82, 0.68, 0.22),   # the bus's own deck yellow
+	GameMode.RACE: Color(0.85, 0.85, 0.88),    # start-line white
 }
 const UNKNOWN_COLOUR := Color(0.55, 0.55, 0.58)
 

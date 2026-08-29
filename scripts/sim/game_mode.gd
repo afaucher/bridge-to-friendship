@@ -30,6 +30,7 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const BASE := 0
 const BLANK := 1
 const TRACK := 2
+const RACE := 3
 
 # WHICH GENERATOR FILLS A MODE'S SECTIONS. Declared, like everything else here --
 # BridgeGrid reads it and calls the matching function, so a mode never reaches
@@ -41,6 +42,7 @@ const TRACK := 2
 const TERRAIN_SECTIONS := "sections"      # the ordinary generated bridge
 const TERRAIN_BLANK := "blank"            # flat, empty, undressed
 const TERRAIN_TRACK := "track"            # the serpentine bus route
+const TERRAIN_RACE := "race"              # a closed circuit with an infield
 
 # EVERY POOL THAT TICKS, NAMED. A mode owes each of these an answer, and the point
 # of the list is that the answers are explicit rather than implied by whatever
@@ -166,7 +168,12 @@ const MODES := {
 			"zombies": RUNS, "graves": RUNS,
 			# Nothing else the bridge would have put there. A rusher on a race
 			# track is a bridge hazard that wandered into the wrong game.
-			"rushers": OFF, "plinko": OFF, "deployables": OFF,
+			# AND THE DEPLOYABLES POOL, because the track scatters armed MINES and
+			# a mine is a deployable. Switched off, they would be placed, drawn,
+			# and never tick -- scenery in the shape of a hazard, which is the
+			# exact silence this table exists to prevent.
+			"deployables": RUNS,
+			"rushers": OFF, "plinko": OFF,
 			"stones": OFF, "spikes": OFF, "mounds": OFF,
 			"merchants": OFF, "elevators": OFF,
 			# And everything that belongs to the party.
@@ -174,6 +181,46 @@ const MODES := {
 			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
 		},
 	},
+
+	# THE RACE CIRCUIT. A closed ring with a hole in the middle -- see
+	# implementation_plans/m26_race_track.md and SegmentGen.race_loop.
+	#
+	# WHAT IS HERE AND WHAT IS NOT. This is the mode existing and being drivable:
+	# you can pick it, it builds circuits, and the bus and the mines work on them.
+	# The LAPS are not here. Crossing a gate does nothing yet, nothing is timed,
+	# and nothing is on screen -- the gates are generated and recorded and no
+	# subsystem reads them.
+	#
+	# AND THE RUN STILL ADVANCES, which is the honest shape of what phase 2 left
+	# undone. A circuit cannot stream: it is bounded and comes back on itself, and
+	# the right answer is one arena the run does not move through. What this
+	# builds instead is a CHAIN of circuits joined at their caps -- drivable, and
+	# each one lappable, but the party can also just keep going forwards, which is
+	# the bridge's win condition wearing a racetrack. Fixing that means teaching
+	# `_extend_run`, the leash and the round machine that a run can be closed, and
+	# that is its own phase rather than something to bolt on here.
+	RACE: {
+		"name": "Race circuit",
+		"overrides": {},
+		"terrain": TERRAIN_RACE,
+		"pools": {
+			# The vehicle, and the mines the circuit scatters. Both are placed by
+			# the terrain, so both must run or the track is drawn full of things
+			# that never move.
+			"bus": RUNS, "deployables": RUNS,
+			# NOTHING THAT SHOOTS OR CHASES. A circuit is about the line and the
+			# corner; the hazards are the hole in the middle and the mines. The
+			# zombies that make the bus route a fight would make this one a fight
+			# with a lap timer attached, which is a different game.
+			"gunners": OFF, "rushers": OFF, "zombies": OFF, "plinko": OFF,
+			"mutable": OFF, "stones": OFF, "spikes": OFF, "mounds": OFF,
+			"graves": OFF, "merchants": OFF, "elevators": OFF,
+			# And everything that belongs to the party.
+			"hats": RUNS, "specials": RUNS, "hearts": RUNS, "bullets": RUNS,
+			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
+		},
+	},
+
 }
 
 # WHAT CONTENT A MODE'S TERRAIN PLACES, and which pool has to be running for it to

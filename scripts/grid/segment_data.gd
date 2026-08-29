@@ -96,6 +96,24 @@ var heights: Array = []    # int, in HEIGHT_UNITs above base_height
 var contents: Array = []   # GridConfig.Content
 var no_wall: Array = []    # bool -- true where the author suppressed a parapet
 
+# THE LAP GATES, as (cell, index) pairs in the order they are driven through.
+#
+# NOT CONTENT, and the reason is the ORDER. Everything else placed in a section
+# is a thing that stands in a cell and a grid of glyphs says it all; a checkpoint
+# is a thing that stands in a cell AND a position in a sequence, and a sequence
+# inferred from geometry is a sequence that argues with itself the first time a
+# circuit is not a rectangle. Carried beside the grid for the same reason
+# `special_cells` is: the cell alone does not say which one it is.
+#
+# Empty on everything that is not a race circuit, which is everything so far.
+var checker_cells: Array = []
+
+# ARMED MINES, as cells. Carried beside the grid rather than as content for the
+# same reason a checkpoint is: a mine placed by the TERRAIN is not the same
+# object as the `x` pickup a player picks up and throws, and giving them one
+# glyph would mean every reader of the grid had to know which was meant.
+var mine_cells: Array = []
+
 var errors: Array[String] = []
 
 func is_valid() -> bool:

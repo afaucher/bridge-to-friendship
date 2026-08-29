@@ -141,14 +141,36 @@ func _a_mode_runs_what_its_terrain_places() -> void:
 			% checked
 		+ "without this the correspondence above is a wall of green over nothing")
 
+# THE GENERATOR A MODE'S TERRAIN NAMES.
+#
+# EVERY TERRAIN IS LISTED, AND AN UNKNOWN ONE FAILS RATHER THAN FALLING BACK.
+# This dispatch used to end in `_: return section()`, which meant a mode whose
+# terrain nobody had added a case for was silently measured as the ORDINARY
+# BRIDGE -- and the correspondence check above then reported the bridge's spikes
+# and turrets under the new mode's name. Observed the moment RACE was added: three
+# confident failures about content the race circuit does not place, naming a pool
+# it has no reason to run.
+#
+# That is the wrong-object trap, arriving as a false ALARM instead of a false
+# pass, which is the luckier half of it. A default case in a test that dispatches
+# on a registry is a promise that the registry will never grow.
 func _terrain_for(mode: int, seed_value: int):
 	match GameMode.terrain(mode):
 		GameMode.TERRAIN_TRACK:
 			return SegmentGen.bus_track(WIDTH, seed_value, seed_value % 7)
 		GameMode.TERRAIN_BLANK:
 			return SegmentGen.blank_zone(WIDTH, seed_value, seed_value % 7)
-		_:
+		GameMode.TERRAIN_RACE:
+			return SegmentGen.race_loop(WIDTH, seed_value, seed_value % 7)
+		GameMode.TERRAIN_SECTIONS:
 			return SegmentGen.section(WIDTH, seed_value, seed_value % 7)
+		_:
+			check(false,
+				"a mode's terrain `%s` has no generator in this test -- add the "
+					% GameMode.terrain(mode)
+				+ "case rather than letting it be measured as the ordinary bridge, "
+				+ "which reports that terrain's content under this mode's name")
+			return null
 
 # --- 3. Somewhere to put the bus ----------------------------------------------
 

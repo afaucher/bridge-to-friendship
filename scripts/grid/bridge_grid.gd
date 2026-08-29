@@ -315,6 +315,8 @@ func _section_for_mode(mode: int, seed_value: int, i: int):
 			return SegmentGen.blank_zone(width, seed_value, i)
 		GameMode.TERRAIN_TRACK:
 			return SegmentGen.bus_track(width, seed_value, i)
+		GameMode.TERRAIN_RACE:
+			return SegmentGen.race_loop(width, seed_value, i)
 		_:
 			return SegmentGen.section(width, seed_value, i)
 
@@ -360,6 +362,12 @@ func take_authored_hat_cells() -> Array:
 # reason: the special pool owns the bodies, and it drains this list as segments
 # load so a weapon authored in a segment streamed in later still appears.
 var authored_special_cells: Array = []
+var authored_mine_cells: Array = []
+
+func take_authored_mine_cells() -> Array:
+	var out: Array = authored_mine_cells.duplicate()
+	authored_mine_cells.clear()
+	return out
 
 func take_authored_special_cells() -> Array:
 	var out: Array = authored_special_cells.duplicate()
@@ -619,6 +627,13 @@ func load_segment(seg) -> void:
 	# record would mean two representations of one object.
 	for local_cell in built.hat_cells:
 		authored_hat_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	# ARMED MINES the terrain placed. Recorded rather than spawned here for the
+	# same reason hats are: a mine is a free sim body owned by the world's
+	# deployable pool, and a cell record would be a second representation of one
+	# object.
+	for local_cell in built.mine_cells:
+		authored_mine_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]
