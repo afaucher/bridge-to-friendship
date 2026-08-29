@@ -939,6 +939,76 @@ the moment it is written.
   branch is SUPPOSED never to run -- 30 of the 36 unexecuted sites were those.
   Count them separately or the signal drowns.
 
+- **A TRANSPARENT MATERIAL DOES NOT WRITE DEPTH, so an object made of MANY PARTS
+  paints over itself.** Observed 2026-08-28 building the death fragments. A
+  corpse is 32 meshes assembled into the shape of the body that died; the
+  material carries `TRANSPARENCY_ALPHA` because the pile fades at the end of its
+  life, and at full opacity that is still the ALPHA PASS -- which sorts by each
+  object's ORIGIN and does not write depth. So the pieces painted in origin
+  order rather than depth order, and an intact corpse rendered **with a quarter
+  of itself missing and the inside of its own far wall showing through**. The
+  fragments were in exactly the right places the whole time.
+  `TRANSPARENCY_ALPHA_DEPTH_PRE_PASS` lays depth down first and fixes it, at one
+  extra pass. This is the THIRD bug in this project from that render pass -- see
+  the status bar in `player.tscn`, which went solid black when its fill slid
+  behind its own backing -- and the general form is: **a fade you have not
+  started yet still costs you the pass**, so any multi-part object with a
+  transparent material is mis-sorted from the moment it exists.
+- **GODOT WINDS A FRONT FACE CLOCKWISE, so an outward normal is the NEGATION of
+  the right-hand-rule cross product -- and a surface wound the wrong way INSIDE
+  AN ASSEMBLED SOLID is invisible until something takes the solid apart.**
+  Observed 2026-08-29 in hand-built fragment meshes: of the six face types on a
+  fragment, the two radial end faces were wound the other way from the other
+  four. Back-face culling removed them, so every piece was a HOLLOW SHELL you
+  could see straight through -- and measured, each mesh enclosed **14% of the
+  volume of the cell it was cut from**. It survived a whole round of screenshots
+  because an intact corpse hides every inward-facing surface inside itself; it
+  showed only once a pile was scattered and the insides came into view. **When
+  you hand-author a mesh, the assembled shape is not evidence about the pieces.**
+  Two method notes came out of the same fix, and they are the transferable part.
+  **THE ENGINE WINDING CONVENTION IS CHEAPER TO MEASURE THAN TO REMEMBER:** the
+  first version of the test assumed the right-hand rule, reported all 32 pieces
+  of all four characters inside-out, and was WRONG -- the renders were lit
+  correctly, which is not something an inside-out mesh does. Reading the
+  convention off a `SphereMesh` (whose outward normal at a face is unambiguously
+  its own centroid) settles it in ten lines, on this engine build, with nobody
+  having to recall which way Godot goes. Flipping the sign until the test went
+  green would have been tuning the instrument to the reading.
+  And **THE DIVERGENCE THEOREM IS THE ASSERTION TO REACH FOR:** for a closed
+  surface, `(1/3) * sum of area * (centroid . normal)` is the enclosed volume, so
+  ONE number catches a missing face, an inconsistent winding and an inward
+  winding at once. Computed from the STORED normals it is convention-free -- it
+  measures the vectors the renderer actually consumes -- and compared against a
+  volume derived from the SOURCE geometry it is not the mesh agreeing with
+  itself. On a shape whose only inscription is angular it even has a closed form
+  to hit: a regular n-gon is `(n / 2pi) * sin(2pi / n)` of its circle, which is
+  0.99359 at 32 and is an arithmetic prediction rather than a picked threshold.
+- **AND ITS COMPANION DEAD ASSERTION: NEVER CHECK generate_normals() AGAINST THE
+  WINDING IT WAS COMPUTED FROM.** The same test carried "the stored normal agrees
+  in sign with the face winding", which reported 0 failures throughout and could
+  not have reported anything else -- the normals are DERIVED from the winding, so
+  the sign is true by construction. Asking instead that they be PARALLEL (within
+  0.01) makes it live: that is a claim about FLAT SHADING, and it would fail the
+  day a smooth group stopped taking and corpses started rendering as balloons.
+  **An assertion comparing two things one of which is computed from the other is
+  asking whether arithmetic works.**
+- **A POLYGON INSCRIBED IN A CIRCLE SITS INSIDE IT BY AN AMOUNT THAT DEPENDS ON
+  ITS SEGMENT COUNT, so two pieces of one curved surface tessellated
+  INDEPENDENTLY do not meet.** Same change, same day. Each fragment chose its
+  angular segment count from its OWN arc length in metres -- reasonable in
+  isolation, and it meant a wide piece and a narrow piece spanning the same
+  surface inset their chords differently. The intact rusher came out with
+  horizontal LEDGES stepping down its cone, and the pile stopped being the body
+  it replaced. Fixed by sampling every piece on ONE GLOBAL angular grid, which
+  works because every split is a midpoint and every boundary is therefore a
+  multiple of TAU/2^k. **When you cut a curved surface into pieces, the
+  tessellation is a property of the SURFACE, not of the piece** -- the same shape
+  as the note above about a hit box belonging to the SLOT rather than to the
+  thing in it. And note what could not see it: the tiling was exact and every
+  assertion in `test_fragment_shape` passed, because the fault was entirely in
+  how the exact cells were DRAWN. **A headless gate cannot see a rendering bug at
+  all**, which is what the shot manifests are for.
+
 ## GDScript traps
 
 - **`:=` cannot infer a type from a Variant expression.** Observed 2026-08-08 in
@@ -1223,6 +1293,20 @@ about *method*, not about that game.
   their attribution was the only one available from inside the game. The general
   form: a hazard aimed at somebody who cannot answer it, or one whose reach is
   invisible, reads as the TERRAIN being the hazard.
+- **AN A/B THAT GOES RED IS NOT AN A/B THAT COVERS, AND THE FAILURE LIST IS THE
+  COVERAGE REPORT.** Observed 2026-08-28. `test_fragment_shape` asserts its
+  central claim -- that every piece of a cut-up body is exactly the same size --
+  for four characters, and reverting the equal-area split to the naive midpoint
+  turned it red. Green after, red before: the A/B passed. But **only ONE of the
+  four kinds actually failed.** At the shipped piece count a cylinder or a capsule
+  never takes the radial axis at all (its radial thickness is the shortest of the
+  three sides and the subdivision runs out of pieces before it becomes the
+  longest), so three of the four were asserting an equality that no radial cut had
+  contributed to. One tapered body was holding the entire line. Fixed by running
+  each profile at a deeper count as well and ASSERTING THAT ALL THREE AXES WERE
+  ACTUALLY CUT, rather than assuming it. **Read WHICH assertions the mutation
+  broke, not just how many** -- an A/B that fails in one of the places it should
+  fail in four is a test with a quarter of the coverage it appears to have.
 - **Prefer a DIRECT COUNT at the line that does the thing.** Counting where the
   event happens cannot be argued with; eliminating candidates by reading can be,
   and often wrongly.

@@ -179,6 +179,12 @@ system_exit={
 3d_physics/layer_10="merchant"
 3d_physics/layer_11="mode_post"
 3d_physics/layer_12="bus"
+; THE PIECES OF A DEAD ENEMY. Deliberately masked by NOTHING except itself and
+; the world -- see scripts/sim/corpse.gd. CLAUDE.md's note that "a layer nothing
+; masks is a collider made of nothing" is about a barrier that was supposed to
+; stop people; this one is supposed not to, and the test asserts the absence the
+; same way it would assert a presence.
+3d_physics/layer_13="debris"
 
 [physics]
 

@@ -1501,3 +1501,69 @@ const SNAPSHOT_INTERVAL_TICKS := 1
 # all of it every tick measured 4595 bytes, over ENet's 1392-byte MTU. Half a
 # second is the worst a client can hold a stale stone cell for.
 const STONE_RESYNC_TICKS := 30
+
+# --- Death fragments ----------------------------------------------------------
+#
+# An enemy that dies is replaced by the pieces of itself. See
+# design_ideas/death_fragments.md and scripts/sim/fragment_shape.gd.
+
+# HOW MANY PIECES A BODY BECOMES. KEEP IT A POWER OF TWO.
+#
+# Every cut the fragmenter makes divides a piece into two of EXACTLY equal volume,
+# so at 2, 4, 8, 16 or 32 every fragment is exactly the same size and at anything
+# else they are not. Measured at 20: sixteen pieces at full size and four at half,
+# a spread of exactly 2.000 -- which is not a tuning problem to be traded off but
+# arithmetic, and it is the same for every character. "Until all the pieces wind
+# up the same size" is a property this number either has or does not have.
+#
+# THIRTY-TWO, CHOSEN OFF A CONTACT SHEET rather than argued about: render
+# art/shots_corpse.json and look at the density rows. At 16 the pieces are large
+# curved plates and a death reads as the body PEELING; at 64 it reads as gravel
+# and stops being recognisable as a body coming apart. 32 is chunky enough to
+# read as pieces at the distance this game is played at.
+#
+# IT IS ALSO A RIGIDBODY COUNT, and that is the real ceiling on it: every fragment
+# of every corpse is a body in the physics space until it fades, so a pack of
+# eight zombies dying together is 256 of them.
+#
+# test_fragment_shape asserts the spread is 1.0, so changing this to a
+# non-power-of-two fails loudly rather than quietly making the deaths lumpy.
+const CORPSE_FRAGMENTS := 32
+
+# How long the pile stands before it gives up and fades, if nothing ever disturbs
+# it. Long enough to walk back and look at, short enough that a fought-over deck
+# does not silently fill with rubble.
+const CORPSE_LIFETIME := 8.0
+
+# How long the pieces last once they have been scattered, measured from the
+# scatter rather than from the death -- a corpse burst at the last second of its
+# life still gets a full flight.
+const CORPSE_DEBRIS_LIFETIME := 3.5
+
+# The last part of a fragment's life is spent fading out, so debris leaves rather
+# than vanishing.
+const CORPSE_FADE_SECONDS := 0.8
+
+# How close something has to come to an intact pile to knock it over. Measured
+# from the corpse's centre, so it is the body's own half-width plus a player's
+# plus a little: at 1.2 you burst it by walking into it rather than by standing
+# exactly on it.
+const CORPSE_BUMP_RADIUS := 1.2
+
+# What a scatter does to a fragment. The impulse is radial from wherever the
+# disturbance came from and falls off with distance; the spin is what stops a
+# tumbling chip reading as a thrown brick.
+const CORPSE_SCATTER_SPEED := 4.5
+const CORPSE_SCATTER_LIFT := 2.6
+const CORPSE_SCATTER_SPIN := 9.0
+
+# A BLAST DOES NOT LEAVE A PILE STANDING. An explosive kill goes straight to
+# scattered, with the blast as the impulse origin, and this is how much harder it
+# throws the pieces than a body bumping into them does.
+const CORPSE_BLAST_BOOST := 2.2
+
+# AND A ROUND KNOCKS IT DOWN WITHOUT BEING STOPPED BY IT. Gentler than a body
+# walking into it: a bullet is small, and what it should look like is a pile
+# being knocked apart rather than a pile being launched. The round itself carries
+# on -- see _corpse_shot for why a corpse must never become cover.
+const CORPSE_SHOT_BOOST := 0.8

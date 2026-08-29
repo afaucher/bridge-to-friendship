@@ -1,0 +1,346 @@
+{
+  "_comment": "THE DEATH ANIMATION, ONE ENEMY PER ROW. Its own manifest rather than more entries in shots.json, because this is a before/after of a MOTION and wants re-running whenever the fragmenter or the scatter numbers change -- not every time the art bake-off does. Run WINDOWED: godot --path . --run-shots art/shots_corpse.json (--headless disables rendering). The scattered frames use a WIDER ortho than the standing ones: at the shipped throw speed a blast clears a 3.2 m frame in a third of a second, and the answer to that is a wider lens, not a slower blast -- the game's camera sees about thirty metres.",
+  "output_dir": "res://tmp/shots_corpse",
+  "size": [
+    900,
+    900
+  ],
+  "studio": {
+    "cam_yaw": 35.0,
+    "cam_pitch": -20.0,
+    "ortho_size": 3.2,
+    "items": [
+      {
+        "name": "rusher_0_alive",
+        "scene": "res://scenes/rusher.tscn",
+        "focus_y": 0.7,
+        "lift": 0.7
+      },
+      {
+        "name": "rusher_1_intact",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "corpse": {
+          "kind": "rusher"
+        }
+      },
+      {
+        "name": "rusher_2_bump_012",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "rusher",
+          "scatter": true,
+          "scatter_seconds": 0.12
+        }
+      },
+      {
+        "name": "rusher_2_bump_030",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "rusher",
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "rusher_3_blast_030",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 8.0,
+        "corpse": {
+          "kind": "rusher",
+          "burst": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "rusher_4_count16_intact",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 16
+        }
+      },
+      {
+        "name": "rusher_5_count16_bump",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 16,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "rusher_4_count32_intact",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 32
+        }
+      },
+      {
+        "name": "rusher_5_count32_bump",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 32,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "rusher_4_count64_intact",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 64
+        }
+      },
+      {
+        "name": "rusher_5_count64_bump",
+        "focus_y": 0.7,
+        "lift": 0.7,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "rusher",
+          "fragments": 64,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "zombie_0_alive",
+        "scene": "res://scenes/zombie.tscn",
+        "focus_y": 0.78,
+        "lift": 0.78
+      },
+      {
+        "name": "zombie_1_intact",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "corpse": {
+          "kind": "zombie"
+        }
+      },
+      {
+        "name": "zombie_2_bump_012",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "zombie",
+          "scatter": true,
+          "scatter_seconds": 0.12
+        }
+      },
+      {
+        "name": "zombie_2_bump_030",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "zombie",
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "zombie_3_blast_030",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 8.0,
+        "corpse": {
+          "kind": "zombie",
+          "burst": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "zombie_4_count16_intact",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 16
+        }
+      },
+      {
+        "name": "zombie_5_count16_bump",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 16,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "zombie_4_count32_intact",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 32
+        }
+      },
+      {
+        "name": "zombie_5_count32_bump",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 32,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "zombie_4_count64_intact",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 64
+        }
+      },
+      {
+        "name": "zombie_5_count64_bump",
+        "focus_y": 0.78,
+        "lift": 0.78,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "zombie",
+          "fragments": 64,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "skirmisher_0_alive",
+        "scene": "res://scenes/skirmisher.tscn",
+        "focus_y": 0.85,
+        "lift": 0.85
+      },
+      {
+        "name": "skirmisher_1_intact",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "corpse": {
+          "kind": "skirmisher"
+        }
+      },
+      {
+        "name": "skirmisher_2_bump_012",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "scatter": true,
+          "scatter_seconds": 0.12
+        }
+      },
+      {
+        "name": "skirmisher_2_bump_030",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "skirmisher_3_blast_030",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 8.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "burst": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "skirmisher_4_count16_intact",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 16
+        }
+      },
+      {
+        "name": "skirmisher_5_count16_bump",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 16,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "skirmisher_4_count32_intact",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 32
+        }
+      },
+      {
+        "name": "skirmisher_5_count32_bump",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 32,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "skirmisher_4_count64_intact",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 64
+        }
+      },
+      {
+        "name": "skirmisher_5_count64_bump",
+        "focus_y": 0.85,
+        "lift": 0.85,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "skirmisher",
+          "fragments": 64,
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      }
+    ]
+  },
+  "scenes": []
+}

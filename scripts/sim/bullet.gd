@@ -90,8 +90,18 @@ func launch(from: Vector3, direction: Vector3, peer: int, rid: RID,
 # Advance one tick and report where it came FROM, so the world can sweep the
 # segment. Returning the origin rather than storing it keeps "where it was" from
 # ever getting out of step with "where it is".
+# WHERE IT WAS LAST TICK, so something can be asked about the SEGMENT a round
+# covered rather than about the point it is at now. A round crosses a good
+# fraction of a body's width in one tick, so a point test tunnels.
+#
+# MAINTAINED ON BOTH SIDES -- step() on the host, apply_remote() on a client --
+# because the thing that reads it (the corpse pass) runs on both, and neither
+# machine is told the other's segments.
+var previous: Vector3 = Vector3.ZERO
+
 func step() -> Vector3:
 	var from: Vector3 = position
+	previous = from
 	age += SimConfig.TICK_DELTA
 	velocity.y -= drop_accel() * SimConfig.TICK_DELTA
 	position += velocity * SimConfig.TICK_DELTA
@@ -128,6 +138,7 @@ func is_spent() -> bool:
 # only thing that would notice, and two positions are enough to fix that.
 func apply_remote(at: Vector3) -> void:
 	var moved: Vector3 = at - position
+	previous = position
 	position = at
 	if moved.length_squared() > 0.0001:
 		velocity = moved / SimConfig.TICK_DELTA

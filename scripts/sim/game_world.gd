@@ -43,6 +43,7 @@ const MineScene = preload("res://scenes/mine.tscn")
 # raises at runtime and silently aborts the rest of the frame.
 const DebugSettingsScript = preload("res://scripts/debug_settings.gd")
 const BlastEffect = preload("res://scripts/ui/blast_effect.gd")
+const Corpse = preload("res://scripts/sim/corpse.gd")
 const ShotSound = preload("res://scripts/ui/shot_sound.gd")
 const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
@@ -303,6 +304,28 @@ var _next_rusher_id: int = 0
 # loop, which is the shape gunner_body.gd was already split out of on 2026-08-14.
 var _zombies: Array = []
 var _zombies_root: Node3D = null
+
+# --- What is left where an enemy was ------------------------------------------
+#
+# See scripts/sim/corpse.gd. These are COSMETIC: nothing authoritative reads one,
+# no player can touch one, and they are not in any snapshot. What crosses the wire
+# is the DEATH (_corpse_seen), for the reason a blast does -- an enemy leaving the
+# snapshot is also what a burrow and a fall off the bridge look like.
+var _corpses: Array = []
+var _corpses_root: Node3D = null
+
+# Enemies killed by an EXPLOSIVE this tick, and where the blast was, by instance
+# id. A blast never leaves a pile standing, and the reap loop that builds the
+# corpse runs after the pass that delivered the hit -- so the cause has to be
+# remembered across that gap.
+#
+# Written at the one line in _deliver that detects a death and erased by
+# _retire_enemy, so it normally holds nothing. The size guard is for the paths
+# that free an enemy WITHOUT retiring it -- a checkpoint restart wipes every pool
+# -- where an entry would otherwise be orphaned. Bounded rather than tracked,
+# because the value of a stale entry is one wrong scatter origin and the cost of
+# tracking it properly is a hook in every teardown.
+var _death_blast: Dictionary = {}
 # Host-assigned and monotonic, for the same reason the rusher's is -- and it does
 # double duty here, because a zombie's WALK is drawn off its id. Two zombies with
 # the same id would perform the same choreography.
@@ -362,6 +385,12 @@ func _ready() -> void:
 	_zombies_root = Node3D.new()
 	_zombies_root.name = "Zombies"
 	add_child(_zombies_root)
+
+	# WHERE THE DEAD GO. Its own root, like every pool, so a corpse is never a
+	# child of the thing it replaced -- that node is being freed on the same tick.
+	_corpses_root = Node3D.new()
+	_corpses_root.name = "Corpses"
+	add_child(_corpses_root)
 	# Loose hats live in world space like the balls. A WORN hat is reparented onto
 	# its wearer's head and comes back here when it is knocked off.
 	_hats_root = Node3D.new()
@@ -411,6 +440,10 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	local_peer = peer_id
 	networked = is_networked
 	_build_level()
+	# BEFORE ANYTHING CAN DIE. Cutting a body into fragments costs about 7 ms and
+	# is cached per kind, so left lazy it is paid on the frame of the first kill of
+	# each kind -- see Corpse.prime(). Here it is paid during a load.
+	Corpse.prime()
 	running = true
 	# NETWORKED SESSIONS ONLY, and only when something asked for it. There is
 	# nothing to diagnose in a solo run and nothing to write in a test.
@@ -510,6 +543,23 @@ func _physics_process(_delta: float) -> void:
 		_host_tick()
 	else:
 		_client_tick()
+
+	# AFTER BOTH, AND ON BOTH SIDES -- which is the entire reason it is out here
+	# rather than in _host_tick with the enemy passes it reads.
+	#
+	# A CORPSE IS NOT DECIDED, IT IS DRAWN. Nothing authoritative reads a fragment,
+	# so every machine runs its own pile: bumping it, culling it behind the party
+	# and pruning the list. Written first inside _host_tick, next to the enemies
+	# whose death creates one, where it did none of those things on a client --
+	# corpses there could only ever be scattered by a blast (which arrives as its
+	# own RPC), were never culled, and left the list growing with freed entries for
+	# the whole session. The comment on that line said "not host-gated" while
+	# sitting inside the host tick, which is the shape of this mistake: the intent
+	# was written down and the placement quietly disagreed with it.
+	#
+	# After both ticks rather than before, so it reads the positions bodies
+	# actually finished this tick on.
+	_process_corpses()
 
 	# AFTER BOTH, AND UNCONDITIONALLY. The row must not be gated by anything the
 	# session can turn off, or a stall in the thing being measured also stops the
@@ -904,6 +954,11 @@ func _deliver(target, hit) -> bool:
 	var enemy: bool = _is_enemy(target)
 	var was_spent: bool = enemy and target.has_method("is_spent") and target.is_spent()
 	var took: bool = target.receive_hit(hit)
+	# THE DEATH IS NOTED HERE AND NOT BELOW, because everything below is gated on
+	# `source > 0` and a blast with no owner still kills. This is the one line in
+	# the project that sees an enemy stop being alive, whatever killed it.
+	if enemy and took and not was_spent and target.is_spent():
+		_note_enemy_death(target, hit)
 	if not is_host or source <= 0:
 		return took
 	# A HIT IS SOMETHING THAT BLEEDS. Counted where it LANDS rather than where it
@@ -1670,6 +1725,9 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(gunner):
 			gunner.queue_free()
 	_gunners.clear()
+	# And what those three left behind. A pile standing on ground the party is
+	# about to re-fight is scenery from a fight that has been undone.
+	clear_corpses()
 	for d in _deployables:
 		if is_instance_valid(d):
 			d.queue_free()
@@ -2088,7 +2146,7 @@ func _process_rushers() -> void:
 
 		if rusher.is_spent():
 			_rushers.remove_at(i)
-			rusher.queue_free()
+			_retire_enemy(rusher, Corpse.Kind.RUSHER)
 			continue
 
 		_resolve_rusher_contact(rusher)
@@ -2281,7 +2339,7 @@ func _process_zombies() -> void:
 
 		if zombie.is_spent():
 			_zombies.remove_at(i)
-			zombie.queue_free()
+			_retire_enemy(zombie, Corpse.Kind.ZOMBIE)
 			continue
 
 		_resolve_zombie_contact(zombie)
@@ -2458,7 +2516,13 @@ func _process_gunners() -> void:
 			continue
 		if gunner.is_spent() or gunner.position.z > _trailing_edge_z():
 			_gunners.remove_at(i)
-			gunner.queue_free()
+			# A TURRET IS NOT A BODY. It is bolted down, it is built out of a base
+			# and a ring rather than one lathe, and there is nothing about it that
+			# should come apart like a person -- so only the skirmisher retires
+			# with a kind. (corpse.gd would refuse a turret anyway, having no
+			# "Mesh" node to read a profile off, but relying on that would be
+			# relying on an accident.)
+			_retire_enemy(gunner, Corpse.Kind.SKIRMISHER if int(gunner.kind) == GunnerBody.Kind.SKIRMISHER else -1)
 			continue
 
 		# LINE OF SIGHT GATES BOTH HALVES, and for a gunner it matters more than
@@ -3780,6 +3844,10 @@ func blast_at(centre: Vector3, radius: float, kind: int = Hit.Kind.EXPLOSIVE,
 # The visual only. Host and client both land here -- one from blast_at, the other
 # from the RPC -- so there is a single description of what an explosion looks like.
 func _play_blast(at: Vector3, radius: float) -> void:
+	# THE PILES GO FIRST, and OUTSIDE the view_active gate below: a corpse is a
+	# physical object with a lifetime, not a sprite, and a headless run still has
+	# to agree with a windowed one about what an explosion did to the scenery.
+	_scatter_corpses_near(at, radius)
 	if not view_active:
 		return
 	BlastEffect.spawn(self, at, radius)
@@ -3814,6 +3882,195 @@ func _blast_seen(at: Vector3, radius: float) -> void:
 	if is_host:
 		return
 	_play_blast(at, radius)
+
+# --- Corpses ------------------------------------------------------------------
+#
+# See scripts/sim/corpse.gd for what one is and why it cannot touch anybody. This
+# is the part the world owns: which deaths earn one, telling the other machines,
+# and noticing when something walks into a pile.
+
+# WHAT KILLED IT, remembered only long enough to build the corpse.
+#
+# A blast never leaves a pile standing, and the pass that delivers the hit is not
+# the pass that reaps the body -- the reap loop runs on the enemy's own tick, and
+# a round or a grenade may land in any pass before it. Nothing else about a death
+# needs remembering, so this holds explosives and nothing else.
+func _note_enemy_death(target: Node, hit) -> void:
+	if int(hit.kind) != Hit.Kind.EXPLOSIVE:
+		return
+	# The entries that are never collected are the ones freed by a path that does
+	# not retire them -- a checkpoint restart clears every pool at once. See the
+	# declaration: bounded rather than tracked.
+	if _death_blast.size() > 128:
+		_death_blast.clear()
+	_death_blast[target.get_instance_id()] = hit.from
+
+# EVERY ENEMY LEAVES THE WORLD THROUGH HERE, AND ONLY SOME OF THEM LEAVE A BODY.
+#
+# THERE ARE THREE WAYS TO STOP EXISTING AND ONLY ONE IS A DEATH. A rusher burrows
+# back down when it outlives its welcome; anything at all can go off the side of
+# the bridge; a gunner is culled once the party has walked far enough past it.
+# None of those should leave rubble, and the culled one least of all -- it is
+# behind the party, out of sight, and the pieces would be a lie about a fight
+# that never happened.
+#
+# `killed` is the flag all three bodies set when a WEAPON ends them, and it is
+# the only one of the three conditions in their is_spent() that means somebody
+# did this. The height test then removes the case where both are true at once:
+# shot on the way down is still a fall, and a corpse assembled below the deck is
+# a corpse nobody will ever see.
+#
+# `kind_id` of -1 means "this one does not get a corpse" -- see the turret at the
+# gunner reap site.
+func _retire_enemy(body: Node, kind_id: int) -> void:
+	var id: int = body.get_instance_id()
+	var blast: Variant = _death_blast.get(id, null)
+	_death_blast.erase(id)
+
+	if (kind_id >= 0 and "killed" in body and bool(body.killed)
+			and body.position.y > SimConfig.FALL_KILL_Y):
+		var at: Vector3 = body.position
+		var from: Vector3 = blast if blast != null else Vector3.ZERO
+		var has_from: bool = blast != null
+		_show_corpse(kind_id, at, from, has_from)
+		# TOLD, NOT INFERRED, exactly as a blast is. A client only sees an enemy
+		# stop being mentioned in the snapshot, and that is equally what a burrow
+		# and a fall look like -- guessing would leave rubble every time something
+		# quietly expired off the end of the deck.
+		if networked and is_host:
+			_corpse_seen.rpc(kind_id, at, from, has_from)
+
+	body.queue_free()
+
+@rpc("authority", "call_remote", "reliable")
+func _corpse_seen(kind_id: int, at: Vector3, from: Vector3, has_from: bool) -> void:
+	if is_host:
+		return
+	_show_corpse(kind_id, at, from, has_from)
+
+# Host and client both land here, so there is one description of what a death
+# leaves behind.
+#
+# NOT GATED ON view_active, unlike the blast and the impact effects next door. A
+# corpse is not a sprite: it is a set of bodies with a lifetime and a bump rule,
+# and gating it on whether anybody is looking would mean the thing the headless
+# gate tests is not the thing that ships.
+func _show_corpse(kind_id: int, at: Vector3, from: Vector3, has_from: bool) -> void:
+	if _corpses_root == null:
+		return
+	var corpse: Node3D = Corpse.spawn(_corpses_root, kind_id, at, from, has_from,
+		_corpse_seed(at))
+	if corpse != null:
+		_corpses.append(corpse)
+
+# A seed both machines arrive at independently, so the same corpse comes apart
+# the same way on every screen without a seed being sent. Derived from the one
+# thing each end already agrees on: where it died.
+func _corpse_seed(at: Vector3) -> int:
+	return absi(int(at.x * 977.0) ^ int(at.y * 5449.0) ^ int(at.z * 24593.0)) + 1
+
+func _process_corpses() -> void:
+	for i in range(_corpses.size() - 1, -1, -1):
+		# UNTYPED ON PURPOSE. A corpse frees ITSELF when its time is up, so this
+		# list routinely holds a freed instance -- and assigning one to a typed
+		# `var x: Node` RAISES before is_instance_valid can say no, which aborts
+		# the rest of this function for the frame. CLAUDE.md records the same trap
+		# costing two rounds in test_rusher; here it presented as corpses that
+		# never expired and bumps that were silently never checked.
+		var corpse = _corpses[i]
+		if not is_instance_valid(corpse):
+			_corpses.remove_at(i)
+			continue
+		# It frees itself when its time is up (corpse.gd); this is only the list
+		# catching up, plus the two ways it can leave early. Culled behind the
+		# party like every other loose thing, and dropped if it goes off the side.
+		if (corpse.position.z > _trailing_edge_z()
+				or corpse.position.y < SimConfig.FALL_KILL_Y):
+			_corpses.remove_at(i)
+			corpse.queue_free()
+			continue
+		if not corpse.is_intact():
+			continue
+		var toucher: Variant = _corpse_toucher(corpse.position)
+		if toucher != null:
+			corpse.scatter(toucher, 1.0)
+			continue
+		var shot: Variant = _corpse_shot(corpse)
+		if shot != null:
+			corpse.scatter(shot, SimConfig.CORPSE_SHOT_BOOST)
+
+# WHO IS STANDING IN IT. Proximity rather than a collider, which is the same
+# choice every other trigger in this game makes and for the same reason: the pile
+# has no collision with anybody by design, so there is nothing to collide with.
+#
+# Full 3D distance, not horizontal: a player carried over a corpse by a lift is
+# not walking through it.
+func _corpse_toucher(at: Vector3) -> Variant:
+	var reach: float = SimConfig.CORPSE_BUMP_RADIUS
+	for peer_key in players.keys():
+		var body: Node = players[peer_key]
+		if is_instance_valid(body) and body.visible and body.position.distance_to(at) <= reach:
+			return body.position
+	# Enemies too. A pack walking over one of its own knocks it apart, which is
+	# the picture that makes a corpse read as an object rather than as a decal.
+	for list in [_rushers, _zombies, _gunners]:
+		for enemy in list:
+			if is_instance_valid(enemy) and enemy.position.distance_to(at) <= reach:
+				return enemy.position
+	return null
+
+# DID A ROUND GO THROUGH THIS PILE THIS TICK, and where.
+#
+# THE ROUND IS NOT CONSUMED, and that is the design rather than an oversight. The
+# bullet sweep's mask deliberately excludes the debris layer, so a corpse cannot
+# stop a round -- the same argument the sweep already makes about a hat on the
+# deck: "a dropped pile would be cover nobody built". A body that fell where you
+# are shooting must not become a sandbag. So a round knocks the pile down and
+# carries on to whatever it was aimed at.
+#
+# THE SEGMENT, NOT THE POINT. A round covers a real fraction of a body's width in
+# one tick, so testing where it IS lets it tunnel clean through a pile at the
+# wrong moment. Sampled finely enough for the corpse it is being tested against,
+# so it stays correct if a round ever gets faster.
+#
+# RUNS ON BOTH SIDES, like everything else about a corpse: the host reads the
+# rounds it is simulating and a client reads the ones it was told about, and
+# neither needs to be sent anything for the pile to fall over on both screens.
+func _corpse_shot(corpse: Node) -> Variant:
+	for bullet in _bullets:
+		if not is_instance_valid(bullet):
+			continue
+		var to: Vector3 = bullet.position
+		var from: Vector3 = bullet.previous
+		var span: float = from.distance_to(to)
+		if span <= 0.0001:
+			if corpse.covers(to):
+				return to
+			continue
+		var steps: int = maxi(2, int(ceil(span / maxf(corpse.hit_radius * 0.5, 0.05))))
+		for i in range(steps + 1):
+			var at: Vector3 = from.lerp(to, float(i) / float(steps))
+			if corpse.covers(at):
+				return at
+	return null
+
+func _scatter_corpses_near(at: Vector3, radius: float) -> void:
+	for corpse in _corpses:
+		if (is_instance_valid(corpse) and corpse.is_intact()
+				and corpse.position.distance_to(at) <= radius):
+			corpse.scatter(at, SimConfig.CORPSE_BLAST_BOOST)
+
+# Everything standing, gone. Called wherever the enemy pools are emptied: a pile
+# left over from the round before is scenery from a fight that has been undone.
+func clear_corpses() -> void:
+	for corpse in _corpses:
+		if is_instance_valid(corpse):
+			corpse.queue_free()
+	_corpses.clear()
+	_death_blast.clear()
+
+func corpse_count() -> int:
+	return _corpses.size()
 
 # ANYTHING ON LEGS, standing here. Players, rushers and gunners -- the things a
 # mine is for. Deliberately NOT balls: a plinko ball rolling over a mine would

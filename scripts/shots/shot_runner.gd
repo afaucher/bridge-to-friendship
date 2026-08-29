@@ -29,6 +29,7 @@ const GameMode = preload("res://scripts/sim/game_mode.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const Corpse = preload("res://scripts/sim/corpse.gd")
 
 # How far a body's ORIGIN sits above the deck it is standing on. A manifest's
 # `at` y is added on top of this, so 0 means "on the ground" and 2.6 means "2.6 m
@@ -113,6 +114,20 @@ func _render_studio(studio: Dictionary, item: Dictionary) -> void:
 
 	stage.add_child(SceneLighting.build())
 	stage.add_child(_ground(float(item.get("ground", 12.0))))
+
+	# A CORPSE INSTEAD OF A SCENE, and the one studio item that is allowed to run.
+	#
+	# Everything else here is instanced with PROCESS_MODE_DISABLED and photographed
+	# where it stands -- a rusher left to run its own frame would charge a target
+	# that does not exist. A death animation is the exception, because the thing
+	# being photographed IS the running: the pile has to fall for a stated number
+	# of seconds before the shutter, or every scattered frame is the intact one.
+	#
+	# So it gets a real floor as well. _ground() is a MeshInstance with no collider
+	# -- fine for a still, and debris dropped onto it would fall forever.
+	if item.has("corpse"):
+		await _render_corpse(studio, item, stage)
+		return
 
 	var scene_path: String = str(item.get("scene", ""))
 	var subject: Node3D = null
@@ -385,6 +400,67 @@ func _place_actor(world: Node3D, actor: Dictionary, anchor: Vector3) -> Node3D:
 	if node.has_method("set_facing_yaw"):
 		node.set_facing_yaw(deg_to_rad(yaw))
 	return node
+
+# One corpse, aged by a stated number of seconds of real physics before the
+# shutter. `corpse` is {kind, scatter_seconds, burst}: `burst` true photographs
+# what a BLAST leaves (scattered from the first frame), false what a bullet
+# leaves (a pile standing until something touches it, which in a studio nothing
+# ever does).
+func _render_corpse(studio: Dictionary, item: Dictionary, stage: Node) -> void:
+	var spec: Dictionary = item["corpse"]
+	var kinds := {
+		"rusher": Corpse.Kind.RUSHER,
+		"zombie": Corpse.Kind.ZOMBIE,
+		"skirmisher": Corpse.Kind.SKIRMISHER,
+	}
+	var kind_id: int = int(kinds.get(str(spec.get("kind", "rusher")), Corpse.Kind.RUSHER))
+
+	stage.add_child(_studio_floor(float(item.get("ground", 12.0))))
+
+	# LIFTED SO IT STANDS ON THE FLOOR. A corpse is placed at the dead body's
+	# ORIGIN, which for every one of these is the middle of the body -- so in the
+	# game it is already correct and here it needs the half-height the deck would
+	# otherwise have supplied.
+	var burst: bool = bool(spec.get("burst", false))
+	var corpse: Node3D = Corpse.spawn(stage, kind_id,
+		Vector3(0.0, float(item.get("lift", 0.9)), 0.0),
+		Vector3(0.0, -0.4, 0.0), burst, 12345, int(spec.get("fragments", 0)))
+	if corpse == null:
+		printerr("[SHOTS] no corpse for kind ", kind_id)
+		_drop_viewport()
+		return
+	if bool(spec.get("scatter", false)) and not burst:
+		corpse.scatter(Vector3(0.6, -0.2, 0.4), 1.0)
+
+	var focus := Vector3(0, float(item.get("focus_y", 0.0)), 0)
+	var cam := _camera(studio, item, focus)
+	stage.add_child(cam)
+
+	# LET IT FALL. Physics frames, not render frames -- the corpse ages on
+	# _physics_process like everything else in this game.
+	var ticks: int = int(round(float(spec.get("scatter_seconds", 0.0)) * 60.0))
+	for _i in range(ticks):
+		await get_tree().physics_frame
+
+	await _capture(item.get("name", "corpse"))
+	_drop_viewport()
+
+# A COLLIDER FOR THE GROUND THAT IS ALREADY THERE. _render_studio has added the
+# _ground() mesh by the time this runs; a still life needs nothing more, and
+# debris needs something to land on. Mesh-free on purpose -- two coplanar ground
+# planes is z-fighting across the whole frame.
+func _studio_floor(extent: float) -> Node3D:
+	var floor_body := StaticBody3D.new()
+	floor_body.name = "StudioFloor"
+	floor_body.collision_layer = 1
+	floor_body.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(extent, 1.0, extent)
+	shape.shape = box
+	shape.position = Vector3(0.0, -0.5, 0.0)
+	floor_body.add_child(shape)
+	return floor_body
 
 # --- Plumbing ----------------------------------------------------------------
 
