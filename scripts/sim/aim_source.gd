@@ -90,17 +90,46 @@ func resolve_point(camera: Camera3D, from: Vector3) -> Vector3:
 	if _device == Device.PAD:
 		_point = _pad_point(space, from)
 		return _point
+	_point = _mouse_point(camera, from)
+	return _point
+
+# WHERE THE CURSOR IS POINTING, AND THERE IS EXACTLY ONE ANSWER TO THAT.
+#
+# It used to be two. `resolve_point` cast a ray at the world and `_yaw_to_cursor`
+# intersected a horizontal plane through the player, so `point` mode named the
+# thing under the cursor while `level` mode named a spot on the floor behind it.
+# They agree for anything standing at your own height and disagree by more the
+# higher it is.
+#
+# WHAT THAT COST, reported from play 2026-08-25: "if you point at an elevated
+# enemy your cursor doesn't select them -- only when you point at different spots
+# near them, and I can't quite figure out what the correlation is." The camera is
+# pitched 45 degrees, so tan is 1 and a target `h` metres up puts the plane point
+# `h` metres BEYOND it along the camera's view direction. The bearing error is
+# therefore height times how far off the camera's axis the target sits: an enemy
+# directly up-bridge is displaced radially and still aims true, one off to the
+# side is displaced sideways and misses. At the watchpost -- 2.45 m up, 7.4 m out
+# -- that is up to 18 degrees, which puts the level ray 2.4 m wide of a turret the
+# assist only reaches within 0.6 m of. Hence "spots near them" working: those are
+# the places where the floor under the cursor really does line up with the enemy.
+#
+# So this is the one function, and both callers ask it. Two implementations of one
+# fact is the trap CLAUDE.md records from the ladder face, where the copies also
+# "never changed and disagreed anyway" -- they were never the same arithmetic.
+func _mouse_point(camera: Camera3D, from: Vector3) -> Vector3:
+	var space: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
 	var mouse := camera.get_viewport().get_mouse_position()
 	var origin := camera.project_ray_origin(mouse)
 	var direction := camera.project_ray_normal(mouse)
 	var hit := _cast(space, origin, origin + direction * 200.0)
-	if hit.is_empty():
-		var plane := Plane(Vector3.UP, from.y)
-		var flat = plane.intersects_ray(origin, direction)
-		_point = flat if flat != null else Vector3.INF
-	else:
-		_point = hit["position"]
-	return _point
+	if not hit.is_empty():
+		return hit["position"]
+	# NOTHING UNDER THE CURSOR -- pointing at the sky, or off the end of the
+	# bridge. The plane through the player is the honest fallback: it is the only
+	# height that means anything when there is no surface to name.
+	var plane := Plane(Vector3.UP, from.y)
+	var flat = plane.intersects_ray(origin, direction)
+	return flat if flat != null else Vector3.INF
 
 # A pad has no cursor, so one is invented on a circle around the player and then
 # dropped onto whatever is under it -- which is what gives a stick a height.
@@ -171,24 +200,25 @@ func _mouse_moved() -> float:
 	_last_mouse = pos
 	return 0.0
 
-# Cast the cursor onto the horizontal plane through the player and take the
-# bearing to where it lands.
+# The bearing to whatever the cursor is on.
 #
-# The plane is at the PLAYER'S height, not at y = 0. The bridge climbs in layers
-# and is pitched, so a fixed plane would put the aim point metres off up-bridge --
-# and the error would grow the further the party climbed, which is the worst
-# shape for an aiming bug to have.
+# ASKED OF `_mouse_point`, WHICH IS THE FIX. This used to intersect a horizontal
+# plane through the player itself -- a second, quieter answer to the question
+# `resolve_point` was already answering by raycast -- so `level` mode aimed at the
+# floor behind an elevated enemy rather than at the enemy. See _mouse_point for
+# the measurement and for why the failure looked uncorrelated from inside the game.
+#
+# The plane still decides it when the ray hits nothing, and it is still the plane
+# through the PLAYER rather than y = 0: the bridge climbs in layers, so a fixed
+# plane would put the aim metres off up-bridge and the error would grow the
+# further the party climbed -- the worst shape an aiming bug can have.
 func _yaw_to_cursor(camera: Camera3D, from: Vector3) -> float:
-	var mouse := camera.get_viewport().get_mouse_position()
-	var origin := camera.project_ray_origin(mouse)
-	var direction := camera.project_ray_normal(mouse)
-	var plane := Plane(Vector3.UP, from.y)
-	var hit = plane.intersects_ray(origin, direction)
-	if hit == null:
+	var hit: Vector3 = _mouse_point(camera, from)
+	if not is_finite(hit.x):
 		# Looking along the plane, or away from it. Keep the last answer rather
 		# than snapping somewhere arbitrary.
 		return NONE
-	var offset: Vector3 = (hit as Vector3) - from
+	var offset: Vector3 = hit - from
 	if Vector2(offset.x, offset.z).length_squared() < 0.0001:
 		# Cursor exactly on the player: there is no direction to report.
 		return NONE
