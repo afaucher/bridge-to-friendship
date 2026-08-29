@@ -35,6 +35,10 @@ const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 # somebody who is deciding.
 const LOBBY_MIN_WIDTH := 11
 const LOBBY_LENGTH := 12
+
+# HOW LONG A BLANK ZONE IS. Mid-range for a generated section (they run 14 to 21),
+# so a zone reads as a section-sized stretch of nothing rather than as a pause.
+const BLANK_ZONE_ROWS := 16
 # Two rows deep at each end, per M16: one row is 2 m, and a party of four told to
 # gather on it is four players jostling on a strip narrower than they are.
 const GATE_DEPTH := 2
@@ -120,6 +124,21 @@ static func lobby(width: int, run_seed: int, index: int):
 	]
 	_spread(seg, GATE_DEPTH + 2, rack)
 
+	# THE MODE SELECTOR, ON THE CENTRE LINE AND PAST THE HATS (M25 phase 2).
+	#
+	# ONE PER LOBBY AND ONLY IN A LOBBY, which is what makes it safe to be dashable
+	# at all: the lobby is always base, the corridor past it is speculative, and
+	# the party is standing still behind a wall while a change re-cuts it.
+	#
+	# LATE IN THE ROOM, so it is the last thing on the way out rather than the
+	# first thing on the way in. You choose where you are going after you have
+	# picked up what you are taking, and a control by the entrance would be dashed
+	# into by somebody still arriving.
+	var post_row: int = seg.length - GATE_DEPTH - 2
+	var post_x: int = seg.width / 2
+	if post_row > GATE_DEPTH and seg.is_solid(post_x, post_row):
+		seg.contents[post_row][post_x] = GridConfig.Content.MODE_POST
+
 	# HATS past the rack. Hats are the score, so how many you can carry OUT is the
 	# question the section asks; which one you take is not a decision.
 	var hats: Array = []
@@ -166,6 +185,60 @@ static func _spread(seg, row: int, items: Array) -> void:
 # same flood the authoring validator uses, so a generated segment has to clear
 # the bar an authored one does -- and `attempts` is bounded, because a generator
 # that cannot satisfy its own constraints must say so rather than spin.
+# A ZONE WITH NOTHING IN IT (M25 phase 1b). The blank mode's whole terrain.
+#
+# WHY THE SECOND MODE IS THIS AND NOT A GAMEPLAY VARIANT. What the bus and the
+# shooter will both need is not a different rule about hazards -- it is that a
+# mode GENERATES ITS OWN GROUND. A bus wants a route and a shooter wants a
+# corridor, and neither is `section()` with knobs on. So the cheapest honest
+# second mode is the smallest instance of that: its own generator, producing the
+# simplest thing a generator can produce.
+#
+# It is also the sharpest thing available to test. Every claim about it is a
+# PRESENCE claim -- no hazards, no set pieces, one height everywhere -- and this
+# project trusts those, because a rejection oracle turns "wrong" into "absent" and
+# a correctness counter then passes over an empty set.
+#
+# THE FULL CANVAS, WHICH IS THE WIDEST THING THIS GAME CAN BUILD -- 21 cells at
+# 2 m each, so 42 m across, against the 30 m of the lobby either side of it.
+#
+# IT WAS BASELINE WIDTH, copying the lobby on the argument that the width
+# conventions are not this mode's to reinvent. That was the safe default and the
+# wrong instinct: a blank zone that is exactly as wide as everything else is a
+# stretch of bridge with the furniture removed, and what makes an empty space read
+# as A PLACE is that it opens out.
+#
+# A STEP AT THE JOIN IS THE THING TO CHECK, and there is none: the zone is FLAT at
+# one height and so is the lobby's exit, so the extra six cells a side are deck
+# continuing outward rather than a lip to trip over. The join contract only asks
+# that one column be solid on both sides, and fifteen are.
+#
+# WIDER THAN THIS NEEDS THE CANVAS RAISED, which CLAUDE.md records as expensive:
+# the 15-to-21 bump broke four separate rules that had each been reading `width`
+# to mean one of the four things it meant at once.
+#
+# NO GATE BANDS AND NO RACK. Those are the LOBBY's furniture and the lobby is
+# always base -- a zone sits where a section sits, between two lobbies that
+# already carry them.
+static func blank_zone(width: int, run_seed: int, index: int):
+	var length: int = BLANK_ZONE_ROWS
+	var seg = _blank("blank_%d" % index, maxi(width, LOBBY_MIN_WIDTH), length)
+	# NO INSET AT ALL: `_blank` already fills the canvas, so the zone is every cell
+	# of it. Nothing is cut away, which is the whole change.
+	# TYPED, because SegmentData.tags is Array[String] and assigning a plain Array
+	# RAISES -- which aborts the rest of this function and returns null, with the
+	# caller then failing on a Nil three frames later and the gate green through
+	# all of it. The same trap `lobby()` carries a note about.
+	var zone_tags: Array[String] = ["foot", "generated", "blank"]
+	seg.tags = zone_tags
+	# `no_dress` is what keeps it blank against the DRESSING pass, which is a
+	# separate thing from the generator and would otherwise scatter hazards over
+	# ground that was made empty on purpose. Without it this mode would be "flat
+	# terrain with the usual threats on it", which is not what was asked for and,
+	# worse, would look like the mode had failed to take effect.
+	seg.no_dress = true
+	return seg
+
 static func section(width: int, run_seed: int, index: int, attempts: int = 24):
 	# THE FIRST SECTION *KIND*. Until now "generated section" meant exactly one
 	# algorithm with knobs on it -- plateaus, ramps, lifts, drops, a narrowing band

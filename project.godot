@@ -177,6 +177,7 @@ system_exit={
 ; acquiring an opinion about the shopkeeper -- starting with the one directly
 ; below, where a dash into a stone pushes it a cell.
 3d_physics/layer_10="merchant"
+3d_physics/layer_11="mode_post"
 
 [physics]
 

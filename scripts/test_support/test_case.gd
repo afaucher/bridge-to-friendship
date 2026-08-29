@@ -19,6 +19,31 @@ extends Node
 
 var test_name: String = ""
 
+# WHICH MODE THIS TEST IS ABOUT (M25 phase 1). Every existing test builds a
+# GameWorld and assumes base rules, and none of them SAYS so -- so the day a mode
+# changes a default, they would break talking about something else entirely. That
+# is not hypothetical: when MG_BULLET_SPEED moved on 2026-08-22, three tests
+# failed with messages about hats and shields.
+#
+# ONE LINE IN THE HARNESS NOW, unrecoverable once there are a hundred tests and
+# four modes. A test about a mode sets this in setup() and the world it builds is
+# stamped with it; everything else is base, explicitly, because base is mode zero
+# rather than the absence of one.
+#
+# The stamping happens wherever a test hands its world to `world_under_test`; a
+# world built by hand is still base by construction, which is the same answer.
+var test_mode: int = 0
+
+# Stamp a world with this test's mode and hand it back, so a caller can write
+#   world = world_under_test(build())
+# rather than remembering a separate line. Returns its argument unchanged apart
+# from the mode, so it is safe to wrap any construction.
+func world_under_test(world):
+	if world != null and "run_modes" in world:
+		world.next_mode = test_mode
+		world.run_modes = [test_mode]
+	return world
+
 # Backstop for a test that waits for something that never arrives. The runner
 # also has a 600s hang timeout, but that reports "TIMEOUT" with no idea which
 # condition was never met -- this reports the test's own name in seconds, and

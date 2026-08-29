@@ -314,7 +314,39 @@ for a mode with a genuinely different notion of winning.
 
 ## Phases
 
-**Phase 1 — the seam, with nothing new to look at.** A mode that is *exactly the
+**Phase 1 — the seam, with nothing new to look at.** *(BUILT 2026-08-25.)*
+
+`scripts/sim/game_mode.gd` is the registry; base is `MODES[0]`. `GameWorld` gained
+`run_modes` (one entry per round), `current_mode()`, `tuned()` as the single
+composition point, and `selected_mode` / `next_mode` polled only in a lobby.
+
+**There is no control in phase 1, and the settings registry is why.** A debug knob
+was written first — the shape `force_piece` has, as the plan suggested — and
+`test_debug_settings` refused it: *every choice knob must offer at least two
+options*. With one mode there is nothing to choose between, and the rule is right:
+a control that cannot change anything cannot be tested either. So the selector is
+a field the phase 2 control will write, and the lock/guard behaviour around it is
+tested by driving that field directly. The wire
+went from `(seed, count)` to `(seed, count, modes)` — same message, tolerant of a
+caller that omits it, and the late-joiner path sends it too. `test_case.gd` gained
+`test_mode` / `world_under_test()`, which is obligation 5 paid at one line.
+
+**What was deliberately NOT built: discarding already-generated geometry when a
+selection changes.** It cannot be exercised — there is one mode, so no choice can
+ever differ from what the corridor was built for — and a teardown written now
+would be an unreachable path that merely *looks* implemented: fifteen pools to
+unwind (stones, shooters, hearts, mounds, graves, ladders, cover, elevators, the
+height accumulator) with nothing able to prove any of it. `_rebuild_corridor_ahead`
+re-plans the array, which is real and tested, and **refuses loudly** if a choice
+ever lands on ground already built. **That is phase 2's first job**, and phase 2 is
+the first moment a second mode exists to prove it.
+
+Obligations 2 (subsystem × mode) and 4 (per-mode traversal) remain deferred to the
+second mode as the plan says, and the seam they need — a pool that can be told
+"not in this mode" — is `GameMode.policy()`, which exists and is asserted
+exhaustively.
+
+ A mode that is *exactly the
 current game*, selected by a debug knob (the shape `force_piece` already has). It
 must prove: choose → lock → generate → cross → restore, plus the widened drop-in
 message and a late joiner arriving mid-mode. **If phase 1 shows any difference on
@@ -325,9 +357,74 @@ because this is the only moment when there is exactly one mode to convert:
 declarative overrides, base-as-mode-zero, and every test naming its mode. None of
 them is visible; all of them are migrations if deferred.
 
-**Phase 2 — the control.** The in-world selector. `merchant_body.gd` is the
-precedent and most of the answer: a grid-resident thing you walk up to and dash
-into. The giant zebra is a merchant with a different job.
+**Phase 1b — the blank zone, and what it unblocks.** *(BUILT 2026-08-25.)* A
+second mode, chosen because what the bus and the shooter both need is not a rule
+about hazards but that **a mode generates its own ground** — a bus wants a route,
+a shooter wants a corridor, and neither is `section()` with knobs on. A flat empty
+zone is the smallest honest instance of that seam.
+
+`GameMode` entries now declare `terrain`, and `BridgeGrid` calls the generator
+they name. Eleven pools are declared `off`, which is the first time the
+subsystem × mode grid has had two rows and therefore the first time it could be
+wrong — with one row every entry agreed with every other by construction.
+
+**Two things the A/B found that the first draft had wrong:**
+
+- **The terrain claim was testing the generator, not the caller.** With
+  `GameMode.terrain()` hardwired to the ordinary bridge the file still passed,
+  because every assertion called `SegmentGen.blank_zone()` by hand. The seam is
+  the *caller*. Fixed by building a real two-round run and asserting round 1 is
+  blank while round 0 is not — so the builder is switching rather than configured.
+- **A mode did not own its authored slots.** `plan()` fills some slots with pool
+  FILES, which went straight to `load_segment_file` without asking the mode — so a
+  blank round came out 3 sections of 5, with two authored maps full of hazards in
+  the middle of a zone defined by having nothing in it. That would have read as the
+  mode intermittently failing. A mode with its own terrain now owns every non-lobby
+  slot. The general shape is the recorded one: adding a kind re-aims every rule
+  that did not know there was more than one kind, and here the older kind is *"a
+  slot can be a file"*, which predates modes entirely.
+
+**Now unblocked:** the corridor teardown (a choice can finally differ from what
+was built) and phase 2's control (a choice now has two options). Still waiting on
+a mode with a different BODY: per-mode traversal (obligation 4) and per-mode stats
+(obligation 6).
+
+**Phase 2 — the control.** *(BUILT 2026-08-25, with the teardown.)* The in-world
+selector. `merchant_body.gd` was the precedent and most of the answer, exactly as
+predicted: a grid-resident thing you walk up to and dash into.
+
+`scripts/sim/mode_post.gd` is a static body on layer 11, built in code, carrying a
+banner whose colour is the chosen mode. `resolve_shove_contact` dispatches on
+`has_method("can_select")` the same way it does on `can_trade`. One per lobby and
+none in a section — being in a lobby is what makes it safe to be dashable at all,
+since the corridor past it is speculative and nobody is standing on the ground a
+change re-cuts. Last write wins, no vote, as decided.
+
+**The teardown that phase 1 deferred is built with it**, because a control without
+one is a control that lies. `BridgeGrid.truncate_run` sweeps rather than
+enumerates: nodes are freed **by position** (every prop kind has its own root) and
+cell keys **by reflection** over the grid's own properties — so a container added
+next month is swept next month. Roughly thirty containers accumulate per segment
+and a hand-written removal that missed one would leave a key pointing at a freed
+node, which fails minutes later somewhere else.
+
+**And the line the teardown draws is not "everything in the world".** It is
+between what belongs to the LEVEL — rushers, gunners, zombies, balls, put there by
+the ground they stand on — and what belongs to the PARTY: players, hats, specials.
+A hat is the score of this game and there is no undo for one, so a mode change
+that ate a hat lying past the cut would be unrecoverable and would read as a bug
+rather than a rule. Both halves are asserted.
+
+**Three bugs the tests found, all off-by-a-round or off-by-a-layer:**
+
+- **The cut was a whole round wide.** `round_index` increments on *entering* a
+  lobby, so a party in a lobby is in round N choosing round N's own sections. The
+  first version kept "through round N", which kept the very ground the choice was
+  about — the choice appeared to be taken up and changed nothing.
+- **A mode did not own its authored slots** (see phase 1b).
+- **A dash test that could not fail.** It called `begin_shove`, which does not
+  exist; the raise aborted the phase and every assertion below it silently never
+  ran while the file reported PASS. Driven through `ACTION_SHOVE` now.
 
 **Phase 3 — the bus.** A large moving platform, one player's input steering it,
 an ammo override, and a per-mode straggler rule. Much smaller than it first looked

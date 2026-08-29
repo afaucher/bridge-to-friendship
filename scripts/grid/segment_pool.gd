@@ -118,6 +118,36 @@ static func plan(run_seed: int, count: int) -> Array:
 			out.append(section_for(run_seed, i))
 	return out
 
+# HOW MANY ROUNDS A PLAN OF THIS MANY SEGMENTS COVERS. The cycle length lives in
+# one place for the same reason `is_lobby_slot` does: a caller that re-derives it
+# from SECTIONS_PER_ROUND gets it off by one, and M25 indexes its mode array by
+# round, so an off-by-one here is a round played in the wrong mode.
+static func rounds_in(segments: int) -> int:
+	if segments <= 0:
+		return 0
+	return (segments - 1) / (SECTIONS_PER_ROUND + 1) + 1
+
+# HOW MANY SEGMENTS COVER EVERYTHING UP TO AND INCLUDING ROUND `index`'S LOBBY.
+#
+# WHAT A SPECULATIVE REBUILD KEEPS, and the distinction is a whole round wide.
+# `round_index` is incremented on ENTERING a lobby, so a party standing in a lobby
+# is standing in round N and choosing what round N's SECTIONS will be -- those
+# sections are ahead of them and unplayed. Keeping "through round N" would have
+# kept the very ground the choice is about, and the choice would have done
+# nothing to the corridor while appearing to be taken up.
+static func segments_through_lobby(index: int) -> int:
+	return index * (SECTIONS_PER_ROUND + 1) + 1
+
+# HOW MANY SEGMENTS COVER EVERY ROUND UP TO AND INCLUDING `index`. What a
+# speculative rebuild KEEPS: the ground already played, plus the round the party
+# is standing in. Everything past it is what nobody has seen yet.
+static func segments_through_round(index: int) -> int:
+	return (index + 1) * (SECTIONS_PER_ROUND + 1)
+
+# Which round slot `i` belongs to. Its lobby and its sections are one round.
+static func round_of_slot(i: int) -> int:
+	return i / (SECTIONS_PER_ROUND + 1)
+
 # True if slot `i` of a plan is a lobby. The cycle length lives in one place so
 # a caller never re-derives it from SECTIONS_PER_ROUND and gets it off by one.
 static func is_lobby_slot(i: int) -> bool:

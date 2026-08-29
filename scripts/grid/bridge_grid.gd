@@ -24,6 +24,8 @@ const MoundScene = preload("res://scenes/mound.tscn")
 const GraveScene = preload("res://scenes/grave.tscn")
 const MerchantBody = preload("res://scripts/sim/merchant_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
+const ModePost = preload("res://scripts/sim/mode_post.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
@@ -68,6 +70,119 @@ func segment_count() -> int:
 # The clamp at the end is still right for a row PAST the end -- that is a party
 # at the front of a bridge still being built, which is the ordinary case every
 # frame. It was only ever wrong in the other direction.
+# The SegmentData behind slot `i`, or null. A reader rather than a copy: nothing
+# should mutate a loaded segment, and handing out the record makes that obvious.
+# DISCARD EVERY SEGMENT FROM `keep` ONWARD, so a corridor can be re-cut when the
+# party changes what the next round is. M25 phase 2's prerequisite.
+#
+# WHY THIS IS SWEPT RATHER THAN UNWOUND BY HAND. Loading a segment accumulates
+# into roughly thirty containers -- stones, shooters, hearts, mounds, graves,
+# spikes, mutable slabs, elevators, merchants, gates, the authored-content lists,
+# the height accumulator -- and a hand-written removal that misses ONE leaves a
+# cell key pointing at a freed node. That does not fail here; it fails minutes
+# later somewhere else, which is the worst shape a bug can have. Worse, the next
+# person to add container thirty-one has no way to know they were supposed to.
+#
+# So nothing is enumerated:
+#
+#   * NODES are freed by POSITION. Every prop kind lives under its own root node
+#     (Stones, Shooters, Hearts, Ladders, Cover...), so anything standing past the
+#     cut goes, whatever kind it is and whenever it was added.
+#   * CELL KEYS are dropped by REFLECTION. Every Vector2i in this class is a cell
+#     and every cell has a row, so a container that holds them can be swept
+#     without being named. A container added tomorrow is swept tomorrow.
+#
+# `test_corridor_teardown` asserts the completeness rather than trusting it:
+# after a cut, NO node and NO cell may sit past it.
+#
+# THE ROWS BEING DROPPED HAVE NEVER BEEN PLAYED, which is what makes this safe at
+# all. The "spent" and "taken" records only ever name ground the party has crossed,
+# so nothing consumed can be resurrected by rebuilding ahead of them -- and the
+# caller is responsible for only ever cutting past the round in progress.
+func truncate_run(keep: int) -> void:
+	if keep < 0 or keep >= _segments.size():
+		return
+	var cut_row: int = int(_segments[keep]["z_offset"])
+
+	# The terrain of every dropped segment, and the segments themselves.
+	while _segments.size() > keep:
+		var record: Dictionary = _segments.pop_back()
+		var root = record.get("root", null)
+		if root != null and is_instance_valid(root):
+			root.queue_free()
+
+	# THE HEIGHT ACCUMULATOR, which is the one piece of state that is neither a
+	# node nor a cell. A run stacks segments by raising each one to wherever the
+	# last finished, so a truncation that left this alone would build the new
+	# corridor floating above the join.
+	_next_height = 0
+	if not _segments.is_empty():
+		var last: Dictionary = _segments[-1]
+		_next_height = int(last["h_offset"]) + int(last["data"].exit_height())
+
+	_free_props_past(cut_row)
+	_forget_cells_past(cut_row)
+
+# Everything standing on ground that no longer exists. Asked of each per-kind root
+# rather than of a list of kinds -- see truncate_run.
+func _free_props_past(cut_row: int) -> void:
+	for root in get_children():
+		if not (root is Node3D):
+			continue
+		for prop in (root as Node3D).get_children():
+			if not (prop is Node3D):
+				continue
+			if cell_of_world((prop as Node3D).global_position).y >= cut_row:
+				root.remove_child(prop)
+				prop.queue_free()
+
+# Every cell record past the cut, found by walking this object's own properties.
+# A Vector2i in a grid IS a cell, so anything holding one can be swept without
+# being named; `gate_rows` and `gate_bands` are rows rather than cells and are the
+# only two that have to be spelled out.
+func _forget_cells_past(cut_row: int) -> void:
+	for entry in get_property_list():
+		var key: String = str(entry.get("name", ""))
+		if key == "":
+			continue
+		var value = get(key)
+		if value is Dictionary:
+			var drop: Array = []
+			for k in (value as Dictionary):
+				if k is Vector2i and (k as Vector2i).y >= cut_row:
+					drop.append(k)
+			for k in drop:
+				(value as Dictionary).erase(k)
+		elif value is Array:
+			_filter_cells(value as Array, cut_row)
+
+	gate_rows = gate_rows.filter(func(r): return int(r) < cut_row)
+	gate_bands = gate_bands.filter(func(b): return int(b[0]) < cut_row)
+
+# One array, in place. Handles a bare cell and the [cell, extra] pairs the
+# authored-content lists hold; anything else is left alone, because an array this
+# does not recognise is not a row-keyed one.
+func _filter_cells(list: Array, cut_row: int) -> void:
+	for i in range(list.size() - 1, -1, -1):
+		var item = list[i]
+		if item is Vector2i:
+			if (item as Vector2i).y >= cut_row:
+				list.remove_at(i)
+		elif item is Array and (item as Array).size() > 0 and item[0] is Vector2i:
+			if (item[0] as Vector2i).y >= cut_row:
+				list.remove_at(i)
+
+# Where the next segment would start stacking from. Exposed for the teardown's
+# sake: it is the one piece of run state that is neither a node nor a cell, so
+# neither sweep can catch it and it has to be asserted directly.
+func next_height() -> int:
+	return _next_height
+
+func segment_data(i: int):
+	if i < 0 or i >= _segments.size():
+		return null
+	return _segments[i]["data"]
+
 func segment_index_of_row(row: int) -> int:
 	if _segments.is_empty():
 		return 0
@@ -139,7 +254,11 @@ func first_row_of_segment(index: int) -> int:
 
 # Build (or extend) a run from the pool. Deterministic in the seed, so every
 # machine that is told the same seed and count builds the same bridge.
-func build_run(seed_value: int, segment_count_wanted: int) -> void:
+# `modes` is one entry per ROUND, not per segment -- a round's lobby and its
+# sections are one choice. Empty means every round is base, which is what every
+# caller that predates M25 passes and what a client is told when a host does not
+# send it.
+func build_run(seed_value: int, segment_count_wanted: int, modes: Array = []) -> void:
 	run_seed = seed_value
 	var plan: Array = SegmentPool.plan(seed_value, segment_count_wanted)
 	for i in range(_segments.size(), plan.size()):
@@ -148,11 +267,54 @@ func build_run(seed_value: int, segment_count_wanted: int) -> void:
 		# strings so everything that reads it is unchanged; a slot the generator
 		# fills carries a marker instead of a file name.
 		if path == SegmentPool.GENERATED_LOBBY:
+			# A LOBBY IS ALWAYS BASE and never asks the mode. Decided with the rest
+			# of M25: a broken mode must never be able to strand the party
+			# somewhere they cannot choose again, and that guarantee is worth
+			# nothing if it lives in one caller rather than at the point of build.
 			_load_generated(SegmentGen.lobby(width, seed_value, i), i)
+			continue
+		var mode: int = _mode_of_slot(modes, i)
+		# A MODE WITH ITS OWN TERRAIN OWNS EVERY NON-LOBBY SLOT, including the ones
+		# the plan filled with an AUTHORED file.
+		#
+		# It did not, and the test caught it: a blank round came out 3 sections of 5
+		# blank, because `plan()` hands some slots a pool file and those went
+		# straight to `load_segment_file` without ever asking the mode. Two authored
+		# maps, full of hazards and set pieces, in the middle of a zone whose whole
+		# definition is that there is nothing in it -- and it would have read as the
+		# mode intermittently failing rather than as a slot kind nobody had thought
+		# about.
+		#
+		# The general shape is one CLAUDE.md already records: adding a new kind of
+		# thing re-aims every rule that did not know there was more than one kind.
+		# Here the older kind is "a slot can be a FILE", which predates modes
+		# entirely.
+		if GameMode.terrain(mode) != GameMode.TERRAIN_SECTIONS:
+			_load_generated(_section_for_mode(mode, seed_value, i), i)
 		elif path == SegmentPool.GENERATED_SECTION:
-			_load_generated(SegmentGen.section(width, seed_value, i), i)
+			_load_generated(_section_for_mode(mode, seed_value, i), i)
 		else:
 			load_segment_file(path)
+
+# WHICH MODE OWNS SLOT `i`. Out of range reads as base rather than as an error --
+# a run always has an answer for every slot, because a missing entry read as "no
+# mode" is the absence M25 exists to avoid.
+static func _mode_of_slot(modes: Array, i: int) -> int:
+	var round_index: int = SegmentPool.round_of_slot(i)
+	if round_index < 0 or round_index >= modes.size():
+		return GameMode.BASE
+	return int(modes[round_index])
+
+# THE ONE PLACE A MODE'S TERRAIN DECLARATION IS ACTED ON. The mode names a
+# generator and this calls it -- so a mode never reaches into SegmentGen and
+# SegmentGen never asks what mode it is. Adding the bus's route or the shooter's
+# corridor is a branch here and an entry in the registry, not a change to either.
+func _section_for_mode(mode: int, seed_value: int, i: int):
+	match GameMode.terrain(mode):
+		GameMode.TERRAIN_BLANK:
+			return SegmentGen.blank_zone(width, seed_value, i)
+		_:
+			return SegmentGen.section(width, seed_value, i)
 
 # A segment that was never a file. Everything after parsing is identical, which
 # is the point of generating SegmentData rather than text: the validator, the
@@ -401,6 +563,10 @@ func load_segment(seg) -> void:
 
 	var built = SegmentBuilder.build(seg, z_offset, h_offset)
 	add_child(built.root)
+	# KEPT SO IT CAN BE FREED. `truncate_run` discards whole segments when a mode
+	# choice changes, and a segment's terrain is this one node -- everything else it
+	# spawned lives under a per-kind root and is swept by position.
+	_segments[-1]["root"] = built.root
 
 	for local_cell in built.stone_cells:
 		var cell := Vector2i(local_cell.x, local_cell.y + z_offset)
@@ -441,6 +607,9 @@ func load_segment(seg) -> void:
 		_spawn_spikes(sc)
 	for local_cell in built.merchant_cells:
 		_spawn_merchant(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.mode_post_cells:
+		_spawn_mode_post(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 	# Authored hats are recorded, not spawned here. A hat is a free sim body owned
 	# by the world's hat pool, not grid-resident data like a stone or a heart --
@@ -1461,6 +1630,35 @@ var _merchant_root: Node3D = null
 # Which merchants have sold, so a joiner is told in one message rather than being
 # left drawing a hat that is not for sale.
 var _spent_merchants: Array = []    # Vector2i
+
+# THE MODE SELECTOR, built from grid content exactly as the merchant is: a pure
+# function of the segment, so every machine builds its own and the only thing that
+# ever crosses the wire is what it is SHOWING. A choice is not a function of a
+# seed, which is the one way this differs from every other piece of content.
+var _mode_posts: Dictionary = {}    # Vector2i -> the post standing there
+var _mode_post_root: Node3D = null
+
+func _spawn_mode_post(cell: Vector2i) -> void:
+	if _mode_post_root == null:
+		_mode_post_root = Node3D.new()
+		_mode_post_root.name = "ModePosts"
+		add_child(_mode_post_root)
+	var post = ModePost.new()
+	post.cell = cell
+	post.position = cell_surface(cell)
+	_mode_post_root.add_child(post)
+	post.name = "ModePost_%d_%d" % [cell.x, cell.y]
+	_mode_posts[cell] = post
+
+# Every post currently built, so the world can keep their banners in step with the
+# selection without knowing where any of them are.
+func mode_posts() -> Array:
+	var out: Array = []
+	for cell in _mode_posts:
+		var post = _mode_posts[cell]
+		if is_instance_valid(post):
+			out.append(post)
+	return out
 
 func _spawn_merchant(cell: Vector2i) -> void:
 	if _merchant_root == null:

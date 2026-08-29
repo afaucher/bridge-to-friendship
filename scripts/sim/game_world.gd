@@ -47,6 +47,9 @@ const ShotSound = preload("res://scripts/ui/shot_sound.gd")
 const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
 const NetTelemetry = preload("res://scripts/net/net_telemetry.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
+const ModePost = preload("res://scripts/sim/mode_post.gd")
+const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 
 # OFF UNLESS A REAL SESSION TURNS IT ON. Set by main.gd when a game actually
 # starts, so the hundred worlds the gate builds never open a file in user:// --
@@ -88,6 +91,43 @@ var assemble_run: bool = false
 # The seed a run is assembled from. The bridge is a pure function of this and the
 # segment count, so a client is told two numbers rather than a world.
 var run_seed: int = 0
+
+# WHICH MODE EACH ROUND IS, one entry per round, index 0 being the first. M25
+# phase 1.
+#
+# ONE ENTRY PER ROUND RATHER THAN PER PLAYER, which falls out of the decision that
+# everybody goes to the next minigame together. `rear_row`/`target_row`, the leash,
+# `_trailing_edge_z`, the checkpoint and the wipe all assume one party moving up
+# one bridge; splitting would have broken every one of them.
+#
+# IT RIDES THE SAME MESSAGE AS THE SEED AND THE COUNT, and that is a real widening
+# of the drop-in contract rather than an extra packet. The bridge is a pure
+# function of (seed, count) and a client rebuilds the world from those two
+# integers -- but a player's CHOICE is not a function of a seed, so a client told
+# the count before the mode would build a corridor before knowing what fills it.
+# See _extend_run_to.
+#
+# SHORT AND SLOW-CHANGING: one small int per round, rewritten only when somebody
+# picks. Sending it whole every time is cheaper than reasoning about a diff.
+var run_modes: Array = []
+
+# What the next unplayed round will be if nobody changes it again, and what the
+# selector currently says.
+#
+# TWO FIELDS RATHER THAN ONE, because they answer different questions: `selected`
+# is what the control reads out at this instant, `next_mode` is what has been
+# taken up. A round under way ignores the first and keeps the second, which is
+# what "locked" means.
+#
+# THERE IS NO CONTROL IN PHASE 1, and that is deliberate rather than unfinished.
+# A debug knob was written and the settings registry refused it -- every choice
+# knob must offer at least two options, and with one mode there is nothing to
+# choose between. The rule is right: a control that cannot change anything is a
+# control that cannot be tested either. Phase 2 IS the control (`merchant_body.gd`
+# is the precedent), and it writes `selected_mode`; nothing else about this
+# changes when it lands.
+var selected_mode: int = GameMode.BASE
+var next_mode: int = GameMode.BASE
 
 var is_host: bool = false
 var local_peer: int = 1
@@ -1012,6 +1052,7 @@ var _last_climb_y: Dictionary = {}
 func _process_run() -> void:
 	if grid == null:
 		return
+	_poll_mode_selection()
 	_extend_run()
 	if is_host:
 		var was: int = round_machine.state
@@ -1142,6 +1183,227 @@ func _settle_round_transition() -> void:
 
 # The bridge is endless; it is just built lazily. Keep a couple of segments ahead
 # of whoever is furthest up, and tell clients so they build the same thing.
+# THE ONE PLACE A MODE'S DECLARATION IS APPLIED. A mode DECLARES `{ammo:
+# unlimited}`; this composes it over the ordinary value. Nothing is ever assigned
+# into SimConfig -- it is a constants file and must stay one, because a mode that
+# edits it is a mode that edits the next one -- and nothing is assigned into
+# DebugSettings either, so leaving a mode is dropping a declaration rather than
+# remembering to undo a write.
+#
+# ORDER: the mode wins over the debug knob, which wins over the constant. A mode
+# is a property of the round being played and a knob is somebody poking at the
+# build; when both have an opinion the round should decide, or a stale knob would
+# silently disable a mode's whole point.
+func tuned(key: String, fallback: float) -> float:
+	var over: Dictionary = GameMode.overrides(current_mode())
+	if over.has(key):
+		return float(over[key])
+	return DebugSettings.tuned(key, fallback)
+
+# WHICH ROUND THIS IS, AND WHAT KIND OF ROUND IT IS.
+#
+# THE LOBBY IS ALWAYS BASE, decided with the rest of M25 and worth keeping in one
+# line rather than in every caller: a broken mode can then never strand the party
+# somewhere they cannot choose again. It is also why `run_modes` is indexed by
+# round and not by segment -- a round's lobby and its sections are one entry, and
+# the lobby simply does not consult it.
+func current_mode() -> int:
+	if round_machine != null and int(round_machine.state) == RoundMachine.State.LOBBY:
+		return GameMode.BASE
+	return mode_for_round(round_index())
+
+# DOES THIS POOL RUN IN THE ROUND BEING PLAYED. The one question a subsystem asks,
+# and the reason the policy table is exhaustive: a pool nobody declared answers
+# RUNS, so a half-written mode is a mode that plays normally rather than a mode
+# that silently deletes half the game.
+#
+# ASKED AT THE TOP OF A TICK, NOT AT SPAWN. A pool that was told not to run must
+# also not keep stepping whatever it already holds -- crossing into a blank zone
+# with a rusher still chasing you is exactly the "it quietly runs" failure the
+# grid exists to prevent.
+func mode_runs(pool: String) -> bool:
+	return GameMode.runs(current_mode(), pool)
+
+func mode_for_round(index: int) -> int:
+	if index < 0 or index >= run_modes.size():
+		return GameMode.BASE
+	return int(run_modes[index])
+
+func round_index() -> int:
+	if round_machine == null:
+		return 0
+	return int(round_machine.round_index)
+
+# THE PLAN, EXTENDED TO COVER EVERY ROUND THE CORRIDOR NOW REACHES. Rounds that
+# nobody has chosen for are BASE, so a run always has an answer for every slot --
+# a missing entry would be read as "no mode", which is the absence this milestone
+# is specifically built to avoid.
+func _modes_for(segments_wanted: int) -> Array:
+	var rounds: int = SegmentPool.rounds_in(segments_wanted)
+	var out: Array = run_modes.duplicate()
+	while out.size() < rounds:
+		out.append(GameMode.BASE)
+	# THE ROUND BEING CHOSEN FOR IS THE ONE WHOSE LOBBY THE PARTY IS IN, because
+	# `round_index` is incremented on ENTERING a lobby -- so standing in a lobby is
+	# standing in round N with round N's sections still ahead of you.
+	#
+	# ONLY WHILE IN THAT LOBBY. A round under way has been chosen and locked, and
+	# overwriting its entry from here would re-cut ground people are standing on --
+	# which is the one thing the whole speculative scheme must never do.
+	if round_machine != null and int(round_machine.state) == RoundMachine.State.LOBBY:
+		var choosing: int = round_index()
+		if choosing >= 0 and choosing < out.size():
+			out[choosing] = next_mode
+	return out
+
+# CHOOSE, LOCK, GENERATE -- the first three of M25's three moments, in one place.
+#
+# SPECULATIVE GENERATION, INVALIDATED ON CHANGE. `_extend_run` builds
+# RUN_LOOKAHEAD_SEGMENTS ahead of the party, and with a mutable choice there is
+# nothing to build ahead OF: the corridor past the lobby does not exist until
+# somebody picks. So the corridor IS built as soon as a mode is selected, and
+# thrown away and rebuilt if the selection changes.
+#
+# THE REBUILD IS NEVER SEEN, and that is not luck -- the party is standing in a
+# lobby by definition while it happens. Which is also why this only listens during
+# LOBBY: a round you are already inside has been chosen and locked, and letting a
+# knob re-cut the ground under a party mid-round is a different feature with a
+# different set of problems.
+#
+# HOST ONLY. The choice is a decision, and decisions belong to the machine that
+# owns the world; clients learn the result through `_extend_run_to` by the same
+# route they learn the seed.
+func _poll_mode_selection() -> void:
+	if not is_host or not assemble_run:
+		return
+	var picked: int = _selected_mode()
+	if picked == next_mode:
+		return
+	if round_machine == null or int(round_machine.state) != RoundMachine.State.LOBBY:
+		# NOT IN A LOBBY: remember it for the next one rather than discarding it.
+		# A player pressing the control on the way out of a round means the round
+		# AFTER this one, and dropping the input would read as a broken control.
+		next_mode = picked
+		return
+	next_mode = picked
+	_rebuild_corridor_ahead()
+
+# WHAT THE SELECTOR SAYS, guarded. An id nobody registered reads as base rather
+# than as a mode with no entry -- a half-written selector must not be able to put
+# the party into a round that does not exist.
+func _selected_mode() -> int:
+	return selected_mode if GameMode.exists(selected_mode) else GameMode.BASE
+
+# THROW AWAY EVERYTHING PAST THE ROUND BEING PLAYED AND BUILD IT AGAIN.
+#
+# The corridor is built speculatively as soon as a mode is chosen, so changing the
+# choice has to discard it. THE REBUILD IS NEVER SEEN, and that is not luck: the
+# party is standing in a lobby by definition while it happens, behind a front wall
+# that stands at the lobby's far band.
+#
+# ROUNDS ALREADY PLAYED, AND THE ONE THE PARTY IS STANDING IN, ARE UNTOUCHED.
+# Re-cutting ground somebody is standing on is the one thing this must never do --
+# and it is also what makes the teardown safe, because the "spent mound", "taken
+# heart" and "spent merchant" records only ever name ground already crossed. There
+# is nothing consumed ahead of the party to resurrect.
+func _rebuild_corridor_ahead() -> void:
+	var keep: int = SegmentPool.segments_through_lobby(round_index())
+	if keep >= grid.segment_count():
+		# Nothing speculative has been built yet, so there is nothing to discard;
+		# the next _extend_run builds it with the new choice.
+		run_modes = _modes_for(grid.segment_count())
+		return
+	_discard_level_entities_past(keep)
+	grid.truncate_run(keep)
+	run_modes = _modes_for(keep)
+	_extend_run()
+
+# SOMEBODY DASHED THE SELECTOR. M25 phase 2.
+#
+# HOST ONLY, reached from resolve_shove_contact which has already established it.
+# A client simulates its own dash and so reaches that function -- its body still
+# stops against the post, because move_and_slide already swept it -- but what the
+# dash DECIDED is authority's, and arrives back by RPC.
+#
+# LAST WRITE WINS. Anyone may set it, there is no vote, and social pressure does
+# the work a tie-break would: in a four-player co-op a vote can deadlock, and
+# losing one means being dragged somewhere you did not choose.
+#
+# OUTSIDE A LOBBY IT IS REMEMBERED, NOT REFUSED -- `_poll_mode_selection` takes
+# care of that, and a control that visibly does nothing is a control players stop
+# trusting. There is no way to dash one mid-round today (they only exist in
+# lobbies) and that is a property of where they are placed rather than a rule, so
+# the rule is stated where the choice is taken up rather than assumed here.
+func _select_next_mode(post: Node) -> void:
+	if not is_host:
+		return
+	selected_mode = ModePost.next_after(selected_mode)
+	_poll_mode_selection()
+	_show_selection()
+	if networked:
+		_selection_shown.rpc(selected_mode)
+
+# EVERY POST SHOWS THE SAME THING, asked of the grid rather than tracked here. A
+# lobby has one, but a run has many and a party walking back through an old one
+# should not find it advertising a choice from twenty minutes ago.
+func _show_selection() -> void:
+	if grid == null or not grid.has_method("mode_posts"):
+		return
+	for post in grid.mode_posts():
+		post.show_mode(selected_mode)
+
+# DISPLAY ONLY, and that is the whole of what crosses the wire for a selection.
+# The CONSEQUENCE -- which mode each round is -- rides `_extend_run_to` with the
+# seed and the count, because a client has to know that before it builds the
+# corridor. This is just the banner.
+@rpc("authority", "call_remote", "reliable")
+func _selection_shown(mode: int) -> void:
+	selected_mode = mode
+	next_mode = mode
+	_show_selection()
+
+# THE THINGS STANDING ON GROUND THAT IS ABOUT TO STOP EXISTING.
+#
+# THE GRID'S OWN PROPS GO WITH THE GRID -- stones, shooters, mounds, graves,
+# ladders, cover, spikes, merchants are all children of BridgeGrid and are swept
+# by `truncate_run`. But the POOLS LIVE IN THE WORLD, and nothing about freeing a
+# segment tells a rusher standing on it that its floor has gone. Left alone they
+# would hang in the void over the rebuilt corridor.
+#
+# THE LINE THIS DRAWS IS THE IMPORTANT PART, AND IT IS NOT "everything in the
+# world": it is between what belongs to the LEVEL and what belongs to the PARTY.
+#
+#   LEVEL -- rushers, gunners, zombies, plinko balls. They were put there by the
+#   ground they are standing on. When it goes, they go.
+#
+#   PARTY -- the players, their worn and dropped HATS, their specials, their
+#   deployables. **These are never touched, whatever ground they are over.** A hat
+#   is the score of this game; a mode change that ate one because it happened to
+#   be lying past the cut would be indistinguishable from a bug, and unrecoverable
+#   -- there is no undo for a hat. That is also why the cut is only ever taken
+#   PAST the round in play: the party and everything they have dropped is behind
+#   it by construction, standing in a lobby.
+#
+# The asymmetry is worth stating rather than leaving to be inferred from which
+# node happens to be parented where, which is what it rested on before.
+func _discard_level_entities_past(keep_segments: int) -> void:
+	if grid == null or keep_segments >= grid.segment_count():
+		return
+	var cut_row: int = 0
+	for i in keep_segments:
+		var seg = grid.segment_data(i)
+		if seg != null:
+			cut_row += int(seg.length)
+	for pool in [_rushers, _gunners, _zombies, _balls]:
+		for i in range(pool.size() - 1, -1, -1):
+			var body = pool[i]
+			if not is_instance_valid(body):
+				pool.remove_at(i)
+				continue
+			if grid.cell_of_world(body.global_position).y >= cut_row:
+				pool.remove_at(i)
+				body.queue_free()
+
 func _extend_run() -> void:
 	# Only a world that ASSEMBLED its level may extend it. A world pinned to an
 	# explicit segment list is pinned on purpose -- appending pool segments to it
@@ -1153,9 +1415,10 @@ func _extend_run() -> void:
 	var wanted: int = lead_segment + 1 + SimConfig.RUN_LOOKAHEAD_SEGMENTS
 	if wanted <= grid.segment_count():
 		return
-	grid.build_run(grid.run_seed, wanted)
+	run_modes = _modes_for(wanted)
+	grid.build_run(grid.run_seed, wanted, run_modes)
 	if networked:
-		_extend_run_to.rpc(grid.run_seed, wanted)
+		_extend_run_to.rpc(grid.run_seed, wanted, run_modes)
 
 # Which segment a world-space z falls in. Segments vary in length, so this walks
 # rather than dividing.
@@ -1314,8 +1577,21 @@ func _apply_leash() -> void:
 			# is worse than one you cannot.
 			body.velocity.z -= SimConfig.LEASH_ASSIST * SimConfig.TICK_DELTA
 
+# THE DROP-IN CONTRACT, WIDENED FROM (seed, count) TO (seed, count, modes).
+#
+# The two integers were the entire world: the bridge is a pure function of them,
+# so a joining client rebuilds everything from this one message and every later
+# packet is a diff of what has moved. A player's CHOICE is not a function of a
+# seed, so the mode array has to ride the SAME message -- a client told the count
+# first would build a corridor before knowing what fills it, and would then have
+# to be told to throw it away.
+#
+# TOLERANT OF A CALLER THAT DOES NOT SEND IT, like every other widening in this
+# project: an older host, or the several tests that call this directly, leave the
+# modes empty and every round reads as BASE. That is the pre-M25 behaviour exactly.
 @rpc("authority", "call_remote", "reliable")
-func _extend_run_to(seed_value: int, wanted: int) -> void:
+func _extend_run_to(seed_value: int, wanted: int, modes: Array = []) -> void:
+	run_modes = modes.duplicate()
 	if grid != null:
 		# A CLIENT DRESSES TOO, and must, because the dressing is part of what the
 		# bridge IS -- a client that skipped it would build the same terrain with
@@ -1323,7 +1599,7 @@ func _extend_run_to(seed_value: int, wanted: int) -> void:
 		# pure function of (seed, index), which is the same guarantee that lets a
 		# joining client be told two numbers instead of a world.
 		grid.dress_hazards = true
-		grid.build_run(seed_value, wanted)
+		grid.build_run(seed_value, wanted, run_modes)
 
 # --- Spike blocks (M17) -------------------------------------------------------
 #
@@ -1349,6 +1625,8 @@ var _crumble_timer: Dictionary = {}    # Vector2i -> seconds until it goes
 var _restore_timer: Dictionary = {}    # Vector2i -> seconds until it comes back
 
 func _process_mutable() -> void:
+	if not mode_runs("mutable"):
+		return
 	if grid == null or not is_host or grid.mutable_cells.is_empty():
 		return
 	var changed: bool = false
@@ -1442,6 +1720,8 @@ func _occupied(cell: Vector2i) -> bool:
 	return false
 
 func _process_spikes() -> void:
+	if not mode_runs("spikes"):
+		return
 	if grid == null or grid.spike_cells.is_empty():
 		return
 	var now: float = float(tick) * SimConfig.TICK_DELTA
@@ -1507,6 +1787,8 @@ func _spike_hits(cell: Vector2i) -> void:
 # the line as momentum transfer.
 
 func _process_plinko() -> void:
+	if not mode_runs("plinko"):
+		return
 	if grid == null:
 		return
 	_fire_shooters()
@@ -1642,6 +1924,8 @@ func ball_count() -> int:
 # deciding when a mound wakes, who each rusher is chasing, and what a contact
 # costs. A client is told the results and invents none of them.
 func _process_rushers() -> void:
+	if not mode_runs("rushers"):
+		return
 	if not is_host:
 		return
 	_wake_mounds()
@@ -1832,6 +2116,8 @@ func rusher_count() -> int:
 # when a grave opens, how many come out, who each of them is chasing, and what a
 # bite costs. A client is told the results and invents none of them.
 func _process_zombies() -> void:
+	if not mode_runs("zombies"):
+		return
 	if not is_host:
 		return
 	_wake_graves()
@@ -2013,6 +2299,8 @@ func gunner_count() -> int:
 	return _gunners.size()
 
 func _process_gunners() -> void:
+	if not mode_runs("gunners"):
+		return
 	if not is_host:
 		return
 	if grid != null:
@@ -2846,6 +3134,8 @@ func _spawn_deployable(kind: int) -> Node:
 # grenade is and never decides that one went off, for the same reason it never
 # decides a round hit somebody.
 func _process_deployables() -> void:
+	if not mode_runs("deployables"):
+		return
 	for i in range(_deployables.size() - 1, -1, -1):
 		var d: Node = _deployables[i]
 		if not is_instance_valid(d):
@@ -4544,6 +4834,12 @@ func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 	if other.has_method("can_trade"):
 		_trade_with(shover, other)
 		return
+	# THE MODE SELECTOR. The same verb for the same reasons the merchant uses it:
+	# committed, aimed and unmistakably deliberate, so nobody changes the party's
+	# next twenty minutes by walking past. See mode_post.gd.
+	if other.has_method("can_select"):
+		_select_next_mode(other)
+		return
 	if grid != null and other.has_method("slide_to"):
 		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))
 
@@ -5460,7 +5756,11 @@ func host_add_peer(peer: int) -> void:
 	# message is the entire world -- and everything after it is a diff of what has
 	# moved since. Sending the world itself would be orders of magnitude more.
 	if grid != null:
-		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count())
+		# ...AND WHICH MODE EACH ROUND IS, in the same message rather than after it.
+		# A newcomer arriving mid-mode has to build the corridor it is standing in,
+		# not the base one, and a second packet would leave a window where it had
+		# built the wrong world.
+		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count(), run_modes)
 		# AFTER the run, never before: this names cells that only exist once the
 		# newcomer has built the segments holding them. Both are reliable, so the
 		# order they are sent in is the order they arrive in.
