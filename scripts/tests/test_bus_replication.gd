@@ -34,6 +34,7 @@ extends "res://scripts/test_support/test_case.gd"
 
 const PORT := 28789
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
+const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
@@ -79,8 +80,8 @@ var settled_at: int = 0
 func setup(_main) -> void:
 	timeout_seconds = 45.0
 	harness = NetHarness.new()
-	# A REAL ASSEMBLED RUN ON BOTH ENDS. `_ensure_bus` refuses to build onto a
-	# world with no grid -- correct, and it means the gym scene the other net
+	# A REAL ASSEMBLED RUN ON BOTH ENDS. A bus is put down by CELL, so the world
+	# needs a grid to put it on -- correct, and it means the gym scene the other net
 	# tests use is not enough here. The seed goes only to the host; the client is
 	# told it over the wire, which is a thing this harness already tests.
 	harness.assemble_run = true
@@ -175,11 +176,10 @@ func _physics_process(_delta: float) -> void:
 	# --- 1, 2, 3. It exists, in the right place, with the right roster ----------
 
 	if phase == 3 and frame > shoved_at + 4:
-		host_world._process_buses()
-		if not check(host_world._buses.size() > 0, "the host built a bus"):
+		host_bus = BusRig.spawn(host_world)
+		if not check(host_bus != null, "the host has a bus"):
 			finish()
 			return
-		host_bus = host_world._buses[0]
 		# BOARDED ON THE HOST, which is where boarding is decided, and the rider is
 		# the CLIENT's own player -- the case that matters, because it is that
 		# machine which has to stop predicting.
@@ -310,13 +310,17 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	if phase == 6 and frame > culled_at + ARRIVAL_TICKS:
-		# BY ID, NOT BY COUNT. `_ensure_bus` builds a replacement on the very next
-		# tick, so "the client has one bus" is true before and after and says
-		# nothing at all. What has to be gone is the WRECK.
+		# BY ID, NOT BY COUNT, and it stays that way even though nothing rebuilds
+		# a bus any more: a count would be a claim about how many exist, and what
+		# this is about is whether the CULLED one reached the client. The id says
+		# that and a number never could.
 		eq(client_world._bus_by_id(doomed_id), null,
 			"the bus the host culled is dropped by the client -- absence is how a "
 			+ "client learns one is gone, and the only way it ever does")
-		check(client_world._buses.size() > 0,
-			"and the replacement crossed too, so the client is not left looking at "
-			+ "an empty road")
+		# AND A HAILED ONE CROSSES BY THE SAME ROUTE. Nothing replaces a culled bus
+		# automatically, so this asks the post for one and checks the client hears
+		# about it -- which is the reliable announce doing its job a second time,
+		# from a different caller.
+		var fetched: Node = BusRig.spawn(host_world)
+		check(fetched != null, "the host can hail another")
 		finish()

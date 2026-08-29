@@ -152,7 +152,7 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
-enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT, GRAVE, MODE_POST }
+enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT, GRAVE, MODE_POST, BUS_POST }
 
 const CONTENT_GLYPHS := {
 	".": Content.NONE,
@@ -278,6 +278,11 @@ const CONTENT_GLYPHS := {
 	# it -- and a question mark is what the thing does. It is also nowhere near a
 	# letter, which is the property that matters in a grid of them.
 	"?": Content.MODE_POST,
+	# A BUS POST -- dash it and a bus turns up. `!` because it is not adjacent to
+	# anything else on the board: `b` would have been the mnemonic and `B` is the
+	# bouncer, and two glyphs one shift apart is a typo nobody spots in a grid of
+	# them (see the level-authoring notes).
+	"!": Content.BUS_POST,
 }
 
 # Contents that get a player up a layer. Every elevation change needs at least

@@ -46,6 +46,7 @@ const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
 
 var world: Node3D = null
@@ -79,11 +80,10 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	if phase == 0:
-		world._process_buses()
-		if not check(world._buses.size() > 0, "there is a bus"):
+		bus = BusRig.spawn(world)
+		if not check(bus != null, "there is a bus"):
 			finish()
 			return
-		bus = world._buses[0]
 		bus.riders.clear()
 		bus.board(1)
 		bus.board(2)

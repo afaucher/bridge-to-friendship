@@ -43,6 +43,7 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
 
 # How much of a rider has to be behind the sides before "you are in the bus" is
@@ -81,11 +82,10 @@ func _physics_process(_delta: float) -> void:
 	done = true
 	set_physics_process(false)
 
-	world._process_buses()
-	if not check(world._buses.size() > 0, "there is a bus"):
+	bus = BusRig.spawn(world)
+	if not check(bus != null, "there is a bus"):
 		finish()
 		return
-	bus = world._buses[0]
 	bus.riders.clear()
 	bus.board(1)
 	bus.board(2)

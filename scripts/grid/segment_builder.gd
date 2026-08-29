@@ -62,6 +62,8 @@ class Built:
 	# Lap gates, as (cell, index) pairs. Copied off the segment for the same
 	# reason mines are: they have no glyph, because the ORDER is half the fact.
 	var checker_cells: Array = []
+	# Bus posts -- the `!` glyph. Collected like every other authored prop.
+	var bus_post_cells: Array = []
 	# Cover, and spike blocks. Collected like every other authored prop: the grid
 	# owns the bodies, the builder only says where the author put one.
 	var tree_cells: Array = []
@@ -669,6 +671,8 @@ static func _collect_content(seg, out: Built) -> void:
 					out.merchant_cells.append(Vector2i(x, z))
 				GridConfig.Content.MODE_POST:
 					out.mode_post_cells.append(Vector2i(x, z))
+				GridConfig.Content.BUS_POST:
+					out.bus_post_cells.append(Vector2i(x, z))
 				GridConfig.Content.GATE:
 					# Once per ROW however many cells carry the glyph. The
 					# validator has already refused a strip that does not span

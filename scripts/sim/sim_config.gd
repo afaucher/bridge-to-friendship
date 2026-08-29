@@ -224,6 +224,17 @@ const BUS_SPAWN_LIFT := 0.6
 # nothing else to change.
 const BUS_EJECT_SPEED := 10.0
 
+# HOW LONG A BUS POST WAITS BEFORE IT WILL HAND OUT ANOTHER.
+#
+# A COOLDOWN RATHER THAN AN EDGE, because a dash is not one event: it sweeps
+# several times against the same body and `move_and_slide` reports each contact.
+# Without this a single dash produces a heap of buses on one tick -- which is
+# also the coincident-bodies trap, so they would go through the floor together.
+#
+# Two seconds is long enough to cover the sweep and short enough that a party of
+# four can each fetch one without standing in a queue.
+const BUS_POST_COOLDOWN_TICKS := 120
+
 # How long a client waits between asking the host for a full snapshot. Long
 # enough that the answer has time to arrive and be applied, short enough that a
 # hole in the client's world is measured in a few ticks rather than in keyframes.

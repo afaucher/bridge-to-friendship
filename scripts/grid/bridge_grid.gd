@@ -26,6 +26,7 @@ const MerchantBody = preload("res://scripts/sim/merchant_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
+const BusPost = preload("res://scripts/sim/bus_post.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
@@ -365,6 +366,8 @@ var authored_special_cells: Array = []
 var authored_mine_cells: Array = []
 # cell -> gate index, in RUN coordinates. See the note where it is filled.
 var lap_gate_cells: Dictionary = {}
+var _bus_posts: Dictionary = {}
+var _bus_post_root: Node3D = null
 
 # WHICH LAP GATE IS UNDER THIS CELL, or -1. The whole lap system talks to the
 # grid through this one question.
@@ -643,6 +646,9 @@ func load_segment(seg) -> void:
 
 	for local_cell in built.mode_post_cells:
 		_spawn_mode_post(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for local_cell in built.bus_post_cells:
+		_spawn_bus_post(Vector2i(local_cell.x, local_cell.y + z_offset))
 
 	# Authored hats are recorded, not spawned here. A hat is a free sim body owned
 	# by the world's hat pool, not grid-resident data like a stone or a heart --
@@ -1685,6 +1691,28 @@ var _spent_merchants: Array = []    # Vector2i
 # seed, which is the one way this differs from every other piece of content.
 var _mode_posts: Dictionary = {}    # Vector2i -> the post standing there
 var _mode_post_root: Node3D = null
+
+func _spawn_bus_post(cell: Vector2i) -> void:
+	if _bus_post_root == null:
+		_bus_post_root = Node3D.new()
+		_bus_post_root.name = "BusPosts"
+		add_child(_bus_post_root)
+	var post = BusPost.new()
+	post.cell = cell
+	post.position = cell_surface(cell)
+	_bus_post_root.add_child(post)
+	post.name = "BusPost_%d_%d" % [cell.x, cell.y]
+	_bus_posts[cell] = post
+
+# Every bus post currently built. The world asks rather than tracking them, the
+# same bargain the mode posts already make.
+func bus_posts() -> Array:
+	var out: Array = []
+	for cell in _bus_posts:
+		var post = _bus_posts[cell]
+		if is_instance_valid(post):
+			out.append(post)
+	return out
 
 func _spawn_mode_post(cell: Vector2i) -> void:
 	if _mode_post_root == null:

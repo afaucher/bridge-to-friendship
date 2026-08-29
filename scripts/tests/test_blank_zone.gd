@@ -91,6 +91,7 @@ func _physics_process(_delta: float) -> void:
 func _it_exists_and_is_blank() -> void:
 	var made: int = 0
 	var contents: int = 0
+	var posts: int = 0
 	var heights: Dictionary = {}
 	var kinds: Dictionary = {}
 	for seed_value in SEEDS:
@@ -103,7 +104,24 @@ func _it_exists_and_is_blank() -> void:
 				if seg.is_solid(x, z):
 					heights[seg.height_at(x, z)] = true
 					kinds[seg.kind_at(x, z)] = true
-					if seg.content_at(x, z) != GridConfig.Content.NONE:
+					var content: int = seg.content_at(x, z)
+					# THE BUS POST IS NOT AN EXCEPTION TO EMPTINESS, IT IS THE
+					# SECOND HALF OF THE ONE THING THAT WAS ALWAYS HERE.
+					#
+					# This zone is empty because emptiness is what it is FOR -- no
+					# hazards, no pickups, no set pieces, nothing the dressing pass
+					# would scatter. The bus was always the exception: an empty room
+					# is not a minigame, and the bus is what the emptiness is for.
+					# A post is where you fetch another when yours is in the river,
+					# so counting it as clutter would be counting the bus as clutter.
+					#
+					# NAMED RATHER THAN LOOSENED. The claim is still "nothing else",
+					# and anything new that turns up here has to come and argue with
+					# this comment rather than slip past a relaxed threshold.
+					if content == GridConfig.Content.BUS_POST:
+						posts += 1
+						continue
+					if content != GridConfig.Content.NONE:
 						contents += 1
 	print("[blank] %d of %d seeds produced a zone; %d contents, heights %s"
 		% [made, SEEDS, contents, str(heights.keys())])

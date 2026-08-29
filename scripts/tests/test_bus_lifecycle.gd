@@ -16,9 +16,9 @@ extends "res://scripts/test_support/test_case.gd"
 #   2. "If you die, you lose, respawn in the lobby, and the bus doesn't spawn
 #      again." `_restart_at_checkpoint` frees the balls, the rushers, the
 #      zombies and the gunners -- and left the bus wherever it was, which after a
-#      rewind is somewhere the party is not. `_ensure_bus` then sees a perfectly
-#      valid bus and declines to build another, so the mode's only content is
-#      stranded up the bridge and the party is in an empty room.
+#      rewind is somewhere the party is not. A stale bus sitting up the bridge is
+#      the whole fault; nothing auto-replaces one, so the fix is that a wipe
+#      takes it with it and the party fetches another from the post.
 #
 # Both are the same shape: a rule about the bus that was never asked at a moment
 # somebody else owns.
@@ -29,6 +29,7 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 
 var world: Node3D = null
 var bus: Node = null
@@ -62,11 +63,10 @@ func _physics_process(_delta: float) -> void:
 
 	# --- 1. Off the bottom of the world, with somebody aboard -----------------
 	if phase == 0:
-		world._process_buses()
-		if not check(world._buses.size() > 0, "there is a bus"):
+		bus = BusRig.spawn(world)
+		if not check(bus != null, "there is a bus"):
 			finish()
 			return
-		bus = world._buses[0]
 		bus.riders.clear()
 		# EVERYBODY ABOARD, which is the case that was reported: a bus going over
 		# the edge takes the whole party with it, so the fall is also a WIPE, and
@@ -98,11 +98,10 @@ func _physics_process(_delta: float) -> void:
 
 	# --- 2. A wipe leaves the party somewhere the bus is not ------------------
 	if phase == 2:
-		world._process_buses()
-		if not check(world._buses.size() > 0, "a bus exists again to be stranded"):
+		bus = BusRig.spawn(world)
+		if not check(bus != null, "a bus exists again to be stranded"):
 			finish()
 			return
-		bus = world._buses[0]
 		# STRANDED UP THE BRIDGE, which is what a rewind does: the party goes
 		# back and the bus does not.
 		bus.position += Vector3(0.0, 0.0, -60.0)
@@ -143,26 +142,27 @@ func _bus_near_party() -> bool:
 	return false
 
 func _a_wipe_takes_the_bus_with_it() -> void:
-	# TWO CLAIMS, AND NEITHER OF THEM WAITS FOR THE ROUND MACHINE.
+	# ONE CLAIM, AND IT DOES NOT WAIT FOR THE ROUND MACHINE.
 	#
-	# The obvious test -- wipe, then wait for a bus to reappear near the party --
-	# cannot be written here, and finding out why is worth the note. A wipe puts
-	# the score board up, `_board_is_up()` FREEZES the whole tick, and this
-	# harness drives a world directly rather than the menu flow that takes the
-	# board back down. So the wait was 900 ticks of a paused world reporting "the
-	# bus never came back" about a game that was merely stopped. A test cannot
-	# observe a recovery through a transition it is not driving.
+	# The obvious test -- wipe, then wait for a bus to reappear -- cannot be
+	# written here, and finding out why is worth the note twice over. A wipe puts
+	# the score board up and `_board_is_up()` FREEZES the whole tick, so the wait
+	# was 900 ticks of a paused world reporting "the bus never came back" about a
+	# game that was merely stopped. And then the answer changed underneath it: a
+	# bus is not replaced at all now, by anything, so there is nothing to wait for.
 	#
-	# What it CAN say is the two halves of the fix, and between them they are the
-	# bug: nothing stranded survives the wipe, and the pass builds a replacement
-	# the moment it is asked.
+	# WHICH LEAVES A SHARPER CLAIM THAN THE ONE IT REPLACED. The bug was never
+	# "no bus appears" -- it was a STALE one surviving somewhere nobody is. With
+	# nothing auto-replacing it that is the whole of the fault, and the whole of
+	# the fix: a wipe takes the bus with it, and the party fetches another from
+	# the post like they would after any other way of losing one.
 	eq(world._buses.size(), 0,
 		"a wipe takes the bus with it (%d left) -- it does not follow the party "
 			% world._buses.size()
-		+ "back, so left alone it sits up the bridge being valid, and a valid bus "
-		+ "is exactly what stops `_ensure_bus` building a reachable one")
-	world._process_buses()
-	check(_bus_near_party(),
-		"and the next time the pass runs, there is one where the party actually "
-		+ "is -- which is the half that turns `the stale one is gone` into `you "
-		+ "have a bus`")
+		+ "back, so left alone it sits up the bridge being perfectly valid while "
+		+ "the party stands somewhere else")
+	var fetched: Node = BusRig.spawn(world)
+	check(fetched != null and _bus_near_party(),
+		"and the post still hands one out where the party actually is -- which is "
+		+ "what turns `the stale one is gone` into `you have a bus`, and it is a "
+		+ "walk rather than a refund")

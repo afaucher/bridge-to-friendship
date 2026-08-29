@@ -571,6 +571,7 @@ static func bus_track(width: int, run_seed: int, index: int):
 		z += turn
 		right = not right
 		band += 1
+	_place_bus_post(seg)
 	# ARMED MINES, on the serpentine as well as on the circuit. Same scatter, and
 	# no gates to keep clear of here.
 	_scatter_mines(seg, salt, [])
@@ -596,6 +597,10 @@ static func blank_zone(width: int, run_seed: int, index: int):
 	# terrain with the usual threats on it", which is not what was asked for and,
 	# worse, would look like the mode had failed to take effect.
 	seg.no_dress = true
+	# THE ONE THING IN AN EMPTY ROOM BESIDES THE BUS: somewhere to get another.
+	# A blank zone with a bus in the river and no way to fetch one is a blank
+	# zone with nothing in it at all.
+	_place_bus_post(seg)
 	return seg
 
 static func section(width: int, run_seed: int, index: int, attempts: int = 24):
@@ -2281,6 +2286,10 @@ static func race_loop(width: int, run_seed: int, index: int):
 	# a sequence inferred from geometry is a sequence that argues with itself the
 	# first time a circuit is not a rectangle.
 	seg.checker_cells = _race_checkpoints(seg, north, south)
+	# BEFORE THE MINES, so the post takes the cell it wants and the scatter works
+	# around it rather than the other way about -- `_scatter_mines` already skips
+	# an occupied cell, and nothing would have made the post skip a mine.
+	_place_bus_post(seg)
 	_scatter_mines(seg, salt, seg.checker_cells)
 	return seg
 
@@ -2300,6 +2309,36 @@ const RACE_EDGE_RATE := 1
 # end so nothing lethal sits on a seam.
 const MINE_ROW_STRIDE := 7
 const MINE_END_CLEAR := 3
+
+# A BUS POST AT THE MIDDLE OF THE SECTION.
+#
+# HALFWAY IS THE POINT: it is the furthest you can ever be from it, so losing a
+# bus costs a walk of at most half the level whichever end you lost it at. A post
+# at one end would make one half of the track free and the other half a
+# punishment.
+#
+# THE MIDDLE ROW IS OFTEN VOID -- a link on the serpentine, the infield on a
+# circuit -- so the row is a starting point rather than an answer, and the search
+# walks outward until it finds solid ground with nothing on it. Every level that
+# has buses in it gets one; a level with no bus has no reason to.
+static func _place_bus_post(seg) -> void:
+	var mid_z: int = seg.length / 2
+	for dz in seg.length:
+		for dir in [1, -1]:
+			var z: int = mid_z + dz * dir
+			if z < 1 or z >= seg.length - 1:
+				continue
+			for dx in seg.width:
+				for side in [1, -1]:
+					var x: int = seg.width / 2 + dx * side
+					if x < 0 or x >= seg.width:
+						continue
+					if not seg.is_solid(x, z):
+						continue
+					if seg.content_at(x, z) != GridConfig.Content.NONE:
+						continue
+					seg.contents[z][x] = GridConfig.Content.BUS_POST
+					return
 
 # ARMED MINES ON THE ROAD, scattered rather than placed.
 #

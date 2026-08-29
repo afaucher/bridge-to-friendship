@@ -1425,6 +1425,20 @@ func _rebuild_corridor_ahead() -> void:
 # trusting. There is no way to dash one mid-round today (they only exist in
 # lobbies) and that is a property of where they are placed rather than a rule, so
 # the rule is stated where the choice is taken up rather than assumed here.
+# A BUS, PLEASE. Host-only like every other decision; a client dashing the post
+# stops against it because move_and_slide already swept the body, and the bus it
+# asked for arrives by the ordinary reliable announce.
+#
+# PUT DOWN BESIDE THE POST rather than beside whoever dashed it -- who is, by
+# definition, travelling fast in a direction they chose, and would be handed a
+# bus somewhere behind them or on top of them.
+func _hail_bus(post: Node) -> void:
+	if not is_host or not mode_runs("bus") or grid == null:
+		return
+	if not post.hailed(tick):
+		return
+	_build_bus_at(BusBody.spawn_cell(grid, post.cell))
+
 func _select_next_mode(post: Node) -> void:
 	if not is_host:
 		return
@@ -1624,9 +1638,10 @@ func _restart_at_checkpoint() -> void:
 	#
 	# A wipe rewinds the party and the bus does not follow, so it is left wherever
 	# the round ended: up the bridge, or on ground that is about to be re-cut.
-	# `_ensure_bus` then sees a perfectly valid bus and declines to build another,
-	# so the mode's only piece of content is stranded somewhere nobody is and the
-	# party stands in an empty room with no way to ask for a new one.
+	# Nothing replaces it -- a bus comes from a post and from nowhere else -- so
+	# the mode's only piece of content would be stranded somewhere nobody is, and
+	# a party that walked to the post would be given a second one while the first
+	# sat up the bridge forever.
 	#
 	# Same rule as the rushers and the zombies two lines down, and the same reason:
 	# a wipe rewinds the party, so what the round left behind does not survive it.
@@ -4349,7 +4364,6 @@ func _process_buses() -> void:
 	if not mode_runs("bus"):
 		_clear_buses()
 		return
-	_ensure_bus()
 	var lost: Array = []
 	for bus in _buses:
 		if not is_instance_valid(bus):
@@ -4360,8 +4374,8 @@ func _process_buses() -> void:
 		# driven by the world, so the world does it -- and it must let the riders
 		# GO rather than free them with it. Released, they are ordinary falling
 		# bodies and the existing FALL_KILL_Y path drones them back, which is the
-		# behaviour a player already understands. `_ensure_bus` builds the next
-		# one on the following tick, on solid ground by the rule above.
+		# behaviour a player already understands. NOTHING replaces the bus: the
+		# party walks to the post, which is the cost of having driven it off.
 		if bus.position.y < SimConfig.FALL_KILL_Y:
 			lost.append(bus)
 			continue
@@ -4399,29 +4413,56 @@ func _clear_buses() -> void:
 # rather than at load, because the zone is generated speculatively and may be
 # discarded before anybody sees it -- and a bus built onto ground that is about to
 # be cut is the orphan the teardown exists to prevent.
-func _ensure_bus() -> void:
-	for bus in _buses:
-		if is_instance_valid(bus):
-			return
-	if grid == null or players.is_empty():
+# A BUS COMES FROM A POST AND FROM NOWHERE ELSE.
+#
+# NOTHING BUILDS ONE ON ITS OWN, and that is the rule rather than an omission.
+# There were two automatic versions before this and both are gone: one that kept
+# a bus per player alive, and one that quietly rebuilt the last one whenever it
+# was lost. Each made the vehicle free -- driving into the void stopped being a
+# mistake, and the party never had to decide whether the walk back was worth it.
+#
+# WORKING EXACTLY LIKE THE MODE SELECTOR, which is the shape that was asked for.
+# A post stands in the level, you dash it, and it does its one thing. Nothing
+# watches for the absence of a bus and nothing corrects it; the party arrives at
+# a bus level with no bus and fetching the first one is the first thing they do,
+# which is also the moment they learn where the post is.
+#
+# So this is the only constructor, and its only caller is `_hail_bus`.
+func _build_bus_at(cell: Vector2i) -> void:
+	if grid == null:
 		return
 	if _buses_root == null:
 		_buses_root = Node3D.new()
 		_buses_root.name = "Buses"
 		add_child(_buses_root)
-	_buses.clear()
+	# THE DEAD ENTRIES ONLY. A blanket clear was right while there was at most
+	# one bus; with several it would drop the live ones out of the list -- still
+	# in the scene, driven by nobody and never culled, which is the orphan the
+	# corridor teardown exists to prevent, arriving from a new direction.
+	for i in range(_buses.size() - 1, -1, -1):
+		if not is_instance_valid(_buses[i]):
+			_buses.remove_at(i)
 	var bus = BusBody.new()
 	_buses_root.add_child(bus)
 	bus.name = "Bus"
 	_next_bus_id += 1
 	bus.bus_id = _next_bus_id
 	_bus_rosters[bus.bus_id] = PackedInt32Array()
-	# AHEAD OF THE PARTY, on the centre line, far enough that it is something you
-	# walk TO rather than something you are standing in.
-	bus.position = _bus_spawn_point()
+	if cell.x < 0:
+		# NOWHERE TO PUT IT. Not reachable on anything the generator makes -- a
+		# post stands on solid ground and the search starts there -- so this is
+		# the honest fallback rather than a case: where the party is, which is
+		# awkward and visible.
+		bus.position = _front_position() + Vector3(0.0, SimConfig.BUS_SPAWN_LIFT, 0.0)
+	else:
+		bus.position = grid.cell_surface_world(cell) 			+ Vector3(0.0, SimConfig.BUS_SPAWN_LIFT, 0.0)
+	# SPREAD ALONG THE ROAD FROM ANY BUS ALREADY THERE. Two put down on the same
+	# cell is the coincident-bodies trap CLAUDE.md opens with, and the post is the
+	# first thing that can ever make a second one.
+	for other in _buses:
+		if is_instance_valid(other) 				and other.position.distance_to(bus.position) < bus.length() + 1.0:
+			bus.position += Vector3(0.0, 0.0, bus.length() + 1.2)
 	_buses.append(bus)
-	# ANNOUNCED RELIABLY, THE MOMENT IT EXISTS. See _apply_bus_snapshot for why
-	# existence does not ride the snapshot.
 	if networked and is_host:
 		_bus_spawned.rpc(bus.bus_id, bus.position, PackedInt32Array())
 
@@ -5326,6 +5367,11 @@ func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 	# next twenty minutes by walking past. See mode_post.gd.
 	if other.has_method("can_select"):
 		_select_next_mode(other)
+		return
+	# THE BUS POST. Same verb again, and the same reason a third time: committed,
+	# aimed, deliberate. See bus_post.gd.
+	if other.has_method("can_hail"):
+		_hail_bus(other)
 		return
 	if grid != null and other.has_method("slide_to"):
 		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))

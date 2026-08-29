@@ -38,6 +38,7 @@ const SpecialPool = preload("res://scripts/sim/special_pool.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 
 var world: Node3D = null
 var bus = null
@@ -88,17 +89,20 @@ func _only_in_the_blank_zone() -> void:
 		"and the ordinary bridge does not -- a vehicle among pillars and holes is "
 		+ "a different feature with a different set of problems")
 
-	# THROUGH THE WORLD, not the table. The table is a declaration; the gate at the
-	# top of the tick is the behaviour, and asserting the first proves only that
-	# the first says what it says.
+	# THROUGH THE WORLD, not the table. The table is a declaration; what happens
+	# when somebody dashes the post is the behaviour, and asserting the first
+	# proves only that the first says what it says.
+	#
+	# NOTHING BUILDS A BUS ON ITS OWN any more -- it comes from a post and from
+	# nowhere else, exactly like the mode selector -- so this asks the question by
+	# hailing one rather than by ticking the pass and seeing what turns up.
 	world.run_modes = [GameMode.BASE]
-	world._process_buses()
-	eq(world._buses.size(), 0, "so no bus is built on the ordinary bridge")
+	BusRig.spawn(world)
+	eq(world._buses.size(), 0, "so no bus is handed out on the ordinary bridge")
 
 	world.run_modes = [GameMode.BLANK]
-	world._process_buses()
-	check(world._buses.size() > 0, "and one is built in a blank zone")
-	bus = world._buses[0]
+	bus = BusRig.spawn(world)
+	check(world._buses.size() > 0, "and one is in a blank zone")
 
 # --- 2. The queue --------------------------------------------------------------
 
@@ -365,8 +369,11 @@ func _passengers_do_not_shoot_each_other() -> void:
 # as well if the pool broke entirely.
 func _a_bus_that_falls_is_let_go_of() -> void:
 	world.run_modes = [GameMode.BLANK]
-	world._process_buses()
-	if not check(world._buses.size() > 0, "there is a bus to push off the edge"):
+	# ON ITS OWN, so the count below is about THIS bus. Earlier phases hailed
+	# their own and nothing tidies up after them now that the world does not
+	# manage the fleet -- a survivor from phase 1 would read as a replacement.
+	world._clear_buses()
+	if not check(BusRig.spawn(world) != null, "there is a bus to push off the edge"):
 		return
 	var doomed = world._buses[0]
 	doomed.riders.clear()
@@ -391,12 +398,14 @@ func _a_bus_that_falls_is_let_go_of() -> void:
 		check(body.position.y < 0.0,
 			"who is where the bus left them (y %.1f), falling" % body.position.y)
 
-	# AND THE PARTY IS NOT LEFT WITHOUT ONE. `_ensure_bus` builds the next on the
-	# following tick; if it did not, driving off the edge once would end the mode.
+	# AND NOTHING REPLACES IT. That is the design rather than an oversight: a bus
+	# comes from a post, so driving off the edge costs the walk back to one. A
+	# world that quietly rebuilt it would make the void free.
 	world._process_buses()
-	check(world._buses.size() > 0, "a replacement is built")
-	if world._buses.size() > 0:
-		check(world._buses[0] != doomed, "and it is a new one, not the wreck")
+	eq(world._buses.size(), 0,
+		"and nothing builds another (%d) -- the party walks to the post, which is "
+			% world._buses.size()
+		+ "the cost of having driven it off the world")
 
 func _actions_after_seating(peer: int) -> int:
 	var actions: int = SimConfig.ACTION_SPECIAL | SimConfig.ACTION_SPECIAL_HELD
