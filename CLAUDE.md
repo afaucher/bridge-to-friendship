@@ -1099,6 +1099,43 @@ about *method*, not about that game.
   side and print the number**; identical output is the tell, and it is the only
   thing that separates "the rule works" from "the rig caps it anyway".
 
+- **AN UNRELIABLE SNAPSHOT LARGER THAN THE MTU IS MOSTLY NOT DELIVERED, AND THE
+  ONLY SYMPTOM IS THAT NOTHING ARRIVES.** Measured 2026-08-29 while writing
+  `test_bus_replication`. With a real assembled grid the host's per-tick snapshot
+  is ~1.0 KB on a quiet tick and **4.5 KB on a keyframe** -- and a client
+  consumed **5 of 147** of them. The same test against `gym.tscn` (no grid)
+  consumed 15 of 15. Nothing errors, `rpc()` returns success, and every counter
+  on the SEND side reads perfectly: "attempted is not delivered", one layer
+  lower than usual.
+  **The consequence for design is the part worth keeping: EXISTENCE MUST NOT
+  RIDE THE UNRELIABLE CHANNEL.** A delta carries an id list plus only the
+  entries that CHANGED, so the one packet that first mentions a new object is
+  the only chance to learn it exists -- miss it and the id list goes on naming
+  something the client cannot build until the next keyframe, which is the packet
+  least likely to arrive. A bullet survives this because it lives about as long
+  as the gap; a bus does not, and the first version of bus replication left a
+  client standing on nothing permanently. Hats and specials already had it
+  right (`_hats_released`, `_special_dropped`, `_special_destroyed` are all
+  reliable): **decisions go reliably, motion rides the snapshot.**
+  And the fix that looked obvious is a FEEDBACK LOOP: having a client ask for a
+  keyframe when it sees an id it cannot resolve makes the host send the 4.5 KB
+  packet -- the one that does not arrive -- every few ticks, forever. It was
+  written, measured, and removed.
+- **A NET TEST THAT SAMPLES A CHOSEN FRAME IS A COIN FLIP ON THE ABOVE.** Same
+  day, three separate assertions in one file. A six-tick window for "did the
+  client correct" failed two runs in three against a correct build, because a
+  correction can only be counted on a tick the client actually receives a
+  snapshot for its own player. **Poll with a deadline** -- and the twin, from
+  the same file: comparing two MOVING objects across a lossy link measures the
+  link, not the agreement. Stop the thing first; a stopped bus has one right
+  answer and both ends reach it (measured 0.00 m apart, against a 2 m tolerance
+  that was still flaky while it was driving).
+  A third in the same file was not about the network at all: `_reconcile` only
+  counts a correction in a state the client PREDICTS, so a probe that shoves a
+  body still falling from its spawn reports zero about a working build. **Wait
+  for the state your instrument needs**, the same rule as isolating a stochastic
+  mechanism before asserting on it.
+
 - **A CLIENT THAT COUNTS ITS OWN TICKS DESYNCS EXACTLY THE THINGS THAT ARE PURE
   FUNCTIONS OF THE TICK, AND NOTHING ELSE.** Observed 2026-08-18 from a
   multiplayer playtest: "stuck elevator, one player saw elevator offset". `tick`
@@ -1272,8 +1309,8 @@ about *method*, not about that game.
   `test_hud_rescue_visible` 28782, `test_debug_replication` 28783,
   `test_dash_prediction` 28784, `test_contact_prediction` 28785,
   `test_character_replication` 28786, `test_zombie_replication` 28787,
-  `test_net_telemetry` 28788 (28781 is
-  reserved for M8.5's hat replication test). Pick the next free one and add it
+  `test_net_telemetry` 28788, `test_bus_replication` 28789. (28781 was held
+  for M8.5's hat replication test and is now `test_run_session`.) Pick the next free one and add it
   here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you
   cannot tell hung from slow. Print a plain `frame N / TOTAL` line on a path no

@@ -202,6 +202,11 @@ const BUS_SPAWN_FAR := 20
 # Clear of the deck, so the first tick settles it down rather than ejecting it.
 const BUS_SPAWN_LIFT := 0.6
 
+# How long a client waits between asking the host for a full snapshot. Long
+# enough that the answer has time to arrive and be applied, short enough that a
+# hole in the client's world is measured in a few ticks rather than in keyframes.
+const KEYFRAME_ASK_COOLDOWN := 6
+
 # --- Health -------------------------------------------------------------------
 const MAX_HEALTH := 5
 

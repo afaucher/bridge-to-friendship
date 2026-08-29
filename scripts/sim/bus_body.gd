@@ -66,6 +66,12 @@ const TURN_AT_SPEED := 0.45
 const TILT_MAX_DEG := 14.0
 const TILT_RESPONSE := 6.0
 
+# THE WIRE IDENTITY. Every replicated pool in this game is keyed by an id the
+# host allocates, and a bus is no different -- the client's copy is found by it,
+# and a bus the host stops mentioning is one the client removes without being
+# told which. Zero means "never sent", which is what a solo world's bus stays.
+var bus_id: int = 0
+
 var riders: Array = []          # peer ids, in boarding order; riders[0] drives
 var heading: float = 0.0        # yaw, the project's convention
 var speed: float = 0.0
@@ -217,14 +223,14 @@ func slot_world(index: int) -> Vector3:
 	# most negative local z.
 	var front: float = -l * 0.5 + BASE_LENGTH * 0.5
 	var local := Vector3(0.0, DECK_THICK, front + SEAT_LENGTH * float(index))
-	return global_transform * local
+	return transform * local
 
 # WHERE SOMEBODY STANDING NEARBY WOULD BOARD FROM. Used for the reach check, so
 # that "am I close enough" is asked about the whole vehicle rather than about its
 # origin -- a long bus whose origin is metres from where you are standing would
 # otherwise be unboardable from the back.
 func distance_to_deck(at: Vector3) -> float:
-	var local: Vector3 = global_transform.affine_inverse() * at
+	var local: Vector3 = transform.affine_inverse() * at
 	var half_l: float = length() * 0.5
 	var half_w: float = WIDTH * 0.5
 	var nearest := Vector3(
@@ -288,8 +294,17 @@ func drive(throttle: float, steer: float, dt: float) -> void:
 # so how the thing drives does not change with how it looks; and `slot_world` is
 # built from this transform, so RIDERS stay upright instead of being tipped
 # through the deck they are standing on.
+# WORLD-LOCAL THROUGHOUT, NOT GLOBAL, and that is not a style choice.
+#
+# Two worlds share one process here -- the net harness stands the host and the
+# client a kilometre apart so their physics do not intersect -- and the snapshot
+# wire format carries world-LOCAL coordinates for exactly that reason. A bus that
+# worked in global space read the same as local in solo, where the offset is zero,
+# and put the client's copy a kilometre off the instant a second world existed.
+# Every trap in this file's neighbourhood has the same shape: correct on one
+# machine, meaningless on two.
 func _pose() -> void:
-	global_transform = Transform3D(Basis(Vector3.UP, heading), global_position)
+	transform = Transform3D(Basis(Vector3.UP, heading), position)
 	if _deck != null:
 		# Hinged about the axles rather than about the slab's own middle, which is
 		# where a body leans from: rotating about the centre would sink one edge
@@ -303,7 +318,7 @@ func _pose() -> void:
 # being re-derived from a heading, because a client that integrated its own
 # steering would be predicting a vehicle it has no input for.
 func apply_remote(at: Vector3, yaw: float, roll: float, aboard: Array) -> void:
-	global_position = at
+	position = at
 	heading = yaw
 	tilt = roll
 	riders = aboard.duplicate()

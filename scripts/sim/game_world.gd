@@ -264,6 +264,10 @@ var _next_gunner_id: int = 0
 # Thrown grenades, and the land mine when it lands. A short list on purpose: the
 # fuse is what bounds it, so there is no cap and no cull-the-oldest rule the way
 # there is for balls and loose specials.
+var _next_bus_id: int = 0
+# The roster last announced for each bus id, so _announce_bus_roster sends on a
+# CHANGE rather than on every tick. Cleared when the bus retires.
+var _bus_rosters: Dictionary = {}
 var _buses: Array = []
 var _buses_root: Node3D = null
 
@@ -4204,15 +4208,17 @@ func _process_buses() -> void:
 		# bodies and the existing FALL_KILL_Y path drones them back, which is the
 		# behaviour a player already understands. `_ensure_bus` builds the next
 		# one on the following tick, on solid ground by the rule above.
-		if bus.global_position.y < SimConfig.FALL_KILL_Y:
+		if bus.position.y < SimConfig.FALL_KILL_Y:
 			lost.append(bus)
 			continue
 		_drive_bus(bus)
 		_plant_riders(bus)
+		_announce_bus_roster(bus)
 	for bus in lost:
 		# Emptied, not carried down. A rider released here is airborne and falling,
 		# which is a state the game already has an answer for.
 		bus.riders.clear()
+		_retire_bus(bus)
 		_buses.erase(bus)
 		bus.queue_free()
 
@@ -4228,9 +4234,10 @@ func _clear_buses() -> void:
 		for peer in bus.riders.duplicate():
 			var body: Node = players.get(int(peer))
 			if body != null and is_instance_valid(body):
-				body.global_position = bus.global_position + Vector3(0.0, 1.2, 0.0)
+				body.position = bus.position + Vector3(0.0, 1.2, 0.0)
 				body.velocity = Vector3.ZERO
 		bus.riders.clear()
+		_retire_bus(bus)
 		bus.queue_free()
 	_buses.clear()
 
@@ -4252,10 +4259,17 @@ func _ensure_bus() -> void:
 	var bus = BusBody.new()
 	_buses_root.add_child(bus)
 	bus.name = "Bus"
+	_next_bus_id += 1
+	bus.bus_id = _next_bus_id
+	_bus_rosters[bus.bus_id] = PackedInt32Array()
 	# AHEAD OF THE PARTY, on the centre line, far enough that it is something you
 	# walk TO rather than something you are standing in.
-	bus.global_position = _bus_spawn_point()
+	bus.position = _bus_spawn_point()
 	_buses.append(bus)
+	# ANNOUNCED RELIABLY, THE MOMENT IT EXISTS. See _apply_bus_snapshot for why
+	# existence does not ride the snapshot.
+	if networked and is_host:
+		_bus_spawned.rpc(bus.bus_id, bus.position, PackedInt32Array())
 
 # WHERE A BUS CAN BE PUT DOWN. A fixed offset ahead of the party was right while
 # the only mode with a bus in it was a solid plane -- there was nowhere it could
@@ -4306,7 +4320,7 @@ func _plant_riders(bus) -> void:
 		var body: Node = players.get(int(bus.riders[i]))
 		if body == null or not is_instance_valid(body):
 			continue
-		body.global_position = bus.slot_world(i) + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0)
+		body.position = bus.slot_world(i) + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0)
 		body.velocity = Vector3.ZERO
 		body.grounded = true
 		# FACING THE WAY THE BUS IS GOING for the driver, and left alone for
@@ -4341,8 +4355,8 @@ func _try_board_or_leave(peer: int, body: Node) -> void:
 		# STEPPED OFF TO THE SIDE, not dropped where they stood -- a rider left on
 		# the deck would be boarded again by the next press, and one left inside
 		# the body would be depenetrated somewhere surprising.
-		var side: Vector3 = riding.global_transform.basis.x * (BusBody.WIDTH * 0.5 + 1.0)
-		body.global_position = riding.global_position + side + Vector3(0.0, 1.0, 0.0)
+		var side: Vector3 = riding.transform.basis.x * (BusBody.WIDTH * 0.5 + 1.0)
+		body.position = riding.position + side + Vector3(0.0, 1.0, 0.0)
 		body.velocity = Vector3.ZERO
 		return
 	var nearest: Node = null
@@ -4350,7 +4364,7 @@ func _try_board_or_leave(peer: int, body: Node) -> void:
 	for bus in _buses:
 		if not is_instance_valid(bus):
 			continue
-		var d: float = bus.distance_to_deck(body.global_position)
+		var d: float = bus.distance_to_deck(body.position)
 		if d < best:
 			best = d
 			nearest = bus
@@ -5227,6 +5241,7 @@ func _broadcast_snapshot() -> void:
 	var gunners: Array = _gunner_snapshot(keyframe)
 	var deployables: Array = _deployable_snapshot(keyframe)
 	var zombies: Array = _zombie_snapshot(keyframe)
+	var buses: Array = _bus_snapshot(keyframe)
 
 	if _telemetry != null:
 		_telemetry.note_sent(0)
@@ -5237,11 +5252,11 @@ func _broadcast_snapshot() -> void:
 				"players": entries, "stones": stones, "layout": layout,
 				"balls": balls, "rushers": rushers, "hats": hats,
 				"specials": specials, "bullets": bullets, "gunners": gunners,
-				"deployables": deployables, "zombies": zombies,
+				"deployables": deployables, "zombies": zombies, "buses": buses,
 			})
 
 	_apply_snapshot.rpc(tick, entries, stones, balls, layout,
-		rushers, hats, specials, bullets, gunners, deployables, zombies)
+		rushers, hats, specials, bullets, gunners, deployables, zombies, buses)
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -5573,6 +5588,127 @@ func _apply_bullet_snapshot(section: Array) -> void:
 			if is_instance_valid(bullet):
 				bullet.queue_free()
 
+# THE BUS, ACROSS. Host-owned like every other section here, and the last pool in
+# the game that had no wire at all -- which was not merely "clients cannot see it".
+#
+# THE PREDICTION WAS THE REAL DAMAGE. The step loop asks `bus_carrying(peer)` to
+# zero a rider's movement and to take the trigger off the driver, and on a client
+# with no buses that question answered NULL. So a client aboard a bus predicted
+# itself WALKING while the host had it planted on a moving deck, and `_reconcile`
+# corrected it every single tick. The symptom is not "there is no bus" -- it is
+# the rubber-band this project has chased twice before, on the one body where
+# precision is the point.
+#
+# THE TRANSFORM GOES OVER WHOLE rather than as a heading to integrate. A client
+# has no input for a vehicle it is not driving, so re-deriving the pose would be
+# predicting something it cannot predict -- and the elevator taught this exact
+# lesson from the other side: a fact cheap to DERIVE is only cheap if its inputs
+# are replicated, and steering is not.
+#
+# THE ROSTER RIDES ALONG BECAUSE IT IS NOT COSMETIC. It decides who drives, who
+# may shoot, and how long the deck is; a client that had the transform and not the
+# roster would draw a bus of the wrong length with the wrong person at the wheel.
+func _bus_snapshot(keyframe: bool) -> Array:
+	var out: Array = []
+	for bus in _buses:
+		if is_instance_valid(bus):
+			out.append([bus.bus_id, bus.position, bus.heading, bus.tilt,
+				bus.riders.duplicate()])
+	return SnapshotDelta.encode(out, _section("buses"), keyframe)
+
+# MOTION ONLY, AND ONLY FOR A BUS THE CLIENT ALREADY KNOWS.
+#
+# The first version built buses from this section the way the bullet applier
+# does, and it was wrong for a reason worth writing down. A bullet is ANNOUNCED
+# BY ITS OWN ARRIVAL because it lives about as long as the gap between keyframes;
+# missing one costs a muzzle flash. A bus is furniture -- it is there for a whole
+# round, and it is the thing you are standing on.
+#
+# MEASURED WHILE WRITING test_bus_replication: with a real grid the keyframe
+# snapshot is 4.5 KB, and in the two-worlds harness the client consumed FIVE of
+# 147 of them. A client that learns an object exists only from the packet that
+# first mentions it therefore never learned about the bus at all -- permanently,
+# not for half a second. Existence had to stop riding an unreliable channel.
+#
+# So this is the same split hats and specials already use: `_bus_spawned`,
+# `_bus_gone` and `_bus_roster` are RELIABLE and carry the decisions; the
+# snapshot carries only where it is right now. An id here with nothing behind it
+# is not an error -- it is a reliable announce still in flight, and it will
+# arrive.
+func _apply_bus_snapshot(section: Array) -> void:
+	for entry in SnapshotDelta.changed_of(section):
+		var bus: Node = _bus_by_id(int(entry[0]))
+		if bus == null:
+			continue
+		bus.apply_remote(entry[1], float(entry[2]), float(entry[3]), bus.riders)
+
+# --- Buses: the reliable half -------------------------------------------------
+#
+# EXISTENCE AND ROSTER ARE DECISIONS, and every decision in this game crosses
+# reliably. The roster is not cosmetic: it decides who drives, who may shoot, how
+# long the deck is, and -- through `bus_carrying` in the step loop -- whether a
+# client predicts itself walking. A roster that arrived late would have the
+# client fighting the host's pose for as long as it took.
+
+@rpc("authority", "call_remote", "reliable")
+func _bus_spawned(id: int, at: Vector3, aboard: PackedInt32Array) -> void:
+	if is_host or _bus_by_id(id) != null:
+		return
+	if _buses_root == null:
+		_buses_root = Node3D.new()
+		_buses_root.name = "Buses"
+		add_child(_buses_root)
+	var bus = BusBody.new()
+	_buses_root.add_child(bus)
+	bus.name = "Bus_%d" % id
+	bus.bus_id = id
+	bus.apply_remote(at, 0.0, 0.0, Array(aboard))
+	_buses.append(bus)
+
+@rpc("authority", "call_remote", "reliable")
+func _bus_gone(id: int) -> void:
+	if is_host:
+		return
+	for i in range(_buses.size() - 1, -1, -1):
+		var bus: Node = _buses[i]
+		if not is_instance_valid(bus) or bus.bus_id == id:
+			_buses.remove_at(i)
+			if is_instance_valid(bus):
+				bus.queue_free()
+
+@rpc("authority", "call_remote", "reliable")
+func _bus_roster(id: int, aboard: PackedInt32Array) -> void:
+	if is_host:
+		return
+	var bus: Node = _bus_by_id(id)
+	if bus == null:
+		return
+	bus.apply_remote(bus.position, bus.heading, bus.tilt, Array(aboard))
+
+# THE HOST'S SIDE OF ALL THREE, so no caller has to remember to announce. A
+# roster change is compared rather than assumed: board() and leave() are called
+# from several places and a missed announce is a client with the wrong driver.
+func _announce_bus_roster(bus) -> void:
+	var now := PackedInt32Array()
+	for peer in bus.riders:
+		now.append(int(peer))
+	if _bus_rosters.get(bus.bus_id, PackedInt32Array()) == now:
+		return
+	_bus_rosters[bus.bus_id] = now
+	if networked and is_host:
+		_bus_roster.rpc(bus.bus_id, now)
+
+func _retire_bus(bus) -> void:
+	_bus_rosters.erase(bus.bus_id)
+	if networked and is_host:
+		_bus_gone.rpc(bus.bus_id)
+
+func _bus_by_id(id: int) -> Node:
+	for bus in _buses:
+		if is_instance_valid(bus) and bus.bus_id == id:
+			return bus
+	return null
+
 func _bullet_by_id(id: int) -> Node:
 	for bullet in _bullets:
 		if is_instance_valid(bullet) and bullet.bullet_id == id:
@@ -5582,7 +5718,8 @@ func _bullet_by_id(id: int) -> Node:
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array, zombies: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array, zombies: Array,
+		buses: Array = []) -> void:
 	if is_host:
 		return
 	# COUNTED WHERE IT ARRIVES, before the delay queue and before anything can
@@ -5591,21 +5728,22 @@ func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Arr
 	# in exactly the case worth investigating.
 	if _telemetry != null:
 		_telemetry.note_received([entries, stones, balls, layout, rushers, hats,
-			specials, bullets, gunners, deployables, zombies])
+			specials, bullets, gunners, deployables, zombies, buses])
 	_adopt_server_tick(server_tick)
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies, buses])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies)
+	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies, buses)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10], held[11])
+		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10], held[11], held[12])
 
 func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array, zombies: Array) -> void:
+		bullets: Array, gunners: Array, deployables: Array, zombies: Array,
+		buses: Array = []) -> void:
 	if grid != null:
 		grid.apply_stone_snapshot(stones)
 		if layout.size() > 0:
@@ -5618,6 +5756,10 @@ func _consume_snapshot(entries: Array, stones: Array, balls: Array,
 	_apply_bullet_snapshot(bullets)
 	_apply_gunner_snapshot(gunners)
 	_apply_deployable_snapshot(deployables)
+	# BEFORE THE PLAYERS, and that ordering is load-bearing rather than tidy:
+	# `_reconcile` below asks whether the local player is aboard a bus, and an
+	# answer from last tick's roster is an answer about a different world.
+	_apply_bus_snapshot(buses)
 	for e in SnapshotDelta.changed_of(entries):
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
@@ -5663,6 +5805,24 @@ func _reconcile(body: Node, e: Array) -> void:
 		_pending_inputs.pop_front()
 	while _predicted.size() > 0 and int(_predicted[0][0]) < acked:
 		_predicted.pop_front()
+
+	# A RIDER IS NOT PREDICTED, and this is the half of bus replication that is
+	# not about drawing anything.
+	#
+	# A planted rider's position is a function of the BUS's position, and the bus
+	# is steered by somebody else's stick. There is nothing here to predict FROM:
+	# the client has no input for the vehicle, so replaying its own inputs against
+	# a moving deck produces a confident wrong answer every tick and `corrections`
+	# climbs for as long as anybody is aboard. Taking the host's word costs a
+	# rider nothing -- they are not steering, and snapshots arrive every tick.
+	#
+	# Asked of the ROSTER rather than of a state on the player, for the same reason
+	# the driver's trigger is: riding is a fact about the bus, and a second copy on
+	# the body would be a second thing to keep in step.
+	if bus_carrying(int(e[S_PEER])) != null:
+		body.apply_state(authoritative)
+		_predicted.clear()
+		return
 
 	# In a state the client does not predict there is nothing to compare against --
 	# take what the host says and start clean.
@@ -5875,6 +6035,7 @@ var _last_sent: Dictionary = {}
 # baseline, and a joiner has nothing.
 var _keyframe_due: bool = true
 
+
 var _pending_settings: Dictionary = {}
 
 # How many config broadcasts this world has taken from the host. Test-visible on
@@ -6060,6 +6221,16 @@ func host_add_peer(peer: int) -> void:
 	# would name ids it has never been told the positions of -- and it would never
 	# create those bodies at all, because an applier only builds what it is sent.
 	_keyframe_due = true
+	# AND ON THE BUSES. A joiner has no baseline for anything, and a bus is
+	# announced by a one-off reliable message rather than by the snapshot -- so
+	# somebody arriving after that message was sent would never hear about it.
+	# Same reason the roster of players is replayed just below.
+	for bus in _buses:
+		if is_instance_valid(bus):
+			var aboard := PackedInt32Array()
+			for rider in bus.riders:
+				aboard.append(int(rider))
+			_bus_spawned.rpc_id(peer, bus.bus_id, bus.position, aboard)
 	# Catch the newcomer up on everyone already here, THEN announce it. That
 	# order matters the moment a spawn carries state: the new peer should know
 	# the world before the world knows it.

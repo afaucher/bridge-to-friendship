@@ -377,8 +377,8 @@ func _a_bus_that_falls_is_let_go_of() -> void:
 	# BELOW THE LINE EVERYTHING ELSE IS CULLED AT. Placed rather than driven off
 	# the edge, because the claim is about what happens at that depth and driving
 	# there would take four hundred ticks of falling to say the same thing.
-	doomed.global_position = Vector3(doomed.global_position.x, SimConfig.FALL_KILL_Y - 1.0,
-		doomed.global_position.z)
+	doomed.position = Vector3(doomed.position.x, SimConfig.FALL_KILL_Y - 1.0,
+		doomed.position.z)
 	world._process_buses()
 
 	check(not is_instance_valid(doomed) or doomed.is_queued_for_deletion(),
@@ -388,8 +388,8 @@ func _a_bus_that_falls_is_let_go_of() -> void:
 		"and it does not take its passenger with it: a rider is let GO, so it "
 		+ "becomes an ordinary falling body and the existing rescue path has it")
 	if body != null and is_instance_valid(body):
-		check(body.global_position.y < 0.0,
-			"who is where the bus left them (y %.1f), falling" % body.global_position.y)
+		check(body.position.y < 0.0,
+			"who is where the bus left them (y %.1f), falling" % body.position.y)
 
 	# AND THE PARTY IS NOT LEFT WITHOUT ONE. `_ensure_bus` builds the next on the
 	# following tick; if it did not, driving off the edge once would end the mode.
