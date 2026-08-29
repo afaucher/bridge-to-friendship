@@ -264,6 +264,16 @@ var _next_gunner_id: int = 0
 # Thrown grenades, and the land mine when it lands. A short list on purpose: the
 # fuse is what bounds it, so there is no cap and no cull-the-oldest rule the way
 # there is for balls and loose specials.
+# --- Laps. See _process_laps. ---------------------------------------------------
+var _on_lap_gate: Dictionary = {}      # peer -> the gate it is standing in
+var _lap_next: Dictionary = {}         # peer -> the gate index expected next
+var _lap_from: Dictionary = {}         # peer -> tick the running lap started
+var _best_lap: Dictionary = {}         # peer -> best completed lap, in ticks
+# A DIRECT COUNT AT THE LINE THAT DOES IT. Every other way of noticing a lap
+# happened has been an instrument this project later found was measuring
+# something else.
+var laps_completed: int = 0
+
 var _next_bus_id: int = 0
 # The roster last announced for each bus id, so _announce_bus_roster sends on a
 # CHANGE rather than on every tick. Cleared when the bus retires.
@@ -745,6 +755,10 @@ func _host_tick() -> void:
 	# the world the rescue pass should notice on the tick it happened rather than
 	# the next one.
 	_process_buses()
+	# AFTER THE BODIES HAVE MOVED, including riders, who are POSED by the bus
+	# rather than stepping -- so a lap crossed at 13 m/s is noticed on the tick it
+	# happens rather than the one after.
+	_process_laps()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -980,6 +994,8 @@ func _is_enemy(target) -> bool:
 var _was_out: Dictionary = {}
 var _was_dashing: Dictionary = {}
 var _last_at: Dictionary = {}
+# Whether each peer was being MOVED on the previous sample. See _count_edges.
+var _last_moved: Dictionary = {}
 
 # A SINGLE TICK OF REAL MOVEMENT CANNOT BE THIS FAR, so anything longer was a
 # TELEPORT and is not distance travelled.
@@ -1002,6 +1018,13 @@ const TELEPORT_TICK_DISTANCE := 2.0
 # one. `_begin_shove` runs on the client too -- SHOVE is one of the states a
 # client predicts (see the note on client prediction) -- so a counter there would
 # fire on every machine and count a mispredicted dash that the host rewound.
+# STATES WHERE THE PLAYER IS BEING MOVED RATHER THAN TRAVELLING. Named in one
+# place because `top_speed` is not the only stat that will eventually want the
+# distinction, and because a new state of this kind must be added HERE rather
+# than discovered as a badge nobody can beat.
+func _was_moved(body: Node) -> bool:
+	return body.state == PlayerBody.State.SHOVE 		or body.state == PlayerBody.State.TUMBLE
+
 func _count_edges() -> void:
 	if not is_host:
 		return
@@ -1039,6 +1062,39 @@ func _count_edges() -> void:
 			var moved: float = step.length()
 			if moved < TELEPORT_TICK_DISTANCE:
 				_bump(peer, "distance", int(round(moved * 100.0)))
+				# THE FASTEST TICK ANYBODY HAS HAD, in cm/s. A peak, so it is
+				# written with _bump_max -- summing it would be a number with no
+				# meaning at all.
+				#
+				# INSIDE THE TELEPORT GUARD, and that is the whole reason it lives
+				# here rather than being read off `body.velocity` somewhere: a
+				# drone return crosses tens of metres in one tick, and a speed
+				# taken from an unguarded position delta would hand this badge to
+				# whoever died furthest away, forever, at a number nobody could
+				# reach on foot.
+				#
+				# AND NOT WHILE YOU ARE BEING MOVED. A dash is SHOVE_SPEED -- 56
+				# m/s, nine times a walk and four times the bus -- for a tenth of
+				# a second, and a tumble is whatever threw you. Both are faster
+				# than anything you can DRIVE, so counting them makes every player
+				# who has ever dashed tie at exactly 56.0 and the badge says
+				# nothing about anybody. Measured on the first run of the test:
+				# walking posted 56.00 m/s, because the phase dashes first.
+				#
+				# The line is the same one the teleport guard draws, one step in:
+				# this stat is about travel you DID, not displacement that happened
+				# to you. A future state where the player is carried belongs here.
+				# EITHER TICK, NOT JUST THIS ONE. The step being measured is the
+				# movement between the last sample and this one, so it straddles
+				# the boundary -- and on the tick a dash ENDS the state has already
+				# flipped back to WALK while the same `move_and_slide` is still
+				# carrying SHOVE_SPEED. Checking only the current state let exactly
+				# that one tick through and posted 56.00 m/s from a walk.
+				var moved_by_something: bool = _was_moved(body) 					or bool(_last_moved.get(peer, false))
+				_last_moved[peer] = _was_moved(body)
+				if not moved_by_something:
+					_bump_max(peer, "top_speed",
+						int(round(moved / SimConfig.TICK_DELTA * 100.0)))
 				# GROUND GIVEN UP. Up-bridge is -Z, so a positive Z step is
 				# backwards. Inside the same teleport guard on purpose: a checkpoint
 				# return moves a player a long way down-bridge, and counting that as
@@ -4211,6 +4267,71 @@ func _sync_open_cells(layout: PackedInt32Array) -> void:
 # phase 1 built. A bus on the ordinary bridge would be a vehicle among pillars and
 # holes -- a different feature with a different set of problems -- so BASE declares
 # it OFF and the blank zone declares it ON, and this line is the whole enforcement.
+# --- Laps ----------------------------------------------------------------------
+#
+# THE RULE, WHICH IS SHORTER THAN IT SOUNDS. Crossing the start line always
+# begins a lap. Crossing it again ends one -- but it only COUNTS if every other
+# gate was touched in order on the way round, and otherwise it silently starts
+# over. So a cut corner is not punished, it just does not score, which is the
+# right severity for a thing you did to yourself.
+#
+# HELD PER PLAYER, NOT PER BUS. Four people in one bus post the same time and
+# that is true; somebody who steps off and boards another keeps their own
+# progress. It also means a lap driven and a lap walked are the same object,
+# which they are.
+#
+# EDGE-TRIGGERED ON THE GATE, not level-triggered. A gate is several cells deep
+# in the direction you cross it at walking pace, so a level trigger would fire
+# for every tick you were inside one -- and on the start line that means
+# restarting the lap five times in a row and never completing one.
+func _process_laps() -> void:
+	if grid == null or not is_host or grid.lap_gate_cells.is_empty():
+		return
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		var body: Node = players[peer]
+		if body == null or not is_instance_valid(body):
+			continue
+		var at: int = grid.lap_gate_at(grid.cell_of_world(body.position))
+		if at < 0:
+			_on_lap_gate.erase(peer)
+			continue
+		if int(_on_lap_gate.get(peer, -1)) == at:
+			continue                  # still standing in the one we already counted
+		_on_lap_gate[peer] = at
+		_touch_lap_gate(peer, at)
+
+func _touch_lap_gate(peer: int, at: int) -> void:
+	if at != 0:
+		# ONLY THE NEXT ONE COUNTS. Touching gate 3 before gate 2 is ignored
+		# rather than resetting: the lap is already lost, and taking it away at
+		# the moment somebody drives over a checkpoint would read as the gate
+		# being broken.
+		if at == int(_lap_next.get(peer, -1)):
+			_lap_next[peer] = at + 1
+		return
+	# The start line, which is both the finish and the start.
+	if int(_lap_next.get(peer, -1)) >= grid.lap_gate_count():
+		var lap: int = tick - int(_lap_from.get(peer, tick))
+		if lap > 0:
+			laps_completed += 1
+			var best: int = int(_best_lap.get(peer, 0))
+			if best == 0 or lap < best:
+				_best_lap[peer] = lap
+	_lap_from[peer] = tick
+	_lap_next[peer] = 1
+
+# THE BEST LAP THIS PLAYER HAS DRIVEN, in ticks, or 0 for nobody who has
+# finished one. ZERO IS NOT A GOOD TIME -- it is the absence of one, and every
+# reader has to know that, which is why it is stated here rather than left to be
+# discovered by whoever sorts on it. See RoundMachine.rank_entries.
+func best_lap_of(peer: int) -> int:
+	return int(_best_lap.get(peer, 0))
+
+# Whether a lap is currently running, for the HUD's live clock.
+func lap_running_since(peer: int) -> int:
+	return int(_lap_from.get(peer, -1)) if _lap_next.has(peer) else -1
+
 func _process_buses() -> void:
 	if not is_host:
 		return

@@ -59,6 +59,9 @@ class Built:
 	# than read out of the content grid: a placed mine is not the `x` PICKUP, and
 	# it has no glyph of its own precisely so the two cannot be confused.
 	var mine_cells: Array = []
+	# Lap gates, as (cell, index) pairs. Copied off the segment for the same
+	# reason mines are: they have no glyph, because the ORDER is half the fact.
+	var checker_cells: Array = []
 	# Cover, and spike blocks. Collected like every other authored prop: the grid
 	# owns the bodies, the builder only says where the author put one.
 	var tree_cells: Array = []
@@ -93,6 +96,7 @@ static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 	# `built.mine_cells`, got nothing, and stopped partway through recording the
 	# segment with no error anybody would see.
 	out.mine_cells = seg.mine_cells.duplicate()
+	out.checker_cells = seg.checker_cells.duplicate()
 	out.root = Node3D.new()
 	out.root.name = "Segment_%s" % seg.name
 

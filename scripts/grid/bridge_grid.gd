@@ -363,6 +363,29 @@ func take_authored_hat_cells() -> Array:
 # load so a weapon authored in a segment streamed in later still appears.
 var authored_special_cells: Array = []
 var authored_mine_cells: Array = []
+# cell -> gate index, in RUN coordinates. See the note where it is filled.
+var lap_gate_cells: Dictionary = {}
+
+# WHICH LAP GATE IS UNDER THIS CELL, or -1. The whole lap system talks to the
+# grid through this one question.
+#
+# `lap_` ON EVERY NAME, because "gate" was already taken. `gate_at_or_before` and
+# `gate_after` are about the ROUND BOUNDARY -- the strip between a section and a
+# lobby -- and a lap checkpoint is a completely different object that happens to
+# be called the same thing in English. This project has a note about a constant
+# that meant two things until the day they differed; naming them apart on the way
+# in is cheaper than splitting them later.
+func lap_gate_at(cell: Vector2i) -> int:
+	return int(lap_gate_cells.get(cell, -1))
+
+# HOW MANY DISTINCT LAP GATES THE RUN CARRIES. Read off the record rather than from
+# SegmentGen.RACE_CHECKPOINTS: a lap is complete when every gate THIS TRACK has
+# was touched, and a constant would be a second place for that fact to live.
+func lap_gate_count() -> int:
+	var seen := {}
+	for cell in lap_gate_cells:
+		seen[int(lap_gate_cells[cell])] = true
+	return seen.size()
 
 func take_authored_mine_cells() -> Array:
 	var out: Array = authored_mine_cells.duplicate()
@@ -634,6 +657,14 @@ func load_segment(seg) -> void:
 	# object.
 	for local_cell in built.mine_cells:
 		authored_mine_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	# LAP GATES, KEPT RATHER THAN TAKEN. Every other authored record here is
+	# drained once by the world and turned into a body; a gate is not a body. It
+	# is a question the world asks of the grid on every tick of every player --
+	# "am I standing on a gate, and which" -- so it stays, keyed by cell.
+	for entry in built.checker_cells:
+		var gc: Vector2i = entry[0]
+		lap_gate_cells[Vector2i(gc.x, gc.y + z_offset)] = int(entry[1])
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]

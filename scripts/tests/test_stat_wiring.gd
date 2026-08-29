@@ -93,6 +93,30 @@ func _phase_walk_and_dash() -> void:
 		+ "about it called _bump directly, which is not the same test")
 	check(_stat(A, "distance") > 0,
 		"and walking moves the distance counter (%d cm)" % _stat(A, "distance"))
+
+	# TOP SPEED, FROM WALKING, AND SANE. A peak rather than a total, so the claim
+	# is not "it went up" but "it is a speed a player could actually reach": walking
+	# is WALK_SPEED, and anything far above it means the counter is measuring
+	# something other than travel.
+	var walked: float = float(_stat(A, "top_speed")) / 100.0
+	print("[wiring] walking posted a top speed of %.2f m/s (walk is %.1f)"
+		% [walked, SimConfig.WALK_SPEED])
+	check(walked > SimConfig.WALK_SPEED * 0.5,
+		"walking posts a top speed (%.2f m/s) -- it comes off the same per-tick "
+			% walked
+		+ "step `distance` does, so a stat that never moved would mean the peak "
+		+ "is being written somewhere the walk cannot reach")
+	check(walked < SimConfig.WALK_SPEED * 1.5,
+		"and it is a speed a walking player can actually REACH (%.2f against a "
+			% walked
+		+ "%.1f m/s walk) -- this phase dashes before it walks, and a dash is "
+			% SimConfig.WALK_SPEED
+		+ "SHOVE_SPEED. Counting it posted 56.00 m/s here, which is not a badge: "
+		+ "every player who ever dashes ties at exactly that and the superlative "
+		+ "goes to the whole party")
+	check(walked < SimConfig.SHOVE_SPEED * 0.5,
+		"and nowhere near the dash that happened moments ago (%.2f of %.1f m/s)"
+			% [walked, SimConfig.SHOVE_SPEED])
 	check(_stat(A, "time_alive") > 0,
 		"and a player who is up and in a running round banks time (%d ticks)"
 			% _stat(A, "time_alive"))

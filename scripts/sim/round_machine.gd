@@ -305,6 +305,25 @@ func _rearmost_row(world) -> int:
 static func rank_entries(entries: Array) -> Array:
 	var out: Array = entries.duplicate()
 	out.sort_custom(func(a, b):
+		# LAP TIME FIRST, AND ZERO IS NOT A GOOD TIME.
+		#
+		# `lap` is the best completed lap in ticks, and 0 means nobody finished
+		# one -- so the comparison is in two parts, and skipping the first is the
+		# obvious bug: sorting ascending on the raw number hands the win to every
+		# player who never crossed the line, which is everybody in every mode that
+		# has no circuit in it.
+		#
+		# WHICH IS ALSO WHY THERE IS NO MODE BRANCH HERE. Outside the race nobody
+		# has a lap, every entry is 0, both parts tie, and the comparison falls
+		# through to hats exactly as it did before. A key that is inert when the
+		# feature is absent beats an `if mode == RACE` that somebody has to
+		# remember to keep in step.
+		var al: int = int(a.get("lap", 0))
+		var bl: int = int(b.get("lap", 0))
+		if (al > 0) != (bl > 0):
+			return al > 0                     # any lap beats no lap
+		if al > 0 and al != bl:
+			return al < bl                    # and then quicker wins
 		var ah: int = int(a.get("hats", 0))
 		var bh: int = int(b.get("hats", 0))
 		if ah != bh:
@@ -381,6 +400,11 @@ func rank(world) -> Array:
 			"hats": int(world.hats_worn_by(peer).size()),
 			"hat_height": _tower_cm(world, peer),
 			"made_it": bool(reached.get(peer, false)),
+			# THE BEST LAP, IN TICKS, AND 0 FOR NOBODY WHO FINISHED ONE. Carried on
+			# the entry rather than read out of the stats table because it is a
+			# RANKING KEY -- see rank_entries -- and the badge table is deliberately
+			# not one: `best` there decides who gets a rosette, not who won.
+			"lap": int(world.best_lap_of(peer)),
 			# THE ROUND'S NUMBERS RIDE THE BOARD. It already goes out reliably on
 			# every state change, so a separate stats RPC would only add a way for
 			# the board and the numbers describing it to arrive out of step.

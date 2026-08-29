@@ -133,6 +133,35 @@ const STATS := {
 	# `rescued`, which is about somebody coming for you -- the whole point of the
 	# self-revive is that nobody did.
 	"self_revives": {"label": "Most self-rescues", "best": MOST},
+
+	# THE FASTEST ANYBODY WENT. Badge material, deliberately not `common`: it is
+	# not one of the seven things every player wants to know every round, and the
+	# common block is already at the width the board can carry.
+	#
+	# STORED IN CENTIMETRES PER SECOND, for the reason the whole table is ints --
+	# one type on the wire and one type in the comparison. `format_value` is the
+	# only place that knows.
+	#
+	# MEASURED FROM THE SAME PER-TICK STEP `distance` USES, AND INSIDE THE SAME
+	# TELEPORT GUARD, which is the entire difficulty. A speed derived from a
+	# position delta cannot tell travel from being MOVED: a drone return, a
+	# checkpoint rewind or a straggler leash covers tens of metres in one tick,
+	# and this badge would go permanently to whoever died furthest from the party
+	# at something like 2000 m/s. The guard `distance` already carries for exactly
+	# that reason is what makes the number mean anything.
+	#
+	# NOT COUNTED WHILE YOU ARE BEING MOVED, which is the difference between a
+	# badge and a tie. A dash is SHOVE_SPEED, 56 m/s -- nine times a walk and four
+	# times the bus -- so with dashes counted every player who has ever dashed
+	# posts exactly 56.0 and the superlative goes to all of them. Same for a
+	# tumble, which is as fast as whatever threw you. See the guard in the world.
+	#
+	# AND IT WILL USUALLY NAME A DRIVER, which is a feature: a walk is 6 m/s and
+	# the bus does 13, so "top speed" is a thing you go and do rather than a thing
+	# that accrues. Riders are POSED onto their seat rather than stepping, and the
+	# step here is a position delta, so a passenger is credited with the bus's
+	# speed too -- everybody aboard went that fast, which is true.
+	"top_speed": {"label": "Top speed", "best": MOST, "format": "speed"},
 }
 
 static func keys() -> Array:
@@ -302,4 +331,6 @@ static func format_value(key: String, value: int) -> String:
 			return "%d:%02d" % [total / 60, total % 60]
 		"metres":
 			return "%.0f m" % (float(value) / 100.0)
+		"speed":
+			return "%.1f m/s" % (float(value) / 100.0)
 	return str(value)
