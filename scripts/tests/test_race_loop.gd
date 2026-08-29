@@ -35,6 +35,9 @@ extends "res://scripts/test_support/test_case.gd"
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
 
 # BOTH CANVASES, and the narrow one is not padding.
 #
@@ -48,8 +51,16 @@ const SEEDS := 40
 
 var done := false
 
-func setup(_main) -> void:
+# A HOST FOR THE ONE CLAIM THAT NEEDS A REAL RUN. Everything else here calls the
+# generator directly; the assembled-round check needs a BridgeGrid, and a grid
+# needs somewhere in the tree to live.
+var host: Node3D = null
+
+func setup(main) -> void:
 	timeout_seconds = 40.0
+	host = Node3D.new()
+	host.name = "RaceHost"
+	main.add_child(host)
 
 func _physics_process(_delta: float) -> void:
 	if done:
@@ -61,6 +72,7 @@ func _physics_process(_delta: float) -> void:
 	_a_circuit_is_not_a_rectangle()
 	_every_circuit_type_is_built_and_is_different()
 	_the_road_width_varies_enough_to_force_a_lift()
+	_a_round_holds_one_circuit_not_five()
 	finish()
 
 func _it_is_a_ring_with_a_hole_in_it() -> void:
@@ -297,6 +309,111 @@ func _gate_spans_the_road(seg, idx: int) -> bool:
 		if seg.is_solid(beyond.x, beyond.y):
 			return false
 	return true
+
+# ONE TRACK BETWEEN LOBBIES, ASSEMBLED FROM THE SLOTS THE RUN REALLY BUILT.
+#
+# A race round has the same five section slots every round has -- making it one
+# slot long would mean the number of sections in a round stops being a constant,
+# and it is a constant in 49 places. So the CIRCUIT spans the slots instead: five
+# consecutive slices of one computation laid into five consecutive slots, which
+# is one track because segments stack into one continuous strip of ground.
+#
+# THE CLAIM IS THAT THE PIECES REASSEMBLE, and it is checked against a real
+# `build_run` rather than against the slicer. Concatenating the slices by hand
+# would prove the slicer can cut and say nothing about whether the GRID asked for
+# the right piece for each slot -- which is the whole of what could go wrong, and
+# exactly the shape of "a test that builds its own input has not tested the
+# caller".
+#
+# What it looks for is the property a chain of five separate circuits could never
+# have: ONE enclosed infield across the whole round, not five.
+func _a_round_holds_one_circuit_not_five() -> void:
+	var built = BridgeGridScript.new()
+	built.name = "RaceRun"
+	host.add_child(built)
+	built.width = WIDTHS[0]
+	built.build_run(31337, (SegmentPool.SECTIONS_PER_ROUND + 1) * 2,
+		[GameMode.BASE, GameMode.RACE])
+
+	# The race round's slots, stacked back into the strip of ground they are.
+	var rows: Array = []
+	for i in built.segment_count():
+		if SegmentPool.round_of_slot(i) != 1 or SegmentPool.is_lobby_slot(i):
+			continue
+		var seg = built.segment_data(i)
+		if seg == null:
+			continue
+		for z in seg.length:
+			var row := ""
+			for x in seg.width:
+				row += "#" if seg.is_solid(x, z) else "."
+			rows.append(row)
+	built.queue_free()
+
+	if not check(rows.size() > 20, "the race round really built ground (%d rows)"
+			% rows.size()):
+		return
+	var holes: int = _enclosed_regions(rows)
+	print("[race] a race round is %d rows carrying %d enclosed infields"
+		% [rows.size(), holes])
+	eq(holes, 1,
+		"a whole race round holds ONE circuit (%d enclosed infields in %d rows) -- "
+			% [holes, rows.size()]
+		+ "five separate circuits stacked would leave five, which is what the mode "
+		+ "built before the slices and is the thing `one track between lobbies` "
+		+ "was asking to stop")
+
+# HOW MANY SEPARATE ENCLOSED VOIDS THERE ARE. Flood the void from outside, then
+# count the connected regions of whatever was not reached.
+func _enclosed_regions(rows: Array) -> int:
+	var h: int = rows.size()
+	var w: int = rows[0].length()
+	var outside := {}
+	var queue: Array = []
+	for x in w:
+		for z in [0, h - 1]:
+			if rows[z][x] == ".":
+				queue.append(Vector2i(x, z))
+	for z in h:
+		for x in [0, w - 1]:
+			if rows[z][x] == ".":
+				queue.append(Vector2i(x, z))
+	while queue.size() > 0:
+		var at: Vector2i = queue.pop_back()
+		if outside.has(at):
+			continue
+		outside[at] = true
+		for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = at + step
+			if n.x < 0 or n.x >= w or n.y < 0 or n.y >= h:
+				continue
+			if outside.has(n) or rows[n.y][n.x] != ".":
+				continue
+			queue.append(n)
+
+	var seen := {}
+	var regions := 0
+	for z in h:
+		for x in w:
+			var at := Vector2i(x, z)
+			if rows[z][x] != "." or outside.has(at) or seen.has(at):
+				continue
+			regions += 1
+			var q: Array = [at]
+			while q.size() > 0:
+				var c: Vector2i = q.pop_back()
+				if seen.has(c):
+					continue
+				seen[c] = true
+				for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
+						Vector2i(0, -1)]:
+					var n: Vector2i = c + step
+					if n.x < 0 or n.x >= w or n.y < 0 or n.y >= h:
+						continue
+					if seen.has(n) or rows[n.y][n.x] != "." or outside.has(n):
+						continue
+					q.append(n)
+	return regions
 
 # THE SHAPE CLAIM, AND IT IS A PROOF RATHER THAN A THRESHOLD.
 #

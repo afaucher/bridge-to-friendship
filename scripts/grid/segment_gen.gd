@@ -2161,7 +2161,62 @@ const RACE_OUTER_SWING := 5
 # the middle skips one; few enough that they read as gates rather than fencing.
 const RACE_CHECKPOINTS := 4
 
-static func race_loop(width: int, run_seed: int, index: int):
+# ONE CIRCUIT, HANDED OUT A SLICE AT A TIME.
+#
+# "We want one track between lobbies", and the obvious way to get it is to make
+# a race round one section long -- which means the number of sections in a round
+# stops being a constant. It is a constant in 49 places, `SECTIONS_PER_ROUND`
+# means both "the run's cycle" and "how long a round is", and those are exactly
+# the two meanings CLAUDE.md warns come apart the day they differ.
+#
+# SO THE ROUND KEEPS ITS FIVE SLOTS AND THE CIRCUIT SPANS THEM. Segments stack
+# along -Z into one continuous strip of ground -- that is what a run IS -- so a
+# circuit cut into five consecutive slices and laid into five consecutive slots
+# is one circuit, joined seamlessly because the slices came from one grid. No
+# slot arithmetic changes, no constant acquires a second meaning, and the party
+# drives a single track between lobbies.
+#
+# THE SEAMS ARE FREE, which is the part worth checking rather than assuming. A
+# slice boundary is an ordinary row of the circuit: whatever is solid on the last
+# row of one slice is solid on the first row of the next, because they were the
+# same row of the same computation a moment earlier. There is nothing to line up.
+#
+# `slices` DEFAULTS TO ONE, so a caller that wants a whole circuit in a single
+# section -- every test of the generator does -- gets exactly what it did before.
+static func race_loop(width: int, run_seed: int, index: int, slice: int = 0,
+		slices: int = 1):
+	var full = _race_circuit(width, run_seed, index)
+	if slices <= 1:
+		return full
+	return _race_slice(full, slice, slices, "race_%d_%d" % [index, slice])
+
+# ONE SLICE OF A BUILT CIRCUIT, as its own segment.
+#
+# THE CONTENTS COME WITH IT, rebased. A gate or a mine outside these rows simply
+# is not in this section, which is right: it belongs to the slot that holds its
+# ground, and the grid puts every slot's records into RUN coordinates anyway, so
+# the circuit reassembles itself the moment the run is built.
+static func _race_slice(full, slice: int, slices: int, name: String):
+	var from_z: int = full.length * slice / slices
+	var to_z: int = full.length * (slice + 1) / slices
+	var seg = _blank(name, full.width, to_z - from_z)
+	seg.tags = full.tags.duplicate()
+	seg.no_dress = true
+	for z in range(from_z, to_z):
+		for x in full.width:
+			seg.kinds[z - from_z][x] = full.kinds[z][x]
+			seg.heights[z - from_z][x] = full.heights[z][x]
+			seg.contents[z - from_z][x] = full.contents[z][x]
+	for entry in full.checker_cells:
+		var c: Vector2i = entry[0]
+		if c.y >= from_z and c.y < to_z:
+			seg.checker_cells.append([Vector2i(c.x, c.y - from_z), int(entry[1])])
+	for c in full.mine_cells:
+		if c.y >= from_z and c.y < to_z:
+			seg.mine_cells.append(Vector2i(c.x, c.y - from_z))
+	return seg
+
+static func _race_circuit(width: int, run_seed: int, index: int):
 	# WIDENED IF ASKED FOR LESS, because a circuit needs room to BE one.
 	#
 	# Four cells of road, six of hole and four more of road is fourteen -- so a

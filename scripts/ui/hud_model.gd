@@ -72,6 +72,20 @@ static func round_entry(world: Node) -> Dictionary:
 		"waiting": int(machine.state) == RoundMachine.State.LOBBY,
 	}
 
+# A LAP TIME AS A PLAYER READS IT: minutes only when there are any, and tenths
+# always, because a tenth is the unit a lap is actually beaten by.
+#
+# EMPTY FOR ZERO rather than "0:00.0". Zero means nobody has finished a lap, and
+# a clock reading zero on the HUD says the opposite -- that somebody went round
+# instantly. The caller hides the label when this is empty.
+static func lap_label(ticks: int) -> String:
+	if ticks <= 0:
+		return ""
+	var total: float = float(ticks) * SimConfig.TICK_DELTA
+	if total < 60.0:
+		return "%.1fs" % total
+	return "%d:%04.1f" % [int(total) / 60, fmod(total, 60.0)]
+
 static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 	return {
 		"peer": peer,
@@ -86,6 +100,14 @@ static func _own_entry(world: Node, peer: int, body: Node) -> Dictionary:
 		"state": int(body.state),
 		"state_label": state_label(int(body.state)),
 		"needs_help": bool(body.is_awaiting_rescue()),
+		# THE BEST LAP, IN TICKS, AND 0 FOR SOMEBODY WHO HAS NOT FINISHED ONE.
+		# Zero is the absence of a time rather than a very good one, and the HUD
+		# hides the label instead of drawing "0:00.0" -- see lap_label.
+		"best_lap": int(world.best_lap_of(peer)),
+		# THE LAP IN PROGRESS. Own row only: four live clocks on screen is four
+		# things ticking at a player who is trying to drive, and a teammate's
+		# running lap is not information you can act on. Their BEST is.
+		"lap_running": int(world.lap_elapsed_of(peer)),
 		"grace": _fraction(float(body.invulnerable), SimConfig.HIT_GRACE),
 		"bleed_out": bleed_out_fraction(body),
 		"rescue": rescue_fraction(body),
@@ -129,6 +151,7 @@ static func _friend_entries(world: Node, peer: int, body: Node) -> Array:
 			"state": int(other.state),
 			"state_label": state_label(int(other.state)),
 			"needs_help": bool(other.is_awaiting_rescue()),
+			"best_lap": int(world.best_lap_of(other_peer)),
 			"bleed_out": bleed_out_fraction(other),
 			"rescue": rescue_fraction(other),
 			"status": other.status_bar(),

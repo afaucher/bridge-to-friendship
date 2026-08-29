@@ -317,7 +317,14 @@ func _section_for_mode(mode: int, seed_value: int, i: int):
 		GameMode.TERRAIN_TRACK:
 			return SegmentGen.bus_track(width, seed_value, i)
 		GameMode.TERRAIN_RACE:
-			return SegmentGen.race_loop(width, seed_value, i)
+			# ONE CIRCUIT PER ROUND, HANDED OUT A SLICE PER SLOT. The round is the
+			# seed, so all five slots compute the same circuit and each takes its
+			# own piece of it -- which is what makes them one track rather than
+			# five. See SegmentGen.race_loop.
+			return SegmentGen.race_loop(width, seed_value,
+				SegmentPool.round_of_slot(i),
+				(i % (SegmentPool.SECTIONS_PER_ROUND + 1)) - 1,
+				SegmentPool.SECTIONS_PER_ROUND)
 		_:
 			return SegmentGen.section(width, seed_value, i)
 

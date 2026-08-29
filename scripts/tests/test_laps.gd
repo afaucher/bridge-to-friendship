@@ -108,6 +108,8 @@ func _build_script() -> void:
 	_the_best_is_kept()
 	_a_gate_is_edge_triggered()
 	_at(_no_lap_ranks_below_any_lap)
+	_the_clock_runs_while_you_drive()
+	_a_round_starts_with_no_laps()
 
 # --- Driving -------------------------------------------------------------------
 
@@ -260,6 +262,66 @@ func _a_gate_is_edge_triggered() -> void:
 			+ "level-triggered, the start is rewritten on every one of them and "
 			+ "the lap comes out that much shorter, which is a timer that rewards "
 			+ "sitting on the line"))
+
+# --- 7. The clock you are watching ---------------------------------------------
+#
+# `lap_elapsed_of` is what the HUD's live clock reads, and it did not exist for a
+# while in the shape that mattered: the function was written and NOTHING CALLED
+# IT -- one reference in the whole repo, its own definition. A timer nobody reads
+# is not a timer, and the ask was explicit that it shows on screen.
+func _the_clock_runs_while_you_drive() -> void:
+	var at_start := [0]
+	var later := [0]
+	# FROM A CLEAN ROUND, because a lap KEEPS RUNNING once started -- walking off
+	# the gate does not cancel it, which is right and is why the first version of
+	# this claim failed at 36 ticks against correct code. There is no "not on a
+	# gate" state to assert; there is only "no lap has been started".
+	_at(func(): world.clear_round_stats())
+	_at(func(): _leave_gates(A))
+	_at(func(): eq(world.lap_elapsed_of(A), 0,
+		"with no lap started the clock reads nothing (%d)"
+			% world.lap_elapsed_of(A)))
+	_at(func(): _cross(A, 0))
+	_at(func(): at_start[0] = world.lap_elapsed_of(A))
+	for i in 20:
+		_at(func(): pass)
+	_at(func():
+		later[0] = world.lap_elapsed_of(A)
+		print("[laps] the live clock read %d ticks at the line and %d twenty later"
+			% [at_start[0], later[0]])
+		check(at_start[0] <= 2,
+			"the clock starts at zero on the line (%d ticks)" % at_start[0])
+		check(later[0] >= 20,
+			"and RUNS (%d ticks twenty frames later) -- a clock that is correct "
+				% later[0]
+			+ "and does not advance is the shape this one had while nothing read "
+			+ "it at all"))
+
+# --- 8. A round is a round -----------------------------------------------------
+
+func _a_round_starts_with_no_laps() -> void:
+	_lap(A, [0])
+	_lap(A, _rest())
+	_lap(A, [0])
+	_at(func():
+		check(world.best_lap_of(A) > 0 or world.laps_completed > 0,
+			"there is lap state to clear (best %d, completed %d)"
+				% [world.best_lap_of(A), world.laps_completed])
+		world.clear_round_stats()
+		print("[laps] after the round reset: best %d, completed %d, elapsed %d"
+			% [world.best_lap_of(A), world.laps_completed,
+			   world.lap_elapsed_of(A)])
+		eq(world.best_lap_of(A), 0,
+			"a new round starts with no best lap (%d) -- nothing cleared these "
+				% world.best_lap_of(A)
+			+ "before, so round three showed and RANKED ON a lap driven in round "
+			+ "one")
+		eq(world.laps_completed, 0, "nor any laps counted (%d)" % world.laps_completed)
+		eq(world.lap_elapsed_of(A), 0,
+			"and no lap in progress (%d) -- one left half-driven when a round "
+				% world.lap_elapsed_of(A)
+			+ "ended would carry its start tick into the next and come out "
+			+ "minutes long"))
 
 # --- 6. Zero is not a time -----------------------------------------------------
 

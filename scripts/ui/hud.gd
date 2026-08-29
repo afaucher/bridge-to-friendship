@@ -29,6 +29,13 @@ const COLOR_SLOT_EMPTY := Color(0.26, 0.27, 0.32)
 const COLOR_TEXT := Color(0.92, 0.93, 0.96)
 const COLOR_DIM := Color(0.62, 0.64, 0.70)
 const COLOR_ALERT := Color(1.00, 0.45, 0.22)
+# The lap clock. Start-line white rather than the alert orange: a lap time is
+# something you did well, and every other coloured thing on this HUD is a
+# warning.
+const COLOR_LAP := Color(0.85, 0.86, 0.92)
+# The lap being driven right now, brighter than the best beside it: it is the
+# number changing, and the one a driver is actually watching.
+const COLOR_LAP_LIVE := Color(1.00, 0.97, 0.80)
 const COLOR_BAR_BACK := Color(0.11, 0.11, 0.14)
 
 # --- Identity outlines --------------------------------------------------------
@@ -96,6 +103,8 @@ var world: Node = null
 var _own_panel: Control = null
 var _own_outline: PanelContainer = null
 var _own_name: Label = null
+var _own_lap: Label = null
+var _own_lap_live: Label = null
 var _own_face: TextureRect = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
@@ -365,6 +374,19 @@ func _build_own_panel() -> void:
 	own_header.add_child(_own_face)
 	_own_name = _label("", 18, COLOR_TEXT)
 	own_header.add_child(_own_name)
+	# THE LAP CLOCK, beside the name and hidden until there is one. Every mode
+	# but the race leaves it empty, so this is not furniture the ordinary game
+	# has to carry -- and a label with no text takes no room in an HBox.
+	# THE RUNNING CLOCK AND THE BEST, SIDE BY SIDE AND NOT ONE LABEL DOING BOTH.
+	#
+	# A single label showing the live lap while driving and the best otherwise
+	# hides your target at the only moment you are chasing it -- you cross the
+	# line and the next lap starts on the same tick, so the best would flash past
+	# in a frame. Two labels, and the live one hides between laps.
+	_own_lap_live = _label("", 16, COLOR_LAP_LIVE)
+	own_header.add_child(_own_lap_live)
+	_own_lap = _label("", 15, COLOR_LAP)
+	own_header.add_child(_own_lap)
 
 	_own_status = _bar(BAR_SIZE)
 	box.add_child(_own_status)
@@ -386,6 +408,11 @@ func _build_own_panel() -> void:
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
+	var best: String = HudModel.lap_label(int(own.get("best_lap", 0)))
+	_own_lap.text = ("best " + best) if best != "" else ""
+	_own_lap.visible = best != ""
+	_own_lap_live.text = HudModel.lap_label(int(own.get("lap_running", 0)))
+	_own_lap_live.visible = _own_lap_live.text != ""
 	_set_outline(_own_outline, own.get("colour", Color.TRANSPARENT))
 	_set_avatar(_own_face, int(own.get("steam_id", 0)))
 
@@ -489,6 +516,8 @@ func _build_friend_row() -> Dictionary:
 	header.add_child(state)
 	var name_label := _label("", 15, COLOR_TEXT)
 	header.add_child(name_label)
+	var lap := _label("", 13, COLOR_LAP)
+	header.add_child(lap)
 	var face := _avatar()
 	header.add_child(face)
 	var bearing := _label("", 13, COLOR_DIM)
@@ -505,7 +534,7 @@ func _build_friend_row() -> Dictionary:
 	# box is now the panel -- handing back the inner column would leave an empty
 	# bordered frame on screen for every player who ever disconnected.
 	return {"row": outline, "outline": outline, "name": name_label, "state": state,
-		"bar": bar, "bearing": bearing, "face": face}
+		"bar": bar, "bearing": bearing, "face": face, "lap": lap}
 
 func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	nodes["name"].text = str(entry.get("name", ""))
@@ -513,6 +542,8 @@ func _update_friend_row(nodes: Dictionary, entry: Dictionary) -> void:
 	_set_avatar(nodes.get("face"), int(entry.get("steam_id", 0)))
 	nodes["state"].text = str(entry.get("state_label", ""))
 	nodes["state"].visible = nodes["state"].text != ""
+	nodes["lap"].text = HudModel.lap_label(int(entry.get("best_lap", 0)))
+	nodes["lap"].visible = nodes["lap"].text != ""
 
 	# Where they are, because a fixed-yaw camera and a 40 m leash (D3) mean a
 	# friend is routinely off screen -- most of all when they are hanging off a

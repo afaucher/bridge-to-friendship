@@ -889,6 +889,21 @@ func stats_of(peer: int) -> Dictionary:
 # two rounds, which is not something anybody would catch by looking at it.
 func clear_round_stats() -> void:
 	round_stats.clear()
+	# THE LAP STATE RIDES THE SAME LINE, and being IN this function rather than
+	# beside its one caller is the point. RoundMachine calls this off the line
+	# that zeroes the round clock and clears the arrivals, with a note saying two
+	# resets a tick apart produce a scoreboard covering slightly different spans;
+	# a lap kept while the stats went would be exactly that, one round wide.
+	#
+	# WITHOUT THIS A BEST LAP LIVED FOR THE WHOLE RUN. Nothing cleared these, so
+	# round three's board showed -- and RANKED ON -- a lap driven in round one,
+	# and a lap left half-driven when a round ended carried its start tick into
+	# the next one, where it would come out minutes long.
+	_best_lap.clear()
+	_lap_next.clear()
+	_lap_from.clear()
+	_on_lap_gate.clear()
+	laps_completed = 0
 
 # THE ROUND, WRITTEN DOWN. Once per round, on the host, on a path no game state
 # can gate.
@@ -4600,9 +4615,16 @@ func _touch_lap_gate(peer: int, at: int) -> void:
 func best_lap_of(peer: int) -> int:
 	return int(_best_lap.get(peer, 0))
 
-# Whether a lap is currently running, for the HUD's live clock.
-func lap_running_since(peer: int) -> int:
-	return int(_lap_from.get(peer, -1)) if _lap_next.has(peer) else -1
+# HOW LONG THE LAP IN PROGRESS HAS BEEN RUNNING, in ticks, or 0 when there is
+# none. The HUD's live clock.
+#
+# ZERO MEANS "NOT DRIVING A LAP", the same convention `best_lap_of` uses for
+# "never finished one" -- two dictionaries, one rule about zero, so nothing
+# downstream has to remember which is which.
+func lap_elapsed_of(peer: int) -> int:
+	if not _lap_next.has(peer):
+		return 0
+	return maxi(0, tick - int(_lap_from.get(peer, tick)))
 
 func _process_buses() -> void:
 	if not is_host:
