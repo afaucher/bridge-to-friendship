@@ -402,6 +402,25 @@ static func _lane_wave(seg, z0: int, rows: int, ends: int, salt: int) -> void:
 # tree is something it crashes into at 13 m/s. Its answers are speed and the
 # passengers' own guns, which is why the driver gives up the trigger. Cover here
 # would be scenery that kills you.
+# WHETHER A WHOLE PACK HAS SOMEWHERE TO STAND. A grave is the only content in
+# this game that occupies its NEIGHBOURS as well as its own cell, so "is this cell
+# solid and empty" -- the question every other placement asks -- is the wrong
+# question for it by eight cells.
+#
+# Asked of the footprint rather than trusting an inset, because the inset is
+# right for a lane edge and says nothing about a hole the wave carved two cells
+# in. Cheap, and it means a new lane character cannot reintroduce this.
+static func _pack_fits(seg, x: int, z: int) -> bool:
+	for dz in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var cx: int = x + dx
+			var cz: int = z + dz
+			if cx < 0 or cx >= seg.width or cz < 0 or cz >= seg.length:
+				return false
+			if not seg.is_solid(cx, cz):
+				return false
+	return seg.content_at(x, z) == GridConfig.Content.NONE
+
 static func _lane_gauntlet(seg, z0: int, rows: int, ends: int, salt: int) -> void:
 	var top: int = z0
 	var bottom: int = z0 + rows - 1
@@ -411,6 +430,24 @@ static func _lane_gauntlet(seg, z0: int, rows: int, ends: int, salt: int) -> voi
 		var z: int = top if flip else bottom
 		if seg.is_solid(x2, z) and seg.content_at(x2, z) == GridConfig.Content.NONE:
 			seg.contents[z][x2] = GridConfig.Content.SKIRMISHER
+		# A GRAVE ON THE FAR SIDE, so the lane threatens from both edges at once
+		# and a bus down the middle is inside the pincer rather than hugging the
+		# safe rail. A pack rises as you pass and the passengers have to answer it
+		# while the driver keeps going -- which is the division of labour the bus
+		# exists for, and the first thing on the track that tests it.
+		#
+		# OFFSET BY HALF A STEP so a grave never shares a column with the shooter
+		# opposite it: two threats on the same line is one moment, and two threats
+		# a beat apart is two.
+		# ONE ROW IN FROM THE EDGE, because a grave is not one cell. It raises a
+		# PACK across its own neighbours, so one on the outermost row of a lane
+		# puts half its zombies over the void beyond it -- and `SegmentValidator`
+		# says so rather than letting it through, which is the oracle earning its
+		# keep on the first thing that ever needed it here.
+		var gz: int = (bottom - 1) if flip else (top + 1)
+		var gx: int = x2 + GAUNTLET_STEP / 2
+		if rows >= 3 and gx < seg.width - ends - 1 and _pack_fits(seg, gx, gz):
+			seg.contents[gz][gx] = GridConfig.Content.GRAVE
 		flip = not flip
 		x2 += GAUNTLET_STEP
 

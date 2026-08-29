@@ -152,10 +152,22 @@ const MODES := {
 		"pools": {
 			# What the track itself places.
 			"bus": RUNS, "gunners": RUNS, "mutable": RUNS,
+			# AND THE ZOMBIES, WHICH ARE THE ONLY THING ON THIS TRACK THAT CAN
+			# TOUCH YOU. Every other threat here shoots: a skirmisher's round
+			# launches a rider at 8.25 m/s, below BUS_EJECT_SPEED, so gunfire
+			# chips and nothing could throw anybody out of a bus. A zombie hits
+			# at 11.28, which is over the line -- so the rule that a body-check
+			# takes your seat finally has something to do it, and defending the
+			# bus becomes the passengers' job while the driver keeps going.
+			#
+			# `graves` rides with them because a zombie is not spawned, it is
+			# RAISED: the terrain places a grave and the pool wakes the pack. One
+			# without the other is a headstone nobody comes out of.
+			"zombies": RUNS, "graves": RUNS,
 			# Nothing else the bridge would have put there. A rusher on a race
 			# track is a bridge hazard that wandered into the wrong game.
-			"rushers": OFF, "zombies": OFF, "plinko": OFF, "deployables": OFF,
-			"stones": OFF, "spikes": OFF, "mounds": OFF, "graves": OFF,
+			"rushers": OFF, "plinko": OFF, "deployables": OFF,
+			"stones": OFF, "spikes": OFF, "mounds": OFF,
 			"merchants": OFF, "elevators": OFF,
 			# And everything that belongs to the party.
 			"hats": RUNS, "specials": RUNS, "hearts": RUNS, "bullets": RUNS,

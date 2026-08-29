@@ -239,6 +239,21 @@ function Get-ArchiveFaults {
 
     $expected = @{}
     foreach ($file in (Get-ChildItem -Path $SourceDir -File -Recurse)) {
+        # A LEFTOVER IS NEVER WANTED, EVEN THOUGH IT IS ON DISK. This is the line
+        # that makes the UNWANTED check below able to fire at all.
+        #
+        # Both defences against duplicate binaries used to bottom out in the same
+        # place: the removal step above. It uses -ErrorAction SilentlyContinue, so
+        # a leftover that is still locked when the sweep reaches it survives -- and
+        # then it is a real file in this directory, so it counts as EXPECTED, so
+        # the archive that carries it is "correct". Observed 2026-08-29: a 77.1 MB
+        # zip where every build that day was 39.5, with two copies of a 104 MB
+        # executable in it, and the build printed success.
+        #
+        # Deciding it here rather than trusting the delete means the verifier is
+        # independent of whether the delete worked, which is the whole point of
+        # having a verifier.
+        if ($file.Name -like '*~RF*.TMP') { continue }
         $rel = $file.FullName.Substring($SourceDir.Length).TrimStart('\', '/').Replace('\', '/')
         $expected[$rel] = $file.Length
     }
@@ -281,7 +296,15 @@ $packAttempts = 3
 $missing = @()
 for ($attempt = 1; $attempt -le $packAttempts; $attempt++) {
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Compress-Archive -Path "$windowsBuildDir\*" -DestinationPath $zipPath -Force
+    # AN EXPLICIT LIST, NOT A WILDCARD. `$windowsBuildDir\*` packs whatever is in
+    # the directory, which includes any export leftover the sweep above could not
+    # delete -- and a locked 104 MB leftover then doubles the artifact. Naming the
+    # files means a leftover we failed to remove is merely not packed, instead of
+    # being packed and then caught by the verifier as a build failure.
+    $toPack = Get-ChildItem -Path $windowsBuildDir -File -Recurse |
+        Where-Object { $_.Name -notlike '*~RF*.TMP' } |
+        ForEach-Object { $_.FullName }
+    Compress-Archive -Path $toPack -DestinationPath $zipPath -Force
     $missing = Get-ArchiveFaults -SourceDir $windowsBuildDir -ZipPath $zipPath
     if ($missing.Count -eq 0) { break }
 

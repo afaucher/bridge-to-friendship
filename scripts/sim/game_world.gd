@@ -1563,6 +1563,20 @@ func _check_wipe() -> void:
 func _restart_at_checkpoint() -> void:
 	wipes += 1
 	_returning.clear()
+	# AND THE BUS GOES WITH THEM -- reported 2026-08-29 as "you lose, respawn in
+	# the lobby, and the bus doesn't spawn again".
+	#
+	# A wipe rewinds the party and the bus does not follow, so it is left wherever
+	# the round ended: up the bridge, or on ground that is about to be re-cut.
+	# `_ensure_bus` then sees a perfectly valid bus and declines to build another,
+	# so the mode's only piece of content is stranded somewhere nobody is and the
+	# party stands in an empty room with no way to ask for a new one.
+	#
+	# Same rule as the rushers and the zombies two lines down, and the same reason:
+	# a wipe rewinds the party, so what the round left behind does not survive it.
+	# It is more acute here, because a rusher left standing is a hazard and a bus
+	# left standing is the entire mode.
+	_clear_buses()
 	for ball in _balls:
 		if is_instance_valid(ball):
 			ball.queue_free()
@@ -4320,6 +4334,19 @@ func _plant_riders(bus) -> void:
 	for i in bus.riders.size():
 		var body: Node = players.get(int(bus.riders[i]))
 		if body == null or not is_instance_valid(body):
+			continue
+		# A BODY THE DRONE HAS IS NOT IN THE WORLD, so it does not have a seat
+		# either. The step loop has said this since M5 and skips such a body
+		# entirely; this pass never got the memo, so a rider who went over the
+		# edge was put on the drone AND posed back onto the bus on the same tick,
+		# with the rescue and the seat pulling in opposite directions.
+		#
+		# Dropped from the roster rather than merely skipped: they are being
+		# carried somewhere else, and a seat held open by somebody who is not in
+		# the world is a seat that renumbers under the people behind them when
+		# they come back.
+		if _returning.has(int(bus.riders[i])):
+			thrown.append(int(bus.riders[i]))
 			continue
 		# SHOVED OUT. A hard enough hit takes your seat away, and the tumble it
 		# started then carries you off the bus like anything else.
