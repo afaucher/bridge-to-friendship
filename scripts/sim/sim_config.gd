@@ -1354,6 +1354,11 @@ const CALL_SECONDS := 2.5
 # screaming" is never "because they are leaning on Q".
 const CALL_COOLDOWN := 5.0
 
+# HOW CLOSE YOU HAVE TO BE TO BOARD, measured to the bus's DECK rather than to
+# its origin -- a bus grows as it fills, and a reach measured from the middle
+# would quietly become unboardable from the back the moment it had passengers.
+const BUS_REACH := 2.2
+
 # --- Getting yourself out -----------------------------------------------------
 #
 # THE SELF-REVIVE MINIGAME. A marker sweeps a bar; press USE while it is inside

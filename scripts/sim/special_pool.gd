@@ -105,6 +105,12 @@ static func _scaled(base: int) -> int:
 		return 0
 	return maxi(1, int(round(float(base) * DebugSettings.tuned("ammo_multiplier", 1.0))))
 
+# WHAT A FRESH ONE OF THESE CARRIES. Public because the bus tops a rider's weapon
+# up to it every tick -- see GameWorld._process_buses, where "unlimited while
+# aboard" and "you leave with a full one" are the same line rather than two rules.
+static func full_ammo(kind: int) -> int:
+	return _scaled(_base_ammo(kind))
+
 static func _base_ammo(kind: int) -> int:
 	match kind:
 		SpecialBody.Kind.MACHINE_GUN:

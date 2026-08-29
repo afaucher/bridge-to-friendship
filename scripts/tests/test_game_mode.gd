@@ -38,6 +38,15 @@ const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
+# POOLS THAT BELONG TO A MODE RATHER THAN TO THE GAME. Base is expected NOT to
+# run these, and every entry is a decision somebody has to come here and make --
+# which is the point of listing them rather than loosening the assertion.
+#
+# `bus` is the blank zone's own content and has never existed on the bridge, so
+# base declaring it OFF is not base being changed. The claim below is still that
+# adding a mode did not quietly switch off something the ordinary game HAS.
+const MODE_ONLY := ["bus"]
+
 var world: Node3D = null
 var done := false
 
@@ -131,8 +140,14 @@ func _every_pool_is_answered() -> void:
 
 	# AND THE POLICY IS READABLE PER POOL, which is what a subsystem will ask.
 	for pool in GameMode.POOLS:
+		if MODE_ONLY.has(pool):
+			check(not GameMode.runs(GameMode.BASE, pool),
+				"base does NOT run '%s', which belongs to a mode" % pool)
+			continue
 		check(GameMode.runs(GameMode.BASE, pool),
-			"base runs '%s' -- phase 1 must look like nothing happened" % pool)
+			"base runs '%s' -- phase 1 must look like nothing happened, and the "
+				% pool
+			+ "only pools it may skip are ones the ordinary game never had")
 
 # --- 4 and 5. The wire --------------------------------------------------------
 

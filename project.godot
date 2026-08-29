@@ -178,6 +178,7 @@ system_exit={
 ; below, where a dash into a stone pushes it a cell.
 3d_physics/layer_10="merchant"
 3d_physics/layer_11="mode_post"
+3d_physics/layer_12="bus"
 
 [physics]
 

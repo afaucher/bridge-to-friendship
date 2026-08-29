@@ -55,7 +55,7 @@ const POOLS := [
 	"rushers", "gunners", "zombies", "plinko", "hats", "specials",
 	"deployables", "stones", "elevators", "spikes", "mutable", "mounds",
 	"graves", "merchants", "hearts", "bullets", "leash", "checkpoint",
-	"drone", "rescue",
+	"drone", "rescue", "bus",
 ]
 
 # The three answers a mode may give about a pool. RUNS_DIFFERENTLY is not
@@ -85,6 +85,10 @@ const MODES := {
 			"elevators": RUNS, "spikes": RUNS, "mutable": RUNS, "mounds": RUNS,
 			"graves": RUNS, "merchants": RUNS, "hearts": RUNS, "bullets": RUNS,
 			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
+			# NO BUS ON THE ORDINARY BRIDGE. It is the blank zone's whole content,
+			# and a vehicle on a bridge full of pillars and holes is a different
+			# feature with a different set of problems.
+			"bus": OFF,
 		},
 	},
 
@@ -117,6 +121,9 @@ const MODES := {
 			"hats": RUNS, "specials": RUNS, "elevators": RUNS, "hearts": RUNS,
 			"bullets": RUNS, "leash": RUNS, "checkpoint": RUNS, "drone": RUNS,
 			"rescue": RUNS,
+			# THE ONE THING IN IT. An empty room is not a minigame; the bus is
+			# what the emptiness is FOR.
+			"bus": RUNS,
 		},
 	},
 }

@@ -45,6 +45,7 @@ const GameMode = preload("res://scripts/sim/game_mode.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const HatBody = preload("res://scripts/sim/hat_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 
 const WIDTH := 21
@@ -243,12 +244,37 @@ func _the_level_goes_and_the_party_stays() -> void:
 	check(rusher_gone,
 		"a rusher standing past the cut goes with the ground that put it there -- "
 		+ "left alone it would hang in the void over the rebuilt corridor")
-	check(hat_kept,
-		"and a HAT lying on the same ground is NOT taken. A hat is the score of "
-		+ "this game and there is no undo for one, so a mode change that ate it "
-		+ "would be unrecoverable and would read as a bug rather than as a rule")
-	check(world._hats.by_id(hat_id) != null,
-		"and it is still in the pool, not merely left un-freed")
+	# A LOOSE HAT ON THAT SAME GROUND GOES TOO, and this is the half the first
+	# version got wrong. Hats live in the WORLD rather than under the grid, so
+	# freeing a segment left every pickup the discarded corridor had placed hanging
+	# exactly where it was -- at the height that corridor had climbed to. Reported
+	# from play as "the items are all placed in the sky, farther and farther up the
+	# round", which is exactly the shape of it.
+	#
+	# SAFE BECAUSE PAST THE CUT IS GROUND NOBODY HAS STOOD ON: the front wall is at
+	# the lobby's far band while a choice is being made, so anything loose out
+	# there was placed by the level and has never been touched by a player.
+	check(not hat_kept,
+		"a LOOSE hat past the cut goes with the ground that placed it -- it was "
+		+ "never anybody's, and left behind it hangs in the sky over the corridor "
+		+ "that replaces it")
+	eq(world._hats.by_id(hat_id), null, "and it leaves the pool with it")
+
+	# ...BUT A HAT SOMEBODY IS WEARING IS NEVER TOUCHED, wherever they are standing.
+	# That is the half that was always right and is the one worth protecting: a hat
+	# is the score of this game and there is no undo for one.
+	world._spawn_player(1, 0)
+	var wearer: Node = world.player_body(1)
+	if check(wearer != null, "there is somebody to wear one"):
+		wearer.global_position = past
+		var worn: Node = world._hats.spawn_loose(past)
+		var worn_id: int = int(worn.hat_id)
+		world._wear_hat(worn_id, 1, 0)
+		check(worn.mode == HatBody.Mode.WORN, "and they are wearing it")
+		world._discard_level_entities_past(keep)
+		check(world._hats.by_id(worn_id) != null,
+			"a WORN hat past the cut is kept -- it belongs to the person carrying "
+			+ "it, not to the ground they happen to be standing over")
 
 	# ...AND SO IS THE PLAYER, the other half of the same line and the one whose
 	# failure would be worst.

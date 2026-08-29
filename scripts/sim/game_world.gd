@@ -49,6 +49,7 @@ const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
 const NetTelemetry = preload("res://scripts/net/net_telemetry.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
+const BusBody = preload("res://scripts/sim/bus_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 
 # OFF UNLESS A REAL SESSION TURNS IT ON. Set by main.gd when a game actually
@@ -263,6 +264,9 @@ var _next_gunner_id: int = 0
 # Thrown grenades, and the land mine when it lands. A short list on purpose: the
 # fuse is what bounds it, so there is no cap and no cull-the-oldest rule the way
 # there is for balls and loose specials.
+var _buses: Array = []
+var _buses_root: Node3D = null
+
 var _deployables: Array = []
 var _deployables_root: Node3D = null
 var _next_deployable_id: int = 0
@@ -690,7 +694,29 @@ func _host_tick() -> void:
 		var restore_mask: int = body.collision_mask
 		if carriers.has(body):
 			body.collision_mask = restore_mask & ~PLAYERS_LAYER_BIT
-		body.step(inp[PlayerInput.MOVE], inp[PlayerInput.ACTIONS], PlayerInput.aim_of(inp),
+		# E BOARDS AND E LEAVES. Read here, where every other action bit is read,
+		# and edge-triggered at the input like the dash and the call -- a level bit
+		# would board and leave on alternate ticks for as long as the key is held.
+		#
+		# HOST ONLY. Boarding changes who is driving, which is a decision; a client
+		# presses and finds out by being posed onto a seat.
+		if is_host and int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_USE != 0:
+			_try_board_or_leave(int(peer), body)
+		# A RIDER'S OWN MOVEMENT IS NOT THEIRS THIS TICK. The driver's stick is the
+		# wheel and a passenger is planted, so neither of them walks -- and letting
+		# the step run first and overwriting it afterwards would have every rider
+		# fighting the pose, with `corrections` climbing on every client.
+		var aboard: bool = bus_carrying(int(peer)) != null
+		var move: Vector2 = Vector2.ZERO if aboard else inp[PlayerInput.MOVE]
+		var actions: int = int(inp[PlayerInput.ACTIONS])
+		# AND THE DRIVER CANNOT SHOOT. Asked of the seat rather than of a flag on
+		# the player: the driver is defined as riders[0], so promoting somebody by
+		# stepping off hands over the trigger in the same instant it hands over the
+		# wheel, with nothing to keep in step.
+		var riding: Node = bus_carrying(int(peer))
+		if riding != null and riding.driver() == int(peer):
+			actions &= ~(SimConfig.ACTION_SPECIAL | SimConfig.ACTION_SPECIAL_HELD)
+		body.step(move, actions, PlayerInput.aim_of(inp),
 			PlayerInput.point_of(inp))
 		body.collision_mask = restore_mask
 
@@ -710,6 +736,11 @@ func _host_tick() -> void:
 	# biggest way to put somebody off the bridge, and the consequence should land on
 	# the tick that caused it.
 	_process_deployables()
+	# BEFORE THE RESCUE PASS, like the rushers and the blasts above it, and for a
+	# related reason: a bus carries people over ground, and if it drops them off
+	# the world the rescue pass should notice on the tick it happened rather than
+	# the next one.
+	_process_buses()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -1376,13 +1407,22 @@ func _selection_shown(mode: int) -> void:
 #   LEVEL -- rushers, gunners, zombies, plinko balls. They were put there by the
 #   ground they are standing on. When it goes, they go.
 #
-#   PARTY -- the players, their worn and dropped HATS, their specials, their
-#   deployables. **These are never touched, whatever ground they are over.** A hat
-#   is the score of this game; a mode change that ate one because it happened to
-#   be lying past the cut would be indistinguishable from a bug, and unrecoverable
-#   -- there is no undo for a hat. That is also why the cut is only ever taken
-#   PAST the round in play: the party and everything they have dropped is behind
-#   it by construction, standing in a lobby.
+#   PARTY -- the players, and anything they are WEARING or HOLDING. These are
+#   never touched, whatever ground they are over. A hat is the score of this game
+#   and there is no undo for one.
+#
+#   LEVEL, AND THIS IS THE PART THAT WAS WRONG -- hats and specials lying LOOSE
+#   past the cut. They live in the world rather than under the grid, so freeing a
+#   segment left them hanging exactly where they were: a mode change orphaned every
+#   pickup the discarded corridor had placed, at the height that corridor had
+#   climbed to. Reported 2026-08-25 as "the items are all placed in the sky,
+#   farther and farther up the round", which is precisely the shape of it.
+#
+# PAST THE CUT IS GROUND NOBODY HAS EVER STOOD ON, which is what makes the
+# distinction safe: the front wall stands at the lobby's far band while a choice is
+# being made, so anything loose out there was put there by the level and has never
+# been picked up, dropped or thrown by anybody. Behind the cut nothing is touched
+# at all, so a hat a player really did drop is never at risk.
 #
 # The asymmetry is worth stating rather than leaving to be inferred from which
 # node happens to be parented where, which is what it rested on before.
@@ -1403,6 +1443,20 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 			if grid.cell_of_world(body.global_position).y >= cut_row:
 				pool.remove_at(i)
 				body.queue_free()
+
+	# AND THE PICKUPS THE DISCARDED CORRIDOR PUT THERE. Loose only -- a hat on a
+	# head and a gun in a hand belong to the person carrying them and are never at
+	# risk, wherever they are standing.
+	for hat in _hats.all():
+		if not is_instance_valid(hat) or hat.mode == HatBody.Mode.WORN:
+			continue
+		if grid.cell_of_world(hat.global_position).y >= cut_row:
+			_hats.destroy(hat)
+	for weapon in _specials.all():
+		if not is_instance_valid(weapon) or int(weapon.mode) == SpecialBody.Mode.HELD:
+			continue
+		if grid.cell_of_world(weapon.global_position).y >= cut_row:
+			_specials.destroy(weapon)
 
 func _extend_run() -> void:
 	# Only a world that ASSEMBLED its level may extend it. A world pinned to an
@@ -3707,6 +3761,11 @@ func _resolve_round_hit(target, direction: Vector3, at: Vector3,
 	# answers now lives on the thing being hit, next to the reason for it.
 	if not target.has_method("receive_hit"):
 		return                    # deck, parapet, a shooter's pillar: cover works
+	# TWO PASSENGERS DO NOT SHOOT EACH OTHER. Bullets only -- a rocket still goes
+	# off and still catches everyone standing in it, the shooter included. See
+	# _riders_shielded_from.
+	if _riders_shielded_from(shooter, target):
+		return
 	# A HAT ON A HEAD IS ITS OWN TARGET, and the round is spent on it rather than
 	# on the person under it. Asked of the hat rather than decided here:
 	# `takes_rounds` lives on HatBody next to the reason for it, which is the rule
@@ -4104,6 +4163,179 @@ func _sync_open_cells(layout: PackedInt32Array) -> void:
 # no verbs, a countdown, a teammate who can end it early, and the drone if nobody
 # does. Handled together on purpose: two near-identical implementations would
 # drift apart, and every rule that applies to one applies to the other.
+# THE BUS. M25 phase 3.
+#
+# HOST ONLY, like every other decision. A client is told where the bus is and who
+# is on it; it never drives, because it has no input for a vehicle somebody else
+# is steering and a client that integrated its own steering would be predicting a
+# thing it cannot see the input for.
+#
+# GATED ON THE MODE, which is the first real customer of the pool policy that M25
+# phase 1 built. A bus on the ordinary bridge would be a vehicle among pillars and
+# holes -- a different feature with a different set of problems -- so BASE declares
+# it OFF and the blank zone declares it ON, and this line is the whole enforcement.
+func _process_buses() -> void:
+	if not is_host:
+		return
+	# A POOL THAT IS OFF DOES NOT MERELY STOP BUILDING -- IT CLEARS UP.
+	#
+	# The first version returned early and left any bus that already existed
+	# sitting there, so driving one into the lobby that ends a blank round would
+	# have parked a vehicle on the ordinary bridge for the rest of the run: frozen,
+	# unboardable, and in the way. That is the "it quietly runs" failure this
+	# milestone is built around, arriving from the other direction -- a pool told
+	# not to run kept its things.
+	#
+	# Caught by the test asserting `_buses.size() == 0` in base mode and finding
+	# one, which is exactly the presence check the plan says to reach for.
+	if not mode_runs("bus"):
+		_clear_buses()
+		return
+	_ensure_bus()
+	for bus in _buses:
+		if not is_instance_valid(bus):
+			continue
+		_drive_bus(bus)
+		_plant_riders(bus)
+
+# EVERY BUS, GONE, AND EVERYBODY OFF IT FIRST. Order matters: a rider is posed by
+# the bus, so freeing the vehicle without emptying it would leave players marked
+# aboard something that no longer exists -- and `bus_carrying` would then hand out
+# a freed node, which is the dangling reference the corridor teardown goes to such
+# lengths to avoid.
+func _clear_buses() -> void:
+	for bus in _buses:
+		if not is_instance_valid(bus):
+			continue
+		for peer in bus.riders.duplicate():
+			var body: Node = players.get(int(peer))
+			if body != null and is_instance_valid(body):
+				body.global_position = bus.global_position + Vector3(0.0, 1.2, 0.0)
+				body.velocity = Vector3.ZERO
+		bus.riders.clear()
+		bus.queue_free()
+	_buses.clear()
+
+# ONE BUS PER BLANK ZONE, spawned where the party will meet it. Built lazily
+# rather than at load, because the zone is generated speculatively and may be
+# discarded before anybody sees it -- and a bus built onto ground that is about to
+# be cut is the orphan the teardown exists to prevent.
+func _ensure_bus() -> void:
+	for bus in _buses:
+		if is_instance_valid(bus):
+			return
+	if grid == null or players.is_empty():
+		return
+	if _buses_root == null:
+		_buses_root = Node3D.new()
+		_buses_root.name = "Buses"
+		add_child(_buses_root)
+	_buses.clear()
+	var bus = BusBody.new()
+	_buses_root.add_child(bus)
+	bus.name = "Bus"
+	# AHEAD OF THE PARTY, on the centre line, far enough that it is something you
+	# walk TO rather than something you are standing in.
+	var front: Vector3 = _front_position()
+	bus.global_position = front + Vector3(0.0, 0.6, -8.0)
+	_buses.append(bus)
+
+# THE DRIVER'S STICK IS THE WHEEL. Read from the same input every other decision
+# is read from, so a client's dash and a client's steering arrive by the same
+# route and nothing about the bus needs a channel of its own.
+func _drive_bus(bus) -> void:
+	var peer: int = bus.driver()
+	var throttle := 0.0
+	var steer := 0.0
+	if peer != 0:
+		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
+		var move: Vector2 = inp[PlayerInput.MOVE]
+		# -y is forward, matching every other reader of this vector.
+		throttle = -move.y
+		steer = move.x
+	bus.drive(throttle, steer, SimConfig.TICK_DELTA)
+
+# RIDERS ARE POSED, NOT CARRIED, and this is the line that makes it true. It runs
+# AFTER every body has stepped, so whatever their own movement did this tick is
+# overwritten -- which is what "planted" means, and what keeps a rider off the
+# carrier/rider tangle CLAUDE.md opens with entirely.
+func _plant_riders(bus) -> void:
+	for i in bus.riders.size():
+		var body: Node = players.get(int(bus.riders[i]))
+		if body == null or not is_instance_valid(body):
+			continue
+		body.global_position = bus.slot_world(i) + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0)
+		body.velocity = Vector3.ZERO
+		body.grounded = true
+		# FACING THE WAY THE BUS IS GOING for the driver, and left alone for
+		# everybody else: a passenger may look wherever they are shooting.
+		if i == 0:
+			body.facing = bus.heading
+		# UNLIMITED AMMO WHILE ABOARD, AND YOU LEAVE WITH A FULL ONE -- the same
+		# line, rather than two rules that have to agree. Topping the weapon up
+		# every tick means there is no "unlimited" flag to clear on the way out and
+		# nothing to leak if somebody steps off in an unexpected way, which is the
+		# declare-do-not-write discipline this milestone is built on.
+		var weapon: Node = _specials.held_by(int(bus.riders[i]))
+		if weapon != null and is_instance_valid(weapon):
+			weapon.ammo = SpecialPool.full_ammo(int(weapon.kind))
+
+# --- Boarding ------------------------------------------------------------------
+
+# WHICH BUS THIS PLAYER IS ON, or null. One question, asked in four places.
+func bus_carrying(peer: int) -> Node:
+	for bus in _buses:
+		if is_instance_valid(bus) and bus.is_rider(peer):
+			return bus
+	return null
+
+# E GETS YOU ON, AND E GETS YOU OFF. The same bit the self-revive uses, and the
+# two cannot collide: a self-revive only exists while `is_awaiting_rescue()`, and
+# somebody hanging off a ledge is not standing beside a bus.
+func _try_board_or_leave(peer: int, body: Node) -> void:
+	var riding: Node = bus_carrying(peer)
+	if riding != null:
+		riding.leave(peer)
+		# STEPPED OFF TO THE SIDE, not dropped where they stood -- a rider left on
+		# the deck would be boarded again by the next press, and one left inside
+		# the body would be depenetrated somewhere surprising.
+		var side: Vector3 = riding.global_transform.basis.x * (BusBody.WIDTH * 0.5 + 1.0)
+		body.global_position = riding.global_position + side + Vector3(0.0, 1.0, 0.0)
+		body.velocity = Vector3.ZERO
+		return
+	var nearest: Node = null
+	var best: float = SimConfig.BUS_REACH
+	for bus in _buses:
+		if not is_instance_valid(bus):
+			continue
+		var d: float = bus.distance_to_deck(body.global_position)
+		if d < best:
+			best = d
+			nearest = bus
+	if nearest != null:
+		nearest.board(peer)
+
+# --- The rule about shooting each other ----------------------------------------
+
+# NOBODY SHOOTS A PASSENGER, and nobody shoots the bus.
+#
+# BULLETS ONLY. A rocket still goes off and still catches whoever is standing in
+# it, including the person who fired it -- which is the point: the bus is not a
+# safe room, it is a place where you cannot casually machine-gun the person in
+# front of you. Blowing yourself and your friends up remains entirely available.
+#
+# ASKED OF BOTH ENDS. A rider shooting a rider is refused; a rider shooting
+# somebody on the ground is not, and neither is somebody on the ground shooting a
+# rider -- being aboard is not cover.
+func _riders_shielded_from(shooter: int, target: Node) -> bool:
+	if shooter <= 0 or target == null or not ("peer_id" in target):
+		return false
+	var victim: int = int(target.peer_id)
+	if victim == shooter:
+		return false
+	var on: Node = bus_carrying(shooter)
+	return on != null and on.is_rider(victim)
+
 func _process_rescue() -> void:
 	for peer_key in players.keys():
 		var peer: int = int(peer_key)

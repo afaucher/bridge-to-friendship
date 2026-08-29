@@ -46,6 +46,15 @@ const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 const WIDTH := 21
 const SEEDS := 40
 
+# POOLS THAT BELONG TO A MODE RATHER THAN TO THE GAME. Base is expected NOT to
+# run these, and every entry is a decision somebody has to come here and make --
+# which is the point of listing them rather than loosening the assertion.
+#
+# `bus` is the blank zone's own content and has never existed on the bridge, so
+# base declaring it OFF is not base being changed. The claim below is still that
+# adding a mode did not quietly switch off something the ordinary game HAS.
+const MODE_ONLY := ["bus"]
+
 var world: Node3D = null
 var done := false
 
@@ -328,6 +337,8 @@ func _the_pools_it_turns_off_do_not_run() -> void:
 	world.round_machine.state = RoundMachine.State.LOBBY
 	eq(world.current_mode(), GameMode.BASE, "and its lobby is base")
 	for pool in GameMode.POOLS:
+		if MODE_ONLY.has(pool):
+			continue
 		check(world.mode_runs(pool), "so '%s' runs again in the lobby" % pool)
 
 # --- 6. Base is untouched -----------------------------------------------------
@@ -339,6 +350,8 @@ func _base_is_unchanged() -> void:
 	world.run_modes = [GameMode.BASE]
 	world.round_machine.state = RoundMachine.State.RUNNING
 	for pool in GameMode.POOLS:
+		if MODE_ONLY.has(pool):
+			continue
 		check(world.mode_runs(pool),
 			"base still runs '%s' with a second mode in the registry" % pool)
 	eq(GameMode.terrain(GameMode.BASE), GameMode.TERRAIN_SECTIONS,
