@@ -25,8 +25,11 @@ extends RefCounted
 # tests back to back and somebody reads the diff. A mode that leaked would do it
 # DURING PLAY, on one machine, with nobody watching.
 
+const GridConfig = preload("res://scripts/grid/grid_config.gd")
+
 const BASE := 0
 const BLANK := 1
+const TRACK := 2
 
 # WHICH GENERATOR FILLS A MODE'S SECTIONS. Declared, like everything else here --
 # BridgeGrid reads it and calls the matching function, so a mode never reaches
@@ -37,6 +40,7 @@ const BLANK := 1
 # "this mode makes its own ground".
 const TERRAIN_SECTIONS := "sections"      # the ordinary generated bridge
 const TERRAIN_BLANK := "blank"            # flat, empty, undressed
+const TERRAIN_TRACK := "track"            # the serpentine bus route
 
 # EVERY POOL THAT TICKS, NAMED. A mode owes each of these an answer, and the point
 # of the list is that the answers are explicit rather than implied by whatever
@@ -126,6 +130,54 @@ const MODES := {
 			"bus": RUNS,
 		},
 	},
+
+	# THE BUS ROUTE. A serpentine carved out of the same canvas the blank zone
+	# leaves whole: full-width lanes joined at alternating ends, so the driving is
+	# lateral and the corners are where the rows advance. See SegmentGen.bus_track.
+	#
+	# EVERY POOL THIS RUNS IS ONE ITS TERRAIN PLACES CONTENT FOR, and that is not a
+	# coincidence -- it is the subsystem x mode grid finally doing its job. A
+	# gauntlet lane writes SKIRMISHER glyphs and a strip lane writes TIMED ones, so
+	# `gunners` and `mutable` MUST run here or the track would be drawn full of
+	# things that never move. That is the silence this table exists to prevent,
+	# arriving from the direction nobody watches: not a pool running where it
+	# should not, but content placed for a pool that is switched off.
+	#
+	# `test_game_mode` now checks that correspondence for every mode rather than
+	# leaving it to whoever adds the next lane flavour.
+	TRACK: {
+		"name": "Bus route",
+		"overrides": {},
+		"terrain": TERRAIN_TRACK,
+		"pools": {
+			# What the track itself places.
+			"bus": RUNS, "gunners": RUNS, "mutable": RUNS,
+			# Nothing else the bridge would have put there. A rusher on a race
+			# track is a bridge hazard that wandered into the wrong game.
+			"rushers": OFF, "zombies": OFF, "plinko": OFF, "deployables": OFF,
+			"stones": OFF, "spikes": OFF, "mounds": OFF, "graves": OFF,
+			"merchants": OFF, "elevators": OFF,
+			# And everything that belongs to the party.
+			"hats": RUNS, "specials": RUNS, "hearts": RUNS, "bullets": RUNS,
+			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
+		},
+	},
+}
+
+# WHAT CONTENT A MODE'S TERRAIN PLACES, and which pool has to be running for it to
+# mean anything. Read by the test that checks the two agree -- see the note on
+# TRACK above.
+const CONTENT_POOLS := {
+	GridConfig.Content.SKIRMISHER: "gunners",
+	GridConfig.Content.TURRET: "gunners",
+	GridConfig.Content.SHOOTER: "plinko",
+	GridConfig.Content.TIMED: "mutable",
+	GridConfig.Content.CRUMBLE: "mutable",
+	GridConfig.Content.MOUND: "rushers",
+	GridConfig.Content.GRAVE: "zombies",
+	GridConfig.Content.SPIKES: "spikes",
+	GridConfig.Content.MERCHANT: "merchants",
+	GridConfig.Content.ELEVATOR: "elevators",
 }
 
 static func exists(mode: int) -> bool:

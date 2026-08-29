@@ -313,6 +313,8 @@ func _section_for_mode(mode: int, seed_value: int, i: int):
 	match GameMode.terrain(mode):
 		GameMode.TERRAIN_BLANK:
 			return SegmentGen.blank_zone(width, seed_value, i)
+		GameMode.TERRAIN_TRACK:
+			return SegmentGen.bus_track(width, seed_value, i)
 		_:
 			return SegmentGen.section(width, seed_value, i)
 

@@ -4192,11 +4192,29 @@ func _process_buses() -> void:
 		_clear_buses()
 		return
 	_ensure_bus()
+	var lost: Array = []
 	for bus in _buses:
 		if not is_instance_valid(bus):
 			continue
+		# A BUS THAT HAS LEFT THE WORLD TAKES ITS PASSENGERS WITH IT, so the cull
+		# has to come before the planting rather than after. Everything else in
+		# this game that can fall is culled by its own `is_spent()`; the bus is
+		# driven by the world, so the world does it -- and it must let the riders
+		# GO rather than free them with it. Released, they are ordinary falling
+		# bodies and the existing FALL_KILL_Y path drones them back, which is the
+		# behaviour a player already understands. `_ensure_bus` builds the next
+		# one on the following tick, on solid ground by the rule above.
+		if bus.global_position.y < SimConfig.FALL_KILL_Y:
+			lost.append(bus)
+			continue
 		_drive_bus(bus)
 		_plant_riders(bus)
+	for bus in lost:
+		# Emptied, not carried down. A rider released here is airborne and falling,
+		# which is a state the game already has an answer for.
+		bus.riders.clear()
+		_buses.erase(bus)
+		bus.queue_free()
 
 # EVERY BUS, GONE, AND EVERYBODY OFF IT FIRST. Order matters: a rider is posed by
 # the bus, so freeing the vehicle without emptying it would leave players marked
@@ -4236,9 +4254,33 @@ func _ensure_bus() -> void:
 	bus.name = "Bus"
 	# AHEAD OF THE PARTY, on the centre line, far enough that it is something you
 	# walk TO rather than something you are standing in.
-	var front: Vector3 = _front_position()
-	bus.global_position = front + Vector3(0.0, 0.6, -8.0)
+	bus.global_position = _bus_spawn_point()
 	_buses.append(bus)
+
+# WHERE A BUS CAN BE PUT DOWN. A fixed offset ahead of the party was right while
+# the only mode with a bus in it was a solid plane -- there was nowhere it could
+# land that was not road. The track is mostly VOID, so the same offset drops the
+# bus into a hole about half the time, and a bus in a hole does not fail: it
+# falls, silently, and the party stands on a race track with no vehicle.
+#
+# THE CHOICE ITSELF IS A PURE FUNCTION ON `BusBody`, taking the grid and the row
+# to start from, so it can be swept over real generated track without a world, a
+# party or a physics frame around it. What is left here is only the two things
+# that genuinely need the world: where the party is, and what to do when there is
+# no answer at all.
+func _bus_spawn_point() -> Vector3:
+	var front: Vector3 = _front_position()
+	if grid == null:
+		return front + Vector3(0.0, 0.6, -8.0)
+	var cell: Vector2i = BusBody.spawn_cell(grid, grid.cell_of_world(front))
+	if cell.x < 0:
+		# NO SOLID CELL IN TWENTY ROWS. Not reachable on anything the generator
+		# produces -- every track row has road in it -- but a mode added later
+		# could, and a bus dropped in a void is the silent failure this whole
+		# function exists to remove. Put it where the party is standing instead:
+		# awkward, and visible.
+		return front + Vector3(0.0, SimConfig.BUS_SPAWN_LIFT, 0.0)
+	return grid.cell_surface_world(cell) + Vector3(0.0, SimConfig.BUS_SPAWN_LIFT, 0.0)
 
 # THE DRIVER'S STICK IS THE WHEEL. Read from the same input every other decision
 # is read from, so a client's dash and a client's steering arrive by the same

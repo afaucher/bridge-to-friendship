@@ -77,6 +77,7 @@ func _physics_process(_delta: float) -> void:
 	_ammo_aboard_and_on_the_way_out()
 	_the_driver_cannot_shoot()
 	_passengers_do_not_shoot_each_other()
+	_a_bus_that_falls_is_let_go_of()
 	finish()
 
 # --- 1. Where it is allowed to exist ------------------------------------------
@@ -344,6 +345,59 @@ func _passengers_do_not_shoot_each_other() -> void:
 # What the step loop would hand this player, with the seat rule applied. Mirrors
 # the two lines in _host_tick rather than calling them, because the loop needs a
 # whole tick and this phase is about one bit.
+# --- 9. Off the edge ----------------------------------------------------------
+#
+# EVERY OTHER FALLING THING IN THIS GAME CULLS ITSELF -- a bullet, a hat, a
+# rusher, a plinko ball all answer `is_spent()` with a check against FALL_KILL_Y.
+# The bus does not, because the bus is driven by the world rather than by itself,
+# so the world has to do it: without this a bus driven off the edge falls for
+# ever, and its riders are POSED to it every tick, so they fall with it and never
+# reach the fall-kill path that would drone them back. The party loses the
+# vehicle and the people on it, silently, and the only symptom is a track with
+# nobody on it.
+#
+# The rule is that the bus is emptied rather than the riders being freed with it.
+# Released mid-air they are ordinary falling bodies, and the game already has an
+# answer for one of those.
+#
+# WHAT MAKES THIS TESTABLE AT ALL is that it is a PRESENCE claim on both sides:
+# the old bus is gone AND a new one exists. Asserting only the first passes just
+# as well if the pool broke entirely.
+func _a_bus_that_falls_is_let_go_of() -> void:
+	world.run_modes = [GameMode.BLANK]
+	world._process_buses()
+	if not check(world._buses.size() > 0, "there is a bus to push off the edge"):
+		return
+	var doomed = world._buses[0]
+	doomed.riders.clear()
+	doomed.board(1)
+	var body: Node = world.players.get(1)
+	eq(world.bus_carrying(1), doomed, "with somebody aboard it")
+
+	# BELOW THE LINE EVERYTHING ELSE IS CULLED AT. Placed rather than driven off
+	# the edge, because the claim is about what happens at that depth and driving
+	# there would take four hundred ticks of falling to say the same thing.
+	doomed.global_position = Vector3(doomed.global_position.x, SimConfig.FALL_KILL_Y - 1.0,
+		doomed.global_position.z)
+	world._process_buses()
+
+	check(not is_instance_valid(doomed) or doomed.is_queued_for_deletion(),
+		"a bus below FALL_KILL_Y is culled -- nothing else in this game falls for "
+		+ "ever, and a vehicle is not the exception")
+	eq(world.bus_carrying(1), null,
+		"and it does not take its passenger with it: a rider is let GO, so it "
+		+ "becomes an ordinary falling body and the existing rescue path has it")
+	if body != null and is_instance_valid(body):
+		check(body.global_position.y < 0.0,
+			"who is where the bus left them (y %.1f), falling" % body.global_position.y)
+
+	# AND THE PARTY IS NOT LEFT WITHOUT ONE. `_ensure_bus` builds the next on the
+	# following tick; if it did not, driving off the edge once would end the mode.
+	world._process_buses()
+	check(world._buses.size() > 0, "a replacement is built")
+	if world._buses.size() > 0:
+		check(world._buses[0] != doomed, "and it is a new one, not the wreck")
+
 func _actions_after_seating(peer: int) -> int:
 	var actions: int = SimConfig.ACTION_SPECIAL | SimConfig.ACTION_SPECIAL_HELD
 	var riding: Node = world.bus_carrying(peer)

@@ -162,6 +162,31 @@ func _rebuild() -> void:
 func is_rider(peer: int) -> bool:
 	return riders.has(peer)
 
+# THE CELL TO PUT A BUS DOWN IN, searched forward from `from` along the rows.
+#
+# Columns are tried by DISTANCE FROM THE CENTRE rather than left to right, which
+# is the whole reason this is a search and not a clamp: on a serpentine the first
+# solid cell in a row is against whichever rail that row's lane happens to start
+# at, and a bus parked on the rail of a lane the party is not in is a bus nobody
+# finds. Nearest-to-centre lands it on the road the party will actually drive.
+#
+# Returns (-1, -1) when the whole span is void, so the caller decides what an
+# impossible placement means rather than being handed a plausible wrong cell. A
+# clamp is the wrong answer to an out-of-range index anywhere a body is placed.
+static func spawn_cell(grid, from: Vector2i) -> Vector2i:
+	if grid == null:
+		return Vector2i(-1, -1)
+	var mid: int = grid.width / 2
+	for ahead in range(SimConfig.BUS_SPAWN_NEAR, SimConfig.BUS_SPAWN_FAR):
+		for step in grid.width:
+			var x: int = mid + (step + 1) / 2 * (1 if step % 2 == 0 else -1)
+			if x < 0 or x >= grid.width:
+				continue
+			var cell := Vector2i(x, from.y + ahead)
+			if grid.is_solid(cell):
+				return cell
+	return Vector2i(-1, -1)
+
 func driver() -> int:
 	return int(riders[0]) if riders.size() > 0 else 0
 

@@ -194,6 +194,14 @@ const STONE_PUSH_SPEED := 6.0
 # Anything below this has left the world.
 const FALL_KILL_Y := -30.0
 
+# WHERE A BUS IS PUT DOWN, in rows ahead of the party's front. Near enough to walk
+# to, far enough that it is not standing in anybody, and the span is searched
+# rather than fixed because a track is mostly void -- see _bus_spawn_point.
+const BUS_SPAWN_NEAR := 3
+const BUS_SPAWN_FAR := 20
+# Clear of the deck, so the first tick settles it down rather than ejecting it.
+const BUS_SPAWN_LIFT := 0.6
+
 # --- Health -------------------------------------------------------------------
 const MAX_HEALTH := 5
 
