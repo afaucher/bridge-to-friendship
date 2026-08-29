@@ -69,6 +69,7 @@ func _physics_process(_delta: float) -> void:
 	_dashing_it_changes_the_choice()
 	_the_choice_reaches_the_corridor()
 	_last_write_wins()
+	_the_banner_is_not_hidden_behind_its_own_post()
 	finish()
 
 # --- 1. Where it is -----------------------------------------------------------
@@ -246,6 +247,40 @@ func _last_write_wins() -> void:
 	eq(post.showing, second, "and the banner shows the latest one")
 
 # --- helpers ------------------------------------------------------------------
+
+# YOU CAN SEE THE BANNER, which for a while you could not.
+#
+# Reported from play as "it looks like a sign but it is facing the wrong way --
+# the camera is always looking at the back". It was not facing anywhere: the
+# banner sat at z = 0, the same as the pole, so the pole stood 17 cm proud of a
+# banner 4 cm thick and ran straight down the middle of the only face anybody
+# ever sees. A sign you cannot read the middle of reads as one whose front is
+# elsewhere, and no amount of rotating would have touched it.
+#
+# ASSERTED AS AN OCCLUSION rather than as a coordinate. "The banner is at
+# z = 0.21" is a restatement of the code; "no part of the post stands between the
+# banner and the camera" is the property, and it survives the post getting
+# fatter.
+func _the_banner_is_not_hidden_behind_its_own_post() -> void:
+	var posts: Array = world.grid.mode_posts()
+	if not check(posts.size() > 0, "there is a post to look at"):
+		return
+	var post: Node = posts[0]
+	var banner: MeshInstance3D = post.get_node_or_null("Banner")
+	var pole: MeshInstance3D = post.get_node_or_null("Post")
+	if not check(banner != null and pole != null, "it has a banner and a pole"):
+		return
+	# FRONT IS +Z: the party walks up-bridge toward -Z with the camera behind
+	# them, so +Z is the side a sign is for.
+	var banner_back: float = banner.position.z 		- (banner.mesh as BoxMesh).size.z * 0.5
+	var pole_front: float = pole.position.z + (pole.mesh as BoxMesh).size.z * 0.5
+	print("[modepost] banner back at z %.2f, pole front at %.2f"
+		% [banner_back, pole_front])
+	check(banner_back >= pole_front - 0.01,
+		"the banner is IN FRONT of the pole (%.2f vs %.2f) rather than skewered "
+			% [banner_back, pole_front]
+		+ "by it -- the selection colour is the whole readout, and a stripe down "
+		+ "the middle of it is what got reported as the sign facing backwards")
 
 func _posts_in(seg) -> int:
 	var n := 0

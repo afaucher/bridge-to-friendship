@@ -1,0 +1,18 @@
+{
+  "_comment": "The two posts, framed the way the game camera frames them. Run WINDOWED: godot --path . --run-shots art/shots_posts.json",
+  "output_dir": "res://tmp/shots",
+  "size": [1100, 620],
+  "scenes": [
+    {
+      "name": "posts_from_the_game_camera",
+      "_comment": "No camera_offset, so this uses an ACTUAL BridgeCamera configured the way GameWorld configures it -- which is the only framing that can answer whether a sign faces the player.",
+      "segment": "res://segments/test_flat.seg",
+      "anchor_offset": [0, 0, -8],
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 2], "yaw": 180.0},
+        {"type": "bus_post", "at": [-2, 0, 0]},
+        {"type": "mode_post", "at": [2, 0, 0]}
+      ]
+    }
+  ]
+}

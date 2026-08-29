@@ -101,7 +101,14 @@ func _build() -> void:
 	var banner_mesh := BoxMesh.new()
 	banner_mesh.size = Vector3(BANNER_WIDTH, BANNER_HEIGHT, 0.08)
 	_banner.mesh = banner_mesh
-	_banner.position = Vector3(0.0, POST_HEIGHT - BANNER_HEIGHT * 0.6, 0.0)
+	# ON THE FRONT OF THE POST, NOT THROUGH IT. Reported from play as "it looks
+	# like a sign but it is facing the wrong way -- the camera is always looking
+	# at the back". It was not facing anywhere: the banner sat at z = 0, the same
+	# as the pole, so the pole stood 17 cm proud of a banner 4 cm thick and ran
+	# straight down the middle of it. The bus post had the identical fault and was
+	# reported the same way months apart in the same session.
+	_banner.position = Vector3(0.0, POST_HEIGHT - BANNER_HEIGHT * 0.6,
+		POST_WIDTH * 0.5 + 0.04)
 	# PER INSTANCE, never shared. A material on a mesh resource is shared by every
 	# instance of it, so tinting one post would tint every post on the bridge --
 	# the trap hat_style.gd carries a note about, and the status bar hit first.

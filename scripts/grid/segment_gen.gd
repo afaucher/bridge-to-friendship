@@ -2365,35 +2365,43 @@ const RACE_EDGE_RATE := 1
 const MINE_ROW_STRIDE := 7
 const MINE_END_CLEAR := 3
 
-# A BUS POST AT THE MIDDLE OF THE SECTION.
+# A BUS POST JUST INSIDE THE ENTRANCE.
 #
-# HALFWAY IS THE POINT: it is the furthest you can ever be from it, so losing a
-# bus costs a walk of at most half the level whichever end you lost it at. A post
-# at one end would make one half of the track free and the other half a
-# punishment.
+# AT THE BEGINNING, NOT THE MIDDLE, and the first version got that backwards
+# for a reason worth keeping. Halfway minimises the worst case: it is the
+# furthest you can ever be from a post, so a bus lost at either end costs the
+# same half-level walk. That is the right optimisation for RECOVERY and the
+# wrong one for the common case, because nothing hands out a bus automatically
+# any more -- so the first thing that happens in every bus level is arriving
+# without one. Reported from play as having to walk a way to find it, which is
+# exactly what optimising the rare case does to the frequent one.
 #
-# THE MIDDLE ROW IS OFTEN VOID -- a link on the serpentine, the infield on a
-# circuit -- so the row is a starting point rather than an answer, and the search
-# walks outward until it finds solid ground with nothing on it. Every level that
-# has buses in it gets one; a level with no bus has no reason to.
+# THE TRADE IS REAL AND IT IS ACCEPTED. A bus lost at the far end of a
+# serpentine is now a walk back down the whole level rather than half of it. On
+# a CIRCUIT it costs nothing at all -- the entrance is on the lap, so you pass
+# the post every time round -- and the circuit is the mode this matters most in.
+#
+# A COUPLE OF ROWS IN, never on the seam itself. An entry row is where a party
+# arrives with no warning, and a post standing on it is something you walk into
+# before you have seen it.
+const BUS_POST_ROW := 2
+
 static func _place_bus_post(seg) -> void:
-	var mid_z: int = seg.length / 2
 	for dz in seg.length:
-		for dir in [1, -1]:
-			var z: int = mid_z + dz * dir
-			if z < 1 or z >= seg.length - 1:
-				continue
-			for dx in seg.width:
-				for side in [1, -1]:
-					var x: int = seg.width / 2 + dx * side
-					if x < 0 or x >= seg.width:
-						continue
-					if not seg.is_solid(x, z):
-						continue
-					if seg.content_at(x, z) != GridConfig.Content.NONE:
-						continue
-					seg.contents[z][x] = GridConfig.Content.BUS_POST
-					return
+		var z: int = BUS_POST_ROW + dz
+		if z >= seg.length - 1:
+			break
+		for dx in seg.width:
+			for side in [1, -1]:
+				var x: int = seg.width / 2 + dx * side
+				if x < 0 or x >= seg.width:
+					continue
+				if not seg.is_solid(x, z):
+					continue
+				if seg.content_at(x, z) != GridConfig.Content.NONE:
+					continue
+				seg.contents[z][x] = GridConfig.Content.BUS_POST
+				return
 
 # ARMED MINES ON THE ROAD, scattered rather than placed.
 #

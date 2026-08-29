@@ -363,6 +363,14 @@ func _place_actor(world: Node3D, actor: Dictionary, anchor: Vector3) -> Node3D:
 			if node != null:
 				node.state = RusherBody.State.CHASE
 				node.state_timer = 0.0
+		"bus_post":
+			# A post, put down through the grid's own spawner so the shot shows the
+			# thing the builder makes rather than a fresh instance posed by hand.
+			world.grid._spawn_bus_post(world.grid.cell_of_world(at))
+			node = world.grid.bus_posts()[world.grid.bus_posts().size() - 1]
+		"mode_post":
+			world.grid._spawn_mode_post(world.grid.cell_of_world(at))
+			node = world.grid.mode_posts()[world.grid.mode_posts().size() - 1]
 		"bus":
 			# THE ONE ACTOR THAT IS ABOUT THE OTHER ACTORS. A bus with nobody on it
 			# says nothing about the question it exists to answer, which is whether
