@@ -809,6 +809,9 @@ func _host_tick() -> void:
 	# rather than stepping -- so a lap crossed at 13 m/s is noticed on the tick it
 	# happens rather than the one after.
 	_process_laps()
+	# AFTER THE LAPS, so the gate that lights up is the one you want NEXT rather
+	# than the one you just crossed.
+	_show_lap_gates()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -1449,6 +1452,17 @@ func _poll_mode_selection() -> void:
 	next_mode = picked
 	_rebuild_corridor_ahead()
 
+# WHAT THE LOBBY SHOULD SAY THE NEXT ROUND IS.
+#
+# `selected_mode` rather than `next_mode`, and the difference matters in exactly
+# the moment this is read. Somebody dashing the post outside a lobby has their
+# choice REMEMBERED rather than applied -- `_poll_mode_selection` holds it for
+# the next lobby -- so `next_mode` can lag the post by a whole round while the
+# banner in front of the player already shows the new colour. The screen has to
+# agree with the thing they are looking at.
+func next_mode_showing() -> int:
+	return _selected_mode()
+
 # WHAT THE SELECTOR SAYS, guarded. An id nobody registered reads as base rather
 # than as a mode with no entry -- a half-written selector must not be able to put
 # the party into a round that does not exist.
@@ -1578,7 +1592,24 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 		var seg = grid.segment_data(i)
 		if seg != null:
 			cut_row += int(seg.length)
-	for pool in [_rushers, _gunners, _zombies, _balls]:
+	# DEPLOYABLES ARE IN THIS LIST NOW, and their absence was a reported bug:
+	# "mines spawned off the actual ground blocks so they look like they are
+	# floating -- there is no deck where you place them sometimes."
+	#
+	# They were placed correctly. A mine sits its own half-height above the cell
+	# it was given and the arithmetic checks out on flat ground -- so the search
+	# for a placement error found nothing, twice, because there was not one. The
+	# DECK WAS CUT AWAY UNDERNEATH THEM. A mode change re-cuts the corridor ahead
+	# of the party, and every pool with things standing on that ground is swept
+	# here; deployables were the one pool nobody added, so an armed mine kept its
+	# position over a hole that used to be road.
+	#
+	# THIS IS THE THIRD TIME. Hats and specials were added to this sweep for the
+	# identical symptom ("the items are all placed in the sky"), and the lesson
+	# did not generalise because the fix was written as two more lines rather than
+	# as a question about which pools stand on discarded ground. Anything that is
+	# PUT somewhere by the level belongs here.
+	for pool in [_rushers, _gunners, _zombies, _balls, _deployables]:
 		for i in range(pool.size() - 1, -1, -1):
 			var body = pool[i]
 			if not is_instance_valid(body):
@@ -1736,6 +1767,14 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(zombie):
 			zombie.queue_free()
 	_zombies.clear()
+	# AND THE MINES, thrown or scattered. Same rule as the rushers above: a wipe
+	# rewinds the party, so what the round left lying about does not survive it --
+	# and the terrain's own mines are rebuilt with the corridor, so leaving these
+	# would lay the field twice.
+	for d in _deployables:
+		if is_instance_valid(d):
+			d.queue_free()
+	_deployables.clear()
 	for gunner in _gunners:
 		if is_instance_valid(gunner):
 			gunner.queue_free()
@@ -4587,6 +4626,64 @@ func _process_laps() -> void:
 			continue                  # still standing in the one we already counted
 		_on_lap_gate[peer] = at
 		_touch_lap_gate(peer, at)
+
+# WHICH GATE THIS PLAYER IS DRIVING AT NEXT.
+#
+# NOT THE SAME AS `_lap_next`, and the difference is the whole of what a player
+# needs to see. `_lap_next` counts up 1, 2, 3 and then runs off the end of the
+# list -- there is no gate 4 on a four-gate circuit, because the thing you go to
+# after the last checkpoint is the START LINE again. And before you have started
+# a lap at all there is no entry, and the answer is also the start line.
+#
+# So both ends of the sequence mean 0, which is a thing the counter cannot say
+# and the HUD has to know.
+func next_lap_gate_of(peer: int) -> int:
+	if grid == null or grid.lap_gate_count() == 0:
+		return -1
+	var want: int = int(_lap_next.get(peer, 0))
+	return 0 if want <= 0 or want >= grid.lap_gate_count() else want
+
+# THE GATES, COLOURED FOR THE PERSON LOOKING AT THEM.
+#
+# THEY WERE INVISIBLE UNTIL NOW -- recorded, sequenced, tested, and drawn by
+# nothing, so a player could not find the start line and reported being unable to
+# start a race at all. A rule you cannot see is not a rule.
+#
+# ALTERNATING SHADES OF BLUE, from the ask, so the circuit reads as a numbered
+# sequence rather than as identical marks; the start line is paler than any of
+# them because it is the one that is not a checkpoint but a finish. And YOURS is
+# lit: the gate that is next for the local player glows, which is the only part
+# of this that is per-viewer and the reason each mark carries its own material.
+const GATE_SHADE_A := Color(0.16, 0.30, 0.58)
+const GATE_SHADE_B := Color(0.28, 0.47, 0.78)
+const GATE_START := Color(0.86, 0.89, 0.95)
+const GATE_NEXT := Color(0.42, 0.86, 1.00)
+
+func _show_lap_gates() -> void:
+	if grid == null:
+		return
+	var marks: Dictionary = grid.lap_gate_marks()
+	if marks.is_empty():
+		return
+	var target: int = next_lap_gate_of(local_peer)
+	for cell in marks:
+		var mark: Node = marks[cell]
+		if not is_instance_valid(mark):
+			continue
+		var idx: int = grid.lap_gate_at(cell)
+		var want: Color = GATE_START if idx == 0 else 			(GATE_SHADE_A if idx % 2 == 1 else GATE_SHADE_B)
+		var lit: bool = idx == target
+		if lit:
+			want = GATE_NEXT
+		var material := mark.material_override as StandardMaterial3D
+		if material == null or material.albedo_color == want:
+			continue
+		material.albedo_color = want
+		material.emission_enabled = true
+		material.emission = want
+		# THE ONE YOU WANT IS BRIGHTER, not a different hue nobody has learned
+		# yet. Everything else on the circuit stays legible as a gate.
+		material.emission_energy_multiplier = 0.9 if lit else 0.25
 
 func _touch_lap_gate(peer: int, at: int) -> void:
 	if at != 0:

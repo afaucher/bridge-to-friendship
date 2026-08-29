@@ -70,6 +70,7 @@ func _physics_process(_delta: float) -> void:
 	_the_choice_reaches_the_corridor()
 	_last_write_wins()
 	_the_banner_is_not_hidden_behind_its_own_post()
+	_the_lobby_says_which_mode_is_chosen()
 	finish()
 
 # --- 1. Where it is -----------------------------------------------------------
@@ -247,6 +248,38 @@ func _last_write_wins() -> void:
 	eq(post.showing, second, "and the banner shows the latest one")
 
 # --- helpers ------------------------------------------------------------------
+
+# THE LOBBY SAYS WHAT THE CHOICE IS, IN WORDS.
+#
+# Reported from play: "there is no indicator which game mode you selected." The
+# post cycles a COLOUR on a banner and nothing anywhere said what the colour
+# meant, so the choice was made from memory or not made -- a control whose effect
+# is unreadable is one nobody uses on purpose.
+#
+# READ OFF `next_mode_showing`, WHICH IS NOT `next_mode`. Somebody dashing the
+# post outside a lobby has their choice REMEMBERED rather than applied, so
+# `next_mode` can lag the post by a whole round while the banner in front of the
+# player already shows the new colour. The screen has to agree with the thing
+# they are standing at, and this is the assertion that says so.
+func _the_lobby_says_which_mode_is_chosen() -> void:
+	for mode in GameMode.MODES.keys():
+		check(GameMode.name_of(mode) != "",
+			"mode %d has a name to show (%s)" % [mode, GameMode.name_of(mode)])
+		check(GameMode.blurb_of(mode) != "",
+			"and a line saying what it is (%s: %s)"
+				% [GameMode.name_of(mode), GameMode.blurb_of(mode)])
+	world.selected_mode = GameMode.RACE
+	world.next_mode = GameMode.BASE
+	print("[modepost] post shows %s while next_mode still says %s"
+		% [GameMode.name_of(world.next_mode_showing()),
+		   GameMode.name_of(world.next_mode)])
+	eq(world.next_mode_showing(), GameMode.RACE,
+		"the lobby names what the POST says (%s), not what has been taken up yet "
+			% GameMode.name_of(world.next_mode_showing())
+		+ "(%s) -- a choice made outside a lobby is held rather than applied, so "
+			% GameMode.name_of(world.next_mode)
+		+ "the two disagree for a whole round and only one of them is in front of "
+		+ "the player")
 
 # YOU CAN SEE THE BANNER, which for a while you could not.
 #

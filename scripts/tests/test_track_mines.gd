@@ -145,6 +145,12 @@ func _the_world_builds_them_armed() -> void:
 		"the world builds a mine for every cell the terrain placed (%d of %d)"
 			% [built, cells.size()])
 
+	for i in range(before, world._deployables.size()):
+		var m: Node = world._deployables[i]
+		var deck: float = world.grid.cell_surface_world(cells[i - before]).y
+		var aabb: AABB = m.get_node("CollisionShape3D").shape.get_debug_mesh().get_aabb() 			if m.get_node_or_null("CollisionShape3D") != null else AABB()
+		print("[mines] mine at y %.3f, deck %.3f, gap %.3f; shape height %.3f"
+			% [m.position.y, deck, m.position.y - deck, aabb.size.y])
 	var armed := 0
 	var owned := 0
 	for i in range(before, world._deployables.size()):

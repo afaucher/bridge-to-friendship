@@ -375,6 +375,8 @@ var authored_mine_cells: Array = []
 var lap_gate_cells: Dictionary = {}
 var _bus_posts: Dictionary = {}
 var _bus_post_root: Node3D = null
+var _lap_gate_marks: Dictionary = {}
+var _lap_gate_root: Node3D = null
 
 # WHICH LAP GATE IS UNDER THIS CELL, or -1. The whole lap system talks to the
 # grid through this one question.
@@ -677,7 +679,9 @@ func load_segment(seg) -> void:
 	# "am I standing on a gate, and which" -- so it stays, keyed by cell.
 	for entry in built.checker_cells:
 		var gc: Vector2i = entry[0]
-		lap_gate_cells[Vector2i(gc.x, gc.y + z_offset)] = int(entry[1])
+		var run_cell := Vector2i(gc.x, gc.y + z_offset)
+		lap_gate_cells[run_cell] = int(entry[1])
+		_spawn_lap_gate_mark(run_cell, int(entry[1]))
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]
@@ -1698,6 +1702,45 @@ var _spent_merchants: Array = []    # Vector2i
 # seed, which is the one way this differs from every other piece of content.
 var _mode_posts: Dictionary = {}    # Vector2i -> the post standing there
 var _mode_post_root: Node3D = null
+
+# THE GATE, PAINTED ON THE DECK.
+#
+# THEY WERE INVISIBLE. Recorded, sequenced, tested and drawn by nothing -- so a
+# player could not find the start line, could not start a lap, and reported that
+# they could not activate the race. A rule the player cannot see is not a rule,
+# it is a trap, and this is the second time in this milestone that a thing was
+# fully wired and had no face.
+#
+# A PAINTED PLATE RATHER THAN A GANTRY. It has to be legible from a camera 45
+# degrees above and behind, and it has to be something a bus drives THROUGH: a
+# wall you can see would be a wall you can hit.
+const GATE_MARK_HEIGHT := 0.06
+const GATE_MARK_INSET := 0.06
+
+func _spawn_lap_gate_mark(cell: Vector2i, index: int) -> void:
+	if _lap_gate_root == null:
+		_lap_gate_root = Node3D.new()
+		_lap_gate_root.name = "LapGates"
+		add_child(_lap_gate_root)
+	var mark := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(GridConfig.CELL_SIZE - GATE_MARK_INSET, GATE_MARK_HEIGHT,
+		GridConfig.CELL_SIZE - GATE_MARK_INSET)
+	mark.mesh = mesh
+	# HALF ITS HEIGHT UP, so the plate sits ON the deck rather than half inside
+	# it -- the same arithmetic a mine uses, and for the same reason.
+	mark.position = cell_surface(cell) + Vector3(0.0, GATE_MARK_HEIGHT * 0.5, 0.0)
+	# PER INSTANCE, because the world recolours ONE gate at a time -- the one you
+	# are driving at next. A shared material would light the whole circuit up.
+	mark.material_override = StandardMaterial3D.new()
+	_lap_gate_root.add_child(mark)
+	mark.name = "Gate%d_%d_%d" % [index, cell.x, cell.y]
+	_lap_gate_marks[cell] = mark
+
+# Every gate mark, as cell -> MeshInstance3D. The world tints them; the grid does
+# not know what the colours mean.
+func lap_gate_marks() -> Dictionary:
+	return _lap_gate_marks
 
 func _spawn_bus_post(cell: Vector2i) -> void:
 	if _bus_post_root == null:

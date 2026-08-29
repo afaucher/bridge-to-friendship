@@ -36,6 +36,9 @@ const COLOR_LAP := Color(0.85, 0.86, 0.92)
 # The lap being driven right now, brighter than the best beside it: it is the
 # number changing, and the one a driver is actually watching.
 const COLOR_LAP_LIVE := Color(1.00, 0.97, 0.80)
+# The mode name in the lobby. Warm and bright: it is an announcement of what
+# everybody is about to do, not a warning about anything.
+const COLOR_MODE := Color(0.98, 0.90, 0.62)
 const COLOR_BAR_BACK := Color(0.11, 0.11, 0.14)
 
 # --- Identity outlines --------------------------------------------------------
@@ -105,6 +108,8 @@ var _own_outline: PanelContainer = null
 var _own_name: Label = null
 var _own_lap: Label = null
 var _own_lap_live: Label = null
+var _mode_name: Label = null
+var _mode_blurb: Label = null
 var _own_face: TextureRect = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
@@ -282,12 +287,45 @@ func _build_round_panel() -> void:
 	_round_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_round_panel.add_child(_round_clock)
 
+	# THE MODE NAME, UNDER THE ROUND LINE AND ABOVE THE BOARD. It belongs in this
+	# column because it is the same kind of thing: a line you catch rather than a
+	# list you study, and in a lobby it is the most important sentence on screen.
+	_mode_name = _label("", 30, COLOR_MODE)
+	_mode_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_round_panel.add_child(_mode_name)
+	_mode_blurb = _label("", 16, COLOR_DIM)
+	_mode_blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_round_panel.add_child(_mode_blurb)
+
 	_board_panel = VBoxContainer.new()
 	_board_panel.alignment = BoxContainer.ALIGNMENT_CENTER
 	_board_panel.add_theme_constant_override("separation", 3)
 	_round_panel.add_child(_board_panel)
 
+# THE MODE THE PARTY IS ABOUT TO PLAY, named, while they are standing in a lobby
+# deciding.
+#
+# THERE WAS NO INDICATOR AT ALL. The selector post cycles a colour on a banner
+# and nothing anywhere said what the colour meant, so the choice was made from
+# memory or not made. A control whose effect is unreadable is a control nobody
+# uses on purpose.
+#
+# LOBBY ONLY. Mid-round it would be a permanent caption naming the thing you are
+# already doing, which is furniture -- and furniture does not get read, which is
+# the note the round timer next door already carries.
+func _update_mode_banner(entry: Dictionary) -> void:
+	var showing: bool = bool(entry.get("waiting", false))
+	_mode_name.visible = showing
+	_mode_blurb.visible = showing
+	if not showing:
+		return
+	_mode_name.text = str(entry.get("mode_name", ""))
+	var blurb: String = str(entry.get("mode_blurb", ""))
+	_mode_blurb.text = blurb
+	_mode_blurb.visible = blurb != ""
+
 func _update_round(entry: Dictionary) -> void:
+	_update_mode_banner(entry)
 	if _round_panel == null:
 		return
 	if entry.is_empty():

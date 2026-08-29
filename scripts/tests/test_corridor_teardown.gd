@@ -41,6 +41,7 @@ extends "res://scripts/test_support/test_case.gd"
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const Deployable = preload("res://scripts/sim/deployable.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
@@ -234,7 +235,22 @@ func _the_level_goes_and_the_party_stays() -> void:
 		return
 	var hat_id: int = int(hat.hat_id)
 
+	# AND A MINE, WHICH WAS THE POOL NOBODY ADDED. Reported from play as mines
+	# floating with no deck under them: they were placed correctly and the ground
+	# was cut out from beneath them, because every pool that stands on discarded
+	# corridor is swept here and deployables were not on the list. Hats and
+	# specials were added for the identical symptom; the lesson did not
+	# generalise, so the claim is written per pool now.
+	var mine: Node = world._spawn_deployable(Deployable.Kind.MINE)
+	mine.place_at(past, 0, true)
+	mine.timer = 0.0
+
 	world._discard_level_entities_past(keep)
+
+	check(not is_instance_valid(mine) or mine.is_queued_for_deletion(),
+		"a mine past the cut goes with the ground it was standing on -- it is "
+		+ "PUT there by the level, so it belongs to the level, and an armed one "
+		+ "left hanging over a hole is what got reported")
 
 	var rusher_gone: bool = not is_instance_valid(rusher) or rusher.is_queued_for_deletion()
 	var hat_kept: bool = is_instance_valid(hat) and not hat.is_queued_for_deletion()

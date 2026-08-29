@@ -108,6 +108,7 @@ func _build_script() -> void:
 	_the_best_is_kept()
 	_a_gate_is_edge_triggered()
 	_at(_no_lap_ranks_below_any_lap)
+	_you_can_see_the_gates_and_which_is_yours()
 	_the_clock_runs_while_you_drive()
 	_a_round_starts_with_no_laps()
 
@@ -262,6 +263,45 @@ func _a_gate_is_edge_triggered() -> void:
 			+ "level-triggered, the start is rewritten on every one of them and "
 			+ "the lap comes out that much shorter, which is a timer that rewards "
 			+ "sitting on the line"))
+
+# --- 9. You can see them at all ------------------------------------------------
+#
+# THE GATES WERE INVISIBLE. Recorded, sequenced, ordered, tested -- and drawn by
+# nothing, so a player could not find the start line and reported being unable to
+# start a race. Every claim in this file passed the whole time, because every one
+# of them was about where a gate IS and none about whether anybody can see it.
+# That is the second thing in this milestone to be fully wired and have no face.
+#
+# THE HIGHLIGHT IS THE HALF THAT NEEDS A TEST. "There are marks on the deck" is
+# hard to get wrong once they exist; "the one lit is the one you are driving at"
+# is a sequence question, and it has the same off-by-one at both ends -- before
+# you start, and after the last checkpoint, the answer is the START LINE, which
+# is a thing `_lap_next` cannot say because it counts off the end of the list.
+func _you_can_see_the_gates_and_which_is_yours() -> void:
+	_at(func():
+		var marks: Dictionary = world.grid.lap_gate_marks()
+		print("[laps] %d gate cells are drawn" % marks.size())
+		check(marks.size() >= world.grid.lap_gate_count(),
+			"every gate is drawn on the deck (%d marks for %d gates) -- they were "
+				% [marks.size(), world.grid.lap_gate_count()]
+			+ "invisible, which is why a lap could not be started")
+		world.clear_round_stats())
+	# Before a lap: the thing to drive at is the start line.
+	_at(func(): eq(world.next_lap_gate_of(A), 0,
+		"with no lap started, the gate to head for is the START line (%d)"
+			% world.next_lap_gate_of(A)))
+	_lap(A, [0])
+	_at(func(): eq(world.next_lap_gate_of(A), 1,
+		"after crossing it, the first checkpoint (%d)" % world.next_lap_gate_of(A)))
+	_lap(A, _rest())
+	_at(func():
+		print("[laps] after every checkpoint the next gate is %d"
+			% world.next_lap_gate_of(A))
+		eq(world.next_lap_gate_of(A), 0,
+			"and after the LAST checkpoint it is the start line again (%d) -- "
+				% world.next_lap_gate_of(A)
+			+ "`_lap_next` counts off the end of the list here, so both ends of "
+			+ "the sequence mean 0 and neither is what the counter holds"))
 
 # --- 7. The clock you are watching ---------------------------------------------
 #

@@ -79,7 +79,8 @@ const DIFFERENT := "differently"
 # `missing_pools()` would then have nothing to find.
 const MODES := {
 	BASE: {
-		"name": "Bridge",
+		"name": "Bridge With Friends",
+		"blurb": "The normal mode. Cross together, keep your hats.",
 		# NOTHING OVERRIDDEN, and that is a real entry rather than an omission:
 		# base composing an empty dictionary over the defaults is the same code
 		# path every other mode will take, so the composition is exercised daily.
@@ -113,7 +114,8 @@ const MODES := {
 	# flat terrain with the usual threats on it, which is not a blank zone -- and
 	# it would read as the mode having failed to take effect rather than as a bug.
 	BLANK: {
-		"name": "Blank zone",
+		"name": "Void",
+		"blurb": "The empty map. Nothing here but you and the bus.",
 		"overrides": {},
 		"terrain": TERRAIN_BLANK,
 		"pools": {
@@ -148,7 +150,8 @@ const MODES := {
 	# `test_game_mode` now checks that correspondence for every mode rather than
 	# leaving it to whoever adds the next lane flavour.
 	TRACK: {
-		"name": "Bus route",
+		"name": "Bus Survival",
+		"blurb": "Get the bus to the other side. Zombies on the verges.",
 		"overrides": {},
 		"terrain": TERRAIN_TRACK,
 		"pools": {
@@ -200,7 +203,8 @@ const MODES := {
 	# `_extend_run`, the leash and the round machine that a run can be closed, and
 	# that is its own phase rather than something to bolt on here.
 	RACE: {
-		"name": "Race circuit",
+		"name": "Race Track",
+		"blurb": "Best lap time wins. Cross the white line to start.",
 		"overrides": {},
 		"terrain": TERRAIN_RACE,
 		"pools": {
@@ -238,6 +242,19 @@ const CONTENT_POOLS := {
 	GridConfig.Content.MERCHANT: "merchants",
 	GridConfig.Content.ELEVATOR: "elevators",
 }
+
+# THE ONE-LINE DESCRIPTION, for the lobby. Empty rather than a placeholder for a
+# mode that has not written one: the HUD hides the line, and "TODO" on screen is
+# worse than nothing.
+#
+# THE NAMES CAME FROM THE ASK and two of them describe a rule that is not built
+# yet. "Bus Survival" says get the bus across or everybody loses, and there is no
+# lose condition on it -- the round ends the ordinary way. Written as the ask
+# worded it rather than softened, because the blurb is where the intended design
+# lives and a player reading it will report the gap, which is the fastest way for
+# it to get built.
+static func blurb_of(mode: int) -> String:
+	return str(MODES.get(mode, {}).get("blurb", ""))
 
 static func exists(mode: int) -> bool:
 	return MODES.has(mode)

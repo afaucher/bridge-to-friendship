@@ -18,6 +18,7 @@ extends RefCounted
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
 
 # Fractions are 0..1 and are always "how full should the bar be":
 #   bleed_out  1.0 = the whole timer left, 0.0 = about to expire
@@ -70,6 +71,12 @@ static func round_entry(world: Node) -> Dictionary:
 		# a console in the lobby can ask for it again later.
 		"board": machine.board if int(machine.state) == RoundMachine.State.SCORING else [],
 		"waiting": int(machine.state) == RoundMachine.State.LOBBY,
+		# WHAT THE POST IS CURRENTLY SET TO, which is what a party in a lobby is
+		# deciding -- not what they just played. There was no indicator at all:
+		# the selector cycles a colour on a banner and nothing anywhere said what
+		# the colour MEANT, so the choice was made by memory or not at all.
+		"mode_name": GameMode.name_of(world.next_mode_showing()),
+		"mode_blurb": GameMode.blurb_of(world.next_mode_showing()),
 	}
 
 # A LAP TIME AS A PLAYER READS IT: minutes only when there are any, and tenths
