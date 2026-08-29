@@ -71,6 +71,8 @@ func _physics_process(_delta: float) -> void:
 	_last_write_wins()
 	_the_banner_is_not_hidden_behind_its_own_post()
 	_the_lobby_says_which_mode_is_chosen()
+	_a_choice_made_mid_round_still_builds_its_ground()
+	_the_same_mode_twice_running_builds_it_twice()
 	finish()
 
 # --- 1. Where it is -----------------------------------------------------------
@@ -248,6 +250,97 @@ func _last_write_wins() -> void:
 	eq(post.showing, second, "and the banner shows the latest one")
 
 # --- helpers ------------------------------------------------------------------
+
+# A CHOICE TAKEN OUTSIDE A LOBBY STILL BUILDS ITS GROUND WHEN YOU REACH ONE.
+#
+# Reported from play: "once you lost, selecting a game mode now changes the title
+# but not the actual map in front of you -- something got stuck." It was stuck
+# for good, not for a while.
+#
+# The rebuild guard used to be `picked == next_mode`, which is two different
+# questions wearing one comparison. Dashing the post mid-round sets `next_mode`
+# there and then -- deliberately, because the input must not be dropped -- so by
+# the time the party walks into a lobby the choice EQUALS next_mode, the guard
+# fires, and the corridor is never rebuilt. Nothing would ever differ again.
+#
+# THE TITLE MADE IT VISIBLE RATHER THAN CAUSING IT. The lobby banner reads the
+# post directly, so it updated while the ground did not, and the two disagreeing
+# on screen is what got reported.
+func _a_choice_made_mid_round_still_builds_its_ground() -> void:
+	var post: Node = world.grid.mode_posts()[0] if world.grid.mode_posts().size() > 0 else null
+	if not check(post != null, "there is a post to dash"):
+		return
+	# A corridor that was built for BASE, and a party in the middle of a round.
+	world.round_machine.round_index = 0
+	world.round_machine.state = RoundMachine.State.RUNNING
+	world.selected_mode = GameMode.BASE
+	world.next_mode = GameMode.BASE
+	# THE RUN PLAN IS THE GROUND. `_poll_mode_selection` asks it rather than
+	# remembering separately, so this one line is the whole of "the corridor
+	# ahead was built for BASE".
+	world.run_modes = [GameMode.BASE]
+	world._extend_run()
+
+	# DASHED MID-ROUND, which is where the report started.
+	while world.selected_mode == GameMode.BASE:
+		world._select_next_mode(post)
+	var chosen: int = world.selected_mode
+	eq(world.mode_for_round(0), GameMode.BASE,
+		"mid-round the ground has not changed yet (%s), which is correct -- the "
+			% GameMode.name_of(world.mode_for_round(0))
+		+ "party is standing on it")
+
+	# NOW WALK INTO THE LOBBY. This is the tick that used to do nothing.
+	world.round_machine.state = RoundMachine.State.LOBBY
+	world._poll_mode_selection()
+	world._extend_run()
+	print("[modepost] chose %s mid-round; in the lobby the ground became %s"
+		% [GameMode.name_of(chosen), GameMode.name_of(world.mode_for_round(0))])
+	eq(world.mode_for_round(0), chosen,
+		"and reaching a lobby builds it (%s, chose %s) -- the guard compares what "
+			% [GameMode.name_of(world.mode_for_round(0)), GameMode.name_of(chosen)]
+		+ "the RUN PLAN says, because comparing the choice against itself is "
+		+ "always equal once the choice has been remembered")
+
+# AND THE SAME MODE CHOSEN TWO ROUNDS RUNNING IS BUILT BOTH TIMES.
+#
+# The first fix for the report above kept a field -- "what the corridor was last
+# built for" -- which is correct until the party walks into the NEXT lobby, where
+# the answer it holds is about a round already behind them. A party that liked
+# the void and asked for it again would have been given a BASE round while every
+# sign said Void: the same reported symptom, one round later.
+#
+# So the guard asks the RUN PLAN, which is per-round already. Nothing has to be
+# kept in step with the round machine because nothing is remembered.
+func _the_same_mode_twice_running_builds_it_twice() -> void:
+	var post: Node = world.grid.mode_posts()[0] if world.grid.mode_posts().size() > 0 else null
+	if not check(post != null, "there is a post to dash"):
+		return
+	world.round_machine.state = RoundMachine.State.LOBBY
+	world.round_machine.round_index = 0
+	world.selected_mode = GameMode.BASE
+	world.next_mode = GameMode.BASE
+	world.run_modes = [GameMode.BASE]
+	world._extend_run()
+	while world.selected_mode == GameMode.BASE:
+		world._select_next_mode(post)
+	var wanted: int = world.selected_mode
+	world._extend_run()
+	eq(world.mode_for_round(0), wanted, "round 0 is the mode that was chosen")
+
+	# THE NEXT LOBBY, ASKING FOR THE SAME THING AGAIN. The choice has not moved,
+	# so a guard that compares against the CHOICE, or against a remembered build,
+	# sees no difference -- while round 1 has never been built for anything.
+	world.round_machine.round_index = 1
+	world._poll_mode_selection()
+	world._extend_run()
+	print("[modepost] asked for %s again in round 1; round 1 is %s"
+		% [GameMode.name_of(wanted), GameMode.name_of(world.mode_for_round(1))])
+	eq(world.mode_for_round(1), wanted,
+		"and round 1 is it too (%s) -- a round nobody has built yet is not the "
+			% GameMode.name_of(world.mode_for_round(1))
+		+ "same as a round already built for that mode, however equal the two "
+		+ "choices look")
 
 # THE LOBBY SAYS WHAT THE CHOICE IS, IN WORDS.
 #

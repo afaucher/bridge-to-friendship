@@ -1441,15 +1441,35 @@ func _poll_mode_selection() -> void:
 	if not is_host or not assemble_run:
 		return
 	var picked: int = _selected_mode()
-	if picked == next_mode:
-		return
-	if round_machine == null or int(round_machine.state) != RoundMachine.State.LOBBY:
-		# NOT IN A LOBBY: remember it for the next one rather than discarding it.
-		# A player pressing the control on the way out of a round means the round
-		# AFTER this one, and dropping the input would read as a broken control.
-		next_mode = picked
-		return
+	# REMEMBERED FIRST, ALWAYS. A player pressing the control on the way out of a
+	# round means the round AFTER this one, and dropping the input would read as a
+	# broken control.
 	next_mode = picked
+	if round_machine == null or int(round_machine.state) != RoundMachine.State.LOBBY:
+		return
+	# THE GUARD IS ABOUT THE CORRIDOR, NOT ABOUT THE CHOICE, and getting that
+	# wrong is a reported bug: "once you lost, selecting a game mode now changes
+	# the title but not the actual map in front of you -- something got stuck."
+	#
+	# It used to return early when `picked == next_mode`, which conflates two
+	# different questions. Dash the post OUTSIDE a lobby and `next_mode` is set
+	# there and then; walk into the lobby and the choice now EQUALS next_mode, so
+	# the early return fires and the corridor is never rebuilt. The selection was
+	# taken, the banner changed, the title changed -- and the ground did not,
+	# forever, because nothing would ever differ again.
+	#
+	# What has to be compared is the GROUND: is the round the party is about to
+	# play already the one they just chose? That is a different fact from what
+	# anybody has chosen, and it is the only one that answers "does the map match".
+	#
+	# ASKED OF `run_modes` RATHER THAN REMEMBERED, and the difference is a round
+	# long. A field holding "what the corridor was last built for" is correct
+	# until the party walks into the NEXT lobby, where the answer it holds is
+	# about a round that is now behind them -- so choosing the same mode twice
+	# running would skip a rebuild that had never happened for this round. The
+	# run plan is per-round already; there is nothing to keep in step with it.
+	if mode_for_round(round_index()) == picked:
+		return
 	_rebuild_corridor_ahead()
 
 # WHAT THE LOBBY SHOULD SAY THE NEXT ROUND IS.
@@ -1609,7 +1629,15 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 	# did not generalise because the fix was written as two more lines rather than
 	# as a question about which pools stand on discarded ground. Anything that is
 	# PUT somewhere by the level belongs here.
-	for pool in [_rushers, _gunners, _zombies, _balls, _deployables]:
+	#
+	# AND THE FOURTH IS `_corpses`, added on the merge that introduced them rather
+	# than after a report, which is the only reason this note reads differently
+	# from the three above it. A corpse lies on the ground an enemy died on for
+	# eight seconds, so the window is short and perfectly real: change mode while
+	# one is still cooling and it hangs over the hole where the road was. The
+	# question to ask of any new pool is not "is it an enemy" but "did the level
+	# decide where it is".
+	for pool in [_rushers, _gunners, _zombies, _balls, _deployables, _corpses]:
 		for i in range(pool.size() - 1, -1, -1):
 			var body = pool[i]
 			if not is_instance_valid(body):
@@ -1782,10 +1810,6 @@ func _restart_at_checkpoint() -> void:
 	# And what those three left behind. A pile standing on ground the party is
 	# about to re-fight is scenery from a fight that has been undone.
 	clear_corpses()
-	for d in _deployables:
-		if is_instance_valid(d):
-			d.queue_free()
-	_deployables.clear()
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
 	# across ground the party no longer occupies are debris nobody can reach.
 	_hats.clear()

@@ -1425,6 +1425,32 @@ func _try_catch_ledge() -> bool:
 		return false
 	if ledge_cooldown > 0.0:
 		return false          # just let go of one; a hang is one chance per fall
+	# A PASSENGER IS NOT FALLING, HOWEVER MUCH THEY LOOK LIKE IT.
+	#
+	# Reported from play: "when you drive off the edge of the map in the bus, you
+	# still land on something solid below the map -- your bus disappears and it
+	# marks you hanging for this period." There is nothing solid down there. The
+	# rider caught a ledge on the way past it and LEDGE_HANG holds a body still.
+	#
+	# EVERY GATE ABOVE PASSES FOR A RIDER, and passes because of the seat rather
+	# than in spite of it. `_plant_riders` writes `velocity = Vector3.ZERO` every
+	# tick, so a passenger on a bus toppling into the infield reads as a body
+	# drifting downward at nothing -- the most catchable thing in the game -- and
+	# as the bus sinks past the lip it spends several ticks within
+	# LEDGE_CATCH_REACH of solid deck. Measured: the grab lands 1.4 m below the
+	# rim, and the plant then re-seats the hanging body and carries it down to
+	# y = -29.4, where it stops. It stops because a hang does not fall and because
+	# -29.4 is not past FALL_KILL_Y, so nothing rescues it either: pinned in
+	# mid-air under the map, marked HANGING, until the eight-second timer runs out.
+	#
+	# The velocity gate is what the trajectory rule is MADE of -- "over an edge but
+	# still near the deck catches, launched clear does not" -- and a seat forges
+	# its input. So the question has to be asked of the seat.
+	#
+	# `_try_board_or_leave` has assumed this all along ("somebody hanging off a
+	# ledge is not standing beside a bus"); this is the line that makes it true.
+	if world != null and world.has_method("bus_carrying") 			and world.bus_carrying(peer_id) != null:
+		return false
 	if velocity.y > 0.0 or velocity.length() > SimConfig.LEDGE_CATCH_MAX_SPEED:
 		return false
 

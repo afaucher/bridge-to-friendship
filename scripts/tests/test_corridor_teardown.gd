@@ -245,7 +245,22 @@ func _the_level_goes_and_the_party_stays() -> void:
 	mine.place_at(past, 0, true)
 	mine.timer = 0.0
 
+	# AND A CORPSE, WHICH IS THE FOURTH POOL OF THE SAME KIND. Added on the merge
+	# that introduced corpses rather than after a report -- a corpse lies where an
+	# enemy died for eight seconds, so a mode change while one is cooling leaves it
+	# over the hole the road used to be. Short window, same shape.
+	world._show_corpse(0, past + Vector3(0.0, 0.0, 0.3), Vector3.ZERO, false)
+	var corpse: Variant = world._corpses[world._corpses.size() - 1] 		if world._corpses.size() > 0 else null
+	if not check(corpse != null, "a corpse exists to sort"):
+		return
+
 	world._discard_level_entities_past(keep)
+
+	check(not is_instance_valid(corpse) or corpse.is_queued_for_deletion(),
+		"a corpse past the cut goes with the ground the body fell on -- the level "
+		+ "decided where it is, which is the question to ask of a pool rather "
+		+ "than whether the thing in it is an enemy")
+	eq(world.corpse_count(), 0, "and it leaves the pool with it")
 
 	check(not is_instance_valid(mine) or mine.is_queued_for_deletion(),
 		"a mine past the cut goes with the ground it was standing on -- it is "
