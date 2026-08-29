@@ -24,6 +24,9 @@ const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 # and `instance.Enum.VALUE` raises at runtime and silently aborts the rest of
 # the function.
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
+const BusBody = preload("res://scripts/sim/bus_body.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 
@@ -35,6 +38,8 @@ const REST_HEIGHT := {
 	"rusher": 0.7,
 	"skirmisher": 0.85,
 	"turret": 0.45,
+	# A bus sits ON the deck: its origin is the underside of its wheels.
+	"bus": 0.0,
 }
 const REST_DEFAULT := 0.6
 
@@ -204,6 +209,22 @@ func _render_scene(shot: Dictionary) -> void:
 	# it. Same lighting rig, added explicitly instead.
 	world.add_child(SceneLighting.build())
 
+	# A SHOT THAT CONTAINS A BUS HAS TO BE IN A MODE THAT ALLOWS ONE.
+	#
+	# The world is RUNNING while it is being photographed, so `_process_buses`
+	# takes a tick like everything else -- and a pool that is switched off does
+	# not merely decline to build, it CLEARS UP. So a bus placed by the manifest
+	# was created, positioned, and freed again before the first frame was drawn,
+	# and the shot came back as an empty deck with the riders standing on it.
+	# That is the mode system working exactly as designed, arriving somewhere
+	# nobody thought about.
+	for actor in shot.get("actors", []):
+		if str(actor.get("type", "")) == "bus":
+			world.round_machine.round_index = 0
+			world.round_machine.state = RoundMachine.State.RUNNING
+			world.run_modes = [GameMode.BLANK]
+			break
+
 	_grid_width = world.grid.width
 	# The spawn ring sits at the START of the first segment, where there is no
 	# bridge behind you -- framed by the game camera that is half a screen of
@@ -222,6 +243,13 @@ func _render_scene(shot: Dictionary) -> void:
 			# in the manifest stands in for "the local player".
 			if focus_body == null and str(actor.get("type", "")) == "player":
 				focus_body = node
+
+	# RIDERS LAST. A seat is a function of where the bus ended up, so planting
+	# has to come after every actor has been positioned -- doing it inside the
+	# bus's own branch would seat everybody at the origin.
+	for bus in world._buses:
+		if is_instance_valid(bus):
+			world._plant_riders(bus)
 
 	var size: Vector2i = _size_of(shot.get("size", _manifest.get("size", [1600, 900])))
 	var stage := _make_viewport(size, false)
@@ -320,6 +348,19 @@ func _place_actor(world: Node3D, actor: Dictionary, anchor: Vector3) -> Node3D:
 			if node != null:
 				node.state = RusherBody.State.CHASE
 				node.state_timer = 0.0
+		"bus":
+			# THE ONE ACTOR THAT IS ABOUT THE OTHER ACTORS. A bus with nobody on it
+			# says nothing about the question it exists to answer, which is whether
+			# a rider reads as being IN it. So it takes a roster, and the riders
+			# are planted after every actor is placed -- see _render_scene, where
+			# that has to happen because a seat is a function of where the bus
+			# ended up and this runs before the position is applied below.
+			node = BusBody.new()
+			world.add_child(node)
+			node.name = "ShotBus"
+			for peer in actor.get("riders", []):
+				node.board(int(peer))
+			world._buses.append(node)
 		"skirmisher":
 			node = world._spawn_gunner(at, GunnerBody.Kind.SKIRMISHER)
 		"turret":

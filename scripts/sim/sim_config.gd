@@ -202,6 +202,28 @@ const BUS_SPAWN_FAR := 20
 # Clear of the deck, so the first tick settles it down rather than ejecting it.
 const BUS_SPAWN_LIFT := 0.6
 
+# HOW HARD A SHOVE HAS TO BE TO THROW A RIDER OUT OF THE BUS.
+#
+# Until this, planting erased knockback entirely: a hit landed, health fell, and
+# nothing moved, because `_plant_riders` reasserts the seat after every hazard
+# has had its turn. Measured, the same rusher shove threw a player on the deck
+# 6.04 m and a rider 0.00 -- so every hazard tuned around knockback merely
+# chipped at you aboard, and nothing in the game could get you out of a bus.
+#
+# THE THRESHOLD IS NOT A FEEL VALUE, IT IS A GAP IN THE DATA. Every shove in the
+# game lands in one of two clusters, and 10 is the empty space between them:
+#
+#   a machine-gun round   push  8.0, lift 2.0  ->  8.25 m/s
+#   a rusher, a zombie, a plinko ball  11.0, 2.5  -> 11.28 m/s
+#   a blast              push 15.0, lift 5.0  -> 15.81 m/s
+#
+# So gunfire chips at a rider and a BODY-CHECK throws them out, which is the
+# split worth having: a skirmisher on the track cannot knock the party out of
+# their own vehicle one round at a time, and running into something at speed
+# absolutely can. Move this number and that rule moves with it -- there is
+# nothing else to change.
+const BUS_EJECT_SPEED := 10.0
+
 # How long a client waits between asking the host for a full snapshot. Long
 # enough that the answer has time to arrive and be applied, short enough that a
 # hole in the client's world is measured in a few ticks rather than in keyframes.

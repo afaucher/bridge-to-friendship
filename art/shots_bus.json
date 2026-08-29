@@ -1,0 +1,51 @@
+{
+  "_comment": "The bus, with people in it. Run WINDOWED -- --headless disables rendering: godot --path . --run-shots art/shots_bus.json. The question these framings exist to answer is whether a rider reads as being IN the bus rather than balanced on a plank, so every shot has riders aboard and none of them is a beauty shot of an empty vehicle.",
+
+  "output_dir": "res://tmp/shots",
+  "size": [1280, 720],
+
+  "scenes": [
+    {
+      "name": "bus_three_quarter",
+      "_comment": "The everyday view: roughly where the game camera sits, close enough that the sides and the floor stripe are legible against the riders.",
+      "segment": "res://segments/test_flat.seg",
+      "anchor_offset": [0, 0, -6],
+      "camera_offset": [6.5, 4.2, 5.0],
+      "look_offset": [0, 1.0, 0],
+      "fov": 50.0,
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 180.0},
+        {"type": "player", "peer": 2, "at": [1.5, 0, 1.5], "yaw": 180.0},
+        {"type": "bus", "at": [0, 0, 0], "yaw": 0.0, "riders": [1, 2]}
+      ]
+    },
+    {
+      "name": "bus_side_on",
+      "_comment": "Square to the flank, which is the only framing where the stripe, the hubcaps and how far up a rider the sides come can all be judged at once. A three-quarter view foreshortens exactly the thing under review.",
+      "segment": "res://segments/test_flat.seg",
+      "anchor_offset": [0, 0, -6],
+      "camera_offset": [9.0, 1.6, 0.0],
+      "look_offset": [0, 1.1, 0],
+      "fov": 38.0,
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 180.0},
+        {"type": "player", "peer": 2, "at": [1.5, 0, 1.5], "yaw": 180.0},
+        {"type": "bus", "at": [0, 0, 0], "yaw": 0.0, "riders": [1, 2]}
+      ]
+    },
+    {
+      "name": "bus_nose_on",
+      "_comment": "Down the barrel of the front end, for the headlights and the radiator -- the parts a side view cannot show at all.",
+      "segment": "res://segments/test_flat.seg",
+      "anchor_offset": [0, 0, -6],
+      "camera_offset": [2.6, 1.8, -6.5],
+      "look_offset": [0, 0.9, -1.5],
+      "fov": 42.0,
+      "actors": [
+        {"type": "player", "peer": 1, "at": [0, 0, 0], "yaw": 180.0},
+        {"type": "player", "peer": 2, "at": [1.5, 0, 1.5], "yaw": 180.0},
+        {"type": "bus", "at": [0, 0, 0], "yaw": 0.0, "riders": [1, 2]}
+      ]
+    }
+  ]
+}

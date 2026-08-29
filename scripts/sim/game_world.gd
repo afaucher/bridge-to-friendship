@@ -4316,9 +4316,30 @@ func _drive_bus(bus) -> void:
 # overwritten -- which is what "planted" means, and what keeps a rider off the
 # carrier/rider tangle CLAUDE.md opens with entirely.
 func _plant_riders(bus) -> void:
+	var thrown: Array = []
 	for i in bus.riders.size():
 		var body: Node = players.get(int(bus.riders[i]))
 		if body == null or not is_instance_valid(body):
+			continue
+		# SHOVED OUT. A hard enough hit takes your seat away, and the tumble it
+		# started then carries you off the bus like anything else.
+		#
+		# THIS IS THE ONE PLACE IT CAN BE DECIDED, because it is the only choke
+		# point every hazard passes through. Damage is delivered from a dozen
+		# sites -- rushers, zombies, balls, blasts, rounds -- and each of them
+		# would need its own "was that a rider?" branch, which is exactly the
+		# chain of what-are-you questions `_resolve_round_hit` was rewritten to
+		# get rid of. Here there is one question, asked of the body: did it start
+		# tumbling, and how fast.
+		#
+		# READ OFF THE VELOCITY, WHICH IS THE LAUNCH ITSELF. `begin_tumble` sets
+		# `velocity = launch` outright, and this pass runs before the body has
+		# stepped -- so what is read here is the shove that was just applied and
+		# not what is left of it. Below the threshold the seat is reasserted as
+		# before, so gunfire still only chips.
+		if body.state == PlayerBody.State.TUMBLE \
+				and body.velocity.length() >= SimConfig.BUS_EJECT_SPEED:
+			thrown.append(int(bus.riders[i]))
 			continue
 		body.position = bus.slot_world(i) + Vector3(0.0, PlayerBody.HALF_HEIGHT, 0.0)
 		body.velocity = Vector3.ZERO
@@ -4335,6 +4356,17 @@ func _plant_riders(bus) -> void:
 		var weapon: Node = _specials.held_by(int(bus.riders[i]))
 		if weapon != null and is_instance_valid(weapon):
 			weapon.ammo = SpecialPool.full_ammo(int(weapon.kind))
+
+	# AFTER THE WALK, NEVER DURING IT. `leave` removes from the array this loop
+	# is iterating, and it also RENUMBERS every seat behind the one that went --
+	# so dropping somebody mid-walk would plant the rest of the queue into the
+	# seats they are about to be moved out of.
+	#
+	# And the promotion comes free: the driver is `riders[0]`, so a driver thrown
+	# out of their own bus hands the wheel to whoever is behind them on the same
+	# tick, with nothing to keep in step.
+	for peer in thrown:
+		bus.leave(peer)
 
 # --- Boarding ------------------------------------------------------------------
 

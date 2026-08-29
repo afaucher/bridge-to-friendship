@@ -26,13 +26,20 @@ const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 const LAYER := 2048             # `bus`, see project.godot [layer_names]
 
-# THE SHAPE. A tiny platform on purpose -- no walls, no roof -- because the whole
-# point is that the party is visibly standing on it. A box with sides would hide
-# the thing it is carrying.
-# BARELY WIDER THAN THE PERSON STANDING ON IT. A player is 0.8 m across, so this
-# is a hand's width of deck either side -- it reads as a board with wheels rather
-# than as a vehicle you stand inside, which is the whole look: the party is
-# visibly balanced on it.
+# THE SHAPE. A tub, open at the top: sides high enough that a rider is standing
+# IN it rather than balanced on a plank, and low enough that they can still shoot
+# over them. Both halves of that are measured against the body, not chosen -- see
+# SIDE_HEIGHT.
+# BARELY WIDER THAN THE PERSON STANDING IN IT. A player is 0.8 m across, so the
+# interior between the two side panels is 0.96 -- eight centimetres of shoulder
+# room. Deliberately tight: this is a bus you are wedged into, not a truck bed.
+#
+# THE REASON FOR THE WIDTH USED TO BE THE OPPOSITE ONE. It was chosen so the bus
+# read as a board with wheels, with the party visibly balanced on top; the report
+# was that this looked like riding a platform rather than being in a vehicle, and
+# the sides are the answer. The number survived the change of mind because a
+# narrow tub reads even better than a narrow plank -- but it is worth knowing the
+# argument here is now the second one, not the first.
 const WIDTH := 1.1
 const DECK_THICK := 0.35
 # The cab, before anybody is aboard, and what each rider past the first adds.
@@ -44,6 +51,44 @@ const DECK_THICK := 0.35
 # only what the wheels need.
 const BASE_LENGTH := 1.6
 const SEAT_LENGTH := 1.0
+# HOW HIGH THE SIDES COME, above the deck's top face.
+#
+# THE TWO NUMBERS THIS SITS BETWEEN ARE BOTH THE PLAYER'S, which is why it is not
+# a look-and-see value. A rider's feet are on the deck and its origin is
+# PlayerBody.HALF_HEIGHT (0.9 m) above it; the muzzle of whatever it is holding is
+# that plus 0.25 -- 1.15 m -- and that number is a HITBOX decision made elsewhere,
+# for reasons about shooting rushers, not a cosmetic one. So the sides have to
+# clear the feet by enough to read as a body and stay clear of 1.15 by enough
+# that nobody ever wonders whether their round will hit the door.
+#
+# 1.15 IS THE FALLBACK AND NOT THE ANSWER. `_muzzle_of` only computes
+# body-plus-0.25 when the holder has no weapon; with a gun in their hands it
+# returns the tip of that gun's Barrel node, and MEASURED that is 0.92 m above
+# the deck -- LOWER than the number you get by reading the fallback and reasoning
+# from it. Sizing the sides against 1.15 left 17 cm of daylight where it looked
+# like 40.
+#
+# 0.68 is knee height on a 1.8 m body: the feet and shins are gone, and the
+# lowest gun in the game still clears it by 0.24 m. `test_bus_look` measures that
+# clearance against EVERY weapon kind through `_muzzle_of` itself rather than
+# against this comment -- the muzzle is a hitbox decision made for reasons about
+# shooting rushers, and it can move without anybody thinking about the bus.
+const SIDE_HEIGHT := 0.68
+const SIDE_THICK := 0.07
+# The band around it at floor level, and how far it stands proud of the sides.
+const STRIPE_HEIGHT := 0.1
+const STRIPE_PROUD := 0.025
+const HEADLIGHT_RADIUS := 0.07
+const RADIATOR_INSET := 0.27
+const HUBCAP_RADIUS := 0.19
+const HUBCAP_THICK := 0.07
+
+const BODY_COLOUR := Color(0.82, 0.68, 0.22)
+const STRIPE_COLOUR := Color(0.36, 0.16, 0.13)
+const CHROME_COLOUR := Color(0.87, 0.86, 0.80)
+const GRILLE_COLOUR := Color(0.2, 0.2, 0.23)
+const LAMP_COLOUR := Color(1.0, 0.94, 0.72)
+
 const WHEEL_RADIUS := 0.42
 const WHEEL_WIDTH := 0.3
 
@@ -80,6 +125,13 @@ var tilt: float = 0.0           # current roll, radians
 var _deck: MeshInstance3D = null
 var _shape: CollisionShape3D = null
 var _wheels: Array = []
+# THE BODYWORK, ALL OF IT PARENTED TO `_deck`. That is not tidiness: the deck is
+# the only thing that ROLLS (see _pose -- rolling the whole node drove the bus on
+# its rims), so anything that is part of the body has to hang off it or the bus
+# would lean out from under its own sides. The hubcaps are the exception and
+# belong to the wheels, which stay level.
+var _panels: Dictionary = {}
+var _hubcaps: Array = []
 var _built_for: int = -1        # the rider count the body was last built at
 
 func _ready() -> void:
@@ -130,6 +182,7 @@ func _rebuild() -> void:
 		add_child(_deck)
 	(_deck.mesh as BoxMesh).size = Vector3(WIDTH, DECK_THICK, l)
 	_deck.position = Vector3(0.0, DECK_THICK * 0.5, 0.0)
+	_build_body(l)
 
 	# FOUR WHEELS, AT THE CORNERS, however long it gets. A bus that grew a wheel
 	# per seat would read as a train.
@@ -144,11 +197,6 @@ func _rebuild() -> void:
 		var rubber := StandardMaterial3D.new()
 		rubber.albedo_color = Color(0.12, 0.12, 0.14)
 		wheel.material_override = rubber
-		# A CYLINDER STANDS UP THE Y AXIS, so a quarter turn about Z lays it on its
-		# side to be a wheel. Written as a Basis from an axis and an angle rather
-		# than by hand: this project has shipped FOUR sign errors from hand-written
-		# row-major bases, and the last one pointed a beak into a player's face.
-		wheel.transform.basis = Basis(Vector3(0.0, 0.0, 1.0), PI * 0.5)
 		add_child(wheel)
 		_wheels.append(wheel)
 	var half_l: float = l * 0.5 - WHEEL_RADIUS * 1.4
@@ -158,10 +206,164 @@ func _rebuild() -> void:
 	for i in 4:
 		var front: bool = i < 2
 		var left: bool = i % 2 == 0
+		var side: float = -1.0 if left else 1.0
 		_wheels[i].position = Vector3(
-			half_w * (-1.0 if left else 1.0),
+			half_w * side,
 			WHEEL_RADIUS * 0.5,
 			half_l * (-1.0 if front else 1.0))
+		# A CYLINDER STANDS UP THE Y AXIS, so a quarter turn about Z lays it on its
+		# side to be a wheel. Written as a Basis from an axis and an angle rather
+		# than by hand: this project has shipped FOUR sign errors from hand-written
+		# row-major bases, and the last one pointed a beak into a player's face.
+		#
+		# AND THE TURN GOES THE OTHER WAY ON THE OTHER SIDE, which for a plain
+		# cylinder changes nothing you can see and everything about what "local up"
+		# means inside it. That is the point: a hubcap is then at local +Y on every
+		# wheel and OUTBOARD on every wheel. With one shared basis the caps on one
+		# side sat 15 cm INSIDE their tyres -- invisible, and correct by every
+		# property you can print about them.
+		#
+		# NEGATED, and that is not a typo to tidy away later. A turn of +90 about Z
+		# sends local +Y to world -X, so the LEFT wheel -- the one at negative x --
+		# is the one that wants the POSITIVE turn. Written the intuitive way round
+		# it put all four hubcaps 15 cm inside their tyres, on both sides at once,
+		# which is what a wrong sign looks like when it is shared.
+		_wheels[i].transform.basis = Basis(Vector3(0.0, 0.0, 1.0), PI * -0.5 * side)
+	_build_hubcaps()
+
+# --- The bodywork --------------------------------------------------------------
+#
+# Everything here is DRAWN AND NOT SOLID. The one collision shape is the level
+# deck box built above, and that is deliberate: a rider is POSED onto its seat
+# rather than colliding with anything, and the bus's mask does not include
+# players at all. Giving the sides colliders would put a wall between a passenger
+# and the world for no gain -- and worse, it would be a hit test that disagrees
+# with what the art promises, which this project has already shipped once with
+# the spikes.
+#
+# A ROUND FIRED FROM ABOARD CLEARS THE SIDES BY GEOMETRY, not by an exception:
+# the muzzle is 1.15 m above the deck and the sides stop at SIDE_HEIGHT. That is
+# the honest version of "you can still shoot" -- nothing is filtering rounds, the
+# gun is simply above the door.
+func _build_body(l: float) -> void:
+	var top: float = DECK_THICK * 0.5          # the deck's top face, in deck space
+	var half_w: float = WIDTH * 0.5
+	var mid: float = top + SIDE_HEIGHT * 0.5
+
+	# The two long sides, set just inside the deck edge so the bus does not get
+	# wider than the person it carries.
+	var side_x: float = half_w - SIDE_THICK * 0.5
+	_panel("SideLeft", BODY_COLOUR, Vector3(SIDE_THICK, SIDE_HEIGHT, l),
+		Vector3(-side_x, mid, 0.0))
+	_panel("SideRight", BODY_COLOUR, Vector3(SIDE_THICK, SIDE_HEIGHT, l),
+		Vector3(side_x, mid, 0.0))
+
+	# FRONT IS -Z, which is the same convention the wheels above use and the same
+	# one GridConfig.yaw_vector produces. Worth stating rather than leaving to be
+	# rediscovered: a headlight on the back of the bus has an identical bounding
+	# box to one on the front, and this project has shipped four sign errors of
+	# exactly that shape.
+	var end_z: float = l * 0.5 - SIDE_THICK * 0.5
+	_panel("Nose", BODY_COLOUR, Vector3(WIDTH, SIDE_HEIGHT, SIDE_THICK),
+		Vector3(0.0, mid, -end_z))
+	_panel("Tail", BODY_COLOUR, Vector3(WIDTH, SIDE_HEIGHT, SIDE_THICK),
+		Vector3(0.0, mid, end_z))
+
+	# THE STRIPE, AT FLOOR LEVEL -- the line where the deck meets the sides, which
+	# is what makes the tub read as a body with a floor in it rather than as four
+	# panels. A ring of four rather than one box around everything: a single slab
+	# would cover the deck's own top face and fight it for the same pixels.
+	var stripe_y: float = top + STRIPE_HEIGHT * 0.5
+	var stripe_x: float = half_w + STRIPE_PROUD * 0.5
+	var stripe_z: float = l * 0.5 + STRIPE_PROUD * 0.5
+	_panel("StripeLeft", STRIPE_COLOUR,
+		Vector3(SIDE_THICK + STRIPE_PROUD, STRIPE_HEIGHT, l),
+		Vector3(-stripe_x + SIDE_THICK * 0.5, stripe_y, 0.0))
+	_panel("StripeRight", STRIPE_COLOUR,
+		Vector3(SIDE_THICK + STRIPE_PROUD, STRIPE_HEIGHT, l),
+		Vector3(stripe_x - SIDE_THICK * 0.5, stripe_y, 0.0))
+	_panel("StripeNose", STRIPE_COLOUR,
+		Vector3(WIDTH, STRIPE_HEIGHT, SIDE_THICK + STRIPE_PROUD),
+		Vector3(0.0, stripe_y, -stripe_z + SIDE_THICK * 0.5))
+	_panel("StripeTail", STRIPE_COLOUR,
+		Vector3(WIDTH, STRIPE_HEIGHT, SIDE_THICK + STRIPE_PROUD),
+		Vector3(0.0, stripe_y, stripe_z - SIDE_THICK * 0.5))
+
+	# THE RADIATOR, low and central on the nose, standing proud of it so it reads
+	# as a grille bolted on rather than as a painted rectangle.
+	var grille_h: float = SIDE_HEIGHT - RADIATOR_INSET * 2.0
+	_panel("Radiator", GRILLE_COLOUR,
+		Vector3(WIDTH - RADIATOR_INSET * 2.0, grille_h, SIDE_THICK * 0.8),
+		Vector3(0.0, top + RADIATOR_INSET + grille_h * 0.5,
+			-end_z - SIDE_THICK * 0.5))
+
+	# TWO LAMPS, at the top corners of the nose and above the grille. Emissive, so
+	# they read as lit rather than as pale paint -- a bus that only has headlights
+	# in daylight is a bus with two grey circles on it.
+	var lamp_y: float = top + SIDE_HEIGHT - HEADLIGHT_RADIUS - 0.1
+	var lamp_x: float = half_w - HEADLIGHT_RADIUS - 0.06
+	for i in 2:
+		var lamp := _disc("Headlight%d" % i, LAMP_COLOUR, HEADLIGHT_RADIUS,
+			SIDE_THICK * 0.7, _deck)
+		lamp.position = Vector3(lamp_x * (-1.0 if i == 0 else 1.0), lamp_y,
+			-end_z - SIDE_THICK * 0.35)
+		# A CYLINDER STANDS UP ITS OWN Y, so a quarter turn about X lays its face
+		# forward. From an axis and an angle, never nine hand-written numbers.
+		lamp.transform.basis = Basis(Vector3(1.0, 0.0, 0.0), PI * 0.5)
+		var glow := lamp.material_override as StandardMaterial3D
+		glow.emission_enabled = true
+		glow.emission = LAMP_COLOUR
+		glow.emission_energy_multiplier = 1.6
+
+# ONE PER WHEEL, ON ITS OUTER FACE. Proud along the wheel's own axis, which is X
+# once the cylinder has been laid on its side -- a hubcap at the wheel's centre is
+# a hubcap inside the tyre, invisible and perfectly present in every test that
+# only asks whether it was created.
+func _build_hubcaps() -> void:
+	while _hubcaps.size() < 4:
+		var cap := _disc("Hubcap%d" % _hubcaps.size(), CHROME_COLOUR,
+			HUBCAP_RADIUS, HUBCAP_THICK, _wheels[_hubcaps.size()])
+		# The wheel is already rotated onto its side, so inside it "up" is outboard.
+		cap.position = Vector3(0.0, WHEEL_WIDTH * 0.5, 0.0)
+		_hubcaps.append(cap)
+
+# A box on the deck, created once and resized after. Returns it so a caller can
+# keep going -- the lamps need a material change on top.
+func _panel(part: String, colour: Color, size: Vector3, at: Vector3) -> MeshInstance3D:
+	var node: MeshInstance3D = _panels.get(part)
+	if node == null:
+		node = MeshInstance3D.new()
+		node.mesh = BoxMesh.new()
+		var material := StandardMaterial3D.new()
+		material.albedo_color = colour
+		node.material_override = material
+		_deck.add_child(node)
+		# NAMED AFTER THE ADD. Setting a name before add_child is discarded when a
+		# sibling already holds it, and what you get is not "Nose2" but a generated
+		# @MeshInstance3D@341 -- which is a node no test can find by name.
+		node.name = part
+		_panels[part] = node
+	(node.mesh as BoxMesh).size = size
+	node.position = at
+	return node
+
+func _disc(part: String, colour: Color, radius: float, thick: float,
+		under: Node3D) -> MeshInstance3D:
+	var node: MeshInstance3D = _panels.get(part)
+	if node == null:
+		node = MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = radius
+		mesh.bottom_radius = radius
+		mesh.height = thick
+		node.mesh = mesh
+		var material := StandardMaterial3D.new()
+		material.albedo_color = colour
+		node.material_override = material
+		under.add_child(node)
+		node.name = part
+		_panels[part] = node
+	return node
 
 # --- Riders --------------------------------------------------------------------
 
