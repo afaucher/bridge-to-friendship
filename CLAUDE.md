@@ -954,6 +954,37 @@ the moment it is written.
   behind its own backing -- and the general form is: **a fade you have not
   started yet still costs you the pass**, so any multi-part object with a
   transparent material is mis-sorted from the moment it exists.
+- **A MESH'S SEGMENT COUNT IS PART OF ITS SHAPE, so REBUILDING a shape at your
+  own resolution changes it -- and no tiling or volume test can see that.**
+  Observed 2026-08-29 giving turrets a shatter. `turret.tscn` authors its base
+  with `radial_segments = 8` because a chunky octagon is the look; the fragmenter
+  re-lathed it at its own default 32, so the corpse was ROUNDER THAN THE LIVING
+  TURRET and an octagonal base became a smooth one on the frame of death -- which
+  is the exact pop the whole feature exists to prevent. Every assertion passed
+  throughout: the pieces tiled the body perfectly, at the wrong resolution. It
+  was visible in one glance at the contact sheet and invisible to 138 tests.
+  **When you rebuild authored geometry, read its tessellation off the source**
+  and treat "how faceted is it" as data rather than as a constant.
+  Its companion, from the fix: **a threshold that was fine while one number was
+  constant becomes a FALSE FAILURE the day that number varies.** The check on
+  each fragment's enclosed volume carried a flat 0.95 floor, correct while
+  everything was drawn at 32 segments, and it failed a turret whose octagonal
+  pieces legitimately enclose 0.9003 of their cell -- which is exactly
+  `(8/2pi) * sin(2pi/8)`, so the mesh was right to four decimals and the
+  threshold was wrong. It is now PREDICTED per part from that formula rather than
+  picked, which is both tighter and correct at every resolution.
+- **"THE MESH" IS NOT A THING A BODY HAS, and assuming it survives exactly until
+  the first body with two of them.** Same change. `get_node_or_null("Mesh")` was
+  true of a rusher, a zombie's torso and a skirmisher, and false of a TURRET,
+  which is a Base, a Ring and a Gun. In the game code that silently dropped a
+  zombie's ARMS from its corpse for as long as it stood. In the TEST the same
+  line returned null, `.get_aabb()` on it raised, and -- per the GDScript trap
+  already recorded here -- the raise aborted the rest of the phase every frame,
+  so the kill never happened and the suite reported a **TIMEOUT rather than a
+  failure**. Two hundred seconds of nothing, from a null property read. **When
+  you add a kind, grep for the singular** -- `"Mesh"`, `parts[0]`, `x == 0` -- and
+  remember a hang is very often not a hang.
+
 - **GODOT WINDS A FRONT FACE CLOCKWISE, so an outward normal is the NEGATION of
   the right-hand-rule cross product -- and a surface wound the wrong way INSIDE
   AN ASSEMBLED SOLID is invisible until something takes the solid apart.**

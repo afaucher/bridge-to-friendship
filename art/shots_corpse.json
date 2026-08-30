@@ -339,6 +339,53 @@
           "scatter": true,
           "scatter_seconds": 0.3
         }
+      },
+      {
+        "name": "turret_0_alive",
+        "scene": "res://scenes/turret.tscn",
+        "focus_y": 0.45,
+        "lift": 0.45
+      },
+      {
+        "name": "turret_1_intact",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "corpse": {
+          "kind": "turret"
+        }
+      },
+      {
+        "name": "turret_2_bump_012",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "turret",
+          "scatter": true,
+          "scatter_seconds": 0.12
+        }
+      },
+      {
+        "name": "turret_2_bump_030",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "turret",
+          "scatter": true,
+          "scatter_seconds": 0.3
+        }
+      },
+      {
+        "name": "turret_3_blast_030",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "ortho_size": 8.0,
+        "corpse": {
+          "kind": "turret",
+          "burst": true,
+          "scatter_seconds": 0.3
+        }
       }
     ]
   },

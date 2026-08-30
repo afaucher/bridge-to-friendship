@@ -1,8 +1,8 @@
 # Death fragments
 
-What an enemy leaves behind when it is killed. Rushers, zombies and skirmishers
-today; the player is deliberately out of scope until there is a life limit for a
-death to mean something.
+What an enemy leaves behind when it is killed. Rushers, zombies, skirmishers and
+turrets; the player is deliberately out of scope until there is a life limit for
+a death to mean something.
 
 The look: **a body fragments into parts that resemble the whole.** Not a puff of
 particles and not a ragdoll — the pieces of the thing, in the shape of the thing,
@@ -25,10 +25,40 @@ heap.
 
 ## One shape model for every character
 
-A rusher is a tapered cylinder, a zombie and a skirmisher are capsules, a player
-is a cylinder. Four cases would be four sets of bugs. One case is a **solid of
+A rusher is a tapered cylinder, a skirmisher is a capsule, a player is a
+cylinder. Four cases would be four sets of bugs. One case is a **solid of
 revolution** — a profile `r(y)` spun about Y — and `fragment_shape.gd` never
 learns that rushers exist.
+
+### A body is a list of parts
+
+Not every body is one lathe, and pretending otherwise silently dropped things. A
+**zombie** is a torso and two arms; a **turret** is a tapered base, a ring and a
+box gun barrel, in two different greys. So a body is a list of **parts**, each
+either a lathe or a box, each with its own placement on the body and its own
+colour. `_parts_of` walks the scene for visible `MeshInstance3D` descendants
+rather than looking for a node called `Mesh`.
+
+A box splits by the same rule the lathe does — cut the longest physical side at
+equal volume — which on a box is simply the midpoint of its longest axis, since
+volume is linear along all three. So a box needs no special argument about
+*where* to cut, only about *which way*, and the answer is the same answer.
+
+**One greedy loop runs over every part at once**, rather than a per-part budget
+handed out in proportion to volume. That is what makes a turret's gun barrel
+break into pieces the same size as its base. A per-part budget gives every part
+its own idea of how big a fragment is, and a body whose pieces do not match reads
+as two objects rather than one that broke.
+
+A mesh the fragmenter cannot lathe or box is **skipped**, not approximated — a
+visible gap someone will report beats a corpse quietly the wrong shape.
+
+Each part is also drawn at **its own source mesh's resolution**. A turret's base
+is authored with `radial_segments = 8` because a chunky octagon is the look;
+re-lathing it at the default 32 made the corpse rounder than the living turret,
+and an octagonal base becoming a smooth one on the frame of death is the pop this
+feature exists to remove. Resolution is part of a shape, and no tiling or volume
+assertion can see it — it took one glance at the contact sheet.
 
 The profile is read off the mesh the game actually draws, at runtime, not
 restated as constants. There is one record of how big an enemy is and it is the
@@ -73,6 +103,17 @@ reads as the body *peeling*; at 64 it reads as gravel; 32 is chunky enough to
 read as pieces of a body at the distance this game is played at. It is also a
 rigid-body count — a pack of eight zombies dying together is 256 of them — which
 is the real ceiling on it.
+
+**Exactness is only available to a one-part body.** A single lathe cut to a power
+of two gives fragments of identical volume. A body of several parts cannot: the
+greedy starts with one cell per part, and no number of halvings makes a turret's
+base agree with its gun barrel. What greedy still buys is the top end — nothing
+ends up more than twice the average, so there is never one giant slab among the
+chips. The *bottom* end is a fact about the body rather than a defect: a zombie's
+arm is smaller than a fragment of its torso ought to be, so it is never split,
+and you cannot make an arm bigger. `test_fragment_shape` asserts exactness for
+the one-part bodies and the top-end bound for the rest, and prints the raw spread
+either way.
 
 ## The corpse
 
@@ -139,9 +180,11 @@ pieces would be a lie about a fight that never happened.
 
 Three tiers, cheapest first.
 
-1. **`test_fragment_shape`** — the cutting, over all four character profiles,
-   with no world, no physics and no rendering. Sub-second. Sums, disjointness,
-   single-coverage of interior points, exact size equality, determinism.
+1. **`test_fragment_shape`** — the cutting, over every character, with no world,
+   no physics and no rendering. Sums, disjointness and single-coverage of
+   interior points (all per part, since two parts of one body are allowed to
+   overlap in space — a turret's ring sits in the column above its base), size
+   equality, and determinism.
 2. **`test_corpse`** — the behaviour, killing each enemy in a real world. Where
    the pile stands, that it is frozen and intact, that a player walking into it
    scatters it, that a blast never leaves one standing, and that the deaths which
@@ -187,12 +230,16 @@ tiers 1 and 2:
 
 ## Not done
 
-* **The zombie's arms.** They are boxes, not part of the lathe, so a zombie
-  corpse has no arms. Every other visible part of every enemy is a solid of
-  revolution. The fix is to carry non-lathe child meshes through as one fragment
-  each.
-* **The player**, until a life limit exists. The fragmenter already handles the
-  cylinder and `test_fragment_shape` already covers it; what is missing is the
-  decision about *when* — a downed player is revivable and should stay a body.
-* **Rounds do not disturb a pile.** Only bodies and blasts do. Shooting a corpse
-  would want the debris layer in the bullet sweep's mask.
+* **The player**, until a life limit exists. Two things are missing, and the
+  second only surfaced once bodies became multi-part:
+  * *When.* A downed player is revivable and should stay a body, so the pile
+    belongs at the drone return rather than at the moment they go down.
+  * *What counts as body.* A player comes back as three parts — the body, and
+    the sidearm's grip and barrel — and a sidearm is **gear**, not body.
+    Visibility already excludes a stowed shield and will never exclude a drawn
+    pistol. Measured, including the sidearm puts the fragment spread at 76.8,
+    because a grip is a thousandth of a cubic metre and is never worth
+    splitting. A corpse needs a rule for telling a body from the things it is
+    carrying.
+* **The player's beak** is a `PrismMesh`, which is neither a lathe nor a box, so
+  it would be skipped. Same answer as the sidearm, or a third part kind.

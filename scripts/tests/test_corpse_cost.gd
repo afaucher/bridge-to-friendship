@@ -34,7 +34,10 @@ func setup(main) -> void:
 	Corpse._built.clear()
 
 	var cold: Dictionary = {}
-	for kind_id in [Corpse.Kind.RUSHER, Corpse.Kind.ZOMBIE, Corpse.Kind.SKIRMISHER]:
+	# EVERY KIND THAT LEAVES A CORPSE, ASKED OF THE ONE LIST OF THEM. Written out
+	# as three kinds by hand, this test failed the day a turret learned to shatter
+	# -- talking about a count rather than about cost.
+	for kind_id in Corpse.SCENES.keys():
 		var started: int = Time.get_ticks_usec()
 		var built: Dictionary = Corpse._build(kind_id, SimConfig.CORPSE_FRAGMENTS)
 		var took: int = Time.get_ticks_usec() - started
@@ -46,7 +49,7 @@ func setup(main) -> void:
 	# A SECOND BUILD OF THE SAME THING MUST BE FREE. Not "fast" -- a cache hit is
 	# a dictionary lookup, so the ratio against a cold build is enormous and any
 	# threshold in between separates the two cleanly on any machine.
-	for kind_id in [Corpse.Kind.RUSHER, Corpse.Kind.ZOMBIE, Corpse.Kind.SKIRMISHER]:
+	for kind_id in Corpse.SCENES.keys():
 		var started: int = Time.get_ticks_usec()
 		for _i in range(50):
 			Corpse._build(kind_id, SimConfig.CORPSE_FRAGMENTS)
@@ -82,7 +85,9 @@ func setup(main) -> void:
 	main.add_child(world)
 	world.segment_paths = ["res://segments/test_flat.seg"]
 	world.start(true, 1, false)
-	eq(Corpse._built.size(), 3,
+	# A RELATIONSHIP, NOT A LITERAL: as many built entries as there are kinds that
+	# can leave a corpse. The literal 3 broke the day the turret joined them.
+	eq(Corpse._built.size(), Corpse.SCENES.size(),
 		"starting a world primes every corpse kind, so no death is ever the first one")
 
 	finish()

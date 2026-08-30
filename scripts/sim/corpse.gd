@@ -54,12 +54,13 @@ const FragmentShape = preload("res://scripts/sim/fragment_shape.gd")
 # WHAT CAN LEAVE A CORPSE, and the only list of it. An int rather than a scene
 # path because this crosses the wire: a client should not be told to `load()` an
 # arbitrary string by the far end.
-enum Kind { RUSHER, ZOMBIE, SKIRMISHER }
+enum Kind { RUSHER, ZOMBIE, SKIRMISHER, TURRET }
 
 const SCENES := {
 	Kind.RUSHER: "res://scenes/rusher.tscn",
 	Kind.ZOMBIE: "res://scenes/zombie.tscn",
 	Kind.SKIRMISHER: "res://scenes/skirmisher.tscn",
+	Kind.TURRET: "res://scenes/turret.tscn",
 }
 
 const LAYER_DEBRIS := 1 << 12       # project.godot layer 13
@@ -87,7 +88,8 @@ var hit_radius: float = 0.5
 var hit_low: float = -0.9
 var hit_high: float = 0.9
 
-var _material: StandardMaterial3D = null
+# One per distinct colour on this corpse. See _assemble.
+var _materials: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 
 # ONE BUILD PER KIND, KEPT. Cutting a profile into sixteen cells and lathing a
@@ -163,48 +165,115 @@ static func _build(kind_id: int, count: int) -> Dictionary:
 	if packed == null:
 		return {}
 	var sample: Node = packed.instantiate()
-	var mesh_node := sample.get_node_or_null("Mesh") as MeshInstance3D
-	if mesh_node == null or mesh_node.mesh == null:
+	var parts: Array = _parts_of(sample)
+	if parts.is_empty():
 		sample.free()
 		return {}
 
-	var profile: FragmentShape.Profile = FragmentShape.profile_from_mesh(mesh_node.mesh)
-	if profile == null:
-		sample.free()
-		return {}
-
-	# THE ENEMY'S OWN MATERIAL, so a corpse can never be a different colour from
-	# the thing that died. Same argument as reading the profile off the mesh.
-	var source := mesh_node.material_override as StandardMaterial3D
-	var colour: Color = source.albedo_color if source != null else Color(0.6, 0.6, 0.6)
-
-	var cells: Array = FragmentShape.fragment(profile, count)
+	var pieces: Array = FragmentShape.fragment_body(parts, count)
 	var meshes: Array = []
-	var centres: Array = []
+	var places: Array = []
 	var sizes: Array = []
-	for cell in cells:
-		var centre: Vector3 = FragmentShape.cell_centre(profile, cell)
-		var mesh: ArrayMesh = FragmentShape.cell_mesh(profile, cell, centre)
+	var colours: Array = []
+	for piece in pieces:
+		var mesh: ArrayMesh = FragmentShape.piece_mesh(parts, piece)
 		meshes.append(mesh)
-		centres.append(centre)
+		places.append(FragmentShape.piece_placement(parts, piece))
 		sizes.append(mesh.get_aabb())
+		colours.append(parts[piece.part].colour)
+
+	# The volume the whole body filled, for anything asking whether it hit the
+	# pile. Taken across every part, so a turret's gun barrel counts.
+	var low: float = INF
+	var high: float = -INF
+	var reach: float = 0.0
+	for part in parts:
+		var aabb: AABB = _part_bounds(part)
+		low = minf(low, aabb.position.y)
+		high = maxf(high, aabb.end.y)
+		reach = maxf(reach, maxf(absf(aabb.position.x), absf(aabb.end.x)))
+		reach = maxf(reach, maxf(absf(aabb.position.z), absf(aabb.end.z)))
 	sample.free()
 
 	_built[key] = {
-		"colour": colour,
 		"meshes": meshes,
-		"centres": centres,
+		"places": places,
 		"bounds": sizes,
+		"colours": colours,
 		# THE SHAPE OF THE BODY THAT DIED, for anything that wants to ask whether
-		# it hit the pile. Read off the same profile the pieces were cut from, so
-		# it cannot disagree with what is drawn -- and a cylinder rather than a
+		# it hit the pile. Read off the same parts the pieces were cut from, so it
+		# cannot disagree with what is drawn -- and a cylinder rather than a
 		# sphere, because a body is much taller than it is wide and a sphere would
 		# be generous at the waist and mean at the head.
-		"radius": profile.max_radius(),
-		"low": profile.y0,
-		"high": profile.y1,
+		"radius": reach,
+		"low": low,
+		"high": high,
 	}
 	return _built[key]
+
+# EVERY VISIBLE MESH ON THE BODY, WITH WHERE IT SITS AND WHAT COLOUR IT IS.
+#
+# Walked rather than named. "The mesh called Mesh" was true of the first three
+# enemies and false of the fourth: a TURRET is a tapered base, a ring and a gun
+# barrel, in two different greys, and a ZOMBIE has two arms that were silently
+# dropped from its corpse for as long as this looked for one node.
+#
+# VISIBLE ONLY, which does the right thing for free: a player's raised shield and
+# anything else hidden at rest is gear rather than body, and gear is not what a
+# corpse is made of.
+#
+# A mesh this file cannot lathe or box is SKIPPED rather than approximated. It
+# will be missing from the pile, which is a visible gap somebody will report --
+# far better than a corpse quietly the wrong shape, which nobody can see is
+# wrong.
+static func _parts_of(root: Node) -> Array:
+	var out: Array = []
+	_collect_parts(root, root, out)
+	return out
+
+static func _collect_parts(node: Node, root: Node, out: Array) -> void:
+	var view := node as MeshInstance3D
+	if view != null and view.visible and view.mesh != null:
+		var part := FragmentShape.Part.new()
+		var lathe: FragmentShape.Profile = FragmentShape.profile_from_mesh(view.mesh)
+		var handled: bool = false
+		if lathe != null:
+			part.profile = lathe
+			handled = true
+		elif view.mesh is BoxMesh:
+			part.box = (view.mesh as BoxMesh).size
+			handled = true
+		if handled:
+			part.placement = _relative_to(view, root)
+			var mat := view.material_override as StandardMaterial3D
+			part.colour = mat.albedo_color if mat != null else Color(0.6, 0.6, 0.6)
+			out.append(part)
+	for child in node.get_children():
+		_collect_parts(child, root, out)
+
+# A node's transform in the body's frame, walked up by hand: the scene is not in
+# a tree, so global_transform is not available and would be the wrong question
+# anyway -- what is wanted is the offset from the BODY, not from the world.
+static func _relative_to(node: Node3D, root: Node) -> Transform3D:
+	var out := Transform3D.IDENTITY
+	var walk: Node = node
+	while walk != null and walk != root:
+		var here := walk as Node3D
+		if here != null:
+			out = here.transform * out
+		walk = walk.get_parent()
+	return out
+
+# A part's extent in body space, for the hit volume.
+static func _part_bounds(part: FragmentShape.Part) -> AABB:
+	var half: Vector3
+	if part.is_box():
+		half = part.box * 0.5
+	else:
+		half = Vector3(part.profile.max_radius(),
+			part.profile.height() * 0.5, part.profile.max_radius())
+	var local := AABB(-half, half * 2.0)
+	return part.placement * local
 
 func _assemble(built: Dictionary, seed_value: int) -> void:
 	_rng.seed = seed_value
@@ -212,9 +281,12 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 	hit_low = float(built.get("low", -0.9))
 	hit_high = float(built.get("high", 0.9))
 
-	_material = StandardMaterial3D.new()
-	_material.albedo_color = built["colour"]
-	_material.roughness = 0.8
+	_materials.clear()
+	# ONE MATERIAL PER COLOUR ON THE BODY, and per CORPSE. A turret is two greys
+	# and a zombie is one green; sharing a material between corpses would fade the
+	# whole battlefield together, and sharing one between colours would repaint a
+	# turret's gun the colour of its base.
+	#
 	# A DEPTH PRE-PASS, NOT PLAIN ALPHA, AND THE PICTURE IS THE ARGUMENT.
 	#
 	# The fade at the end of a corpse's life needs a transparent material, and it
@@ -233,11 +305,11 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 	# translucent object occludes correctly and only the genuinely faded part
 	# blends. One material for the whole life, and it looks like a solid body while
 	# it is one.
-	_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 
 	var meshes: Array = built["meshes"]
-	var centres: Array = built["centres"]
+	var places: Array = built["places"]
 	var bounds: Array = built["bounds"]
+	var colours: Array = built["colours"]
 	for i in range(meshes.size()):
 		var piece := RigidBody3D.new()
 		piece.collision_layer = LAYER_DEBRIS
@@ -251,7 +323,7 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 
 		var view := MeshInstance3D.new()
 		view.mesh = meshes[i]
-		view.material_override = _material
+		view.material_override = _material_for(colours[i])
 		piece.add_child(view)
 
 		# A BOX AND NOT THE CONVEX HULL OF THE PIECE. Two reasons, and the second
@@ -273,11 +345,23 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 
 		add_child(piece)
 		piece.name = "Fragment%d" % i
-		# THE PIECE GOES EXACTLY WHERE IT CAME FROM. Its mesh was built around this
-		# same centre, so mesh plus placement reassembles the body vertex for
-		# vertex -- which is what makes the pile indistinguishable from the body.
-		piece.position = centres[i]
+		# THE PIECE GOES EXACTLY WHERE IT CAME FROM, turned the way its PART was
+		# turned. Its mesh was built about this same point in the part's own
+		# space, so mesh plus placement reassembles the body vertex for vertex --
+		# which is what makes the pile indistinguishable from the body.
+		piece.transform = places[i]
 		fragments.append(piece)
+
+func _material_for(colour: Color) -> StandardMaterial3D:
+	var key: String = str(colour)
+	if _materials.has(key):
+		return _materials[key]
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = colour
+	mat.roughness = 0.8
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	_materials[key] = mat
+	return mat
 
 # COME APART. `from` is where the push came from -- a body that walked into the
 # pile, or the centre of a blast -- and `boost` multiplies the throw.
@@ -340,8 +424,9 @@ func _physics_process(delta: float) -> void:
 	if life <= 0.0:
 		queue_free()
 		return
-	if _material != null:
-		_material.albedo_color.a = clampf(life / SimConfig.CORPSE_FADE_SECONDS, 0.0, 1.0)
+	var alpha: float = clampf(life / SimConfig.CORPSE_FADE_SECONDS, 0.0, 1.0)
+	for key in _materials:
+		_materials[key].albedo_color.a = alpha
 
 # Seconds left. An intact pile is on the standing clock; a scattered one is on
 # the debris clock, measured from the scatter.

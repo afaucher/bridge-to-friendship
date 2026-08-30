@@ -420,6 +420,7 @@ func _render_corpse(studio: Dictionary, item: Dictionary, stage: Node) -> void:
 		"rusher": Corpse.Kind.RUSHER,
 		"zombie": Corpse.Kind.ZOMBIE,
 		"skirmisher": Corpse.Kind.SKIRMISHER,
+		"turret": Corpse.Kind.TURRET,
 	}
 	var kind_id: int = int(kinds.get(str(spec.get("kind", "rusher")), Corpse.Kind.RUSHER))
 

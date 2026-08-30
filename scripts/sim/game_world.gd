@@ -2594,13 +2594,11 @@ func _process_gunners() -> void:
 			continue
 		if gunner.is_spent() or gunner.position.z > _trailing_edge_z():
 			_gunners.remove_at(i)
-			# A TURRET IS NOT A BODY. It is bolted down, it is built out of a base
-			# and a ring rather than one lathe, and there is nothing about it that
-			# should come apart like a person -- so only the skirmisher retires
-			# with a kind. (corpse.gd would refuse a turret anyway, having no
-			# "Mesh" node to read a profile off, but relying on that would be
-			# relying on an accident.)
-			_retire_enemy(gunner, Corpse.Kind.SKIRMISHER if int(gunner.kind) == GunnerBody.Kind.SKIRMISHER else -1)
+			# A TURRET SHATTERS TOO, and it is the reason corpse.gd stopped looking
+			# for a single mesh called "Mesh": a turret is a tapered base, a ring
+			# and a gun barrel, in two different greys. Bolted down in life, and
+			# no less breakable for it.
+			_retire_enemy(gunner, Corpse.Kind.TURRET if int(gunner.kind) == GunnerBody.Kind.TURRET else Corpse.Kind.SKIRMISHER)
 			continue
 
 		# LINE OF SIGHT GATES BOTH HALVES, and for a gunner it matters more than

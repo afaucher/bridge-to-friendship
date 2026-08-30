@@ -102,7 +102,14 @@ const SAMPLES := 256
 # multiple of TAU / 2^k. At 32 -- itself a power of two -- every cell's samples
 # land on the same global grid as its neighbours' and the seams close exactly.
 # KEEP IT A POWER OF TWO for that reason.
+#
+# THIS IS THE DEFAULT AND THE CEILING, NOT THE ANSWER. A part is drawn at its own
+# source mesh's radial_segments where that is coarser -- see Profile.angle_steps.
 const ANGLE_STEPS := 32
+
+# The coarsest a part may be drawn. Below this a fragment stops reading as a
+# piece of a round thing at all.
+const ANGLE_STEPS_MIN := 8
 
 # Vertical tessellation, as a target edge length in metres. This one CAN be
 # per-cell in a way the angular one cannot: cells stacked in y share their
@@ -125,6 +132,20 @@ const MIN_CELL_VOLUME := 1.0e-6
 # construct one, because the point of this class is that there is a single path
 # from "what the game draws" to "what the corpse is made of".
 class Profile extends RefCounted:
+	# HOW FACETED THE SOURCE MESH IS, so a fragment is drawn at the same
+	# resolution as the body it came off.
+	#
+	# A TURRET IS AUTHORED WITH radial_segments = 8 -- deliberately chunky -- and
+	# re-lathing it at the default 32 made the corpse ROUNDER THAN THE LIVING
+	# TURRET. An octagonal base becoming a smooth one on the frame of death is
+	# exactly the pop this whole file exists to avoid, and it was plainly visible
+	# on the contact sheet while every assertion passed: the tiling was perfect
+	# and the resolution was wrong.
+	#
+	# Clamped to a power of two between ANGLE_STEPS_MIN and ANGLE_STEPS: the
+	# seams only close if cell boundaries land on the grid (they are multiples of
+	# TAU / 2^k), and past 32 the extra triangles buy nothing anyone can see.
+	var angle_steps: int = ANGLE_STEPS
 	var y0: float = 0.0
 	var y1: float = 0.0
 	var radii := PackedFloat32Array()
@@ -195,6 +216,10 @@ class Profile extends RefCounted:
 # One fragment, as a box in (y, theta, rho-fraction). `volume` is cached because
 # the greedy loop reads it once per cell per split.
 class Cell extends RefCounted:
+	# WHICH PART OF THE BODY THIS CAME OFF. A turret is a base, a ring and a gun;
+	# a zombie is a torso and two arms. Carried on the cell so one greedy loop can
+	# hold pieces of every part at once -- see fragment_body.
+	var part: int = 0
 	var y0: float = 0.0
 	var y1: float = 0.0
 	var t0: float = 0.0
@@ -205,6 +230,7 @@ class Cell extends RefCounted:
 
 	func copy() -> Cell:
 		var c := Cell.new()
+		c.part = part
 		c.y0 = y0
 		c.y1 = y1
 		c.t0 = t0
@@ -228,6 +254,62 @@ class Cell extends RefCounted:
 			and p >= p0 and p < p1)
 
 
+# ONE PIECE OF A BODY THAT IS MADE OF SEVERAL: a lathe or a box, where it sits
+# on the body, and what colour it is.
+#
+# A rusher and a skirmisher are one part. A ZOMBIE is a torso and two arms, and a
+# TURRET is a tapered base, a ring and a gun barrel -- in two different greys.
+# Written as "the mesh called Mesh" this file could only ever fragment the
+# largest piece of a thing and silently drop the rest, which is a corpse missing
+# its arms.
+class Part extends RefCounted:
+	# Exactly one of these is set. `profile` for anything that is a solid of
+	# revolution; `box` (a size) for anything that is not.
+	var profile: Profile = null
+	var box: Vector3 = Vector3.ZERO
+	# Where the part sits on the body, and how it is turned. Applied to the
+	# finished fragments, so a part modelled about its own origin does not have to
+	# know where on the body it ends up.
+	var placement: Transform3D = Transform3D.IDENTITY
+	var colour: Color = Color(0.6, 0.6, 0.6)
+
+	func is_box() -> bool:
+		return profile == null
+
+	func volume() -> float:
+		if profile != null:
+			return profile.volume()
+		return box.x * box.y * box.z
+
+
+# A fragment of a BOX part: an axis-aligned sub-box, in the part's own space.
+#
+# The same rule as the lathe cells next door -- cut the longest PHYSICAL side, at
+# equal volume -- which on a box is simply the midpoint of its longest axis,
+# because volume is linear along every one of them. So a box needs no special
+# argument about where to cut, only about which way, and the answer is the same
+# answer: the longest side, so the pieces stay in proportion.
+class BoxCell extends RefCounted:
+	var part: int = 0
+	var lo: Vector3 = Vector3.ZERO
+	var hi: Vector3 = Vector3.ZERO
+	var volume: float = 0.0
+
+	func copy() -> BoxCell:
+		var c := BoxCell.new()
+		c.part = part
+		c.lo = lo
+		c.hi = hi
+		c.volume = volume
+		return c
+
+	func size() -> Vector3:
+		return hi - lo
+
+	func centre() -> Vector3:
+		return (lo + hi) * 0.5
+
+
 # --- Reading a body ----------------------------------------------------------
 
 # The one door in. Returns null for anything that is not a solid of revolution,
@@ -236,8 +318,10 @@ class Cell extends RefCounted:
 static func profile_from_mesh(mesh: Mesh) -> Profile:
 	if mesh is CylinderMesh:
 		var cyl := mesh as CylinderMesh
-		return _lathe(cyl.height, func(t: float) -> float:
+		var out: Profile = _lathe(cyl.height, func(t: float) -> float:
 			return lerpf(cyl.bottom_radius, cyl.top_radius, t))
+		out.angle_steps = _steps_for(cyl.radial_segments)
+		return out
 	if mesh is CapsuleMesh:
 		var cap := mesh as CapsuleMesh
 		var radius: float = cap.radius
@@ -245,13 +329,25 @@ static func profile_from_mesh(mesh: Mesh) -> Profile:
 		# straight midsection runs from -mid to +mid.
 		var mid: float = maxf(0.0, cap.height * 0.5 - radius)
 		var half: float = cap.height * 0.5
-		return _lathe(cap.height, func(t: float) -> float:
+		var out: Profile = _lathe(cap.height, func(t: float) -> float:
 			var y: float = lerpf(-half, half, t)
 			var over: float = absf(y) - mid
 			if over <= 0.0:
 				return radius
 			return sqrt(maxf(0.0, radius * radius - over * over)))
+		out.angle_steps = _steps_for(cap.radial_segments)
+		return out
 	return null
+
+# The largest power of two that is no finer than the source mesh, held between
+# ANGLE_STEPS_MIN and ANGLE_STEPS. A power of two because every angular cell
+# boundary is a multiple of TAU / 2^k, and the seams between fragments only close
+# when the samples land on the same grid.
+static func _steps_for(radial_segments: int) -> int:
+	var steps: int = ANGLE_STEPS_MIN
+	while steps * 2 <= radial_segments and steps * 2 <= ANGLE_STEPS:
+		steps *= 2
+	return steps
 
 # Sample a radius function over a mesh-local height centred on the origin, which
 # is where Godot puts both a CylinderMesh and a CapsuleMesh.
@@ -293,6 +389,126 @@ static func fragment(profile: Profile, count: int) -> Array:
 		cells.append(pair[1])
 
 	return cells
+
+# CUT A WHOLE BODY, ACROSS ALL OF ITS PARTS, INTO EXACTLY `count` PIECES.
+#
+# ONE GREEDY LOOP OVER EVERY PART AT ONCE, rather than a budget handed out per
+# part in proportion to volume. The difference is the whole point: a shared loop
+# always splits the largest piece ANYWHERE on the body, so a turret's gun barrel
+# and its base end up made of pieces the same size as each other. Allocating a
+# per-part budget first and cutting each part separately gives every part its own
+# idea of how big a fragment is, and a body whose pieces do not match is a body
+# that reads as two objects rather than one that broke.
+#
+# THE EXACT-EQUALITY PROPERTY IS WEAKER HERE THAN FOR A SINGLE LATHE, and it has
+# to be. One part cut to a power of two gives fragments of identical volume; a
+# body whose parts are not in power-of-two volume ratios cannot, because the
+# first cells are unequal and no number of halvings makes 0.7 and 0.13 agree.
+# Greedy still bounds it: the largest piece is under twice the smallest, and in
+# practice much closer. test_fragment_shape asserts exactness for the one-part
+# bodies and the bound for the rest.
+static func fragment_body(parts: Array, count: int) -> Array:
+	var pieces: Array = []
+	for i in range(parts.size()):
+		var part: Part = parts[i]
+		if part.is_box():
+			var b := BoxCell.new()
+			b.part = i
+			b.lo = -part.box * 0.5
+			b.hi = part.box * 0.5
+			b.volume = part.volume()
+			pieces.append(b)
+		else:
+			var c := Cell.new()
+			c.part = i
+			c.y0 = part.profile.y0
+			c.y1 = part.profile.y1
+			c.volume = part.volume()
+			pieces.append(c)
+
+	while pieces.size() < count and pieces.size() > 0:
+		var best: int = 0
+		for i in range(1, pieces.size()):
+			if pieces[i].volume > pieces[best].volume:
+				best = i
+		var pair: Array = split_piece(parts, pieces[best])
+		pieces[best] = pair[0]
+		pieces.append(pair[1])
+
+	return pieces
+
+# Split whichever kind of piece this is. The two cases share nothing but the rule
+# they both obey -- longest physical side, equal volume.
+static func split_piece(parts: Array, piece) -> Array:
+	var part: Part = parts[piece.part]
+	if piece is BoxCell:
+		return split_box(part, piece)
+	return split_cell(part.profile, piece)
+
+# A box, halved across its longest axis. Equal volume is the midpoint here: a box
+# is linear along every axis, so unlike the lathe's radius there is nothing to
+# correct for.
+static func split_box(part: Part, cell: BoxCell) -> Array:
+	var span: Vector3 = cell.size()
+	var low: BoxCell = cell.copy()
+	var high: BoxCell = cell.copy()
+	if span.x >= span.y and span.x >= span.z:
+		var cut: float = 0.5 * (cell.lo.x + cell.hi.x)
+		low.hi.x = cut
+		high.lo.x = cut
+	elif span.y >= span.z:
+		var cut: float = 0.5 * (cell.lo.y + cell.hi.y)
+		low.hi.y = cut
+		high.lo.y = cut
+	else:
+		var cut: float = 0.5 * (cell.lo.z + cell.hi.z)
+		low.hi.z = cut
+		high.lo.z = cut
+	low.volume = box_volume(low)
+	high.volume = box_volume(high)
+	return [low, high]
+
+static func box_volume(cell: BoxCell) -> float:
+	var span: Vector3 = cell.size()
+	return span.x * span.y * span.z
+
+# --- Whichever kind it is ----------------------------------------------------
+#
+# Three questions every piece has to answer whatever it is made of: how big is
+# it, where does it sit on the finished body, and what does it look like. The
+# part's placement is applied HERE and nowhere else, so a part modelled about its
+# own origin needs no knowledge of where on the body it ends up.
+
+static func piece_volume(parts: Array, piece) -> float:
+	if piece is BoxCell:
+		return box_volume(piece)
+	return cell_volume(parts[piece.part].profile, piece)
+
+# Where the fragment's own origin goes, in BODY space.
+static func piece_placement(parts: Array, piece) -> Transform3D:
+	var part: Part = parts[piece.part]
+	var local: Vector3 = piece.centre() if piece is BoxCell 		else cell_centre(part.profile, piece)
+	# The part's rotation carries over to the fragment; only the origin moves.
+	return Transform3D(part.placement.basis, part.placement * local)
+
+# The fragment's mesh, in its own space -- built about the same local centre the
+# placement above resolved, so mesh plus placement reassembles the body exactly.
+static func piece_mesh(parts: Array, piece) -> ArrayMesh:
+	var part: Part = parts[piece.part]
+	if piece is BoxCell:
+		return box_cell_mesh(piece)
+	return cell_mesh(part.profile, piece, cell_centre(part.profile, piece))
+
+# A box fragment. Godot's own BoxMesh would do, except that a cut box is not
+# centred on the piece it came from -- so the size is right and the offset is
+# not, and building it here keeps the "mesh is about the fragment's own origin"
+# rule that the lathe pieces already follow.
+static func box_cell_mesh(cell: BoxCell) -> ArrayMesh:
+	var mesh := BoxMesh.new()
+	mesh.size = cell.size()
+	var st := SurfaceTool.new()
+	st.create_from(mesh, 0)
+	return st.commit()
 
 # Cut one cell in two along whichever of its three sides is physically longest,
 # at the place that halves the volume. See the header for why each of the three
@@ -389,7 +605,7 @@ static func cell_mesh(profile: Profile, cell: Cell, origin: Vector3) -> ArrayMes
 
 	# Rounded onto the global grid rather than derived from this cell's own size --
 	# see ANGLE_STEPS. A cell narrower than one step still gets one segment.
-	var na: int = maxi(1, int(round((cell.t1 - cell.t0) / (TAU / float(ANGLE_STEPS)))))
+	var na: int = maxi(1, int(round((cell.t1 - cell.t0) / (TAU / float(profile.angle_steps)))))
 	var ny: int = maxi(1, int(ceil((cell.y1 - cell.y0) / MESH_RISE)))
 
 	for i in range(na):

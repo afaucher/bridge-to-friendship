@@ -45,6 +45,10 @@ const KINDS := [
 	{"name": "rusher", "spawn": "rusher", "corpse_kind": Corpse.Kind.RUSHER},
 	{"name": "zombie", "spawn": "zombie", "corpse_kind": Corpse.Kind.ZOMBIE},
 	{"name": "skirmisher", "spawn": "skirmisher", "corpse_kind": Corpse.Kind.SKIRMISHER},
+	# A TURRET SHATTERS TOO. Bolted down in life and no less breakable for it --
+	# and the reason the fragmenter stopped assuming one mesh per body, since a
+	# turret is a base, a ring and a box gun barrel in two different greys.
+	{"name": "turret", "spawn": "turret", "corpse_kind": Corpse.Kind.TURRET},
 ]
 
 # Well clear of the spawn ring and of each other, so nothing in one phase is
@@ -67,7 +71,7 @@ var subject: Node = null
 var noted: Dictionary = {}
 
 func setup(main) -> void:
-	timeout_seconds = 120.0
+	timeout_seconds = 300.0
 	world = world_under_test(Node3D.new())
 	world.name = "CorpseWorld"
 	world.set_script(GameWorldScript)
@@ -150,6 +154,8 @@ func _spawn(kind: Dictionary, at: Vector3) -> Node:
 			return world._spawn_rusher(at)
 		"zombie":
 			return world._spawn_zombie(at)
+		"turret":
+			return world._spawn_gunner(at, GunnerBody.Kind.TURRET)
 		_:
 			return world._spawn_gunner(at, GunnerBody.Kind.SKIRMISHER)
 
@@ -203,8 +209,7 @@ func _phase_weapon_kill() -> void:
 		# the corpse below: this is the "the silhouette does not move" claim, and
 		# it has to be measured rather than restated from the .tscn, or it is a
 		# test agreeing with a second copy of the numbers.
-		var mesh_node := subject.get_node_or_null("Mesh") as MeshInstance3D
-		noted["alive_aabb"] = mesh_node.get_aabb()
+		noted["alive_aabb"] = _body_extent(subject)
 		noted["alive_at"] = subject.position
 		_kill(subject, Hit.Kind.BULLET, TEST_SPOT + Vector3(0.0, 0.0, 6.0))
 		noted["killed_at"] = phase_frame
@@ -546,6 +551,51 @@ func _next_kind(next_phase: int) -> void:
 		_advance(next_phase)
 	else:
 		phase_frame = 0
+
+# EVERY VISIBLE MESH ON THE LIVING BODY, UNIONED -- the silhouette the corpse has
+# to match.
+#
+# THIS USED TO ASK FOR THE NODE CALLED "Mesh", AND IT COST TWO FAILURES AT ONCE.
+# A turret has no such node -- it is a Base, a Ring and a Gun -- so the read
+# returned null, `.get_aabb()` on it RAISED, and the raise aborted the rest of
+# the phase every frame. The kill never happened and the test reported a TIMEOUT
+# rather than a failure, which is the GDScript trap CLAUDE.md records: a runtime
+# error is not a test failure, it is a function that silently stops. And on the
+# zombie it was quietly wrong rather than fatal, comparing a corpse that now
+# includes two arms against a torso-only extent.
+#
+# It is the same mistake the fragmenter itself had to stop making. "The mesh" is
+# not a thing a body has; a list of meshes is.
+func _body_extent(body: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	for view in _meshes_of(body):
+		var here: AABB = _local_transform_of(view, body) * view.get_aabb()
+		if first:
+			out = here
+			first = false
+		else:
+			out = out.merge(here)
+	return out
+
+func _meshes_of(node: Node) -> Array:
+	var out: Array = []
+	var view := node as MeshInstance3D
+	if view != null and view.visible and view.mesh != null:
+		out.append(view)
+	for child in node.get_children():
+		out.append_array(_meshes_of(child))
+	return out
+
+func _local_transform_of(node: Node3D, root: Node) -> Transform3D:
+	var out := Transform3D.IDENTITY
+	var walk: Node = node
+	while walk != null and walk != root:
+		var here := walk as Node3D
+		if here != null:
+			out = here.transform * out
+		walk = walk.get_parent()
+	return out
 
 # The union of every fragment's world-space extent -- the pile's silhouette.
 func _fragment_union(corpse: Node) -> AABB:
