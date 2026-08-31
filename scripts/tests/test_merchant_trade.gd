@@ -1,15 +1,27 @@
 extends "res://scripts/test_support/test_case.gd"
 
-# THE MERCHANT. You dash into him, he takes the top hat off your tower and gives
-# back one three and a half times taller, once. See design_ideas/merchant.md.
+# THE MERCHANT. You stand at him and press E, he takes the top hat off your tower
+# and gives back one three and a half times taller, once. See
+# design_ideas/merchant.md.
+#
+# IT USED TO BE A DASH, and the note that justified it argued the verb was
+# deliberate: committed, aimed, and impossible to do by walking past. All true,
+# and reported anyway -- "it is really easy to miss them and dash off a cliff."
+# A dash is 56 m/s over 5.6 m, so a near miss at a shopkeeper standing near an
+# edge cost the run. E is edge-triggered and nobody presses it by accident either.
 #
 # The claims, in the order they are measured:
 #   1. His layer is in the PLAYER'S MASK, and a real dash at him actually STOPS.
 #      A blocker that exists is not a blocker that blocks, and this project has
-#      now paid five times for one wrong bit in a mask.
-#   2. A dash trades: the TOP hat goes, a tall one arrives in its slot, the rest
+#      now paid five times for one wrong bit in a mask. Still a dash, because
+#      this claim is about him being SOLID and has nothing to do with trading.
+#   2. A press trades: the TOP hat goes, a tall one arrives in its slot, the rest
 #      of the tower is untouched, and he is spent afterwards.
-#   3. A second dash does nothing. One sale each is what makes him contested.
+#   3. A second press does nothing. One sale each is what makes him contested.
+#   3b. AND A DASH ALONE DOES NOT TRADE. The half of the change a rig that still
+#      dashes on its way in cannot see by itself: every phase below approaches at
+#      speed, so without this one the file would pass unchanged if the dash still
+#      did the selling.
 #   4. HE REFUSES A TALL HAT -- you keep everything -- AND HE IS STILL UNSPENT.
 #      A refused trade that burns the sale is a merchant the next player finds
 #      empty for no reason they can see.
@@ -36,6 +48,10 @@ const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 # identically.
 const MERCHANT_A := Vector2i(10, 5)
 const MERCHANT_B := Vector2i(20, 5)
+# A THIRD, PLANTED. The fixture carries two and both are spent by the phases
+# above, and the dash-alone control needs one nobody has touched -- the same
+# reason test_bus_post plants its own post through the grid's own spawner.
+const MERCHANT_C := Vector2i(4, 5)
 
 var world: Node3D = null
 var a: CharacterBody3D = null
@@ -45,6 +61,8 @@ var phase_frame: int = 0
 # The dash, as one edge-triggered tick. Held longer it would be a rig that walks
 # the player off the map, which is its own note in CLAUDE.md.
 var _dash_pending: bool = false
+# When the trade press goes in, in world ticks. -1 is "nothing queued".
+var _use_at_tick: int = -1
 var _move: Vector2 = Vector2.ZERO
 
 func setup(main) -> void:
@@ -61,6 +79,14 @@ func setup(main) -> void:
 		if _dash_pending:
 			_dash_pending = false
 			return PlayerInput.make(t, _move, SimConfig.ACTION_SHOVE)
+		# AND THE PRESS THAT ACTUALLY TRADES, a few ticks behind the approach.
+		# Separated from the dash rather than folded into it because they are now
+		# two different things: the dash is how the player GETS there and the
+		# press is the trade. On the tick of the dash the body is still 2 m away
+		# and out of reach, which is the whole reason for the delay.
+		if _use_at_tick >= 0 and world.tick >= _use_at_tick:
+			_use_at_tick = -1
+			return PlayerInput.make(t, Vector2.ZERO, SimConfig.ACTION_USE)
 		return PlayerInput.empty(t)
 
 	# THE MASK BIT, ASSERTED DIRECTLY AND NOT INFERRED FROM A POSITION. A dash
@@ -86,6 +112,7 @@ func _physics_process(_delta: float) -> void:
 		2: _phase_refuses_a_tall_hat()
 		3: _phase_no_hats()
 		4: _phase_the_control()
+		5: _phase_a_dash_alone_is_not_a_trade()
 
 func _advance(next: int) -> void:
 	phase = next
@@ -263,6 +290,56 @@ func _phase_the_control() -> void:
 			return
 		check(worn[0].is_tall(), "and hands over a tall hat like the first one did")
 		check(not merchant.can_trade(), "and is spent now, having actually sold")
+		phase = 5
+		phase_frame = 0
+		return
+
+# --- 3b. AND A DASH ALONE DOES NOT TRADE ----------------------------------------
+#
+# THE HALF THIS FILE CANNOT SEE BY ITSELF. Every phase above approaches the
+# shopkeeper at speed, because that is still how a player gets to one -- so if
+# the dash had gone on doing the selling, not one assertion in the file would
+# have moved. The control that makes the change real is a dash with NO press
+# behind it.
+#
+# Same shape as the half-a-gate note in CLAUDE.md: when a rule has two halves,
+# test the half nobody would think to write down.
+func _phase_a_dash_alone_is_not_a_trade() -> void:
+	if phase_frame == 1:
+		if world.grid.merchant_at_cell(MERCHANT_C) == null:
+			world.grid._spawn_merchant(MERCHANT_C)
+		_reset(MERCHANT_C)
+		return
+	if phase_frame == 2:
+		_give_hat()
+		return
+	if phase_frame == 8:
+		var merchant: Node = world.grid.merchant_at_cell(MERCHANT_C)
+		if not check(merchant != null and merchant.can_trade(),
+				"there is an untouched merchant to dash at"):
+			finish()
+			return
+		# THE DASH WITHOUT THE PRESS. `_dash_at` queues both; this is the approach
+		# on its own.
+		_move = Vector2(0.0, -1.0)
+		_dash_pending = true
+		return
+	if phase_frame == 30:
+		var merchant: Node = world.grid.merchant_at_cell(MERCHANT_C)
+		var worn: Array = world.hats_worn_by(1)
+		print("[merchant] after a dash with no press: %d hats worn, still open %s"
+			% [worn.size(), merchant.can_trade()])
+		check(a.global_position.z > merchant.global_position.z,
+			"the dash really reached him (player z %.2f, merchant z %.2f) -- a "
+				% [a.global_position.z, merchant.global_position.z]
+			+ "dash that fell short would satisfy the two claims below by missing")
+		eq(worn.size(), 1,
+			"a dash into him with no press costs nothing (%d hats) -- arriving is "
+				% worn.size()
+			+ "not buying any more, and every other phase in this file arrives the "
+			+ "same way")
+		check(merchant.can_trade(),
+			"and he is still open, so the sale was not silently burnt either")
 		finish()
 
 # --- helpers ------------------------------------------------------------------
@@ -283,10 +360,20 @@ func _reset(cell: Vector2i) -> void:
 	a.shove_cooldown = 0.0
 	a.dash_charges = SimConfig.DASH_CHARGES
 
+# WALK INTO HIM, THEN PRESS E. Two actions now, and the split is the change:
+# dashing into the shopkeeper used to BE the trade, and it is now just how you
+# arrive. The dash is kept because the claim about him being a WALL is measured
+# off it -- a body under power has to stop on him -- and because arriving at speed
+# is still how a player gets to a merchant in a hurry.
+#
+# EIGHT TICKS BEHIND. On the tick the dash is issued the body is 2 m away and
+# outside USE_REACH; the dash covers that in a fraction of its 0.1 s and then
+# stops dead against him.
 func _dash_at(_cell: Vector2i) -> void:
 	# Straight up-bridge, which is where _reset put him relative to the player.
 	_move = Vector2(0.0, -1.0)
 	_dash_pending = true
+	_use_at_tick = world.tick + 8
 
 # A hat placed on the player, already settled, collected by the ordinary pickup
 # pass rather than by hand -- a test that hand-builds its own input has not tested

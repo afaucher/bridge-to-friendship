@@ -53,6 +53,7 @@ var a: CharacterBody3D = null
 var phase: int = 0
 var phase_frame: int = 0
 var _dash_pending: bool = false
+var _use_at_tick: int = -1
 var _move: Vector2 = Vector2.ZERO
 var _ordinary_style: int = 0
 
@@ -78,6 +79,12 @@ func setup(main) -> void:
 		if _dash_pending:
 			_dash_pending = false
 			return PlayerInput.make(t, _move, SimConfig.ACTION_SHOVE)
+		# AND THE PRESS THAT TRADES. A dash into the shopkeeper is how you arrive
+		# now, not how you buy -- see test_merchant_trade for the change and the
+		# report behind it.
+		if _use_at_tick >= 0 and world.tick >= _use_at_tick:
+			_use_at_tick = -1
+			return PlayerInput.make(t, Vector2.ZERO, SimConfig.ACTION_USE)
 		return PlayerInput.empty(t)
 
 func _physics_process(_delta: float) -> void:
@@ -196,6 +203,7 @@ func _reset() -> void:
 	world._hats.clear()
 	_move = Vector2.ZERO
 	_dash_pending = false
+	_use_at_tick = -1
 	a.global_position = world.grid.cell_surface_world(MERCHANT_A) + Vector3(
 		0.0, 1.0, GridConfig.CELL_SIZE)
 	a.velocity = Vector3.ZERO
@@ -207,6 +215,7 @@ func _reset() -> void:
 func _dash_at() -> void:
 	_move = Vector2(0.0, -1.0)
 	_dash_pending = true
+	_use_at_tick = world.tick + 8
 
 func _give_hat(style: int = -1) -> Node:
 	return world._hats.spawn_loose(a.global_position, style)

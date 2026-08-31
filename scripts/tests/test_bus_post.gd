@@ -1,5 +1,13 @@
 extends "res://scripts/test_support/test_case.gd"
 
+# AN ABSOLUTE DISTANCE, NOT A MULTIPLE OF `USE_REACH`.
+#
+# It was `USE_REACH * 3.0`, and the A/B caught it: widening the constant to 9999
+# moved the test with it, so the out-of-range claim went on passing against a
+# control with no range at all. A test that scales its own input by the thing it
+# is measuring cannot fail.
+const FAR_AWAY := 40.0
+
 # THE BUS POST: DASH IT AND A BUS TURNS UP.
 #
 # The answer to "the race track needs a way to get additional buses if you lose
@@ -64,8 +72,8 @@ func _physics_process(_delta: float) -> void:
 	done = true
 	set_physics_process(false)
 	_every_bus_level_has_one()
-	_a_dash_builds_a_bus()
-	_one_dash_is_one_bus()
+	_pressing_e_builds_a_bus()
+	_one_press_is_one_bus()
 	_not_where_the_mode_has_no_buses()
 	_the_sign_is_not_hidden_behind_its_own_post()
 	finish()
@@ -137,44 +145,75 @@ func _plant_a_post() -> Node:
 	world.grid._spawn_bus_post(Vector2i(7, 6))
 	return _a_post()
 
-func _a_dash_builds_a_bus() -> void:
+# THE VERB IS `E` NOW, NOT A DASH.
+#
+# Reported: "it is really easy to miss them and dash off a cliff." A dash is
+# 56 m/s over 5.6 m and a bus post sits mid-track beside the void, so the only
+# way to ask for a bus was a committed lunge past the thing you were aiming at.
+#
+# AND THE TEST GOT HARDER IN A USEFUL WAY. The dash dispatched on the COLLIDER,
+# so a test could hand `resolve_shove_contact` a post from anywhere in the world
+# and get a bus -- distance was never part of the question. `_use` decides by
+# proximity, so a body that is not actually standing there reaches nothing.
+func _pressing_e_builds_a_bus() -> void:
 	var post: Node = _plant_a_post()
-	if not check(post != null, "there is a post to dash"):
+	if not check(post != null, "there is a post to use"):
 		return
 	world._clear_buses()
-	# THROUGH THE REAL DASH DISPATCH, which is what makes this a test of the
-	# WIRING rather than of `_hail_bus`. `resolve_shove_contact` is the function
-	# the shove sweep calls when a dashing body meets something.
-	world.resolve_shove_contact(world.player_body(1), post, 0.0)
-	print("[post] one dash produced %d buses" % world._buses.size())
+	# THROUGH THE REAL USE PATH, which is what makes this a test of the WIRING
+	# rather than of `_hail_bus`. `_use` is the function one press of E runs.
+	_stand_at(post)
+	world._use(1, world.player_body(1))
+	print("[post] one press produced %d buses" % world._buses.size())
 	eq(world._buses.size(), 1,
-		"dashing the post builds a bus (%d) -- reached through the same contact "
+		"pressing E at the post builds a bus (%d) -- reached through the same "
 			% world._buses.size()
-		+ "dispatch as the merchant and the mode selector, so the duck it answers "
-		+ "is the wiring under test")
+		+ "proximity dispatch as the merchant and the mode selector, so the duck "
+		+ "it answers is the wiring under test")
 
-func _one_dash_is_one_bus() -> void:
+	# AND OUT OF RANGE IT DOES NOTHING, which the dash version could not ask at
+	# all: a claim that a press works is only half a control if standing somewhere
+	# else works too.
+	world._clear_buses()
+	post.ready_at = 0
+	world.player_body(1).global_position = post.global_position \
+		+ Vector3(FAR_AWAY, 1.0, 0.0)
+	world._use(1, world.player_body(1))
+	eq(world._buses.size(), 0,
+		"and standing well away from it does not (%d) -- the interaction is a "
+			% world._buses.size()
+		+ "place you stand, which is the whole of what changed")
+
+# Beside it, within reach, at deck height.
+func _stand_at(post: Node) -> void:
+	world.player_body(1).global_position = post.global_position + Vector3(1.0, 1.0, 0.0)
+
+func _one_press_is_one_bus() -> void:
 	var post: Node = _a_post()
 	if post == null:
 		return
 	world._clear_buses()
 	post.ready_at = 0
-	# A DASH IS NOT ONE EVENT. The sweep reports contact against the same body
-	# several times, so this is what a single dash really looks like.
+	_stand_at(post)
+	# THE COOLDOWN STILL EARNS ITS KEEP, for a different reason than it used to.
+	# It existed because a dash is not one event -- the sweep reports contact
+	# against the same body several times. E is edge-triggered, so that particular
+	# repeat is gone; a HELD key still is not, and neither is standing at the post
+	# tapping it. Five presses in a row is what that looks like.
 	for i in 5:
-		world.resolve_shove_contact(world.player_body(1), post, 0.0)
-	print("[post] five contacts from one dash produced %d buses"
-		% world._buses.size())
+		world._use(1, world.player_body(1))
+	print("[post] five presses in a row produced %d buses" % world._buses.size())
 	eq(world._buses.size(), 1,
-		"five contacts in one tick still produce one bus (%d) -- without the "
+		"five presses in a row still produce one bus (%d) -- without the cooldown "
 			% world._buses.size()
-		+ "cooldown a dash makes a heap of them, on one cell, which is the "
-		+ "coincident-bodies trap as well as the wrong number")
+		+ "they make a heap of them on one cell, which is the coincident-bodies "
+		+ "trap as well as the wrong number")
 
 	# AND IT COMES BACK. A cooldown that never expired would be a post you may
 	# use once per run, which is not a way to get a bus back.
 	post.ready_at = 0
-	world.resolve_shove_contact(world.player_body(1), post, 0.0)
+	_stand_at(post)
+	world._use(1, world.player_body(1))
 	eq(world._buses.size(), 2,
 		"and once the cooldown is up it hands out another (%d)"
 			% world._buses.size())
@@ -231,8 +270,9 @@ func _not_where_the_mode_has_no_buses() -> void:
 	world._clear_buses()
 	post.ready_at = 0
 	world.run_modes = [GameMode.BASE]
-	world.resolve_shove_contact(world.player_body(1), post, 0.0)
-	print("[post] on the ordinary bridge a dash produced %d buses"
+	_stand_at(post)
+	world._use(1, world.player_body(1))
+	print("[post] on the ordinary bridge a press produced %d buses"
 		% world._buses.size())
 	eq(world._buses.size(), 0,
 		"a post on a mode that does not run buses hands out nothing (%d) -- the "

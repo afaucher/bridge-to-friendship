@@ -57,25 +57,40 @@ only way to acquire such a hat" means the random roll must never produce one; se
 the reserved-band note below, which is how that becomes a property rather than a
 promise.
 
-### How you buy: you dash into him
+### How you buy: you stand at him and press E
 
-There is no interact verb in this game. `player_input.gd` carries exactly two
-action bits — `ACTION_SHOVE` and `ACTION_SPECIAL_HELD` — and adding a third means
-a new bit on the wire, a new edge to reconcile, and a control the game has never
-needed.
+**This section used to say "you dash into him", and the reasoning it gave was
+sound and still lost to a playtest.** It is kept below rather than deleted,
+because what was right about it is why the replacement works.
 
-The dash is already there, and it is the *right* verb rather than merely the
-cheap one:
+The original argument was that the game had no interact verb — two action bits,
+`ACTION_SHOVE` and `ACTION_SPECIAL_HELD` — and that the dash was the *right*
+verb rather than merely the available one: a committed action aimed at a thing,
+unmistakably deliberate, and impossible to trigger by pathing past. A radius test
+of the kind `_process_hearts` uses would spend a hat with no decision attached,
+which is the one outcome this must not have.
 
-- It is a **committed action aimed at a thing**, which is pillar 2 and pillar 3
-  of `game_concept.md` exactly. You pay by shoulder-barging the shopkeeper.
-- It is **unmistakably deliberate**. Nobody sells their hat by pathing past. A
-  radius test — the shape `_process_hearts` uses — would spend a hat with no
-  decision attached, which is the one outcome this must not have.
-- It hooks into `GameWorld.resolve_shove_contact` (`game_world.gd:3655`), which
-  is host-only, already dispatches on `has_method`, and already handles "a dash
-  hit a thing that is not a player and not a stone" by doing nothing. One more
-  branch.
+**Every one of those claims was true. The verb was still wrong.** Reported
+2026-08-29: *"it is really easy to miss them and dash off a cliff."* A dash is
+56 m/s and covers 5.6 m, and the shopkeeper is often near an edge — so the price
+of a near miss was the run. The trade was fine; the *approach* was the hazard.
+
+The premise had also expired. `ACTION_USE` exists: it was added for boarding a
+bus and is what the self-revive gamble reads. So the interact verb the original
+note said the game had never needed had been on the wire for two milestones.
+
+**And the property being protected was never about speed.** "Unmistakably
+deliberate" is a property of the CONTROL: `E` is edge-triggered, so nobody sells
+a hat by walking past it either. What the dash added on top of that was not
+deliberateness, it was *risk* — and risk paid at the moment of a purchase, in a
+co-op game about getting hats to the far end, is a tax rather than a decision.
+
+So: stand within `SimConfig.USE_REACH` and press E. He is still a solid body you
+cannot walk through, and dashing into him is still how you get there in a hurry
+— it just is not the sale any more. `GameWorld._use` owns the press and states
+the order it resolves in; `_use_nearby` picks the nearest thing worth using and
+still dispatches on `has_method`, so a fourth kind of post is a new method rather
+than a branch anybody has to remember.
 
 ### What it costs: one hat, flat
 
@@ -278,7 +293,7 @@ being false.
 
 | test | what it pins |
 |---|---|
-| `test_merchant_trade` | a dash into him takes the TOP hat and returns a tall one; **a second dash does nothing** (spent); a player with no hats gets nothing and loses nothing |
+| `test_merchant_trade` | a press at him takes the TOP hat and returns a tall one; **a second press does nothing** (spent); a player with no hats gets nothing and loses nothing; **and a dash with no press behind it is not a trade** — the control that makes the verb change real, since every other phase still arrives at speed |
 | the refusal | a player whose top hat is tall dashes in, keeps every hat, and gets nothing — **and the merchant is still unspent afterwards**, because a refused trade that burns the sale is a merchant the next player finds empty for no reason |
 | the save rule | *(reversed 2026-08-23)* `[tall]` saves the tall one; `[ordinary, tall]` saves both, bottom-first; **trading your only hat leaves the disk naming the trophy and NOT the hat you spent** — that last clause is the one the naive guard fails and is still the whole point of finding 5 |
 | `test_merchant_reach` | the mask bit is set AND a body dashed at him under power actually stops — a blocker that exists is not a blocker that blocks |

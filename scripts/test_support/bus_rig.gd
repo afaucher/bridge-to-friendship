@@ -23,7 +23,17 @@ static func spawn(world: Node, cell: Vector2i = Vector2i(7, 6)) -> Node:
 		world.grid._spawn_bus_post(cell)
 		post = world.grid.bus_posts()[0]
 	post.ready_at = 0
-	# THROUGH THE DASH, so every test that wants a bus is also one more run over
-	# the wiring that produces one.
-	world.resolve_shove_contact(world.player_body(world.players.keys()[0]), post, 0.0)
+	# STOOD NEXT TO IT AND PRESSED E, which is what hailing a bus IS now. It used
+	# to be a dash, and the dash dispatched on the collider -- so a test could hand
+	# `resolve_shove_contact` the post from anywhere in the world and get a bus.
+	# The new path is decided by DISTANCE, so a rig that does not move the body
+	# reaches nothing, and that is the rig being honest rather than being awkward.
+	var peer: int = int(world.players.keys()[0])
+	var body: Node = world.player_body(peer)
+	var was: Vector3 = body.global_position
+	body.global_position = post.global_position + Vector3(1.0, 1.0, 0.0)
+	world._use(peer, body)
+	# PUT BACK. Several callers spawn a bus as setup for a claim about something
+	# else entirely and would not expect their body to have moved across the level.
+	body.global_position = was
 	return world._buses[world._buses.size() - 1] if world._buses.size() > 0 else null

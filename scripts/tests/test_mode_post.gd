@@ -1,5 +1,13 @@
 extends "res://scripts/test_support/test_case.gd"
 
+# AN ABSOLUTE DISTANCE, NOT A MULTIPLE OF `USE_REACH`.
+#
+# It was `USE_REACH * 3.0`, and the A/B caught it: widening the constant to 9999
+# moved the test with it, so the out-of-range claim went on passing against a
+# control with no range at all. A test that scales its own input by the thing it
+# is measuring cannot fail.
+const FAR_AWAY := 40.0
+
 # THE SELECTOR. M25 phase 2: the in-world control that says what the next stretch
 # of bridge will be.
 #
@@ -73,6 +81,7 @@ func _physics_process(_delta: float) -> void:
 	_the_lobby_says_which_mode_is_chosen()
 	_a_choice_made_mid_round_still_builds_its_ground()
 	_the_same_mode_twice_running_builds_it_twice()
+	_you_use_it_by_standing_at_it()
 	finish()
 
 # --- 1. Where it is -----------------------------------------------------------
@@ -301,6 +310,52 @@ func _a_choice_made_mid_round_still_builds_its_ground() -> void:
 			% [GameMode.name_of(world.mode_for_round(0)), GameMode.name_of(chosen)]
 		+ "the RUN PLAN says, because comparing the choice against itself is "
 		+ "always equal once the choice has been remembered")
+
+# THE VERB IS `E`, AND IT IS A PLACE YOU STAND.
+#
+# Reported: "it is really easy to miss them and dash off a cliff." The selector
+# stands on a lobby band, which is a strip with the drop beyond it, and the only
+# way to use it was a 5.6 m lunge at 56 m/s. The note defending that verb argued
+# it was committed, aimed and impossible to trigger by walking past -- all true,
+# and all still true of an edge-triggered key that does not move you.
+#
+# EVERY OTHER CLAIM IN THIS FILE CALLS `_select_next_mode` DIRECTLY, which is the
+# right level for asking what a selection DOES and says nothing about how a
+# player reaches one. This phase is the wiring: one press of E, from the input
+# bit down, and the other half -- standing somewhere else does nothing, which is
+# the half the old dash dispatch could not even express, because it keyed on the
+# collider and distance was never part of the question.
+func _you_use_it_by_standing_at_it() -> void:
+	var post: Node = world.grid.mode_posts()[0] if world.grid.mode_posts().size() > 0 else null
+	if not check(post != null, "there is a post to stand at"):
+		return
+	var body: Node = world.player_body(1)
+	world.round_machine.round_index = 0
+	world.round_machine.state = RoundMachine.State.LOBBY
+	world.selected_mode = GameMode.BASE
+	world._show_selection()
+
+	# OUT OF RANGE FIRST, so a press that does nothing is shown to do nothing
+	# before a press that works is credited with anything.
+	body.global_position = post.global_position \
+		+ Vector3(FAR_AWAY, 1.0, 0.0)
+	world._use(1, body)
+	eq(world.selected_mode, GameMode.BASE,
+		"pressing E across the lobby changes nothing (%s) -- the interaction is a "
+			% GameMode.name_of(world.selected_mode)
+		+ "place you stand, and a control with no range would fire from anywhere "
+		+ "a player happened to be facing")
+
+	body.global_position = post.global_position + Vector3(1.0, 1.0, 0.0)
+	world._use(1, body)
+	print("[modepost] a press at the post moved the choice to %s"
+		% GameMode.name_of(world.selected_mode))
+	check(world.selected_mode != GameMode.BASE,
+		"and a press while standing at it does move the choice on (%s) -- through "
+			% GameMode.name_of(world.selected_mode)
+		+ "`_use`, which is the whole path one key press runs")
+	eq(post.showing, world.selected_mode,
+		"with the banner following it, as it did for the dash")
 
 # AND THE SAME MODE CHOSEN TWO ROUNDS RUNNING IS BUILT BOTH TIMES.
 #

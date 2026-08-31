@@ -53,10 +53,16 @@ The merchant is `$` and not a letter for exactly that reason — he is the one N
 who is not trying to kill you, and `M` puts him one shift-key from `m`, the mound
 that charges you. He also breaks the capitals-are-terrain convention on purpose:
 he is neither terrain nor something you walk over and collect. You buy from him
-by **dashing into him**, so never author one within three cells of anything
-dangerous — a player dashing at a rusher clips the shopkeeper and spends a hat on
-a trade they never made. The dressing pass enforces that for generated sections;
-an authored piece can still do it by hand.
+by **standing at him and pressing E** (changed 2026-08-29 — it used to be a dash,
+and "it is really easy to miss them and dash off a cliff" is why it is not).
+
+The old authoring rule was "never author one within three cells of anything
+dangerous", because a player dashing at a rusher would clip the shopkeeper and
+spend a hat on a trade they never made. **That particular accident is gone** —
+arriving at him costs nothing now. Keep the spacing anyway, for a different
+reason: buying means standing still for a moment, and a shop you cannot stop at
+is not a shop. The dressing pass enforces it for generated sections; an authored
+piece can still do it by hand.
 
 ## Rules the parser and the oracle enforce
 

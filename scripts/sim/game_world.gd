@@ -758,14 +758,15 @@ func _host_tick() -> void:
 		var restore_mask: int = body.collision_mask
 		if carriers.has(body):
 			body.collision_mask = restore_mask & ~PLAYERS_LAYER_BIT
-		# E BOARDS AND E LEAVES. Read here, where every other action bit is read,
-		# and edge-triggered at the input like the dash and the call -- a level bit
-		# would board and leave on alternate ticks for as long as the key is held.
+		# E IS THE USE KEY AND IT NOW HAS FOUR JOBS. Read here, where every other
+		# action bit is read, and edge-triggered at the input like the dash and the
+		# call -- a level bit would board and leave on alternate ticks for as long
+		# as the key is held.
 		#
-		# HOST ONLY. Boarding changes who is driving, which is a decision; a client
-		# presses and finds out by being posed onto a seat.
+		# HOST ONLY. What a press MEANS changes who is driving, what the next round
+		# is, and whether a hat was spent; a client presses and finds out.
 		if is_host and int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_USE != 0:
-			_try_board_or_leave(int(peer), body)
+			_use(int(peer), body)
 		# A RIDER'S OWN MOVEMENT IS NOT THEIRS THIS TICK. The driver's stick is the
 		# wheel and a passenger is planted, so neither of them walks -- and letting
 		# the step run first and overwriting it afterwards would have every rider
@@ -5035,7 +5036,75 @@ func bus_carrying(peer: int) -> Node:
 # E GETS YOU ON, AND E GETS YOU OFF. The same bit the self-revive uses, and the
 # two cannot collide: a self-revive only exists while `is_awaiting_rescue()`, and
 # somebody hanging off a ledge is not standing beside a bus.
-func _try_board_or_leave(peer: int, body: Node) -> void:
+# WHAT ONE PRESS OF E MEANS, IN ONE PLACE AND IN ORDER.
+#
+# The bit had two readers before this and they were kept apart by a claim rather
+# than by a rule: "a self-revive only exists while `is_awaiting_rescue()`, and
+# somebody hanging off a ledge is not standing beside a bus". The second half of
+# that only ever covered LEDGE_HANG. A DOWNED player lying beside a bus really
+# could gamble on the revive and board the bus with the same press, and hanging
+# three more consumers off an unordered bit would have made that the normal case
+# rather than the odd one.
+#
+# THE ORDER IS THE DESIGN, most urgent to most optional:
+#
+#   1. In trouble. The press is the gamble and nothing else -- `_process_rescue`
+#      owns it, so this function gets out of the way. Boarding a bus while
+#      bleeding out is not something anybody meant to allow.
+#   2. Aboard. Get off. Unconditional, because being unable to leave a vehicle is
+#      the worst failure available here.
+#   3. A bus within reach. Get on.
+#   4. Otherwise whatever the level put here: the merchant, the selector, a post.
+#
+# 3 BEFORE 4 RATHER THAN NEAREST-WINS. Hailing a bus puts one down beside the post
+# you hailed it from, so nearest-wins would leave you standing between a post and
+# the bus it just gave you with the outcome decided by centimetres. Boarding first
+# makes the second press mean the obvious thing.
+func _use(peer: int, body: Node) -> void:
+	if body.is_awaiting_rescue():
+		return
+	if _try_board_or_leave(peer, body):
+		return
+	_use_nearby(peer, body)
+
+# THE LEVEL'S OWN INTERACTIONS, BY PROXIMITY.
+#
+# NEAREST WINS, over one list rather than three branches, because these are the
+# same kind of thing from the player's side: something you stand at and press E.
+# The old version was three branches of the shove dispatch keyed on which method
+# the collider happened to have -- a question about the object. This is a question
+# about which one you are standing at.
+#
+# ASKED OF THE GRID, so nothing here tracks posts. `open_merchants` already
+# filters the spent ones: a sold-out shopkeeper is still standing there and still
+# solid, and "is there a merchant here" and "can I trade" are two different
+# questions, which is why that filter lives on the grid rather than in this loop.
+func _use_nearby(peer: int, body: Node) -> void:
+	if grid == null:
+		return
+	var best: Node = null
+	var best_d: float = SimConfig.USE_REACH
+	for thing in grid.open_merchants() + grid.mode_posts() + grid.bus_posts():
+		if not is_instance_valid(thing):
+			continue
+		var d: float = body.global_position.distance_to(thing.global_position)
+		if d < best_d:
+			best_d = d
+			best = thing
+	if best == null:
+		return
+	# DISPATCHED ON WHAT IT CAN DO rather than on what it is -- the one thing worth
+	# keeping from the shove version, and the reason a fourth kind of post is a new
+	# method rather than a branch somebody has to remember to add here.
+	if best.has_method("can_trade"):
+		_trade_with(body, best)
+	elif best.has_method("can_select"):
+		_select_next_mode(best)
+	elif best.has_method("can_hail"):
+		_hail_bus(best)
+
+# Returns whether the press was spent on a bus, so `_use` knows to stop.
+func _try_board_or_leave(peer: int, body: Node) -> bool:
 	var riding: Node = bus_carrying(peer)
 	if riding != null:
 		riding.leave(peer)
@@ -5045,7 +5114,7 @@ func _try_board_or_leave(peer: int, body: Node) -> void:
 		var side: Vector3 = riding.transform.basis.x * (BusBody.WIDTH * 0.5 + 1.0)
 		body.position = riding.position + side + Vector3(0.0, 1.0, 0.0)
 		body.velocity = Vector3.ZERO
-		return
+		return true
 	var nearest: Node = null
 	var best: float = SimConfig.BUS_REACH
 	for bus in _buses:
@@ -5055,8 +5124,10 @@ func _try_board_or_leave(peer: int, body: Node) -> void:
 		if d < best:
 			best = d
 			nearest = bus
-	if nearest != null:
-		nearest.board(peer)
+	if nearest == null:
+		return false
+	nearest.board(peer)
+	return true
 
 # --- The rule about shooting each other ----------------------------------------
 
@@ -5817,24 +5888,22 @@ func resolve_shove_contact(shover: Node, other: Node, yaw: float) -> void:
 		if "peer_id" in shover:
 			_bump(int(shover.peer_id), "boosts")
 		return
-	# THE MERCHANT. A dash into him is the trade -- the game has two action bits
-	# and neither of them is `interact`, and this is the right verb rather than
-	# merely the available one: it is a committed action aimed at a thing, and it
-	# is unmistakably deliberate, so nobody sells a hat by walking past.
-	if other.has_method("can_trade"):
-		_trade_with(shover, other)
-		return
-	# THE MODE SELECTOR. The same verb for the same reasons the merchant uses it:
-	# committed, aimed and unmistakably deliberate, so nobody changes the party's
-	# next twenty minutes by walking past. See mode_post.gd.
-	if other.has_method("can_select"):
-		_select_next_mode(other)
-		return
-	# THE BUS POST. Same verb again, and the same reason a third time: committed,
-	# aimed, deliberate. See bus_post.gd.
-	if other.has_method("can_hail"):
-		_hail_bus(other)
-		return
+	# THE MERCHANT, THE SELECTOR AND THE BUS POST USED TO BE HERE, dispatched on a
+	# dash landing on them. Three times the same argument was written down: a dash
+	# is committed, aimed and unmistakably deliberate, so nobody trades or changes
+	# the party's next twenty minutes by walking past.
+	#
+	# ALL THREE OF THOSE THINGS WERE TRUE AND THE VERB WAS STILL WRONG. Reported:
+	# "it is really easy to miss them and dash off a cliff." A dash is 56 m/s and
+	# covers 5.6 m, and the game deliberately puts these things at the edges of
+	# other things -- the selector on a lobby band, the bus post mid-track beside
+	# the void. Making the ONLY way to use one a committed high-speed lunge means
+	# every missed interaction is a death, and the price of a near miss should not
+	# be the run.
+	#
+	# The deliberateness those notes were protecting is a property of the CONTROL
+	# rather than of the speed: `E` is edge-triggered, and nobody presses it by
+	# walking past either. See `_use_nearby`, which owns all three now.
 	if grid != null and other.has_method("slide_to"):
 		grid.try_push(other.cell, GridConfig.yaw_to_direction(yaw))
 

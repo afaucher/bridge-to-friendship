@@ -1405,6 +1405,16 @@ const CALL_COOLDOWN := 5.0
 # would quietly become unboardable from the back the moment it had passengers.
 const BUS_REACH := 2.2
 
+# HOW CLOSE YOU STAND TO USE SOMETHING -- the merchant, the mode selector, a bus
+# post. A little over one cell (2 m), so standing in the cell beside one works and
+# standing two cells away does not: close enough that the thing you meant is
+# unambiguous, far enough that you need not be wedged against it.
+#
+# WIDER THAN BUS_REACH ON PURPOSE. A bus is a big object you walk up to the side
+# of and its reach is measured to the DECK; a post is a thin thing measured to its
+# centre, so the same number would be a smaller gap in practice.
+const USE_REACH := 2.6
+
 # --- Getting yourself out -----------------------------------------------------
 #
 # THE SELF-REVIVE MINIGAME. A marker sweeps a bar; press USE while it is inside
