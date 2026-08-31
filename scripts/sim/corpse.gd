@@ -103,13 +103,24 @@ static var _built: Dictionary = {}
 # THE ONLY WAY TO MAKE ONE. `from` is where the disturbance came from: pass
 # `has_from` false for a body that simply died and should stand there, true for a
 # blast, which never leaves a pile standing.
-# NO YAW. Every body that can leave a corpse is a solid of revolution, so the
-# pile has no orientation to get wrong -- and a parameter whose value cannot be
-# observed is one that rots quietly until the day it matters. If an asymmetric
-# enemy ever needs a corpse, fragment_shape has to grow a non-lathe case anyway,
-# and the facing goes in beside it.
-static func spawn(parent: Node, kind_id: int, at: Vector3,
-		from: Vector3, has_from: bool, seed_value: int, count: int = 0) -> Node3D:
+# TWO YAWS, AND THEY ARE NOT THE SAME ANGLE.
+#
+# `body_yaw` is which way the body itself is turned -- a zombie swings its whole
+# node to face where it is walking, and its ARMS go with it. `aim_yaw` is the
+# separate spin of the "Facing" pivot, which a turret uses to point its gun while
+# its base stays bolted where it was poured.
+#
+# THIS PARAMETER WAS REMOVED ON PURPOSE AND THE REASONING EXPIRED. The note that
+# replaced it said every body that can leave a corpse is a solid of revolution,
+# so a pile has no orientation to get wrong -- true of a rusher, a capsule and a
+# cone, and FALSE the day a zombie kept its arms and a turret grew a gun barrel.
+# Reported from play as a turret whose barrel snaps to a new direction on the
+# hit. A parameter dropped because nothing could observe it is one that comes
+# back the moment something can, and the lesson is that "cannot be observed" was
+# a fact about the CAST, not about the code.
+static func spawn(parent: Node, kind_id: int, at: Vector3, body_yaw: float,
+		aim_yaw: float, from: Vector3, has_from: bool, seed_value: int,
+		count: int = 0) -> Node3D:
 	if not SCENES.has(kind_id):
 		return null
 	# `count` overrides CORPSE_FRAGMENTS, and exists for the shot manifest: the
@@ -128,8 +139,9 @@ static func spawn(parent: Node, kind_id: int, at: Vector3,
 	# corpses in one frame is exactly the case that hits it.
 	corpse.name = "Corpse"
 	corpse.position = at
+	corpse.rotation.y = body_yaw
 	corpse.kind = kind_id
-	corpse._assemble(built, seed_value)
+	corpse._assemble(built, seed_value, aim_yaw)
 	if has_from:
 		corpse.scatter(from, SimConfig.CORPSE_BLAST_BOOST)
 	return corpse
@@ -175,12 +187,14 @@ static func _build(kind_id: int, count: int) -> Dictionary:
 	var places: Array = []
 	var sizes: Array = []
 	var colours: Array = []
+	var aimed: Array = []
 	for piece in pieces:
 		var mesh: ArrayMesh = FragmentShape.piece_mesh(parts, piece)
 		meshes.append(mesh)
 		places.append(FragmentShape.piece_placement(parts, piece))
 		sizes.append(mesh.get_aabb())
 		colours.append(parts[piece.part].colour)
+		aimed.append(parts[piece.part].articulated)
 
 	# The volume the whole body filled, for anything asking whether it hit the
 	# pile. Taken across every part, so a turret's gun barrel counts.
@@ -200,6 +214,7 @@ static func _build(kind_id: int, count: int) -> Dictionary:
 		"places": places,
 		"bounds": sizes,
 		"colours": colours,
+		"aimed": aimed,
 		# THE SHAPE OF THE BODY THAT DIED, for anything that wants to ask whether
 		# it hit the pile. Read off the same parts the pieces were cut from, so it
 		# cannot disagree with what is drawn -- and a cylinder rather than a
@@ -228,10 +243,14 @@ static func _build(kind_id: int, count: int) -> Dictionary:
 # wrong.
 static func _parts_of(root: Node) -> Array:
 	var out: Array = []
-	_collect_parts(root, root, out)
+	_collect_parts(root, root, out, false)
 	return out
 
-static func _collect_parts(node: Node, root: Node, out: Array) -> void:
+static func _collect_parts(node: Node, root: Node, out: Array, aimed: bool) -> void:
+	# Everything below a node called "Facing" turns with the aim rather than with
+	# the body. See FragmentShape.Part.articulated.
+	if node != root and node.name == "Facing":
+		aimed = true
 	var view := node as MeshInstance3D
 	if view != null and view.visible and view.mesh != null:
 		var part := FragmentShape.Part.new()
@@ -245,11 +264,12 @@ static func _collect_parts(node: Node, root: Node, out: Array) -> void:
 			handled = true
 		if handled:
 			part.placement = _relative_to(view, root)
+			part.articulated = aimed
 			var mat := view.material_override as StandardMaterial3D
 			part.colour = mat.albedo_color if mat != null else Color(0.6, 0.6, 0.6)
 			out.append(part)
 	for child in node.get_children():
-		_collect_parts(child, root, out)
+		_collect_parts(child, root, out, aimed)
 
 # A node's transform in the body's frame, walked up by hand: the scene is not in
 # a tree, so global_transform is not available and would be the wrong question
@@ -275,7 +295,7 @@ static func _part_bounds(part: FragmentShape.Part) -> AABB:
 	var local := AABB(-half, half * 2.0)
 	return part.placement * local
 
-func _assemble(built: Dictionary, seed_value: int) -> void:
+func _assemble(built: Dictionary, seed_value: int, aim_yaw: float) -> void:
 	_rng.seed = seed_value
 	hit_radius = float(built.get("radius", 0.5))
 	hit_low = float(built.get("low", -0.9))
@@ -310,6 +330,9 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 	var places: Array = built["places"]
 	var bounds: Array = built["bounds"]
 	var colours: Array = built["colours"]
+	var aimed: Array = built["aimed"]
+	# The pivot sits at the body's own origin, so aiming is a spin about it.
+	var aim := Transform3D(Basis(Vector3.UP, aim_yaw), Vector3.ZERO)
 	for i in range(meshes.size()):
 		var piece := RigidBody3D.new()
 		piece.collision_layer = LAYER_DEBRIS
@@ -349,7 +372,7 @@ func _assemble(built: Dictionary, seed_value: int) -> void:
 		# turned. Its mesh was built about this same point in the part's own
 		# space, so mesh plus placement reassembles the body vertex for vertex --
 		# which is what makes the pile indistinguishable from the body.
-		piece.transform = places[i]
+		piece.transform = (aim * places[i]) if bool(aimed[i]) else places[i]
 		fragments.append(piece)
 
 func _material_for(colour: Color) -> StandardMaterial3D:

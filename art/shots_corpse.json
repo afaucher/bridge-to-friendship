@@ -386,6 +386,27 @@
           "burst": true,
           "scatter_seconds": 0.3
         }
+      },
+      {
+        "name": "turret_6_aimed_intact",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "corpse": {
+          "kind": "turret",
+          "aim_yaw": -63.0
+        }
+      },
+      {
+        "name": "turret_6_aimed_bump",
+        "focus_y": 0.45,
+        "lift": 0.45,
+        "ortho_size": 5.0,
+        "corpse": {
+          "kind": "turret",
+          "aim_yaw": -63.0,
+          "scatter": true,
+          "scatter_seconds": 0.2
+        }
       }
     ]
   },

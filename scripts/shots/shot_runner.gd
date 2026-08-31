@@ -433,6 +433,8 @@ func _render_corpse(studio: Dictionary, item: Dictionary, stage: Node) -> void:
 	var burst: bool = bool(spec.get("burst", false))
 	var corpse: Node3D = Corpse.spawn(stage, kind_id,
 		Vector3(0.0, float(item.get("lift", 0.9)), 0.0),
+		deg_to_rad(float(spec.get("body_yaw", 0.0))),
+		deg_to_rad(float(spec.get("aim_yaw", 0.0))),
 		Vector3(0.0, -0.4, 0.0), burst, 12345, int(spec.get("fragments", 0)))
 	if corpse == null:
 		printerr("[SHOTS] no corpse for kind ", kind_id)

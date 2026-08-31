@@ -954,6 +954,35 @@ the moment it is written.
   behind its own backing -- and the general form is: **a fade you have not
   started yet still costs you the pass**, so any multi-part object with a
   transparent material is mis-sorted from the moment it exists.
+- **"NOTHING CAN OBSERVE THIS" IS A FACT ABOUT THE CAST, NOT ABOUT THE CODE, and
+  a parameter deleted on that reasoning comes back the day the cast changes.**
+  Observed 2026-08-30 from a playtest: a turret's gun barrel SNAPS to a new
+  direction on the hit. `Corpse.spawn` had taken a yaw and it was removed on
+  purpose, with a note saying every body that can leave a corpse is a solid of
+  revolution so a pile has no orientation to get wrong. That was true of a
+  rusher, a capsule and a cone, and it stopped being true in the same week: a
+  turret grew a gun barrel and a zombie kept its arms, and neither is
+  rotationally symmetric. The deletion was correct when written, correctly
+  argued, and wrong two commits later. **When you delete something because it
+  cannot be observed, the comment has to name WHAT would make it observable** --
+  that is the tripwire, and "every body is a solid of revolution" was exactly it
+  going unread.
+  And the fix is two angles, not one, which is the part worth knowing about this
+  codebase: a zombie turns its whole NODE (`rotation.y`, so its arms go with it)
+  while a turret leaves its base bolted and spins a pivot node called `Facing`
+  (`gunner_body` writes `pivot.rotation.y = facing`). `Facing` is the project's
+  established idiom for "the part that aims" -- player.tscn and turret.tscn both
+  use it -- so anything rebuilding a body has to carry both angles separately.
+- **`Transform3D * AABB` RETURNS THE BOX AROUND THE ROTATED BOX, so comparing two
+  rotated things by their bounding boxes compares two different inflations of the
+  same shape.** From the test for the above. A rotated 1.0-wide cylinder inflates
+  to 1.34 as one AABB; the same shape as thirty-two small fragment AABBs unions
+  to 1.19, because each little box inflates hardly at all. Neither number is the
+  shape and they never agree. **Compare in the frame the geometry was authored
+  in** -- there the rotation cancels on both sides and what is left is the
+  comparison that was wanted -- and assert the ROTATION itself directly rather
+  than hoping a bounding box implies it.
+
 - **A MESH'S SEGMENT COUNT IS PART OF ITS SHAPE, so REBUILDING a shape at your
   own resolution changes it -- and no tiling or volume test can see that.**
   Observed 2026-08-29 giving turrets a shatter. `turret.tscn` authors its base

@@ -67,7 +67,7 @@ func setup(main) -> void:
 	var made: Array = []
 	for i in range(10):
 		var c: Node3D = Corpse.spawn(root, Corpse.Kind.RUSHER,
-			Vector3(float(i) * 3.0, 1.0, 0.0), Vector3.ZERO, false, 1 + i)
+			Vector3(float(i) * 3.0, 1.0, 0.0), 0.0, 0.0, Vector3.ZERO, false, 1 + i)
 		if c != null:
 			made.append(c)
 	var per: float = float(Time.get_ticks_usec() - spawn_started) / 10.0

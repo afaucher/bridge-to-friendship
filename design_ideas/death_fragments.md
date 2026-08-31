@@ -53,6 +53,25 @@ as two objects rather than one that broke.
 A mesh the fragmenter cannot lathe or box is **skipped**, not approximated — a
 visible gap someone will report beats a corpse quietly the wrong shape.
 
+### Two angles, not one
+
+The parts are cut from a **pristine** instance of the scene, so their placements
+say where a barrel sits when a turret is aimed dead ahead and nothing else. The
+pose has to be carried separately, and it is two separate angles:
+
+* `body_yaw` — the body's own node. A zombie swings its whole body to face where
+  it is walking, and its arms go with it.
+* `aim_yaw` — the spin of the pivot node called `Facing`. A turret leaves its
+  base bolted where it was poured and turns only this to point the gun.
+
+`Facing` is the project's own idiom rather than a name invented here: player.tscn
+and turret.tscn both use it, and `gunner_body` writes `pivot.rotation.y = facing`
+on exactly that node. A part records whether it was found underneath one, and the
+corpse turns those parts by the aim and everything else by the body.
+
+Both angles cross the wire with the death. `facing` was already replicated, so
+neither is a new fact — only a newly *used* one.
+
 Each part is also drawn at **its own source mesh's resolution**. A turret's base
 is authored with `radial_segments = 8` because a chunky octagon is the look;
 re-lathing it at the default 32 made the corpse rounder than the living turret,

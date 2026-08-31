@@ -272,6 +272,18 @@ class Part extends RefCounted:
 	# know where on the body it ends up.
 	var placement: Transform3D = Transform3D.IDENTITY
 	var colour: Color = Color(0.6, 0.6, 0.6)
+	# IS THIS PART ON THE BODY, OR ON THE THING THE BODY AIMS?
+	#
+	# A turret's gun barrel and ring hang off a pivot node called "Facing", which
+	# the body spins to point the gun; its base does not. The placement above is
+	# read off a PRISTINE scene, so it holds where the barrel sits when the turret
+	# is aimed dead ahead and nothing else -- the corpse has to be told the aim
+	# separately and turn these parts by it.
+	#
+	# "Facing" is the project's own idiom for this, not a name invented here:
+	# player.tscn and turret.tscn both use it, and gunner_body writes
+	# `pivot.rotation.y = facing` on exactly that node.
+	var articulated: bool = false
 
 	func is_box() -> bool:
 		return profile == null

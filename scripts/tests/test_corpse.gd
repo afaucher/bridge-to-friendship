@@ -61,6 +61,16 @@ const TEST_SPOT := Vector3(0.0, 1.2, -14.0)
 # pile goes a long way from the other one so neither can touch the other.
 const CLIENT_SPOT := Vector3(0.0, 1.2, -40.0)
 
+# TURNED WELL AWAY FROM THE SCENE FILE'S OWN POSE, which is the whole point.
+#
+# A corpse is cut from a PRISTINE instance of the scene, so it knows where a
+# turret's barrel sits when the turret is aimed dead ahead and nothing else. If
+# the test killed a body still in its default pose, the pile would match by
+# accident and the assertion would hold with the aim thrown away -- which is
+# exactly the bug that reached play: a turret's barrel snapping to a new
+# direction on the hit.
+const TEST_YAW := 1.1
+
 var world: Node3D = null
 # A SECOND WORLD THAT IS NOT THE HOST. See the last phase.
 var client: Node3D = null
@@ -185,7 +195,18 @@ func _staged(kind: Dictionary) -> bool:
 	if phase_frame == 1:
 		_reset()
 		subject = _spawn(kind, TEST_SPOT)
+		# POSED, not left in the scene file's default. Both angles, because they
+		# are different angles: a zombie swings its whole body and its arms go
+		# with it, a turret leaves its base and spins a pivot to aim the gun.
+		if is_instance_valid(subject):
+			subject.rotation.y = TEST_YAW
+			if "facing" in subject:
+				subject.facing = -TEST_YAW
 		noted["killed_at"] = 0
+		return false
+	# One tick for the pose to be applied by the body's own code rather than by
+	# this test reaching into its nodes.
+	if phase_frame < 4:
 		return false
 	if not is_instance_valid(subject):
 		return false
@@ -211,6 +232,17 @@ func _phase_weapon_kill() -> void:
 		# test agreeing with a second copy of the numbers.
 		noted["alive_aabb"] = _body_extent(subject)
 		noted["alive_at"] = subject.position
+		# THE POSE HAS TO HAVE SURVIVED, or the comparison below is a claim about
+		# a body that was facing forwards all along. Measured at the moment of the
+		# kill rather than assumed from what was set three ticks ago -- the body's
+		# own step may have re-aimed it, and whatever it settled on is what the
+		# corpse must match.
+		noted["alive_yaw"] = subject.rotation.y
+		check(absf(subject.rotation.y) > 0.2,
+			"%s: the body is turned away from its default when it dies" % name)
+		if "facing" in subject:
+			check(absf(float(subject.facing)) > 0.2,
+				"%s: the aim pivot is turned away from its default when it dies" % name)
 		_kill(subject, Hit.Kind.BULLET, TEST_SPOT + Vector3(0.0, 0.0, 6.0))
 		noted["killed_at"] = phase_frame
 		return
@@ -231,15 +263,34 @@ func _phase_weapon_kill() -> void:
 
 	# 1. IT OCCUPIES THE SPACE THE BODY DID. The union of the fragments in world
 	# space against the living body's own mesh extent.
-	var union: AABB = _fragment_union(corpse)
+	# WHERE THE PILE IS, AND WHICH WAY IT IS TURNED -- asked directly rather than
+	# inferred from a bounding box, because the second one is the claim that
+	# failed in play: a turret's barrel snapping to a new direction on the hit.
+	check(corpse.position.distance_to(noted["alive_at"]) < 0.01,
+		"%s: the pile stands where the body stood" % name)
+	near(corpse.rotation.y, float(noted["alive_yaw"]), 0.01,
+		"%s: the pile is turned the way the body was turned" % name)
+
+	# AND THE SHAPE, COMPARED IN THE BODY'S OWN FRAME.
+	#
+	# NOT IN WORLD SPACE, and the first attempt that did cost a round. A
+	# Transform3D applied to an AABB returns the AABB **of the rotated box**,
+	# which is bigger than the box -- so a rotated body inflates to 1.34 where it
+	# was 1.0, while the pile, being many small boxes each inflating hardly at
+	# all, unions to 1.19. Two different inflations of the same shape, neither of
+	# them the shape. Measured in the frame both were authored in, the rotation
+	# cancels on both sides and what is left is the comparison that was wanted.
+	#
+	# The AIM still shows up here, which is the point: a barrel left at the scene
+	# file's default sits somewhere quite different from one turned by -1.1 rad,
+	# and it moves this extent by far more than the slack.
+	var union: AABB = _fragment_union_local(corpse)
 	var alive: AABB = noted["alive_aabb"]
-	var at: Vector3 = noted["alive_at"]
-	var want := AABB(alive.position + at, alive.size)
 	var slack := 0.06
-	check(union.position.distance_to(want.position) < slack
-			and (union.size - want.size).length() < slack,
-		"%s: the pile stands where the body did -- body %s, pile %s"
-			% [name, want, union])
+	check(union.position.distance_to(alive.position) < slack
+			and (union.size - alive.size).length() < slack,
+		"%s: the pile has the body's shape -- body %s, pile %s"
+			% [name, alive, union])
 
 	# 2. Frozen: an untouched corpse costs the solver nothing.
 	var frozen: int = 0
@@ -431,7 +482,7 @@ func _phase_a_client_runs_its_own_piles() -> void:
 		return
 	if phase_frame == 3:
 		check(not client.is_host, "the second world is a client")
-		client._show_corpse(Corpse.Kind.RUSHER, CLIENT_SPOT, Vector3.ZERO, false)
+		client._show_corpse(Corpse.Kind.RUSHER, CLIENT_SPOT, 0.0, 0.0, Vector3.ZERO, false)
 		eq(client.corpse_count(), 1, "a client can be told to show a pile")
 		return
 	if phase_frame == 5:
@@ -468,7 +519,7 @@ func _phase_a_client_runs_its_own_piles() -> void:
 func _phase_a_round_knocks_it_down() -> void:
 	if phase_frame == 1:
 		_reset()
-		world._show_corpse(Corpse.Kind.RUSHER, TEST_SPOT, Vector3.ZERO, false)
+		world._show_corpse(Corpse.Kind.RUSHER, TEST_SPOT, 0.0, 0.0, Vector3.ZERO, false)
 		noted["passed_beyond"] = false
 		return
 	if phase_frame == 3:
@@ -525,7 +576,7 @@ func _phase_a_round_knocks_it_down() -> void:
 func _phase_a_blast_knocks_a_standing_pile_down() -> void:
 	if phase_frame == 1:
 		_reset()
-		world._show_corpse(Corpse.Kind.ZOMBIE, TEST_SPOT, Vector3.ZERO, false)
+		world._show_corpse(Corpse.Kind.ZOMBIE, TEST_SPOT, 0.0, 0.0, Vector3.ZERO, false)
 		return
 	if phase_frame == 3:
 		if not check(world.corpse_count() == 1, "blast phase has a standing pile"):
@@ -595,6 +646,22 @@ func _local_transform_of(node: Node3D, root: Node) -> Transform3D:
 		if here != null:
 			out = here.transform * out
 		walk = walk.get_parent()
+	return out
+
+# The pile's extent IN THE CORPSE'S OWN FRAME -- directly comparable with
+# _body_extent, which measures the living body in its frame. See the note at the
+# call site for why this is not done in world space.
+func _fragment_union_local(corpse: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	for piece in corpse.fragments:
+		var view := piece.get_child(0) as MeshInstance3D
+		var here: AABB = piece.transform * view.get_aabb()
+		if first:
+			out = here
+			first = false
+		else:
+			out = out.merge(here)
 	return out
 
 # The union of every fragment's world-space extent -- the pile's silhouette.

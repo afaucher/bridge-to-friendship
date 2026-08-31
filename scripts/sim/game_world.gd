@@ -4102,21 +4102,29 @@ func _retire_enemy(body: Node, kind_id: int) -> void:
 		var at: Vector3 = body.position
 		var from: Vector3 = blast if blast != null else Vector3.ZERO
 		var has_from: bool = blast != null
-		_show_corpse(kind_id, at, from, has_from)
+		# WHICH WAY IT WAS POINTING WHEN IT DIED, both angles. A zombie turns its
+		# whole body and its arms go with it; a turret leaves its base where it is
+		# and spins a pivot to aim the gun. A corpse built without them snaps to
+		# whatever the scene file happens to say, which is what a turret's barrel
+		# was doing on the hit.
+		var body_yaw: float = body.rotation.y
+		var aim_yaw: float = float(body.facing) if "facing" in body else 0.0
+		_show_corpse(kind_id, at, body_yaw, aim_yaw, from, has_from)
 		# TOLD, NOT INFERRED, exactly as a blast is. A client only sees an enemy
 		# stop being mentioned in the snapshot, and that is equally what a burrow
 		# and a fall look like -- guessing would leave rubble every time something
 		# quietly expired off the end of the deck.
 		if networked and is_host:
-			_corpse_seen.rpc(kind_id, at, from, has_from)
+			_corpse_seen.rpc(kind_id, at, body_yaw, aim_yaw, from, has_from)
 
 	body.queue_free()
 
 @rpc("authority", "call_remote", "reliable")
-func _corpse_seen(kind_id: int, at: Vector3, from: Vector3, has_from: bool) -> void:
+func _corpse_seen(kind_id: int, at: Vector3, body_yaw: float, aim_yaw: float,
+		from: Vector3, has_from: bool) -> void:
 	if is_host:
 		return
-	_show_corpse(kind_id, at, from, has_from)
+	_show_corpse(kind_id, at, body_yaw, aim_yaw, from, has_from)
 
 # Host and client both land here, so there is one description of what a death
 # leaves behind.
@@ -4125,11 +4133,12 @@ func _corpse_seen(kind_id: int, at: Vector3, from: Vector3, has_from: bool) -> v
 # corpse is not a sprite: it is a set of bodies with a lifetime and a bump rule,
 # and gating it on whether anybody is looking would mean the thing the headless
 # gate tests is not the thing that ships.
-func _show_corpse(kind_id: int, at: Vector3, from: Vector3, has_from: bool) -> void:
+func _show_corpse(kind_id: int, at: Vector3, body_yaw: float, aim_yaw: float,
+		from: Vector3, has_from: bool) -> void:
 	if _corpses_root == null:
 		return
-	var corpse: Node3D = Corpse.spawn(_corpses_root, kind_id, at, from, has_from,
-		_corpse_seed(at))
+	var corpse: Node3D = Corpse.spawn(_corpses_root, kind_id, at, body_yaw, aim_yaw,
+		from, has_from, _corpse_seed(at))
 	if corpse != null:
 		_corpses.append(corpse)
 
