@@ -47,6 +47,33 @@ const GRAVITY := 24.0
 # floor_max_angle, and mirrored in SegmentValidator.
 const MAX_WALK_ANGLE_DEG := 40.0
 
+# HOW HIGH A LIP A WALKING BODY CLIMBS, AND THE BOUND IS THE WHOLE DESIGN.
+#
+# There was no step-up at all until now, and that was load-bearing: ramps,
+# ladders, bouncers and lifts exist BECAUSE a rise onto plain deck is a wall.
+# Adding a mantle would make all four optional.
+#
+# WHAT MAKES THIS SAFE IS THE CEILING, NOT THE FEATURE. Heights are hex digits
+# times HEIGHT_UNIT of 1.0 m, one character per cell, so the smallest rise a
+# level can express is a WHOLE METRE. A step strictly below that is invisible to
+# every authored and generated level by construction -- there is no arrangement
+# of the height grid that reaches it. Raise this to 1.0 and every ramp in the
+# game becomes decoration.
+#
+# THE FLOOR IS WATER. A water cell's top sits 0.4 m below its nominal height
+# (segment_builder._surface_y), so walking in was a drop and walking out was a
+# wall -- reported as "you can't step out of water so you get stuck", and
+# measured on playtest_bridge's pond as 0.001 m of climb after two seconds of
+# walking straight at the shore. 0.45 clears that with room and stays well under
+# the ceiling.
+#
+# AND STAIRS ARE THE SECOND CUSTOMER, which is what makes a movement verb worth
+# it. A 1 m rise over a 2 m cell is already a walkable 26.6-degree ramp, so what
+# stairs lack is the MESH -- and stepped art over a smooth collider deviates
+# ~0.17 m mid-step, which is feet floating and sinking. At 0.45 a staircase can
+# have real stepped collision, three 0.33 m risers per cell.
+const STEP_UP_HEIGHT := 0.45
+
 # --- Shove --------------------------------------------------------------------
 # The signature verb: a run locked to a compass axis that cannot be steered,
 # slowed or cancelled.

@@ -25,7 +25,7 @@ shape, so the shape is free.
 
 ---
 
-## Phase 1 — You can get out (the bug)
+## Phase 1 — You can get out (the bug) — *done*
 
 **The report:** you can't step out of water, so you get stuck.
 
@@ -94,6 +94,29 @@ climb vocabulary, under a bound that provably touches nothing else, is a good on
   bus sides are 0.68 m and safe, but anything with a top face between 0.4 m and
   the chosen bound becomes a thing players can stand on. That audit is part of
   the work, not a follow-up.
+
+### What it came out as
+
+`STEP_UP_HEIGHT = 0.45`, probed by hand after `move_and_slide` in `_step_walk`:
+lift, retry the blocked motion up there, drop back down, and land on whatever the
+descent actually hit. Each leg refuses for its own reason — no headroom, still
+blocked, nothing underneath — and the last is what stops it being a way to walk
+onto thin air at the top of a wall.
+
+Measured, on `playtest_bridge`'s pond: **0.001 m of climb in two seconds
+before, 0.401 m in 17 ticks after**, ending on the shore cell. On the rig, a
+0.40 m ledge is climbed and crossed; a 1.00 m ledge stops the body dead at
+0.001 m after 1.6 m of walking into it.
+
+**The audit came out empty**, which is what the bound predicted. Nothing in the
+player's collision mask has a top face under 0.45 m except water: the bus is on
+layer 2048 and the mask is 1687, so players never touch it at all; the merchant
+is 1.6 m, the posts 1.9 m, cover 1.1 m. That conclusion holds only while the
+bound does, so the bound itself is now a claim.
+
+**Replay-safe as designed** — it reads position and collision geometry and
+nothing else, so `capture_state()` is untouched and `test_client_prediction`
+still reports 3 corrections over 240 ticks at 0.1 m.
 
 ### The claims
 

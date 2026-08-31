@@ -788,8 +788,65 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
+	# BEFORE THE SLIDE, BOTH OF THEM. `move_and_slide` removes the into-surface
+	# component of the velocity and moves the body, so afterwards neither number
+	# says what was attempted -- and every judgement about an impact in this
+	# project that read them afterwards has been a bug. See CLAUDE.md.
+	var wanted := Vector3(velocity.x, 0.0, velocity.z) * dt
+	var was_at := global_position
+
 	move_and_slide()
 	grounded = is_on_floor()
+	_try_step_up(was_at, wanted)
+
+# A LIP UNDER `STEP_UP_HEIGHT` IS WALKED OVER, NOT WALKED INTO.
+#
+# Reported as "you can't step out of water so you get stuck": a water cell's top
+# is 0.4 m below its nominal height, so the pond was a hole you could enter and
+# not leave. `SegmentValidator` never noticed because water and deck share a grid
+# height and the rise reads as zero -- an oracle certifying a movement the player
+# did not have, for the second time here.
+#
+# THE BOUND IS THE SAFETY ARGUMENT, and it lives on the constant. Nothing an
+# authored level can express is under a metre, so this cannot reach any of them.
+#
+# `CharacterBody3D` HAS NO STEP HEIGHT, so this is the probe by hand: lift, try
+# the blocked motion up there, then drop back down and see what it lands on. Each
+# leg has to be refused for its own reason -- no headroom, still blocked, nothing
+# underneath -- and the last one is what stops this being a way to walk onto thin
+# air at the top of a wall.
+#
+# PURE, SO IT REPLAYS. It reads the body's position and the world's collision
+# geometry and nothing else, so it adds nothing to `capture_state()` and a client
+# re-running this tick reaches the same answer. That is a property worth keeping:
+# a correction on your own body's position is the most visible kind there is.
+func _try_step_up(was_at: Vector3, wanted: Vector3) -> void:
+	# ONLY WHILE WALKING ON SOMETHING. A step-up in the air is a second jump, and
+	# this game deliberately has no first one.
+	if not grounded or wanted.length_squared() < 0.000001:
+		return
+	# BLOCKED, rather than merely slowed. A body that made most of its move met
+	# nothing worth climbing; one that made almost none is against a wall.
+	var moved := Vector3(global_position.x - was_at.x, 0.0, global_position.z - was_at.z)
+	if moved.length() > wanted.length() * 0.5:
+		return
+
+	var lift := Vector3(0.0, SimConfig.STEP_UP_HEIGHT, 0.0)
+	var probe := global_transform
+	if test_move(probe, lift):
+		return                       # no headroom to rise into
+	probe.origin += lift
+	if test_move(probe, wanted):
+		return                       # still a wall up there, so it is a wall
+	probe.origin += wanted
+	var landing := KinematicCollision3D.new()
+	if not test_move(probe, -lift, landing):
+		return                       # nothing to stand on: this was an edge, not a step
+	# WHERE THE DROP ACTUALLY STOPPED, not where it was aimed. `get_travel` is the
+	# part of the descent that happened before the floor, so the body lands ON the
+	# lip rather than hovering the full step above it.
+	global_position = probe.origin + landing.get_travel()
+	grounded = true
 
 func _begin_shove(move: Vector2, aim: float) -> void:
 	# A shove commits to the direction you were POINTING at the instant of the
