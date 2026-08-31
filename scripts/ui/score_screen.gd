@@ -13,6 +13,7 @@ extends Control
 # the only way to say that which survives the headless viewport being 64x64.
 # CLAUDE.md's note from the teammate marker is that any pixel figure computed
 # against the screen is a statement about the harness rather than about the game.
+const HudModel = preload("res://scripts/ui/hud_model.gd")
 const INSET := 0.125
 
 const COLOR_SCRIM := Color(0.03, 0.04, 0.06, 0.86)
@@ -229,7 +230,11 @@ func _player_header(entry: Dictionary) -> Control:
 
 	# WHAT THE RANK WAS FOR, kept from the old board. A number nobody can explain
 	# is a number nobody trusts.
-	var why: String = "%d hats" % int(entry.get("hats", 0))
+	# ASKED RATHER THAN REBUILT. This said "%d hats" whatever had been played, so
+	# the victory screen for a race explained a lap-time ranking with a hat count
+	# -- reported in those words. One formatter, one precedence, shared with the
+	# in-round board.
+	var why: String = HudModel.rank_reason(entry)
 	if not bool(entry.get("made_it", false)):
 		why += " - left behind"
 	var why_label := _label(why, FONT_BADGE, COLOR_DIM)

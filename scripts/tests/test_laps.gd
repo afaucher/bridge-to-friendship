@@ -37,9 +37,12 @@ extends "res://scripts/test_support/test_case.gd"
 #      backwards, because sorting ascending on the raw number does the opposite.
 
 const GameMode = preload("res://scripts/sim/game_mode.gd")
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const HudModel = preload("res://scripts/ui/hud_model.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 
 const A := 41
@@ -112,6 +115,8 @@ func _build_script() -> void:
 	_the_clock_runs_while_you_drive()
 	_a_round_starts_with_no_laps()
 	_dying_ends_the_lap_you_were_driving()
+	_the_board_says_what_decided_it()
+	_the_clock_stops_when_the_round_does()
 
 # --- 10. DYING ENDS THE LAP YOU WERE DRIVING ------------------------------------
 #
@@ -158,6 +163,108 @@ func _dying_ends_the_lap_you_were_driving() -> void:
 			"and the best is untouched (%d, was %d) -- that one was driven, and "
 				% [world.best_lap_of(A), kept[0]]
 			+ "clearing it with the running lap would delete the mode's whole point"))
+
+# --- 11. THE BOARD EXPLAINS THE RANK IT ACTUALLY USED ---------------------------
+#
+# Reported: "on the victory screen it still lists '3 hats' under 1st instead of
+# the lap time. It doesn't list the lap time which I would expect." The reason
+# line named HATS whichever mode had been played, so a race was sorted on lap
+# times and explained by a hat count -- a number nobody can explain is a number
+# nobody trusts, which is the note that put the line there in the first place.
+#
+# ASKED OF THE COMPARATOR'S OWN PRECEDENCE. `RoundMachine.rank_key` walks the
+# same keys in the same order the sort does and lives beside it;
+# `HudModel.rank_reason` only turns that into words. Neither branches on the
+# mode, for the reason the comparator already gives: a lap of 0 means nobody
+# finished one, so outside a race every row falls through to hats exactly as
+# before.
+#
+# THE ROWS ARE BUILT BY HAND HERE, deliberately. This is a claim about the
+# EXPLANATION matching the SORT, so the inputs have to be chosen to make the two
+# disagree -- a racer whose hats would rank them last and whose lap ranks them
+# first. Driving that state through a real world would take a long fixture to
+# produce one string.
+func _the_board_says_what_decided_it() -> void:
+	_at(func():
+		var per: int = int(round(1.0 / SimConfig.TICK_DELTA))
+		# A RACER WITH A LAP AND NO HATS, and a walker with three hats and no lap.
+		# Under the old line the racer read "0 hats"; under the sort they win.
+		var racer := {"peer": 1, "lap": per * 22 + per / 2, "hats": 0, "made_it": true}
+		var hoarder := {"peer": 2, "lap": 0, "hats": 3, "made_it": true}
+		var ordered: Array = RoundMachine.rank_entries([hoarder, racer])
+		print("[laps] the board orders %s first, explained as `%s`"
+			% [int(ordered[0]["peer"]), HudModel.rank_reason(ordered[0])])
+		eq(int(ordered[0]["peer"]), 1,
+			"the racer wins on lap time, not on hats -- otherwise this phase is "
+			+ "asserting about an order that agrees with the old explanation")
+		eq(HudModel.rank_reason(racer), "lap 22.5s",
+			"and the row says the LAP that won it (`%s`), not the hats that did "
+				% HudModel.rank_reason(racer)
+			+ "not -- reported as \"it still lists '3 hats' under 1st instead of "
+			+ "the lap time\"")
+
+		# AND THE OTHER MODES ARE UNTOUCHED, which is what makes a mode-free rule
+		# safe. Every entry outside a race has a lap of 0 and falls through.
+		eq(HudModel.rank_reason(hoarder), "3 hats",
+			"somebody with no lap is still explained by their hats (`%s`)"
+				% HudModel.rank_reason(hoarder))
+		eq(HudModel.rank_reason({"lap": 0, "hats": 1, "made_it": true}), "1 hat",
+			"singular when there is one, as before")
+		eq(HudModel.rank_reason({"lap": 0, "hats": 0, "made_it": false}),
+			"did not make it",
+			"and with neither, whether they got there at all -- the comparator's "
+			+ "last real key")
+		# THE RACER'S HATS ARE NOT ZERO IN THIS ONE, so "it printed the lap" cannot
+		# be a coincidence of an empty hat count.
+		eq(HudModel.rank_reason({"lap": per * 30, "hats": 4, "made_it": true}),
+			"lap 30.0s",
+			"a racer WITH hats is still explained by the lap (`%s`) -- the lap "
+				% HudModel.rank_reason({"lap": per * 30, "hats": 4, "made_it": true})
+			+ "outranks them, so it is the lap that decided the row"))
+
+# --- 12. AND THE CLOCK STOPS WHEN THE ROUND DOES --------------------------------
+#
+# Reported: "once you finish a race and exit to the lobby, the lap timer should
+# stop." It did not. `lap_elapsed_of` answers for as long as the peer is in
+# `_lap_next`, and the only thing that ever cleared that was the START of the
+# next round -- so a party standing in a lobby was watching a clock count up for
+# a lap nobody was driving.
+#
+# THE BEST HAS TO SURVIVE IT, and that is the half worth protecting: the board
+# ranking on best lap is still on screen when this runs, so clearing both would
+# blank the thing the round was just scored on at the moment it is being read.
+func _the_clock_stops_when_the_round_does() -> void:
+	var running := [0]
+	var best := [0]
+	_at(func(): world.clear_round_stats())
+	_at(func(): _leave_gates(A))
+	_lap(A, [0])
+	_lap(A, _rest())
+	_lap(A, [0])
+	_at(func(): _leave_gates(A))
+	_at(func(): _cross(A, 0))
+	for i in 20:
+		_at(func(): pass)
+	_at(func():
+		running[0] = world.lap_elapsed_of(A)
+		best[0] = world.best_lap_of(A)
+		check(running[0] > 0, "a lap is running as the round ends (%d)" % running[0])
+		check(best[0] > 0, "and one was completed earlier (%d)" % best[0]))
+	# THE ROUND ENDS. Through the machine's own transition rather than by calling
+	# the helper: the claim is that finishing a round stops the clock, and a test
+	# that calls `abandon_running_laps` directly has tested the helper.
+	_at(func(): world.round_machine._enter_lobby(world))
+	_at(func():
+		print("[laps] entering the lobby: clock %d (was %d), best %d (was %d)"
+			% [world.lap_elapsed_of(A), running[0], world.best_lap_of(A), best[0]])
+		eq(world.lap_elapsed_of(A), 0,
+			"the clock stops when the round does (%d still on it) -- in a lobby "
+				% world.lap_elapsed_of(A)
+			+ "there is no lap being driven for it to be counting")
+		eq(world.best_lap_of(A), best[0],
+			"and the best survives (%d, was %d) -- the board ranking on it is on "
+				% [world.best_lap_of(A), best[0]]
+			+ "screen at that very moment"))
 
 # --- Driving -------------------------------------------------------------------
 
@@ -332,6 +439,7 @@ func _you_can_see_the_gates_and_which_is_yours() -> void:
 			"every gate is drawn on the deck (%d marks for %d gates) -- they were "
 				% [marks.size(), world.grid.lap_gate_count()]
 			+ "invisible, which is why a lap could not be started")
+		_it_is_the_ground_and_not_a_plate_on_it(marks)
 		world.clear_round_stats())
 	# Before a lap: the thing to drive at is the start line.
 	_at(func(): eq(world.next_lap_gate_of(A), 0,
@@ -349,6 +457,92 @@ func _you_can_see_the_gates_and_which_is_yours() -> void:
 				% world.next_lap_gate_of(A)
 			+ "`_lap_next` counts off the end of the list here, so both ends of "
 			+ "the sequence mean 0 and neither is what the counter holds"))
+
+# A GATE IS A COLOURED GROUND SQUARE, NOT SOMETHING LAID ON THE GROUND.
+#
+# Reported: "it looks like you overlayed something on the ground. I wasn't sure
+# why we didn't just change the color of the ground squares, like for the lobby
+# line." It was a separate plate -- a box one cell wide, 6 cm tall, inset 6 cm --
+# so every gate cell had a visible lip and a grout line around it.
+#
+# The lobby line has always done the other thing: `segment_builder` picks a
+# different PALETTE for a boundary cell and the strip simply is the deck. The
+# only thing stopping a lap gate doing the same was that palette materials are
+# SHARED between every cell of a colour, and the world retints one gate at a time
+# -- so a shared material would have lit the whole circuit. Giving a gate cell its
+# own material was the entire fix; the meshes were one per cell all along.
+#
+# TWO CLAIMS, AND THE SECOND IS THE ONE WITH AN ARGUMENT BEHIND IT.
+#
+# That it is a full deck square rather than a plate is the report, answered.
+# That the CHECKER SURVIVES is why doing it this way was worth the trouble: the
+# parity is not decoration, it is what makes distance readable from a fixed
+# 45-degree camera, and a racetrack is the one place where judging distance at
+# speed is the entire activity. `GridConfig.gate_colour` makes the same point
+# about the lobby strip in as many words. The overlay flattened each cell to one
+# colour and broke the pattern across every band -- which nobody decided, it fell
+# out of the plate being a separate object.
+func _it_is_the_ground_and_not_a_plate_on_it(marks: Dictionary) -> void:
+	var any_cell: Vector2i = Vector2i.ZERO
+	var found := false
+	for cell in marks:
+		any_cell = cell
+		found = true
+		break
+	if not check(found, "there is a gate square to look at"):
+		return
+
+	# --- 1. A FULL DECK SQUARE ------------------------------------------------
+	var square: MeshInstance3D = marks[any_cell]
+	var box := square.mesh as BoxMesh
+	if not check(box != null, "the gate square is a box mesh"):
+		return
+	print("[laps] a gate square is %.2f x %.2f m against a cell of %.2f"
+		% [box.size.x, box.size.z, GridConfig.CELL_SIZE])
+	near(box.size.x, GridConfig.CELL_SIZE, 0.001,
+		"a gate covers its whole cell (%.3f against %.3f) -- the plate it replaced "
+			% [box.size.x, GridConfig.CELL_SIZE]
+		+ "was inset, which is what drew the grout line around every one of them")
+	near(box.size.z, GridConfig.CELL_SIZE, 0.001, "in both directions")
+
+	# --- 2. THE CHECKER SURVIVES ----------------------------------------------
+	#
+	# Two cells of the SAME gate with opposite parity. Same gate, because two
+	# different gates differ in hue anyway and would satisfy this by accident --
+	# the claim is that the pattern survives WITHIN a band.
+	var pale: Color = Color.TRANSPARENT
+	var dark: Color = Color.TRANSPARENT
+	var idx: int = world.grid.lap_gate_at(any_cell)
+	for cell in marks:
+		if world.grid.lap_gate_at(cell) != idx:
+			continue
+		var mat := (marks[cell] as MeshInstance3D).material_override as StandardMaterial3D
+		if mat == null:
+			continue
+		if (int(cell.x) + int(cell.y)) % 2 == 0:
+			pale = mat.albedo_color
+		else:
+			dark = mat.albedo_color
+	if not check(pale != Color.TRANSPARENT and dark != Color.TRANSPARENT,
+			"gate %d has cells of both parities to compare" % idx):
+		return
+	print("[laps] within gate %d the two parities are %s and %s" % [idx, pale, dark])
+	check(pale != dark,
+		"the checkerboard survives inside a gate band (%s vs %s) -- the parity is "
+			% [pale, dark]
+		+ "what makes distance readable from a fixed camera, and a racetrack is "
+		+ "where that matters most. The plate flattened each cell to one colour")
+
+	# ...AND IT IS STILL OBVIOUSLY A GATE. A parity swing wide enough to read as a
+	# second signal would be two messages fighting; small enough to vanish and the
+	# claim above is satisfied by a rounding error.
+	var apart: float = absf(pale.get_luminance() - dark.get_luminance())
+	print("[laps] the parity swing is %.3f in luminance" % apart)
+	check(apart > 0.005 and apart < 0.25,
+		"and the swing reads as shading rather than as a second signal (%.3f) -- "
+			% apart
+		+ "the HUE says which gate this is and whether it is yours; the LIGHTNESS "
+		+ "says which square, and the two must not compete")
 
 # --- 7. The clock you are watching ---------------------------------------------
 #

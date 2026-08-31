@@ -77,6 +77,19 @@ static func round_entry(world: Node) -> Dictionary:
 		# the colour MEANT, so the choice was made by memory or not at all.
 		"mode_name": GameMode.name_of(world.next_mode_showing()),
 		"mode_blurb": GameMode.blurb_of(world.next_mode_showing()),
+		# AND WHAT IS ACTUALLY RUNNING, which is a DIFFERENT MODE from the two
+		# lines above and only ever agrees with them by luck.
+		#
+		# Those read the SELECTOR. That is right for a lobby -- a party standing on
+		# the band is deciding what to play next -- and wrong the moment the round
+		# starts, because the selector goes on being dashable mid-round and the
+		# choice is REMEMBERED for the next lobby. So a player who changes their
+		# mind halfway through a race would have been told, on screen, that they
+		# were playing the mode they had just picked for afterwards.
+		#
+		# Asked of the run plan, which is where "what is this round" lives.
+		"playing_name": GameMode.name_of(world.mode_for_round(world.round_index())),
+		"playing_blurb": GameMode.blurb_of(world.mode_for_round(world.round_index())),
 	}
 
 # A LAP TIME AS A PLAYER READS IT: minutes only when there are any, and tenths
@@ -353,6 +366,27 @@ static func _special_slot(world: Node, peer: int) -> Dictionary:
 static func bearing_to(offset: Vector3) -> float:
 	# NORTH is up the bridge, which is -Z (see GridConfig).
 	return atan2(offset.x, -offset.z)
+
+# WHAT THE RANK WAS FOR, in words, for whichever thing decided it.
+#
+# THE PRECEDENCE IS NOT DECIDED HERE. `RoundMachine.rank_key` answers which of
+# the comparator's keys ran out first, and it lives beside the comparator so the
+# two cannot drift; this only formats the answer. Splitting it that way is the
+# whole point: the sort order is a rule about the game and belongs in the sim,
+# the sentence under somebody's name is presentation.
+#
+# Reported as "it still lists '3 hats' under 1st instead of the lap time" -- the
+# board named hats in every mode, and in a race the hats had decided nothing.
+static func rank_reason(entry: Dictionary) -> String:
+	match RoundMachine.rank_key(entry):
+		"lap":
+			# The same clock the HUD shows, so a time on the board and a time in
+			# the corner of the screen are read the same way.
+			return "lap " + lap_label(int(entry.get("lap", 0)))
+		"hats":
+			var hats: int = int(entry.get("hats", 0))
+			return "1 hat" if hats == 1 else "%d hats" % hats
+	return "made it" if bool(entry.get("made_it", false)) else "did not make it"
 
 static func state_label(state: int) -> String:
 	match state:

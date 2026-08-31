@@ -429,7 +429,6 @@ var lap_gate_cells: Dictionary = {}
 var _bus_posts: Dictionary = {}
 var _bus_post_root: Node3D = null
 var _lap_gate_marks: Dictionary = {}
-var _lap_gate_root: Node3D = null
 
 # WHICH LAP GATE IS UNDER THIS CELL, or -1. The whole lap system talks to the
 # grid through this one question.
@@ -771,7 +770,13 @@ func load_segment(seg) -> void:
 		var gc: Vector2i = entry[0]
 		var run_cell := Vector2i(gc.x, gc.y + z_offset)
 		lap_gate_cells[run_cell] = int(entry[1])
-		_spawn_lap_gate_mark(run_cell, int(entry[1]))
+		# THE DECK SQUARE, not a plate laid on it. The builder gave this cell its
+		# own material for exactly this; the world tints it. A gate whose mesh is
+		# missing -- a cell the deck pass skipped, an elevator or a mutable slab --
+		# simply is not in the map, and the tint pass walks what is there.
+		var square = built.checker_meshes.get(gc)
+		if square != null and is_instance_valid(square):
+			_lap_gate_marks[run_cell] = square
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]
@@ -1806,31 +1811,14 @@ var _mode_post_root: Node3D = null
 # A PAINTED PLATE RATHER THAN A GANTRY. It has to be legible from a camera 45
 # degrees above and behind, and it has to be something a bus drives THROUGH: a
 # wall you can see would be a wall you can hit.
-const GATE_MARK_HEIGHT := 0.06
-const GATE_MARK_INSET := 0.06
 
-func _spawn_lap_gate_mark(cell: Vector2i, index: int) -> void:
-	if _lap_gate_root == null:
-		_lap_gate_root = Node3D.new()
-		_lap_gate_root.name = "LapGates"
-		add_child(_lap_gate_root)
-	var mark := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(GridConfig.CELL_SIZE - GATE_MARK_INSET, GATE_MARK_HEIGHT,
-		GridConfig.CELL_SIZE - GATE_MARK_INSET)
-	mark.mesh = mesh
-	# HALF ITS HEIGHT UP, so the plate sits ON the deck rather than half inside
-	# it -- the same arithmetic a mine uses, and for the same reason.
-	mark.position = cell_surface(cell) + Vector3(0.0, GATE_MARK_HEIGHT * 0.5, 0.0)
-	# PER INSTANCE, because the world recolours ONE gate at a time -- the one you
-	# are driving at next. A shared material would light the whole circuit up.
-	mark.material_override = StandardMaterial3D.new()
-	_lap_gate_root.add_child(mark)
-	mark.name = "Gate%d_%d_%d" % [index, cell.x, cell.y]
-	_lap_gate_marks[cell] = mark
-
-# Every gate mark, as cell -> MeshInstance3D. The world tints them; the grid does
-# not know what the colours mean.
+# Every gate's DECK SQUARE, as cell -> MeshInstance3D. The world tints them; the
+# grid does not know what the colours mean.
+#
+# These are the deck's own meshes, handed over by the builder, so they are owned
+# by the segment and go when it is truncated -- which is one fewer thing than the
+# overlay plates needed, since those were the grid's own children and had to be
+# swept separately.
 func lap_gate_marks() -> Dictionary:
 	return _lap_gate_marks
 

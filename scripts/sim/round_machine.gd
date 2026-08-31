@@ -258,6 +258,21 @@ func _enter_lobby(world) -> void:
 	# is still the whole round. With only that, the party is back in the lobby but
 	# `rear_row` still points at its exit, so rear and target land on the SAME row
 	# and the rear wall stands between the player and the strip they have to cross.
+	# THE LAP CLOCK STOPS. Reported: "once you finish a race and exit to the
+	# lobby, the lap timer should stop." It did not -- `lap_elapsed_of` answers
+	# for as long as the peer is in `_lap_next`, and the only thing that cleared
+	# that was the START of the next round. So a party standing in a lobby
+	# watching their clock tick was watching a lap nobody was driving.
+	#
+	# HERE RATHER THAN AT `_begin_scoring`, because CLOSING is still the round:
+	# a straggler crossing the line during the window is finishing a real lap.
+	# The lobby is where it is definitively over.
+	#
+	# THE BEST SURVIVES -- `abandon_running_laps` clears the lap in PROGRESS and
+	# nothing else. It has to: the board that ranks on best lap is still on screen
+	# when this runs, and clearing both would blank the thing the round was scored
+	# on at the moment it is being read.
+	world.abandon_running_laps()
 	var rearmost: int = _rearmost_row(world)
 	rear_row = world.grid.gate_at_or_before(rearmost)
 	target_row = world.grid.gate_after(rearmost)
@@ -397,6 +412,29 @@ static func rank_entries(entries: Array) -> Array:
 		# is a disagreement about the round.
 		return int(a.get("peer", 0)) < int(b.get("peer", 0)))
 	return out
+
+# WHICH FIELD ACTUALLY DECIDED THIS ROW, as a key.
+#
+# The board has always printed a reason under each name -- "a number nobody can
+# explain is a number nobody trusts" -- and it printed HATS whatever the mode
+# was. Reported: "on the victory screen it still lists '3 hats' under 1st instead
+# of the lap time." In a race the hats did not decide anything; the lap did.
+#
+# THE SAME PRECEDENCE AS THE COMPARATOR, KEPT NEXT TO IT, because two
+# implementations of one fact is a thing this project has paid for. This does not
+# re-sort; it answers which of the comparator's keys is the one that ran out
+# first for THIS entry, and it walks them in the comparator's own order.
+#
+# AND IT NEEDS NO MODE BRANCH, for the reason written above the comparator: a lap
+# of 0 means nobody finished one, so outside a race every entry falls through to
+# hats exactly as before. A key that is inert when the feature is absent beats an
+# `if mode == RACE` somebody has to remember to keep in step.
+static func rank_key(entry: Dictionary) -> String:
+	if int(entry.get("lap", 0)) > 0:
+		return "lap"
+	if int(entry.get("hats", 0)) > 0:
+		return "hats"
+	return "made_it"
 
 # THE RANK SHOWN, WHICH IS NOT THE ORDER (M19).
 #

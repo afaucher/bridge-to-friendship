@@ -37,6 +37,12 @@ const COLOR_LAP := Color(0.85, 0.86, 0.92)
 # Where the lap clock sits across the top: a third of the way over, which is
 # between the top-left own panel and the centred round column at any width.
 const LAP_ANCHOR_X := 0.3
+
+# And the mode summary, mirrored across the round column: between it and the
+# friends panel top-right, at the distance from centre the lap clock sits on the
+# other side. A pair reads as a pair because of where they are, not because they
+# are the same size.
+const MODE_ANCHOR_X := 0.7
 # The lap being driven right now, brighter than the best beside it: it is the
 # number changing, and the one a driver is actually watching.
 const COLOR_LAP_LIVE := Color(1.00, 0.97, 0.80)
@@ -114,6 +120,10 @@ var _own_lap: Label = null
 var _own_lap_live: Label = null
 var _mode_name: Label = null
 var _mode_blurb: Label = null
+# The same pair again, in the top strip, for while a round is running. See
+# _build_playing_panel.
+var _playing_name: Label = null
+var _playing_blurb: Label = null
 var _own_face: TextureRect = null
 var _own_slots: HBoxContainer = null
 var _own_state: Label = null
@@ -160,6 +170,7 @@ func _ready() -> void:
 	_build_friends_panel()
 	_build_markers()
 	_build_lap_panel()
+	_build_playing_panel()
 	_build_round_panel()
 	_build_score_screen()
 
@@ -302,6 +313,44 @@ func _build_lap_panel() -> void:
 	_own_lap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_own_lap)
 
+# WHAT YOU ARE PLAYING, opposite the lap clock.
+#
+# THE LOBBY BANNER IS DELIBERATELY LOBBY-ONLY and says so where it is built:
+# "mid-round it would be a permanent caption naming the thing you are already
+# doing, which is furniture -- and furniture does not get read." That reasoning is
+# overruled here, by the person who has played it: a run now switches between four
+# modes with different rules and different scoring, and "which one am I in" stops
+# being obvious the moment it can change.
+#
+# ONE ON SCREEN AT A TIME. This one shows exactly when the centred one does not,
+# so a lobby keeps its big centred moment and a round gets the same sentence off
+# to the side. Two copies of one line is worse than either place.
+#
+# THE LOBBY'S OWN SIZE, NOT THE CLOCK'S. The clock beside it took ROUND's 44
+# because it is a number you WATCH -- caught out of the corner of the eye,
+# changing ten times a second. This is a reference: read once, then ignored.
+# Matching its weight to the clock would make it compete with the one thing on
+# screen that has to be glanced at while driving.
+func _build_playing_panel() -> void:
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	margin.anchor_left = MODE_ANCHOR_X
+	margin.anchor_right = MODE_ANCHOR_X
+	margin.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	margin.add_theme_constant_override("margin_top", 14)
+	add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(column)
+
+	_playing_name = _label("", 30, COLOR_MODE)
+	_playing_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_playing_name)
+	_playing_blurb = _label("", 16, COLOR_DIM)
+	_playing_blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_playing_blurb)
+
 func _build_round_panel() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -369,8 +418,25 @@ func _update_mode_banner(entry: Dictionary) -> void:
 	_mode_blurb.text = blurb
 	_mode_blurb.visible = blurb != ""
 
+# THE SAME SENTENCE, WHILE THE ROUND IS RUNNING. Fed from `playing_*` rather than
+# from `mode_*`: those name what the SELECTOR is set to, which is what a lobby is
+# deciding and is not what anybody is currently playing. The selector stays
+# dashable mid-round -- the choice is remembered for the next lobby -- so reusing
+# the lobby fields here would name the mode you had just picked for AFTERWARDS.
+func _update_playing_banner(entry: Dictionary) -> void:
+	var in_round: bool = not bool(entry.get("waiting", false))
+	_playing_name.visible = in_round
+	_playing_blurb.visible = in_round
+	if not in_round:
+		return
+	_playing_name.text = str(entry.get("playing_name", ""))
+	var line: String = str(entry.get("playing_blurb", ""))
+	_playing_blurb.text = line
+	_playing_blurb.visible = line != ""
+
 func _update_round(entry: Dictionary) -> void:
 	_update_mode_banner(entry)
+	_update_playing_banner(entry)
 	if _round_panel == null:
 		return
 	if entry.is_empty():
@@ -415,15 +481,12 @@ func _sync_board(board: Array) -> void:
 		if not row.visible:
 			continue
 		var entry: Dictionary = board[i]
-		var hats: int = int(entry.get("hats", 0))
 		# WHAT THE RANK WAS FOR, spelled out. A number nobody can explain is a
-		# number nobody trusts, and this is the first scoring criterion the game
-		# has ever shown.
-		var why: String = "%d hats" % hats
-		if hats == 1:
-			why = "1 hat"
-		elif hats == 0:
-			why = "made it" if bool(entry.get("made_it", false)) else "did not make it"
+		# number nobody trusts -- and it used to say HATS whichever mode had just
+		# been played, so a race was scored on lap times and explained by hats.
+		# `HudModel.rank_reason` reads the same precedence the comparator sorted
+		# by, and the score screen asks it too rather than keeping a second copy.
+		var why: String = HudModel.rank_reason(entry)
 		row.text = "%d.  %s  --  %s" % [i + 1, str(entry.get("name", "")), why]
 		row.add_theme_color_override("font_color",
 			COLOR_TEXT if bool(entry.get("made_it", false)) else COLOR_DIM)

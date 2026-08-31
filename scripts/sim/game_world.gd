@@ -4736,6 +4736,24 @@ func _show_lap_gates() -> void:
 		var lit: bool = idx == target
 		if lit:
 			want = GATE_NEXT
+		# AND THE CHECKER SURVIVES THE TINT.
+		#
+		# These are the deck's own squares now rather than plates laid on them, and
+		# the parity is not decoration: it is what makes distance readable from a
+		# fixed 45-degree camera, on the one surface where judging distance at
+		# speed is the whole activity. `GridConfig.gate_colour` makes the same
+		# point about the lobby strip -- same parity rule, different palette, so a
+		# player counting squares across it counts the same squares.
+		#
+		# The old overlay flattened each gate cell to one colour and broke the
+		# pattern across every band, which nobody decided; it fell out of the plate
+		# being a separate object.
+		#
+		# TWO AXES, AND THEY MUST NOT FIGHT: the HUE says which gate this is (and
+		# whether it is yours), the LIGHTNESS says which square. A parity swing
+		# small enough to read as shading rather than as a second signal.
+		var pale: bool = (int(cell.x) + int(cell.y)) % 2 == 0
+		want = want.lightened(0.10) if pale else want.darkened(0.10)
 		var material := mark.material_override as StandardMaterial3D
 		if material == null or material.albedo_color == want:
 			continue
@@ -4789,6 +4807,15 @@ func _abandon_lap(peer: int) -> void:
 	_lap_next.erase(peer)
 	_lap_from.erase(peer)
 	_on_lap_gate.erase(peer)
+
+# EVERY LAP IN PROGRESS, THROWN AWAY. The bests are untouched.
+#
+# For the end of a round: a lap is something you drive during one, and the clock
+# going on ticking in the lobby afterwards is a timer for a lap nobody is driving.
+# Called by RoundMachine._enter_lobby, which is where a round is definitively over.
+func abandon_running_laps() -> void:
+	for peer_key in players.keys():
+		_abandon_lap(int(peer_key))
 
 func lap_elapsed_of(peer: int) -> int:
 	if not _lap_next.has(peer):

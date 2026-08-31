@@ -62,6 +62,18 @@ class Built:
 	# Lap gates, as (cell, index) pairs. Copied off the segment for the same
 	# reason mines are: they have no glyph, because the ORDER is half the fact.
 	var checker_cells: Array = []
+	# THE DECK SQUARE ITSELF, for each gate cell: local cell -> MeshInstance3D.
+	#
+	# A lap gate used to be a separate plate laid ON the deck -- 6 cm proud, 6 cm
+	# inset -- because the world recolours one gate at a time and the palette
+	# materials here are SHARED between every cell that uses them. Reported as
+	# "it looks like you overlayed something on the ground. I wasn't sure why we
+	# didn't just change the color of the ground squares, like for the lobby line."
+	#
+	# The lobby line does exactly that, and the only thing standing in the way was
+	# the shared material -- the meshes were always one per cell. So a gate cell
+	# gets its own material and the world tints the GROUND.
+	var checker_meshes: Dictionary = {}
 	# Bus posts -- the `!` glyph. Collected like every other authored prop.
 	var bus_post_cells: Array = []
 	# Cover, and spike blocks. Collected like every other authored prop: the grid
@@ -145,6 +157,14 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 	var width: int = seg.width
 	_merge_deck_collision(seg, z_offset, h_offset, body, out)
 
+	# WHICH CELLS ARE LAP GATES, as a lookup. Carried beside the grid rather than
+	# as a content glyph -- a checkpoint is a thing in a cell AND a position in a
+	# sequence -- so unlike the GATE strip below there is nothing on the cell to
+	# ask.
+	var gate_cells := {}
+	for entry in seg.checker_cells:
+		gate_cells[entry[0]] = int(entry[1])
+
 	for z in seg.length:
 		# Meshes: one per cell, so the checkerboard exists.
 		for cx in width:
@@ -186,8 +206,23 @@ static func _build_deck(seg, z_offset: int, h_offset: int, body: StaticBody3D, m
 				material = palette["gate_light"] if lit else palette["gate_dark"]
 			else:
 				material = palette["light"] if lit else palette["dark"]
-			_add_mesh_box(meshes, cell_centre,
+			var square: MeshInstance3D = _add_mesh_box(meshes, cell_centre,
 				Vector3(GridConfig.CELL_SIZE, thick2, GridConfig.CELL_SIZE), material)
+			# A LAP GATE OWNS ITS OWN MATERIAL, because the world retints one gate
+			# at a time -- the one you are driving at next -- and every other cell
+			# here shares a palette instance with the rest of its colour. Sharing
+			# is right for the deck (one material, hundreds of squares) and is the
+			# single reason a gate could not simply BE a coloured square before.
+			#
+			# Seeded from the deck colour rather than left white: between this line
+			# and the world's first tint the square must look like deck, not like a
+			# hole in the level.
+			if gate_cells.has(Vector2i(cx, z)):
+				var own := StandardMaterial3D.new()
+				own.albedo_color = material.albedo_color
+				own.roughness = material.roughness
+				square.material_override = own
+				out.checker_meshes[Vector2i(cx, z)] = square
 
 # Water sits a little below its cell's nominal top so it reads as a channel
 # rather than as deck of a different colour. The flow that makes it dangerous is
@@ -691,7 +726,7 @@ static func _add_collision_box(body: StaticBody3D, centre: Vector3, size: Vector
 	body.add_child(col)
 
 static func _add_mesh_box(meshes: Node3D, centre: Vector3, size: Vector3,
-		material: StandardMaterial3D) -> void:
+		material: StandardMaterial3D) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = size
@@ -699,3 +734,4 @@ static func _add_mesh_box(meshes: Node3D, centre: Vector3, size: Vector3,
 	mesh.material_override = material
 	mesh.position = centre
 	meshes.add_child(mesh)
+	return mesh
