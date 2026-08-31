@@ -82,6 +82,7 @@ func _physics_process(_delta: float) -> void:
 	_a_choice_made_mid_round_still_builds_its_ground()
 	_the_same_mode_twice_running_builds_it_twice()
 	_you_use_it_by_standing_at_it()
+	_a_press_rolls_the_ground_too()
 	finish()
 
 # --- 1. Where it is -----------------------------------------------------------
@@ -310,6 +311,70 @@ func _a_choice_made_mid_round_still_builds_its_ground() -> void:
 			% [GameMode.name_of(world.mode_for_round(0)), GameMode.name_of(chosen)]
 		+ "the RUN PLAN says, because comparing the choice against itself is "
 		+ "always equal once the choice has been remembered")
+
+# A PRESS PICKS THE MODE **AND** THE SEED FOR IT.
+#
+# Reported: "I was trying to find the demo level to test water but every round
+# picks one seed which might not select it when changing the game mode." It did
+# -- the whole run came from a single number, so re-picking a mode rebuilt
+# exactly the same ground and there was no way to roll for different terrain.
+#
+# WHY NOT RANDOMISE `run_seed`: the bridge is a pure function of what rides the
+# extend message, and that is what lets a joining client rebuild the run exactly.
+# Changing the run seed mid-run would have a client build the ground BEHIND the
+# party differently from how the host built it. A seed PER ROUND, on the same
+# message as the mode array and in the same shape, keeps reconstruction exact.
+#
+# THE SECOND CLAIM IS THE ONE WITH TEETH. That the ground changes is what was
+# asked for; that it changes ONLY for the round being chosen is what stops this
+# re-cutting ground the party is standing on -- and a broken version passes the
+# first claim perfectly.
+func _a_press_rolls_the_ground_too() -> void:
+	var post: Node = world.grid.mode_posts()[0] if world.grid.mode_posts().size() > 0 else null
+	if not check(post != null, "there is a post to stand at"):
+		return
+	var body: Node = world.player_body(1)
+	world.round_machine.state = RoundMachine.State.LOBBY
+	world.round_machine.round_index = 1
+	world.selected_mode = GameMode.BASE
+	world.run_modes = [GameMode.BASE, GameMode.BASE]
+	world.run_seeds = []
+	world._extend_run()
+	# FILLED THE WAY THE WORLD FILLS IT. `_extend_run` returns early when there is
+	# nothing to add, so a run that is already long enough leaves the table empty
+	# -- which is the state this phase found on its first run.
+	world.run_seeds = world._seeds_for(world.grid.segment_count())
+
+	var before: Array = world.run_seeds.duplicate()
+	if not check(before.size() > 1,
+			"the run plans at least two rounds to tell apart (%d)" % before.size()):
+		return
+
+	body.global_position = post.global_position + Vector3(1.0, 1.0, 0.0)
+	world._use(1, body)
+	world._extend_run()
+	var after: Array = world.run_seeds.duplicate()
+	print("[modepost] seeds %s -> %s (choosing round 1)" % [before, after])
+
+	check(int(after[1]) != int(before[1]),
+		"choosing a mode rolls a new seed for that round (%d was %d) -- the mode "
+			% [int(after[1]), int(before[1])]
+		+ "and what it is made of are the same decision, and one number for the "
+		+ "whole run meant re-picking rebuilt identical ground")
+	eq(int(after[0]), int(before[0]),
+		"and ONLY that round (round 0 is %d, was %d) -- every other entry is "
+			% [int(after[0]), int(before[0])]
+		+ "untouched, so ground the party has already walked on is not re-cut "
+		+ "underneath them")
+
+	# AND THE RUN REALLY REBUILDS FROM IT, rather than the number being recorded
+	# and ignored. A seed nothing reads is a seed that changed nothing.
+	var rolled: int = SegmentPool.slot_seed(int(world.grid.run_seed), after,
+		SegmentPool.SECTIONS_PER_ROUND + 2)
+	eq(rolled, int(after[1]),
+		"a slot in round 1 is built from round 1's seed (%d against %d) -- which "
+			% [rolled, int(after[1])]
+		+ "is what makes the roll reach the ground rather than a table")
 
 # THE VERB IS `E`, AND IT IS A PLACE YOU STAND.
 #

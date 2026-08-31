@@ -292,9 +292,19 @@ func first_row_of_segment(index: int) -> int:
 # sections are one choice. Empty means every round is base, which is what every
 # caller that predates M25 passes and what a client is told when a host does not
 # send it.
-func build_run(seed_value: int, segment_count_wanted: int, modes: Array = []) -> void:
+# `seeds` IS ONE SEED PER ROUND, exactly the shape `modes` is and carried on the
+# same message. Each slot is built from its own round's seed, so choosing a mode
+# can re-roll the ground for THAT round without touching a slot anybody has
+# already walked on -- and a client rebuilding the whole run from the message
+# reproduces every slot the host built, which is the property the whole
+# replication scheme rests on.
+#
+# EMPTY MEANS "the run seed for everything", which is what every caller that
+# predates this passes and what an older host sends.
+func build_run(seed_value: int, segment_count_wanted: int, modes: Array = [],
+		seeds: Array = []) -> void:
 	run_seed = seed_value
-	var plan: Array = SegmentPool.plan(seed_value, segment_count_wanted)
+	var plan: Array = SegmentPool.plan(seed_value, segment_count_wanted, seeds)
 	for i in range(_segments.size(), plan.size()):
 		var path: String = String(plan[i])
 		# GENERATED SLOTS ARE NAMED, NOT PATHS. The plan is still a list of
@@ -305,7 +315,8 @@ func build_run(seed_value: int, segment_count_wanted: int, modes: Array = []) ->
 			# of M25: a broken mode must never be able to strand the party
 			# somewhere they cannot choose again, and that guarantee is worth
 			# nothing if it lives in one caller rather than at the point of build.
-			_load_generated(SegmentGen.lobby(width, seed_value, i), i)
+			_load_generated(SegmentGen.lobby(width,
+				SegmentPool.slot_seed(seed_value, seeds, i), i), i)
 			continue
 		var mode: int = _mode_of_slot(modes, i)
 		# A MODE WITH ITS OWN TERRAIN OWNS EVERY NON-LOBBY SLOT, including the ones
@@ -323,10 +334,11 @@ func build_run(seed_value: int, segment_count_wanted: int, modes: Array = []) ->
 		# thing re-aims every rule that did not know there was more than one kind.
 		# Here the older kind is "a slot can be a FILE", which predates modes
 		# entirely.
+		var slot: int = SegmentPool.slot_seed(seed_value, seeds, i)
 		if GameMode.terrain(mode) != GameMode.TERRAIN_SECTIONS:
-			_load_generated(_section_for_mode(mode, seed_value, i), i)
+			_load_generated(_section_for_mode(mode, slot, i), i)
 		elif path == SegmentPool.GENERATED_SECTION:
-			_load_generated(_section_for_mode(mode, seed_value, i), i)
+			_load_generated(_section_for_mode(mode, slot, i), i)
 		else:
 			load_segment_file(path)
 

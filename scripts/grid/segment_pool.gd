@@ -106,7 +106,17 @@ const SECTIONS_PER_ROUND := 5
 # today. When players vote for the next one, this is where the vote is READ --
 # a value change, not a structural one, which is the entire reason the loop is
 # expressed this way rather than as "append whatever is next".
-static func plan(run_seed: int, count: int) -> Array:
+# A SEED PER ROUND, tolerantly. `seeds` is the same shape as the mode array --
+# one entry per round, replicated on the same message -- and an empty one, or a
+# round past its end, falls back to the run seed. That is the pre-M27 behaviour
+# exactly, which is what every existing caller and every older host gets.
+static func slot_seed(run_seed: int, seeds: Array, i: int) -> int:
+	var round_index: int = round_of_slot(i)
+	if round_index < 0 or round_index >= seeds.size():
+		return run_seed
+	return int(seeds[round_index])
+
+static func plan(run_seed: int, count: int, seeds: Array = []) -> Array:
 	var out: Array = []
 	if POOL.is_empty():
 		return out
@@ -115,7 +125,7 @@ static func plan(run_seed: int, count: int) -> Array:
 		if i % cycle == 0:
 			out.append(GENERATED_LOBBY)
 		else:
-			out.append(section_for(run_seed, i))
+			out.append(section_for(slot_seed(run_seed, seeds, i), i))
 	return out
 
 # HOW MANY ROUNDS A PLAN OF THIS MANY SEGMENTS COVERS. The cycle length lives in

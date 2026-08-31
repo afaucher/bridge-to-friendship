@@ -113,6 +113,24 @@ var run_seed: int = 0
 # picks. Sending it whole every time is cheaper than reasoning about a diff.
 var run_modes: Array = []
 
+# ONE SEED PER ROUND, the same shape as `run_modes` and carried on the same
+# message. Choosing a mode re-rolls the entry for the round being chosen, so a
+# press of the selector changes what the next stretch IS and what it is made of.
+#
+# Reported as: "I was trying to find the demo level to test water but every round
+# picks one seed." It did -- the whole run came from one number, so re-picking a
+# mode rebuilt the same ground.
+#
+# WHY NOT JUST RANDOMISE `run_seed`: the bridge is a pure function of what rides
+# this message, which is what lets a joining client rebuild the run exactly.
+# Changing the run seed mid-run would have the client build the ground BEHIND the
+# party differently from how the host built it. A per-round array keeps
+# reconstruction exact, because the message carries every seed that was used.
+#
+# ROUNDS NOBODY HAS CHOSEN GET A DERIVED SEED, stable and needing no message of
+# its own -- only the round actually being chosen is ever rolled.
+var run_seeds: Array = []
+
 # What the next unplayed round will be if nobody changes it again, and what the
 # selector currently says.
 #
@@ -1403,6 +1421,23 @@ func round_index() -> int:
 # nobody has chosen for are BASE, so a run always has an answer for every slot --
 # a missing entry would be read as "no mode", which is the absence this milestone
 # is specifically built to avoid.
+# THE SEED TABLE, padded but never re-rolled here.
+#
+# A seed has to be STABLE once its round is built, so unlike `_modes_for` this
+# writes nothing for the round being chosen -- that entry is rolled once, at the
+# moment of the choice, in `_poll_mode_selection`. Rolling here would give a
+# different seed on every tick, because this runs on every extension.
+#
+# Missing rounds get a DERIVED seed rather than a random one: stable, reproducible
+# from the run seed alone, and correct for every round nobody has chosen.
+func _seeds_for(segments_wanted: int) -> Array:
+	var rounds: int = SegmentPool.rounds_in(segments_wanted)
+	var out: Array = run_seeds.duplicate()
+	while out.size() < rounds:
+		out.append(SegmentPool._mix(int(grid.run_seed) + out.size() * 7919)
+			if grid != null else out.size())
+	return out
+
 func _modes_for(segments_wanted: int) -> Array:
 	var rounds: int = SegmentPool.rounds_in(segments_wanted)
 	var out: Array = run_modes.duplicate()
@@ -1471,7 +1506,24 @@ func _poll_mode_selection() -> void:
 	# run plan is per-round already; there is nothing to keep in step with it.
 	if mode_for_round(round_index()) == picked:
 		return
+	# A NEW MODE AND A NEW SEED, together, because they are the same decision:
+	# "what is the next stretch". Asked for after trying to reach a particular
+	# map -- the run came from one number, so re-picking a mode rebuilt exactly
+	# the same ground and there was no way to roll for different terrain.
+	#
+	# ONLY THE ROUND BEING CHOSEN. Every other entry is untouched, so ground the
+	# party has already walked on is not re-cut underneath them -- the same rule
+	# `_modes_for` follows and for the same reason.
+	_roll_seed_for_round(round_index())
 	_rebuild_corridor_ahead()
+
+func _roll_seed_for_round(index: int) -> void:
+	if index < 0:
+		return
+	run_seeds = _seeds_for(grid.segment_count() if grid != null else 0)
+	while run_seeds.size() <= index:
+		run_seeds.append(0)
+	run_seeds[index] = randi()
 
 # WHAT THE LOBBY SHOULD SAY THE NEXT ROUND IS.
 #
@@ -1688,9 +1740,10 @@ func _extend_run() -> void:
 	if wanted <= grid.segment_count():
 		return
 	run_modes = _modes_for(wanted)
-	grid.build_run(grid.run_seed, wanted, run_modes)
+	run_seeds = _seeds_for(wanted)
+	grid.build_run(grid.run_seed, wanted, run_modes, run_seeds)
 	if networked:
-		_extend_run_to.rpc(grid.run_seed, wanted, run_modes)
+		_extend_run_to.rpc(grid.run_seed, wanted, run_modes, run_seeds)
 
 # Which segment a world-space z falls in. Segments vary in length, so this walks
 # rather than dividing.
@@ -1908,8 +1961,10 @@ func _apply_leash() -> void:
 # project: an older host, or the several tests that call this directly, leave the
 # modes empty and every round reads as BASE. That is the pre-M25 behaviour exactly.
 @rpc("authority", "call_remote", "reliable")
-func _extend_run_to(seed_value: int, wanted: int, modes: Array = []) -> void:
+func _extend_run_to(seed_value: int, wanted: int, modes: Array = [],
+		seeds: Array = []) -> void:
 	run_modes = modes.duplicate()
+	run_seeds = seeds.duplicate()
 	if grid != null:
 		# A CLIENT DRESSES TOO, and must, because the dressing is part of what the
 		# bridge IS -- a client that skipped it would build the same terrain with
