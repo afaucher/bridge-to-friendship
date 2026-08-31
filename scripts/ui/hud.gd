@@ -33,6 +33,10 @@ const COLOR_ALERT := Color(1.00, 0.45, 0.22)
 # something you did well, and every other coloured thing on this HUD is a
 # warning.
 const COLOR_LAP := Color(0.85, 0.86, 0.92)
+
+# Where the lap clock sits across the top: a third of the way over, which is
+# between the top-left own panel and the centred round column at any width.
+const LAP_ANCHOR_X := 0.3
 # The lap being driven right now, brighter than the best beside it: it is the
 # number changing, and the one a driver is actually watching.
 const COLOR_LAP_LIVE := Color(1.00, 0.97, 0.80)
@@ -155,6 +159,7 @@ func _ready() -> void:
 	_build_own_panel()
 	_build_friends_panel()
 	_build_markers()
+	_build_lap_panel()
 	_build_round_panel()
 	_build_score_screen()
 
@@ -256,6 +261,46 @@ func _update_markers(friends: Array) -> void:
 	_markers.refresh(list, cam)
 
 # --- The round ----------------------------------------------------------------
+
+# THE LAP CLOCK, ON ITS OWN, IN THE TOP STRIP BETWEEN THE HUD AND THE ROUND LINE.
+#
+# It used to sit beside your name inside the own panel at 16 px, which is the
+# size of a status caption. Reported as "that counter is WAY too small" -- and it
+# was the wrong KIND of thing to be in that panel as well as the wrong size. The
+# own panel is a list you look AT between moments; a lap clock while you are
+# driving is a number you catch out of the corner of your eye, which is exactly
+# what the note on _round_label says the centre strip is for. So it moves up
+# there and takes ROUND's size with it.
+#
+# ANCHORED AT A FRACTION rather than offset from the panel beside it. The own
+# panel's width depends on the player's name, their hats and their held weapon,
+# so pinning to its edge would make the clock move whenever any of those changed.
+# A third of the way across is between the two at every resolution and stays put.
+#
+# THE RUNNING CLOCK AND THE BEST, STILL TWO LABELS AND NOT ONE DOING BOTH. A
+# single label showing the live lap while driving and the best otherwise hides
+# your target at the only moment you are chasing it -- you cross the line and the
+# next lap starts on the same tick, so the best would flash past in a frame. The
+# best stays small underneath: it is the thing you check, not the thing you watch.
+func _build_lap_panel() -> void:
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	margin.anchor_left = LAP_ANCHOR_X
+	margin.anchor_right = LAP_ANCHOR_X
+	margin.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	margin.add_theme_constant_override("margin_top", 14)
+	add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(column)
+
+	_own_lap_live = _label("", 44, COLOR_LAP_LIVE)
+	_own_lap_live.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_own_lap_live)
+	_own_lap = _label("", 18, COLOR_LAP)
+	_own_lap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_own_lap)
 
 func _build_round_panel() -> void:
 	var margin := MarginContainer.new()
@@ -412,19 +457,6 @@ func _build_own_panel() -> void:
 	own_header.add_child(_own_face)
 	_own_name = _label("", 18, COLOR_TEXT)
 	own_header.add_child(_own_name)
-	# THE LAP CLOCK, beside the name and hidden until there is one. Every mode
-	# but the race leaves it empty, so this is not furniture the ordinary game
-	# has to carry -- and a label with no text takes no room in an HBox.
-	# THE RUNNING CLOCK AND THE BEST, SIDE BY SIDE AND NOT ONE LABEL DOING BOTH.
-	#
-	# A single label showing the live lap while driving and the best otherwise
-	# hides your target at the only moment you are chasing it -- you cross the
-	# line and the next lap starts on the same tick, so the best would flash past
-	# in a frame. Two labels, and the live one hides between laps.
-	_own_lap_live = _label("", 16, COLOR_LAP_LIVE)
-	own_header.add_child(_own_lap_live)
-	_own_lap = _label("", 15, COLOR_LAP)
-	own_header.add_child(_own_lap)
 
 	_own_status = _bar(BAR_SIZE)
 	box.add_child(_own_status)

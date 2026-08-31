@@ -4778,6 +4778,17 @@ func best_lap_of(peer: int) -> int:
 # ZERO MEANS "NOT DRIVING A LAP", the same convention `best_lap_of` uses for
 # "never finished one" -- two dictionaries, one rule about zero, so nothing
 # downstream has to remember which is which.
+# THE RUNNING LAP, THROWN AWAY. Not the best, which was earned and is kept.
+#
+# Every piece of the in-progress lap goes together: which gate is expected next,
+# when it started, and which gate the body is standing on. Leaving any one of
+# them would mean a player who died mid-lap came back part-way through a sequence
+# they are no longer driving.
+func _abandon_lap(peer: int) -> void:
+	_lap_next.erase(peer)
+	_lap_from.erase(peer)
+	_on_lap_gate.erase(peer)
+
 func lap_elapsed_of(peer: int) -> int:
 	if not _lap_next.has(peer):
 		return 0
@@ -5225,6 +5236,21 @@ func _begin_drone_return(peer: int) -> void:
 	# `deaths` and `rescued` become a matched pair: the times nobody got there, and
 	# the times somebody did.
 	_bump(peer, "deaths")
+	# AND THE LAP YOU WERE DRIVING IS OVER, at the same line and for the same
+	# reason the hats are: you did not finish it.
+	#
+	# Reported as "after death in a race, the counter still showed up in my HUD".
+	# `lap_elapsed_of` answers for as long as `_lap_next` holds the peer, and
+	# nothing ever took the peer out of it -- so a clock that started when you
+	# crossed the line went on counting through the fall, the drone and the
+	# respawn, and the first thing you saw on coming back was a lap time made
+	# mostly of being dead.
+	#
+	# HERE RATHER THAN AT THE RESPAWN, because this is the line that already means
+	# "left the world" -- the same choke point the death count, the hats and the
+	# held special go through, and the reason those three agree with each other.
+	# The BEST lap is untouched: that one was driven.
+	_abandon_lap(peer)
 	# IF YOU FALL, YOU LOSE THEM. Not dropped where you went over -- destroyed.
 	# See destroy_worn_hats: dropping them would rescue the one failure the design
 	# does not rescue, and would leave a free pile at the spot that killed you.

@@ -111,6 +111,53 @@ func _build_script() -> void:
 	_you_can_see_the_gates_and_which_is_yours()
 	_the_clock_runs_while_you_drive()
 	_a_round_starts_with_no_laps()
+	_dying_ends_the_lap_you_were_driving()
+
+# --- 10. DYING ENDS THE LAP YOU WERE DRIVING ------------------------------------
+#
+# Reported: "after death in a race, the counter still showed up in my HUD."
+#
+# `lap_elapsed_of` answers for as long as `_lap_next` holds the peer, and nothing
+# ever took the peer out of it -- so a clock started at the line went on counting
+# through the fall, the drone and the respawn, and the first thing a player saw on
+# coming back was a lap time made mostly of being dead.
+#
+# THE BEST IS THE OTHER HALF, and it is the half that would be easy to break
+# while fixing this: that lap was driven and earned, and clearing it along with
+# the running one would delete the whole point of the mode. Both asserted, because
+# "clear the lap state" is one sentence covering two opposite intentions.
+func _dying_ends_the_lap_you_were_driving() -> void:
+	var kept := [0]
+	var ticking := [0]
+	_at(func(): world.clear_round_stats())
+	_at(func(): _leave_gates(A))
+	_lap(A, [0])
+	_lap(A, _rest())
+	_lap(A, [0])
+	# Driving again, with a clock running and a best already on the board.
+	_at(func(): _leave_gates(A))
+	_at(func(): _cross(A, 0))
+	for i in 20:
+		_at(func(): pass)
+	_at(func():
+		kept[0] = world.best_lap_of(A)
+		ticking[0] = world.lap_elapsed_of(A)
+		check(kept[0] > 0, "a lap was completed first (%d ticks)" % kept[0])
+		check(ticking[0] > 0,
+			"and another is running when the fall happens (%d ticks)" % ticking[0]))
+	_at(func(): world._begin_drone_return(A))
+	_at(func():
+		print("[laps] after dying the clock reads %d (was %d) and the best is %d (was %d)"
+			% [world.lap_elapsed_of(A), ticking[0], world.best_lap_of(A), kept[0]])
+		eq(world.lap_elapsed_of(A), 0,
+			"the lap you were driving is over when you die (%d ticks still on the "
+				% world.lap_elapsed_of(A)
+			+ "clock) -- you did not finish it, and a clock that runs through the "
+			+ "fall and the drone hands you back a time made mostly of being dead")
+		eq(world.best_lap_of(A), kept[0],
+			"and the best is untouched (%d, was %d) -- that one was driven, and "
+				% [world.best_lap_of(A), kept[0]]
+			+ "clearing it with the running lap would delete the mode's whole point"))
 
 # --- Driving -------------------------------------------------------------------
 
