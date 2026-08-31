@@ -123,6 +123,9 @@ func truncate_run(keep: int) -> void:
 
 	_free_props_past(cut_row)
 	_forget_cells_past(cut_row)
+	# The field is a property of the whole run's water, so a truncation can move
+	# an outlet -- cutting a segment off can open a channel that was closed.
+	_recompute_water_flow()
 
 # Everything standing on ground that no longer exists. Asked of each per-kind root
 # rather than of a list of kinds -- see truncate_run.
@@ -798,6 +801,12 @@ func load_segment(seg) -> void:
 			gate_rows.append(run_row)
 	gate_rows.sort()
 	_rebuild_gate_bands()
+	# AND THE WATER FIELD, because a new segment can change an OLD cell's answer:
+	# a channel that ended at the run's front edge was an outlet, and the segment
+	# stacked in front of it may close that end and reverse the flow. The field is
+	# a property of the whole run's water, so it is recomputed rather than
+	# extended.
+	_recompute_water_flow()
 
 func next_z() -> int:
 	var total := 0
@@ -819,6 +828,124 @@ func _resolve(cell: Vector2i) -> Array:
 		if local_z >= 0 and local_z < s["data"].length:
 			return [s["data"], local_z, int(s["h_offset"])]
 	return []
+
+# --- Water, and which way it runs ----------------------------------------------
+#
+# WHICH WAY WATER FLOWS IS A PROPERTY OF THE CHANNEL, not of anything authored
+# and not of a seed. Every water cell that touches somewhere the deck ends is an
+# OUTLET; a multi-source breadth-first search out from all of them gives every
+# water cell its distance to the nearest place the water leaves the bridge, and
+# the flow is downhill on that field.
+#
+# ORDER-INDEPENDENT, WHICH IS THE WHOLE REASON FOR THE FIELD. A shortest
+# distance does not depend on the sequence cells were visited in, so two machines
+# computing this agree without a byte crossing the wire. The version this
+# replaced picked a direction for a two-ended channel with a coin flip off the
+# run seed, which worked and needed the seed to do it.
+#
+# A LANDLOCKED POND HAS NO OUTLETS, so it has no sources, so the field is empty
+# and it does not flow. That falls out rather than being a clause -- and it is
+# the right answer: a puddle that shoves you is not water, it is ice.
+# How many cells the current takes to ease off at the deepest point of a channel.
+# Two, so the divide of a two-ended channel is a calm seam a body can be on
+# without being fought over, and everything else runs at full strength.
+const CALM_CELLS := 2.0
+
+var water_flow: Dictionary = {}       # run cell -> world-space unit direction
+var water_speed: Dictionary = {}      # run cell -> 0..1, how fast it runs here
+
+func water_flow_at(cell: Vector2i) -> Vector3:
+	return water_flow.get(cell, Vector3.ZERO)
+
+# 0 at the divide, 1 at the outlet. See `_recompute_water_flow`.
+func water_speed_at(cell: Vector2i) -> float:
+	return float(water_speed.get(cell, 0.0))
+
+func _recompute_water_flow() -> void:
+	water_flow.clear()
+	water_speed.clear()
+	var rows: int = total_length()
+	# --- every water cell, and every outlet among them ---------------------
+	var water := {}
+	var queue: Array = []
+	var dist := {}
+	for z in rows:
+		for x in width:
+			var cell := Vector2i(x, z)
+			if kind_at(cell) != GridConfig.Kind.WATER:
+				continue
+			water[cell] = true
+			# AN OUTLET IS WHERE THE DECK STOPS. Not "the edge of the canvas":
+			# the bridge is not always the full width, so the question has to be
+			# asked of the ground rather than of the coordinate.
+			for dir in 4:
+				if not is_solid(cell + GridConfig.DIR_CELLS[dir]):
+					dist[cell] = 0
+					queue.append(cell)
+					break
+	if queue.is_empty():
+		return
+
+	# --- the field ----------------------------------------------------------
+	var head := 0
+	var deepest := 0
+	while head < queue.size():
+		var cell: Vector2i = queue[head]
+		head += 1
+		var d: int = int(dist[cell])
+		deepest = maxi(deepest, d)
+		for dir in 4:
+			var n: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+			if not water.has(n) or dist.has(n):
+				continue
+			dist[n] = d + 1
+			queue.append(n)
+
+	# --- downhill, as a world vector ----------------------------------------
+	for cell in dist:
+		# THE GRADIENT, NOT THE BFS PARENT. A parent gives one of four
+		# directions, so a channel that runs diagonally would push in a
+		# staircase; summing the drop toward every neighbour is proper descent on
+		# the same field and costs nothing.
+		#
+		# BUILT FROM `cell_surface_world` DIFFERENCES rather than from the cell
+		# offsets by hand. This project has shipped three sign errors in
+		# direction vectors; a direction derived from the grid's own mapping
+		# cannot have one.
+		var here: Vector3 = cell_surface_world(cell)
+		var down := Vector3.ZERO
+		for dir in 4:
+			var n: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+			if not dist.has(n):
+				continue
+			var drop: int = int(dist[cell]) - int(dist[n])
+			if drop <= 0:
+				continue
+			var away: Vector3 = cell_surface_world(n) - here
+			away.y = 0.0
+			down += away.normalized() * float(drop)
+		if down.length_squared() < 0.000001:
+			continue
+		water_flow[cell] = down.normalized()
+		# FASTEST AT THE FALL, CALM AT THE DIVIDE, and the taper is what makes a
+		# two-ended channel work at all: without it the two cells either side of
+		# the divide shove at full strength in opposite directions and a body
+		# straddling them jitters. Tapering to zero there makes the divide calm
+		# BY CONSTRUCTION rather than by a special case -- and it is the right
+		# reading anyway, since a current picks up as it approaches the drop.
+		# CALM ONLY WHERE IT HAS TO BE. The first version tapered linearly from the
+		# outlet, which made the divide calm and everything else slow with it --
+		# measured, 0.63 m/s in the middle of a channel meant to push at 2.5, so
+		# the mechanic barely existed anywhere a player would meet it.
+		#
+		# The taper is over the last CALM_CELLS instead: full current along the
+		# channel, easing to nothing at the deepest point. In a two-ended channel
+		# that point is the WATERSHED, and the easing is what stops the cells
+		# either side of it shoving at full strength in opposite directions. In a
+		# one-ended channel it is the closed head, and still water where a stream
+		# is fed from is right anyway.
+		water_speed[cell] = clampf(float(deepest - int(dist[cell])) / CALM_CELLS,
+			0.0, 1.0)
 
 func kind_at(cell: Vector2i) -> int:
 	var r := _resolve(cell)

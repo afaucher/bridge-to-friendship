@@ -36,6 +36,15 @@ is the authority, this table is a convenience.
 
 **[deck]** — `.` deck · `_` hole · `~` water · `/` ramp
 
+Water sits 0.4 m below its cell's nominal height and **flows**. Any water cell
+touching somewhere the deck stops is an outlet; the current runs downhill toward
+the nearest one and carries a body with it at `WATER_PUSH_SPEED`. So a channel
+open at one rail runs that way, one open at both has a calm watershed down the
+middle, and a pond enclosed by deck does not flow at all. Suppress the parapet
+(`[no_wall]`) where you want the water to fall off — otherwise the railing pens
+it in and there is no outlet. **You cannot catch a ledge on a waterfall lip**,
+which is what makes being swept off one final.
+
 **[content]** — `.` nothing
 | | | | |
 |---|---|---|---|
@@ -69,13 +78,21 @@ piece can still do it by hand.
 These fail loudly, so you will find out. They are listed so you do not have to
 find out.
 
-**There is no step-up in this game.** `move_and_slide` does not mantle and
-nothing implements it. A rise onto a plain deck cell is a wall at any height —
-measured, a body at full stick into a one-unit step stops dead. Every climb must
-land on a **ramp** (`/`, one unit per row is walkable solo, two needs a shove), a
-**ladder** (`L`, authored on the HIGH cell), a **bouncer** (`B`), or an
-**elevator** (`E`, authored at the height it rises TO). This is the single most
-common reason a hand-authored segment is rejected.
+**A rise onto a plain deck cell is still a wall, and that has not changed.**
+There is a step-up as of 2026-08-30, and it is deliberately bounded BELOW one
+height unit (`SimConfig.STEP_UP_HEIGHT`, 0.45 m) — so no height difference this
+format can express reaches it. Heights are whole units, so the smallest rise you
+can author is 1.0 m and every one of them is a wall. Measured: a body at full
+stick into a one-unit step stops dead.
+
+Every climb must therefore still land on a **ramp** (`/`, one unit per row is
+walkable solo, two needs a shove), a **ladder** (`L`, authored on the HIGH cell),
+a **bouncer** (`B`), or an **elevator** (`E`, authored at the height it rises
+TO). This is the single most common reason a hand-authored segment is rejected.
+
+What the step-up is for is the *sub-cell* geometry you cannot author: the 0.4 m
+lip of a water cell, which used to make a pond something you walked into once and
+stayed in.
 
 **Content never sits on a hole.** A turret over a gap is an error, not a
 floating turret.

@@ -782,6 +782,11 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 		wish = wish.normalized()
 
 	var target := wish * SimConfig.WALK_SPEED * carry_speed
+	# THE CURRENT, ADDED TO WHAT YOU WANTED rather than to where you are. Walking
+	# upstream is possible and visibly worse than walking on deck; standing still
+	# carries you off. Both halves are the design -- water you cannot make headway
+	# against is a wall, and water that leaves a stationary body alone is scenery.
+	target += _water_push()
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var rate := SimConfig.WALK_ACCEL if wish.length_squared() > 0.0 else SimConfig.WALK_FRICTION
 	horizontal = horizontal.move_toward(target, rate * dt)
@@ -798,6 +803,26 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	move_and_slide()
 	grounded = is_on_floor()
 	_try_step_up(was_at, wanted)
+
+# WHICH WAY THE WATER UNDER YOU IS RUNNING, and how hard.
+#
+# Asked of the GRID, which owns the answer: a multi-source flood from every place
+# the water leaves the bridge gives each cell a distance to the nearest outlet,
+# and the flow is downhill on that field. So the direction is a property of the
+# channel's shape, the divide of a two-ended channel is calm, and a landlocked
+# pond does not flow at all.
+#
+# PURE, SO IT REPLAYS. Position in, world geometry out, nothing remembered -- the
+# same property the step-up above needed and for the same reason: a correction on
+# your own body is the most visible kind there is.
+func _water_push() -> Vector3:
+	if world == null or world.grid == null or not grounded:
+		return Vector3.ZERO
+	var cell: Vector2i = world.grid.cell_of_world(global_position)
+	var flow: Vector3 = world.grid.water_flow_at(cell)
+	if flow == Vector3.ZERO:
+		return Vector3.ZERO
+	return flow * SimConfig.WATER_PUSH_SPEED * world.grid.water_speed_at(cell)
 
 # A LIP UNDER `STEP_UP_HEIGHT` IS WALKED OVER, NOT WALKED INTO.
 #
@@ -1519,6 +1544,15 @@ func _try_catch_ledge() -> bool:
 	for dir in 4:
 		var neighbour: Vector2i = cell + GridConfig.DIR_CELLS[dir]
 		if not grid.is_solid(neighbour):
+			continue
+		# YOU CANNOT HOLD ON TO A WATERFALL. The lip of a fall is solid deck like
+		# any other, so without this the reading is exactly backwards: the current
+		# carries you over the edge and then you dangle from the thing that threw
+		# you, which is a rescue the fall was not supposed to have.
+		#
+		# Same shape as the rule that stopped a bus passenger catching a ledge on
+		# the way down: an entry condition has to ask what the state will do.
+		if grid.kind_at(neighbour) == GridConfig.Kind.WATER:
 			continue
 		var lip: Vector3 = grid.cell_surface_world(neighbour)
 		# Level with the lip, or just below it. Far below and you are past it --

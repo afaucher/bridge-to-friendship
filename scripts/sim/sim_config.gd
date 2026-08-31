@@ -74,6 +74,16 @@ const MAX_WALK_ANGLE_DEG := 40.0
 # have real stepped collision, three 0.33 m risers per cell.
 const STEP_UP_HEIGHT := 0.45
 
+# HOW HARD A CHANNEL PUSHES, at the fastest point of the fastest channel. The
+# taper toward the divide scales it down from here; see BridgeGrid.water_speed.
+#
+# THE RATIO IS THE DESIGN, NOT THE NUMBER. Against WALK_SPEED of 6.0 this leaves
+# upstream progress at about 3.5 m/s -- possible, and visibly worse than walking
+# on deck -- while standing still carries you at 2.5. Both halves matter: water
+# you cannot make headway against is a wall, and water that does not move a
+# stationary body is scenery.
+const WATER_PUSH_SPEED := 2.5
+
 # --- Shove --------------------------------------------------------------------
 # The signature verb: a run locked to a compass axis that cannot be steered,
 # slowed or cancelled.
