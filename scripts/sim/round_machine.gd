@@ -75,6 +75,11 @@ func state_name() -> String:
 
 # --- The tick -----------------------------------------------------------------
 
+# Whether the round that just ended was ended by the party getting OVER the line,
+# as opposed to by every one of them being out of the world. Set by `_cross` and
+# consumed by `_enter_lobby`; see the note there.
+var crossed_out: bool = false
+
 func step(world) -> void:
 	if world.grid == null or world.players.is_empty():
 		return
@@ -178,6 +183,12 @@ func _step_scoring(world) -> void:
 func _cross(world) -> void:
 	rear_row = target_row
 	target_row = world.grid.gate_after(rear_row)
+	# THE ROUND-ENDING CALL, not the round-opening one. This function is reached
+	# from two places: a lobby opening into a round, and a round closing out of
+	# one. Only the second means a round was PLAYED THROUGH, which is the thing
+	# `round_index` counts.
+	if state != State.LOBBY:
+		crossed_out = true
 	if state == State.LOBBY:
 		state = State.RUNNING
 		round_clock = 0.0
@@ -195,7 +206,35 @@ func _begin_scoring(world) -> void:
 
 func _enter_lobby(world) -> void:
 	state = State.LOBBY
-	round_index += 1
+	# ONLY IF THE PARTY ACTUALLY GOT PAST THE GATE.
+	#
+	# This was `round_index += 1`, two lines from the `rear_row`/`target_row`
+	# derivation below that exists because those two must describe where bodies
+	# REALLY ended up. On a round that ends by being crossed the counter and the
+	# rows agree and there is nothing to see. On a round that ends in a WIPE they
+	# come apart by exactly one: the party is carried back to the lobby they
+	# started from, the rows follow them, the counter does not.
+	#
+	# Reported as a sequence: "switch to the race track, cross the ready line and
+	# jump off an edge, get the loss screen, respawn in the lobby, try to switch
+	# the game mode again -- sign changes but the game doesn't." Measured: the
+	# party standing on row 2 of segment 0, the FIRST lobby, with `round_index`
+	# reading 1. Every later choice was written into the plan for round 1, and
+	# `_rebuild_corridor_ahead` keeps every segment through round 1's lobby --
+	# which is all the ground the party was about to walk through. The sign moved,
+	# the map could not, and it never recovered, because the counter stayed one
+	# ahead for the rest of the run.
+	#
+	# ASKED OF `_cross` RATHER THAN OF POSITIONS. Deriving the round from where
+	# bodies are is the same shape as the rows below and looks like the tidier
+	# answer, but it is undefined on a fixture that is one authored segment with
+	# two bands in it -- there are no round slots to divide by -- and it also
+	# reads a straggler being walked back as the party un-arriving. `_cross` is
+	# already the one line that means "the corridor moved up one", and a round
+	# that ends in a wipe never reaches it.
+	if crossed_out:
+		round_index += 1
+	crossed_out = false
 	round_clock = 0.0
 	close_timer = 0.0
 	reached.clear()
@@ -222,6 +261,20 @@ func _enter_lobby(world) -> void:
 	var rearmost: int = _rearmost_row(world)
 	rear_row = world.grid.gate_at_or_before(rearmost)
 	target_row = world.grid.gate_after(rearmost)
+	# AND THE ROUND NUMBER WITH THEM, for the reason written above about the other
+	# two: it is a statement about a PLACE. It used to be `round_index += 1` at the
+	# top of this function -- correct on every round that ends by being crossed,
+	# and one too many on every round that ends in a WIPE, because a wipe carries
+	# the party back to the lobby they started from while the counter goes up.
+	#
+	# Reported as "you lose, respawn in the lobby, try to switch the game mode
+	# again, the sign changes but the game doesn't". Measured: the party standing
+	# on row 2 of segment 0 -- the FIRST lobby -- with `round_index` reading 1. The
+	# selection was then written into the plan for round 1 and the corridor rebuild
+	# kept every segment through round 1's lobby, which is all the ground the party
+	# was about to walk through. So the sign moved, the map could not, and it never
+	# recovered: the counter stayed one ahead for the rest of the run.
+
 
 # --- Predicates ---------------------------------------------------------------
 

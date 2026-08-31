@@ -1650,12 +1650,26 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 	# AND THE PICKUPS THE DISCARDED CORRIDOR PUT THERE. Loose only -- a hat on a
 	# head and a gun in a hand belong to the person carrying them and are never at
 	# risk, wherever they are standing.
-	for hat in _hats.all():
+	# OVER A COPY, BECAUSE `all()` HANDS BACK THE LIVE ARRAY and `destroy` calls
+	# `remove_at` on it. Removing from a list while iterating it skips the next
+	# element, so this swept every OTHER orphan and left the rest -- measured, 3 of
+	# 5 removed on one pass and the other 2 still standing over the hole.
+	#
+	# THIS IS WHY THE REPORT KEPT COMING BACK. "The items are all placed in the
+	# sky" was fixed by adding hats and specials to this sweep, and the sweep has
+	# been half-working ever since: the fix was right and could only ever reach
+	# half of what it named, so the symptom survived every round of it. Three
+	# reports, one skipped index.
+	#
+	# The pool loop above walks BACKWARDS BY INDEX for exactly this reason, and
+	# two other sites in this file already say `.duplicate()` -- so the hazard was
+	# known in three places and the two lines here never got the same treatment.
+	for hat in _hats.all().duplicate():
 		if not is_instance_valid(hat) or hat.mode == HatBody.Mode.WORN:
 			continue
 		if grid.cell_of_world(hat.global_position).y >= cut_row:
 			_hats.destroy(hat)
-	for weapon in _specials.all():
+	for weapon in _specials.all().duplicate():
 		if not is_instance_valid(weapon) or int(weapon.mode) == SpecialBody.Mode.HELD:
 			continue
 		if grid.cell_of_world(weapon.global_position).y >= cut_row:
@@ -1812,12 +1826,36 @@ func _restart_at_checkpoint() -> void:
 	clear_corpses()
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
 	# across ground the party no longer occupies are debris nobody can reach.
+	#
+	# AND THE LEVEL'S OWN HATS COME BACK WITH THE SPECIALS -- see the restock
+	# below, which does both. What a hat means depends on where it came from: one
+	# the party EARNED is score and a wipe takes it, which is the cost of failing;
+	# one the LEVEL laid on the deck is supply, and the party is about to walk
+	# past that cell again. Treating those two as one thing is what left a lobby
+	# swept bare.
 	_hats.clear()
 	# And specials, held ones included. A weapon carried backwards through a wipe
 	# would make the checkpoint a place to stockpile: fail, keep the gun, come back
-	# with it. The authored pickup respawns with the segment; what you were holding
-	# does not.
+	# with it.
+	#
+	# THE SENTENCE THAT USED TO FOLLOW WAS "the authored pickup respawns with the
+	# segment", and it was never true. That happens when a segment is REBUILT, and
+	# a wipe rebuilds nothing -- the party is put back on ground the run is
+	# keeping, and `authored_special_cells` was drained on the tick that ground was
+	# first built. So the level's own supply was destroyed once and gone for the
+	# rest of the run.
+	#
+	# Reported as "frequently after losing a round you wind up in a lobby with no
+	# specials on the ground". Measured: a lobby holding 12 specials before the
+	# wipe holds none after it, and still none three seconds later.
+	#
+	# It is a restock rather than a rescue: what you were CARRYING is still gone,
+	# which is the rule this paragraph opened with, and what the LEVEL laid out is
+	# there again because the party is about to walk through it again. Hats as well
+	# as specials -- an authored hat is supply, not score.
 	_specials.clear()
+	if grid != null:
+		grid.restock_supply_from(grid.lobby_row_near(round_machine.rear_row))
 	for bullet in _bullets:
 		if is_instance_valid(bullet):
 			bullet.queue_free()

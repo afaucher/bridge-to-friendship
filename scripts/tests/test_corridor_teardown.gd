@@ -47,6 +47,7 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
+const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 
 const WIDTH := 21
@@ -74,6 +75,7 @@ func _physics_process(_delta: float) -> void:
 	_it_cuts_and_nothing_survives()
 	_it_rebuilds_with_the_new_choice()
 	_the_level_goes_and_the_party_stays()
+	_a_pile_of_them_all_go()
 	finish()
 
 # --- 1, 2, 3. The cut ---------------------------------------------------------
@@ -316,6 +318,67 @@ func _the_level_goes_and_the_party_stays() -> void:
 		world._discard_level_entities_past(keep)
 		check(is_instance_valid(world.player_body(1)),
 			"a PLAYER standing past the cut is never discarded either")
+
+# --- SEVERAL OF THEM, WHICH IS THE ONLY WAY TO SEE THIS ---------------------------
+#
+# Every claim above uses ONE hat and ONE special, and one of something cannot see
+# a skipped index. `HatPool.all()` and `SpecialPool.all()` hand back the LIVE
+# array -- deliberately, because the snapshot builders walk them every tick -- and
+# `destroy` calls `remove_at` on it, so the sweep was removing from the list it
+# was iterating and stepping over the next entry each time.
+#
+# Measured on a real run: 3 of 5 orphaned specials removed, 2 left standing over
+# the hole, and a second sweep by hand removed no more of them.
+#
+# THIS IS WHY THE REPORT KEPT COMING BACK. "The items are all placed in the sky"
+# was answered by adding hats and specials to the sweep, and the answer could only
+# ever reach half of what it named -- so the same sentence came back after every
+# round of fixing it. The bug was never in which pools were listed.
+func _a_pile_of_them_all_go() -> void:
+	var keep: int = SegmentPool.segments_through_lobby(0)
+	var cut_row: int = _row_of_segment(world.grid, keep)
+	if not check(cut_row > 0 and world.grid.segment_count() > keep,
+			"there is ground past the cut to put a pile on"):
+		return
+
+	# ENOUGH THAT A SKIP SHOWS. Two would do it; six makes the arithmetic of the
+	# failure legible in the printed count rather than a coin flip.
+	var hats: Array = []
+	var guns: Array = []
+	for i in 6:
+		var at: Vector3 = world.grid.cell_surface_world(
+			Vector2i(WIDTH / 2, cut_row + 2 + i)) + Vector3(0.0, 1.0, 0.0)
+		hats.append(world._hats.spawn_loose(at))
+		guns.append(world._specials.spawn_loose(
+			at + Vector3(1.0, 0.0, 0.0), SpecialBody.Kind.MACHINE_GUN, -1, true))
+	var wanted_hats: int = hats.filter(func(h): return h != null).size()
+	var wanted_guns: int = guns.filter(func(g): return g != null).size()
+	if not check(wanted_hats > 1 and wanted_guns > 1,
+			"a pile really exists past the cut (%d hats, %d specials)"
+				% [wanted_hats, wanted_guns]):
+		return
+
+	world._discard_level_entities_past(keep)
+
+	var hats_left := 0
+	for h in hats:
+		if h != null and is_instance_valid(h) and not h.is_queued_for_deletion():
+			hats_left += 1
+	var guns_left := 0
+	for g in guns:
+		if g != null and is_instance_valid(g) and not g.is_queued_for_deletion():
+			guns_left += 1
+	print("[teardown] of %d hats and %d specials past the cut, %d and %d survived"
+		% [wanted_hats, wanted_guns, hats_left, guns_left])
+	eq(hats_left, 0,
+		"EVERY loose hat past the cut goes, not every other one (%d of %d left) -- "
+			% [hats_left, wanted_hats]
+		+ "the sweep iterates a pool array that `destroy` removes from, so without "
+		+ "a copy it steps over the entry after each one it takes")
+	eq(guns_left, 0,
+		"and every special (%d of %d left), which is the one that was reported: "
+			% [guns_left, wanted_guns]
+		+ "\"we still see specials in the air after we switch game modes\"")
 
 # --- helpers ------------------------------------------------------------------
 

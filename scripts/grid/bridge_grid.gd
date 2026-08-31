@@ -184,6 +184,36 @@ func segment_data(i: int):
 		return null
 	return _segments[i]["data"]
 
+# WHICH ROUND A ROW BELONGS TO, asked of the ground rather than counted.
+#
+# `round_index` used to be a counter that went up by one every time a lobby was
+# entered, sitting two lines away from `rear_row` and `target_row`, which are
+# RE-DERIVED from where the party actually ended up. On every ordinary round the
+# two agree and there is nothing to see. On a WIPE they come apart by exactly one
+# round: the party is carried back to the lobby they started from, the rows
+# follow them, and the counter goes up anyway.
+#
+# Reported as "you lose, respawn in the lobby, try to switch the game mode again,
+# the sign changes but the game doesn't" -- and it never recovered, because every
+# later choice was written into the plan for a round the party was not in while
+# the ground in front of them stayed whatever it had been.
+#
+# THE MACHINE DOES NOT USE THIS, AND THAT IS DELIBERATE. Deriving `round_index`
+# from where bodies are was tried and dropped: it is undefined on a fixture that
+# is one authored segment with two bands in it (there are no round slots to
+# divide by) and it reads a straggler being walked back as the party
+# un-arriving. The counter is gated on `_cross` instead -- see the note in
+# `RoundMachine._enter_lobby`.
+#
+# What it IS for is asking the ground independently of the machine, which is
+# exactly what a test of the machine needs: `test_wipe_round` computes the round
+# the party is standing in from the grid and compares it against the number the
+# machine arrived at by counting. Two implementations of one fact is a thing this
+# project has paid for -- but as an ORACLE rather than as a second answer in the
+# game, which is the whole difference.
+func round_of_row(row: int) -> int:
+	return SegmentPool.round_of_slot(segment_index_of_row(row))
+
 func segment_index_of_row(row: int) -> int:
 	if _segments.is_empty():
 		return 0
@@ -359,6 +389,12 @@ var shooter_cells: Array = []
 # so a hat authored in a segment streamed in later still appears.
 var authored_hat_cells: Array = []
 
+# The kept half of the same record; see `supply_special_cells` below for why a
+# queue is not enough. Hats and specials are restocked together because they are
+# the same thing from the level's point of view -- what it laid on the ground for
+# the party to pick up on their way through.
+var supply_hat_cells: Array = []
+
 # Take the authored hat cells nobody has spawned yet. Emptied by the caller, so a
 # segment loaded mid-run contributes its hats exactly once.
 func take_authored_hat_cells() -> Array:
@@ -370,6 +406,23 @@ func take_authored_hat_cells() -> Array:
 # reason: the special pool owns the bodies, and it drains this list as segments
 # load so a weapon authored in a segment streamed in later still appears.
 var authored_special_cells: Array = []
+
+# THE SAME RECORDS, KEPT RATHER THAN DRAINED. `authored_special_cells` is a
+# QUEUE -- the world takes it once and turns it into bodies -- so after the first
+# tick of a segment's life the grid no longer knows what that segment supplied.
+#
+# It has to, because a wipe destroys every special in the world and then puts the
+# party back on ground that is NOT rebuilt. Reported as "frequently after losing a
+# round you wind up in a lobby with no specials on the ground", and measured: a
+# lobby holding 12 specials and 4 hats holds 0 and 0 after a wipe, permanently.
+# `_restart_at_checkpoint` said in a comment that "the authored pickup respawns
+# with the segment" -- which is true of a segment that gets REBUILT, and a wipe
+# rebuilds nothing.
+#
+# Swept by `_forget_cells_past` like every other cell-keyed array here, which is
+# what makes it correct rather than merely useful: a segment that no longer exists
+# must not restock.
+var supply_special_cells: Array = []
 var authored_mine_cells: Array = []
 # cell -> gate index, in RUN coordinates. See the note where it is filled.
 var lap_gate_cells: Dictionary = {}
@@ -403,6 +456,41 @@ func take_authored_mine_cells() -> Array:
 	var out: Array = authored_mine_cells.duplicate()
 	authored_mine_cells.clear()
 	return out
+
+# PUT THE SEGMENT'S OWN SUPPLY BACK IN THE QUEUE, from `row` forward.
+#
+# For a wipe, which clears the world's specials and returns the party to ground
+# the run is keeping. Forward only: the ground behind the lobby they are put back
+# in is ground they have already crossed and are walled off from, and restocking
+# it would be handing back pickups nobody can reach.
+#
+# APPENDED TO THE PENDING QUEUE rather than spawned here, so the bodies are made
+# by the one function that has ever made them -- a second spawn site is how two
+# representations of one object start.
+# NOT ONTO A CELL THAT IS ALREADY PENDING. The queue is drained once a tick, so a
+# wipe landing between a segment being built and the world taking its cells would
+# otherwise queue the same cell twice and put two bodies in one place -- which in
+# this engine is not "two pickups", it is the coincident-bodies trap that drives
+# them through the floor.
+func restock_supply_from(row: int) -> void:
+	var pending := {}
+	for entry in authored_special_cells:
+		pending[entry[0]] = true
+	for entry in supply_special_cells:
+		var cell: Vector2i = entry[0]
+		if cell.y < row or pending.has(cell):
+			continue
+		pending[cell] = true
+		authored_special_cells.append([cell, int(entry[1])])
+
+	var pending_hats := {}
+	for cell in authored_hat_cells:
+		pending_hats[cell] = true
+	for cell in supply_hat_cells:
+		if (cell as Vector2i).y < row or pending_hats.has(cell):
+			continue
+		pending_hats[cell] = true
+		authored_hat_cells.append(cell)
 
 func take_authored_special_cells() -> Array:
 	var out: Array = authored_special_cells.duplicate()
@@ -664,7 +752,9 @@ func load_segment(seg) -> void:
 	# it lands wherever it lands once somebody knocks it off a head, and a cell
 	# record would mean two representations of one object.
 	for local_cell in built.hat_cells:
-		authored_hat_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+		var run_hat := Vector2i(local_cell.x, local_cell.y + z_offset)
+		authored_hat_cells.append(run_hat)
+		supply_hat_cells.append(run_hat)
 
 	# ARMED MINES the terrain placed. Recorded rather than spawned here for the
 	# same reason hats are: a mine is a free sim body owned by the world's
@@ -685,7 +775,9 @@ func load_segment(seg) -> void:
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]
-		authored_special_cells.append([Vector2i(sc.x, sc.y + z_offset), int(entry[1])])
+		var run_special := Vector2i(sc.x, sc.y + z_offset)
+		authored_special_cells.append([run_special, int(entry[1])])
+		supply_special_cells.append([run_special, int(entry[1])])
 
 	for entry in built.gunner_cells:
 		var gc: Vector2i = entry[0]

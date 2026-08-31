@@ -42,6 +42,14 @@ func attach(root: Node3D) -> void:
 func count() -> int:
 	return _hats.size()
 
+# THE LIVE ARRAY, NOT A COPY -- deliberately, because the snapshot builders walk
+# it every tick and a per-tick duplicate is a cost for nothing.
+#
+# SO ANY LOOP THAT DESTROYS MUST `.duplicate()` FIRST. `destroy` calls
+# `remove_at` on this array, and removing while iterating skips the next
+# element -- which is a sweep that quietly clears half of what it was asked to.
+# That shipped three times as "the items are all placed in the sky"; see
+# GameWorld._discard_level_entities_past.
 func all() -> Array:
 	return _hats
 
