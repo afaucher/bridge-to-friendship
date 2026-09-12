@@ -22,6 +22,7 @@ extends RefCounted
 # never touched.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
@@ -1255,9 +1256,9 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 
 # --- Water (M27) ---------------------------------------------------------------
 
-# HOW OFTEN A SECTION GETS A CHANNEL. One in three: often enough to be part of
-# the vocabulary, rare enough that meeting one is an event rather than terrain.
-const CHANNEL_IN := 3
+# HOW OFTEN A SECTION GETS A CHANNEL lives in SimConfig as WATER_CHANNEL_IN,
+# because a debug knob mirrors a SimConfig constant and a playtest has to be able
+# to turn this one up to go looking for water on purpose.
 const CHANNEL_ROWS := 2
 # Deck to stand on either side of a one-sided channel's closed end, so the party
 # always has a bank to be pushed against rather than a rail.
@@ -1282,7 +1283,13 @@ const CHANNEL_MARGIN := 3
 # source, and the result is a decorative puddle -- which is exactly what
 # playtest_bridge had for four milestones.
 static func _place_channel(seg, salt: int) -> void:
-	if _mix(salt + 5501) % CHANNEL_IN != 0:
+	# THROUGH THE KNOB, so water can be found on purpose. Same caveat as every
+	# other worldgen knob: it is an input to a generator whose output a client
+	# rebuilds from a seed, so two machines that disagree about it build different
+	# bridges. Solo and dev only.
+	var every: int = maxi(1, int(DebugSettings.tuned(
+		"channel_rarity", float(SimConfig.WATER_CHANNEL_IN))))
+	if _mix(salt + 5501) % every != 0:
 		return
 	var bands: Array = _channel_bands(seg)
 	if bands.is_empty():

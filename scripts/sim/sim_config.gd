@@ -84,6 +84,87 @@ const STEP_UP_HEIGHT := 0.45
 # stationary body is scenery.
 const WATER_PUSH_SPEED := 2.5
 
+# HOW OFTEN A GENERATED SECTION IS CUT WITH A CHANNEL, as 1-in-N. Here rather
+# than in SegmentGen because a debug knob mirrors a SimConfig constant -- a
+# convention the settings test enforces, and a good one: every number a playtest
+# can reach lives in one file.
+const WATER_CHANNEL_IN := 3
+
+# And how often a generated section that HAS water gets a bubble swallow. It
+# cannot conjure water, so on the defaults these two roll in series and one
+# section in twelve carries a swallow.
+const SWALLOW_RARITY := 2
+
+# --- The bubble swallow (M28) --------------------------------------------------
+#
+# THE TWO RADII ARE THE FAIRNESS, and they are one decision rather than two. This
+# enemy has no wind-up by design -- it surfaces and acts -- so what keeps it fair
+# is that the outer band is escapable on foot and the inner one is not. The player
+# reads "can I still walk out" and gets the right answer, and the drain uses the
+# same boundary so "am I being eaten" is the same question.
+const SWALLOW_REACH := 10.0       # surfaces, and pulls, from here in
+const SWALLOW_CORE := 3.5        # cannot be walked out of, and eats you
+
+# AGAINST WALK_SPEED OF 6.0, AND THAT IS THE WHOLE POINT. Under it at the rim,
+# over it in the core.
+#
+# WIDENED AND SOFTENED after playing it: the field was 6 m across and yanked hard
+# enough that the core was less a fight than a verdict. It reaches 10 m now and
+# pulls less at both ends -- the same rule, spread over more ground, so the rim is
+# a long slope you feel building rather than a line you cross. Anybody retuning these has to keep that true or the enemy
+# stops being fair, which is why the test asserts the RELATIONSHIP to WALK_SPEED
+# rather than these numbers.
+const SWALLOW_PULL_RIM := 1.5
+const SWALLOW_PULL_CORE := 7.5
+
+# ONE HAT A SECOND while it holds you. The interval is not the thing to tune --
+# what matters is the drain against the time to kill, because their product is how
+# much of your tower is inside it when it dies.
+const SWALLOW_DRAIN_SECONDS := 1.0
+
+# WITH NOTHING TO TAKE IT TAKES HEALTH, so a player who has already lost their
+# tower is not immune to the thing that took it.
+#
+# ONE UNIT, LIKE EVERY OTHER HAZARD IN THE GAME. Spikes, rushers, zombies and
+# rounds all do 1 and a blast does 2, against a MAX_HEALTH of 5 -- and the bite is
+# meant to be the health-shaped version of taking one hat, so one per second is
+# exactly the parallel.
+#
+# IT WAS 8. Picked from nowhere when this was written, which is more than a full
+# health bar: a hatless player who wandered into a core died on the first tick of
+# the drain, once a second, with no fight available to them at all. The number
+# that should have been asked was not "how hard does it bite" but "what is one
+# unit of the thing it is taking".
+const SWALLOW_BITE_DAMAGE := 1
+
+# SEVERAL HITS, AND IT IS THE FIRST ENEMY HERE WITH ANY. Everything else dies to
+# one bullet. A hazard you shoot while it eats you has to survive the first shot.
+const SWALLOW_HEALTH := 4
+
+# The look. See the plan: how big it is IS how much it is worth, and the collider
+# grows with the mesh because a mesh may not lie about its collider.
+const SWALLOW_RADIUS := 0.8
+const SWALLOW_GROWTH := 0.1
+const SWALLOW_MAW_RADIUS := 0.3
+const SWALLOW_SHELL := Color(0.87, 0.95, 0.96, 0.72)
+const SWALLOW_MAW := Color(0.08, 0.11, 0.14)
+
+# IT BREATHES, AND ONLY INWARD. The shell swells to its true size and never past
+# it: the oscillation runs between (1 - depth) and 1.0, so the mesh is sometimes
+# slightly INSIDE its collider and never outside it.
+#
+# That direction is the whole of why a pulsing hitbox is allowed here. "A mesh may
+# not lie about its collider" exists because overhang produces "I swear that
+# missed me"; a mesh that is occasionally a little small produces a shot that
+# looks like a graze and hits, which is the error worth having.
+const SWALLOW_BREATH_SECONDS := 2.2
+const SWALLOW_BREATH_DEPTH := 0.09
+
+# HOW LONG IT TAKES TO COME UP. Surfacing is the only event this enemy gives you,
+# so it is worth a moment: the shell swells out of the water rather than
+# appearing at full size between two frames.
+const SWALLOW_SWELL_SECONDS := 0.4
+
 # --- Shove --------------------------------------------------------------------
 # The signature verb: a run locked to a compass axis that cannot be steered,
 # slowed or cancelled.

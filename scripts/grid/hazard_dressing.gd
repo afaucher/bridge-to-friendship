@@ -211,6 +211,10 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 	# question by construction. Count him off the grid instead, which is the
 	# direct count anyway; test_merchant_placement does.
 	_place_merchant(seg, salt)
+	# AND THE SWALLOW, on the same terms and for the same reason: one per section
+	# at most, no allowance to exceed, so a row in the budget ledger would be a
+	# count nobody can ask a useful question about. Counted off the grid instead.
+	_place_water_dwellers(seg, salt)
 
 	for kind in KINDS:
 		var want: int = int(budget.get(kind, 0))
@@ -286,6 +290,95 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 # numbers and builds the identical bridge. `randf() < 1.0 / 6.0` would put a
 # shopkeeper on one machine and not the other, and the symptom is a player
 # trading with thin air.
+# THE BUBBLE SWALLOW, in the water, at most one to a section.
+#
+# ONE PER BODY OF WATER, which is one per section: `SegmentGen._place_channel`
+# lays exactly one shape -- a band, a dog-leg or a pool -- so a section's water
+# is a single connected thing and "one per section" and "one per body" are the
+# same sentence here. If that ever stops being true this has to flood instead.
+#
+# NOT A BUDGETED KIND. It goes through its own pass like the merchant rather than
+# through `KINDS`, because `_candidates` REFUSES water -- deliberately, since a
+# merchant or a mound in a current is a thing you cannot stand at. The one
+# creature that lives there needs the opposite rule, and inverting a filter for
+# one kind inside a loop written for the others is how that filter stops meaning
+# anything.
+#
+# AND NOWHERE NEAR ANYTHING YOU HAVE TO STAND AT. This enemy has no counter-play
+# at all -- it cannot be sniped, a blast cannot reach it, and it gives no warning
+# before it acts -- so an ambush on a spot the party MUST occupy is a toll rather
+# than a hazard. The bus post, the mode selector and the merchant are the three
+# places you stop and press a key. It is the lift rule again: never aim a hazard
+# at somebody with no verbs.
+# THE WATER'S OWN RESIDENTS. One pass for all of them, because they compete for
+# the same cells and a second pass written beside this one would not know what the
+# first had already placed.
+#
+# AT MOST ONE PER BODY OF WATER FOR NOW, which is at most one per section: a
+# section's water is a single connected thing (`_place_channel` lays exactly one
+# shape). When the frog arrives, "how many may share one body" is a number in this
+# function rather than a second copy of it -- and the rule that two of them must
+# never take the same cell is already here, because a cell is removed from the
+# list once something is in it. Two bodies in one place is the coincident-bodies
+# trap this project opens with.
+static func _place_water_dwellers(seg, salt: int) -> bool:
+	return _place_swallow(seg, salt)
+
+static func _place_swallow(seg, salt: int) -> bool:
+	# READ THROUGH THE KNOB, the same as the merchant and for the same reason: so a
+	# playtest can find one on purpose rather than walking until the dice agree.
+	# It cannot conjure water -- see the note on the knob.
+	var rarity: int = maxi(1, int(DebugSettings.tuned(
+		"swallow_rarity", float(SimConfig.SWALLOW_RARITY))))
+	if _mix(salt + 60013) % rarity != 0:
+		return false
+	var cells: Array = []
+	for z in range(1, maxi(2, seg.length - 1)):
+		if seg.piece_rows.has(z):
+			continue
+		for x in seg.width:
+			if seg.kind_at(x, z) != GridConfig.Kind.WATER:
+				continue
+			if not _clear_of_stops(seg, x, z):
+				continue
+			cells.append(Vector2i(x, z))
+	if cells.is_empty():
+		return false
+	# WALKED RATHER THAN INDEXED ONCE, the same as the merchant: a single seeded
+	# pick that lands on a refused cell is a section that rolled a swallow and
+	# silently has none, in a way nothing reports.
+	var at: int = _mix(salt + 13) % cells.size()
+	var cell: Vector2i = cells[at]
+	if _water_taken(seg, cell):
+		return false
+	seg.water_spawn_cells.append([cell, GridConfig.WaterKind.SWALLOW])
+	return true
+
+# Nothing already living in this cell OR touching it. Adjacency matters as much as
+# the cell itself: two water dwellers a metre apart are two overlapping fields, and
+# a player caught between them has met an arrangement nobody designed.
+static func _water_taken(seg, cell: Vector2i) -> bool:
+	for entry in seg.water_spawn_cells:
+		var other: Vector2i = entry[0]
+		if absi(other.x - cell.x) <= 1 and absi(other.y - cell.y) <= 1:
+			return true
+	return false
+
+# Nothing within a swallow's own reach that a player has to stand at and press a
+# key. Measured in cells, because the grid is what this pass can see.
+static func _clear_of_stops(seg, x: int, z: int) -> bool:
+	var reach: int = int(ceil(SimConfig.SWALLOW_REACH / GridConfig.CELL_SIZE))
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var nx: int = x + dx
+			var nz: int = z + dz
+			if nx < 0 or nx >= seg.width or nz < 0 or nz >= seg.length:
+				continue
+			match seg.content_at(nx, nz):
+				GridConfig.Content.MERCHANT, GridConfig.Content.MODE_POST, 						GridConfig.Content.BUS_POST:
+					return false
+	return true
+
 static func _place_merchant(seg, salt: int) -> bool:
 	# READ THROUGH THE KNOB so a playtest can find one on purpose rather than
 	# walking until the dice agree. Set `merchant_rarity` to 1 and every generated

@@ -787,6 +787,10 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 	# carries you off. Both halves are the design -- water you cannot make headway
 	# against is a wall, and water that leaves a stationary body alone is scenery.
 	target += _water_push()
+	# AND ANYTHING PULLING. Added to what you WANTED, like the current -- so
+	# walking against it is possible at the rim and hopeless in the core, which is
+	# the whole of what keeps an enemy with no telegraph fair.
+	target += _swallow_pull()
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var rate := SimConfig.WALK_ACCEL if wish.length_squared() > 0.0 else SimConfig.WALK_FRICTION
 	horizontal = horizontal.move_toward(target, rate * dt)
@@ -815,6 +819,14 @@ func _step_walk(move: Vector2, actions: int, aim: float) -> void:
 # PURE, SO IT REPLAYS. Position in, world geometry out, nothing remembered -- the
 # same property the step-up above needed and for the same reason: a correction on
 # your own body is the most visible kind there is.
+# PURE, SO IT REPLAYS. Position in, world state out, nothing remembered -- the
+# same property the current and the step-up both needed, and for the same reason:
+# a correction on your own body's position is the most visible kind there is.
+func _swallow_pull() -> Vector3:
+	if world == null or not world.has_method("swallow_pull_at"):
+		return Vector3.ZERO
+	return world.swallow_pull_at(global_position)
+
 func _water_push() -> Vector3:
 	if world == null or world.grid == null or not grounded:
 		return Vector3.ZERO

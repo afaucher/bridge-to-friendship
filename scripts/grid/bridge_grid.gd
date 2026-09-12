@@ -439,6 +439,11 @@ var authored_special_cells: Array = []
 # must not restock.
 var supply_special_cells: Array = []
 var authored_mine_cells: Array = []
+
+# WHAT THE TERRAIN WANTS LIVING IN ITS WATER, as `[cell, WaterKind]`, drained
+# once by the world and turned into bodies. Same shape as the mines above and for
+# the same reason: the grid records the place, the world owns the thing.
+var authored_water_spawns: Array = []
 # cell -> gate index, in RUN coordinates. See the note where it is filled.
 var lap_gate_cells: Dictionary = {}
 var _bus_posts: Dictionary = {}
@@ -465,6 +470,11 @@ func lap_gate_count() -> int:
 	for cell in lap_gate_cells:
 		seen[int(lap_gate_cells[cell])] = true
 	return seen.size()
+
+func take_authored_water_spawns() -> Array:
+	var out: Array = authored_water_spawns.duplicate()
+	authored_water_spawns.clear()
+	return out
 
 func take_authored_mine_cells() -> Array:
 	var out: Array = authored_mine_cells.duplicate()
@@ -776,6 +786,10 @@ func load_segment(seg) -> void:
 	# object.
 	for local_cell in built.mine_cells:
 		authored_mine_cells.append(Vector2i(local_cell.x, local_cell.y + z_offset))
+
+	for entry in built.water_spawn_cells:
+		var wc: Vector2i = entry[0]
+		authored_water_spawns.append([Vector2i(wc.x, wc.y + z_offset), int(entry[1])])
 
 	# LAP GATES, KEPT RATHER THAN TAKEN. Every other authored record here is
 	# drained once by the world and turned into a body; a gate is not a body. It

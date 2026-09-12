@@ -114,6 +114,19 @@ var checker_cells: Array = []
 # glyph would mean every reader of the grid had to know which was meant.
 var mine_cells: Array = []
 
+# WHAT LIVES IN THE WATER, as `[cell, WaterKind]`. Beside the grid for the same
+# reason a mine is, and for one more: these live IN water, and water cells are the
+# one place the dressing pass refuses to put content. A content glyph would have
+# made "nothing is placed in a river" false the day it shipped, when the rule is
+# really "nothing except the things that live there".
+#
+# `[cell, kind]` FROM THE START, the shape `gunner_cells` and `special_cells`
+# already use for "which one is it". The swallow is the only kind today and the
+# FROG is coming -- and a second list called `frog_cells` would mean the same four
+# files, the same queue, the same drain and the same placement rule written twice,
+# which is how the second kind re-aims every rule that assumed there was one.
+var water_spawn_cells: Array = []
+
 var errors: Array[String] = []
 
 func is_valid() -> bool:

@@ -344,20 +344,20 @@ reliably, motion rides the snapshot.**
 
 ---
 
-## Phases
+## Phases — all four built; the field tint is deliberately not among them
 
-1. **The ambush.** Submerged and untouchable, surfaces on proximity, becomes an
+1. ~~**The ambush.**~~ *done.* Submerged and untouchable, surfaces on proximity, becomes an
    ordinary target, dives again when the field empties. The claims are that a
    bullet AND a blast both fail to reach it under water, that the same two hit it
    once it is up, and that damage survives a dive. Both weapons, because the two
    take different routes to a target and only one of them looks at colliders.
-2. **The pull.** The rim/core arithmetic against `WALK_SPEED`, sampled across
+2. ~~**The pull.**~~ *done.* The rim/core arithmetic against `WALK_SPEED`, sampled across
    radii.
-3. **The bank.** Swallowing loose things and the top hat, holding them, spilling
+3. ~~**The bank.**~~ *done.* Swallowing loose things and the top hat, holding them, spilling
    on death — and spilling when swept. This is also where the first enemy with
    health makes `_deliver`'s damage path live, so the `damage` stat is asserted
    here rather than trusted.
-4. **Placement.** The dressing pass, one per body of water.
+4. ~~**Placement.**~~ *done.* The dressing pass, one per body of water.
 
 ## Open
 

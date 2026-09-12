@@ -255,7 +255,32 @@ live at the root and be driven by global transform; and existence must ride the
 **reliable** channel while only motion goes in the snapshot, or a client sees a
 frog with no tongue and a player being pulled by nothing.
 
-**Reuses:** the gunner's aim and telegraph, the turret's arc.
+**Reuses:** the gunner's aim and telegraph, the turret's arc. **And the swallow's
+placement, which was built to expect it** — water dwellers are recorded as
+`[cell, WaterKind]` beside the grid, drained through one queue and dispatched on
+the kind, so a frog is an enum value and a branch rather than a second list, a
+second drain and a second placement rule. That shape exists because the second
+kind of a thing re-aims every rule that assumed there was one, and this project
+has paid for that lesson four times.
+
+**What the frog still has to decide when it arrives:**
+
+- **May a body of water hold both?** Today the pass places at most one per
+  section, which is one per body — `_place_channel` lays exactly one shape, so a
+  section's water is a single connected thing. Two overlapping fields is an
+  arrangement nobody designed, so the answer is a number in
+  `_place_water_dwellers` rather than a second copy of it.
+- **Never on the same cell, and never touching one.** Already enforced:
+  `_water_taken` refuses a cell within one of anything already placed, which is
+  the coincident-bodies trap headed off before there is a second kind to trigger
+  it.
+- **Does the frog need the stop-clearance rule?** The swallow has it because it
+  has no counter-play at all. A frog telegraphs — it surfaces, aims, then fires —
+  so the argument is weaker, and it is a decision rather than an inheritance.
+- **The claim "nothing is placed in a river" now means "nothing except the things
+  that live there".** It is asserted on CONTENT, and water dwellers are not
+  content, so it keeps working — but only because of that choice.
+
 **New:** a solid moving rod, and a pull that is attached rather than radial.
 
 ---

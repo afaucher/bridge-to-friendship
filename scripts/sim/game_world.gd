@@ -26,6 +26,7 @@ const ZombieScene = preload("res://scenes/zombie.tscn")
 const ZombieBody = preload("res://scripts/sim/zombie_body.gd")
 const HatPool = preload("res://scripts/sim/hat_pool.gd")
 const SpecialPool = preload("res://scripts/sim/special_pool.gd")
+const SwallowBody = preload("res://scripts/sim/swallow_body.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
 const RocketScene = preload("res://scenes/rocket.tscn")
@@ -329,6 +330,10 @@ var _zombies_root: Node3D = null
 # no player can touch one, and they are not in any snapshot. What crosses the wire
 # is the DEATH (_corpse_seen), for the reason a blast does -- an enemy leaving the
 # snapshot is also what a burrow and a fall off the bridge look like.
+var _swallows: Array = []
+var _swallows_root: Node3D = null
+var _next_swallow_id: int = 1
+
 var _corpses: Array = []
 var _corpses_root: Node3D = null
 
@@ -406,6 +411,9 @@ func _ready() -> void:
 
 	# WHERE THE DEAD GO. Its own root, like every pool, so a corpse is never a
 	# child of the thing it replaced -- that node is being freed on the same tick.
+	_swallows_root = Node3D.new()
+	_swallows_root.name = "Swallows"
+	add_child(_swallows_root)
 	_corpses_root = Node3D.new()
 	_corpses_root.name = "Corpses"
 	add_child(_corpses_root)
@@ -577,6 +585,7 @@ func _physics_process(_delta: float) -> void:
 	#
 	# After both ticks rather than before, so it reads the positions bodies
 	# actually finished this tick on.
+	_process_swallows()
 	_process_corpses()
 
 	# AFTER BOTH, AND UNCONDITIONALLY. The row must not be gated by anything the
@@ -1690,6 +1699,21 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 	# one is still cooling and it hangs over the hole where the road was. The
 	# question to ask of any new pool is not "is it an enemy" but "did the level
 	# decide where it is".
+	# A SWALLOW LEAVING THE WORLD TAKES ITS BANK WITH IT, and that is the design:
+	# if nobody kills it, everything in it is lost. But a score that changes with
+	# no event anywhere is a bug as far as the player can tell, so the loss is
+	# ATTRIBUTED before the thing goes -- `hats_lost` per owner, which is the same
+	# counter a fall bumps.
+	for i in range(_swallows.size() - 1, -1, -1):
+		var swallow = _swallows[i]
+		if not is_instance_valid(swallow):
+			_swallows.remove_at(i)
+			continue
+		if grid.cell_of_world(swallow.global_position).y < cut_row:
+			continue
+		_note_lost_bank(swallow)
+		_swallows.remove_at(i)
+		swallow.queue_free()
 	for pool in [_rushers, _gunners, _zombies, _balls, _deployables, _corpses]:
 		for i in range(pool.size() - 1, -1, -1):
 			var body = pool[i]
@@ -4148,6 +4172,186 @@ func _show_corpse(kind_id: int, at: Vector3, body_yaw: float, aim_yaw: float,
 func _corpse_seed(at: Vector3) -> int:
 	return absi(int(at.x * 977.0) ^ int(at.y * 5449.0) ^ int(at.z * 24593.0)) + 1
 
+# --- The bubble swallow (M28) --------------------------------------------------
+
+func _spawn_swallow(at: Vector3, cell: Vector2i = Vector2i.ZERO):
+	if _swallows_root == null:
+		return null
+	var swallow = SwallowBody.new()
+	swallow.swallow_id = _next_swallow_id
+	_next_swallow_id += 1
+	swallow.cell = cell
+	_swallows_root.add_child(swallow)
+	swallow.name = "Swallow%d" % swallow.swallow_id
+	swallow.global_position = at
+	_swallows.append(swallow)
+	return swallow
+
+func swallow_count() -> int:
+	return _swallows.size()
+
+func _process_swallows() -> void:
+	if not is_host:
+		return
+	# WHAT THE TERRAIN ASKED FOR, taken once. Placed a HALF CELL DOWN so it reads
+	# as being under the water rather than floating in it -- the water surface is
+	# already 0.4 m below its cell's nominal height.
+	if grid != null and mode_runs("swallows"):
+		for entry in grid.take_authored_water_spawns():
+			var cell: Vector2i = entry[0]
+			var at: Vector3 = grid.cell_surface_world(cell)
+			# DISPATCHED ON THE KIND, so the frog is a branch here rather than a
+			# second queue, a second drain and a second placement rule. Anything
+			# this does not recognise is left alone rather than guessed at.
+			match int(entry[1]):
+				GridConfig.WaterKind.SWALLOW:
+					_spawn_swallow(at + Vector3(0.0,
+						SimConfig.SWALLOW_RADIUS * 0.5, 0.0), cell)
+	# A POOL THAT IS OFF CLEARS UP RATHER THAN MERELY STOPPING BUILDING -- the
+	# same rule the bus follows, and for the same reason: a mode told not to run
+	# something must not inherit one that is already standing there.
+	elif not mode_runs("swallows"):
+		for swallow in _swallows:
+			if is_instance_valid(swallow):
+				swallow.queue_free()
+		_swallows.clear()
+		return
+	for i in range(_swallows.size() - 1, -1, -1):
+		var swallow = _swallows[i]
+		if not is_instance_valid(swallow):
+			_swallows.remove_at(i)
+			continue
+		if swallow.is_spent():
+			# KILLED, SO IT SPILLS. The other way out of the world -- being swept
+			# with the corridor -- deliberately does not.
+			_spill_bank(swallow)
+			_swallows.remove_at(i)
+			swallow.queue_free()
+			continue
+		_step_swallow(swallow)
+
+func _step_swallow(swallow) -> void:
+	# UP WHEN SOMEBODY IS IN REACH. Anybody: it is an ambush, not a duel, and the
+	# person who woke it is not necessarily the person it ends up holding.
+	var anyone := false
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		if _returning.has(peer):
+			continue
+		var body: Node = players[peer]
+		if not is_instance_valid(body):
+			continue
+		if body.global_position.distance_to(swallow.global_position) 				<= SimConfig.SWALLOW_REACH:
+			anyone = true
+			break
+	swallow.set_surfaced(anyone)
+	if not swallow.surfaced:
+		return
+
+	# LOOSE THINGS GO THE MOMENT THEY ARE INSIDE -- taken, not dragged in first. A
+	# vacuum reads as a vacuum, and an item sliding across the ground would be a
+	# second motion system for one effect.
+	_swallow_loose(swallow)
+
+	# AND THE DRAIN, WHICH IS THE CORE ONLY. You are eaten where you cannot leave,
+	# so the band you CAN walk out of takes nothing -- that band is the only
+	# warning this design can afford, and it is spent in distance rather than in
+	# time.
+	swallow.drain_timer += SimConfig.TICK_DELTA
+	if swallow.drain_timer < SimConfig.SWALLOW_DRAIN_SECONDS:
+		return
+	swallow.drain_timer = 0.0
+	for peer_key in players.keys():
+		var peer: int = int(peer_key)
+		if _returning.has(peer):
+			continue
+		var body: Node = players[peer]
+		if not is_instance_valid(body) or not swallow.holds(body.global_position):
+			continue
+		_bite(swallow, peer, body)
+
+# THE TOP HAT, the same one the merchant takes -- so a tower is eaten from the top
+# down and you can watch it happen.
+#
+# WITH NOTHING TO TAKE IT TAKES HEALTH, because otherwise a player who has already
+# lost their tower is immune to the thing that took it, which is the wrong way
+# round.
+func _bite(swallow, peer: int, body: Node) -> void:
+	var worn: Array = _hats.worn_by(peer)
+	if worn.is_empty():
+		var hit = Hit.new()
+		# CRUSH, like the spikes: a shield is an answer to something ARRIVING from
+		# a direction, and being chewed by the thing you are inside is not that.
+		hit.kind = Hit.Kind.CRUSH
+		hit.amount = SimConfig.SWALLOW_BITE_DAMAGE
+		hit.from = swallow.global_position
+		body.receive_hit(hit)
+		return
+	var top: Node = worn[worn.size() - 1]
+	swallow.swallow_hat(int(top.style_id), peer)
+	_hats.destroy(top)
+	# NOT `hats_lost`. It is not lost yet -- it is held, and killing the swallow
+	# gives it back. The loss is counted at the moment it becomes one, which is
+	# when the swallow leaves the world uneaten.
+	_bump(peer, "hats_swallowed")
+
+func _swallow_loose(swallow) -> void:
+	for hat in _hats.all().duplicate():
+		if not is_instance_valid(hat) or hat.mode == HatBody.Mode.WORN:
+			continue
+		if not swallow.holds(hat.global_position):
+			continue
+		swallow.swallow_hat(int(hat.style_id), 0)
+		_hats.destroy(hat)
+	for weapon in _specials.all().duplicate():
+		if not is_instance_valid(weapon) or int(weapon.mode) == SpecialBody.Mode.HELD:
+			continue
+		if not swallow.holds(weapon.global_position):
+			continue
+		swallow.swallow_special(int(weapon.kind))
+		_specials.destroy(weapon)
+
+# EVERYTHING FALLS OUT, which is the reward for standing and fighting rather than
+# walking away. Spread around it rather than stacked on one point: two bodies in
+# one place is the coincident-bodies trap this project opens with.
+func _spill_bank(swallow) -> void:
+	var n: int = swallow.bank_size()
+	if n <= 0:
+		return
+	var i := 0
+	for entry in swallow.held_hats:
+		_hats.spawn_loose(_spill_point(swallow, i, n), int(entry[0]))
+		i += 1
+	for kind in swallow.held_specials:
+		_specials.spawn_loose(_spill_point(swallow, i, n), int(kind), -1, true)
+		i += 1
+	swallow.held_hats.clear()
+	swallow.held_specials.clear()
+
+func _spill_point(swallow, i: int, n: int) -> Vector3:
+	var angle: float = TAU * float(i) / float(maxi(1, n))
+	var out: float = swallow.radius() + 0.4
+	return swallow.global_position 		+ Vector3(cos(angle) * out, 0.6, sin(angle) * out)
+
+# LOST, AND ATTRIBUTED. A swallow that leaves the world without being killed takes
+# everything with it -- that is what makes the bank a wager rather than a delayed
+# refund. But a score that changes with no event anywhere is a bug as far as the
+# player can tell, so the loss is counted against whoever it was taken from.
+func _note_lost_bank(swallow) -> void:
+	for entry in swallow.held_hats:
+		var owner_peer: int = int(entry[1])
+		if owner_peer > 0:
+			_bump(owner_peer, "hats_lost")
+
+# WHAT THE SWALLOWS DO TO A BODY AT `at`. Summed, because two of them is a real
+# arrangement and "the nearest one wins" would make the pair weaker than either.
+func swallow_pull_at(at: Vector3) -> Vector3:
+	var total := Vector3.ZERO
+	for swallow in _swallows:
+		if is_instance_valid(swallow):
+			total += swallow.pull_at(at)
+	return total
+
 func _process_corpses() -> void:
 	for i in range(_corpses.size() - 1, -1, -1):
 		# UNTYPED ON PURPOSE. A corpse frees ITSELF when its time is up, so this
@@ -4283,6 +4487,16 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 		for node in group:
 			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
 				out.append(node)
+	# A SUBMERGED SWALLOW IS NOT HERE, and this is the second of the two refusals
+	# it needs. A bullet is stopped by there being no collider; THIS pass never
+	# asks about colliders -- it walks the pools by distance -- so a swallow in a
+	# pool would be found by a grenade whatever its collision looks like. Two
+	# routes to a target, two places to say no. Refusing on the route somebody
+	# checked and accepting on the one nobody did is the shape of every
+	# collision-mask bug on record here.
+	for swallow in _swallows:
+		if is_instance_valid(swallow) and swallow.surfaced 				and swallow.position.distance_to(centre) <= radius:
+			out.append(swallow)
 	if grid != null:
 		for stone in grid._stone_list:
 			if is_instance_valid(stone) and stone.position.distance_to(centre) <= radius:

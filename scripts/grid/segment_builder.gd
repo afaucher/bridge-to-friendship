@@ -62,6 +62,7 @@ class Built:
 	# Lap gates, as (cell, index) pairs. Copied off the segment for the same
 	# reason mines are: they have no glyph, because the ORDER is half the fact.
 	var checker_cells: Array = []
+	var water_spawn_cells: Array = []
 	# THE DECK SQUARE ITSELF, for each gate cell: local cell -> MeshInstance3D.
 	#
 	# A lap gate used to be a separate plate laid ON the deck -- 6 cm proud, 6 cm
@@ -111,6 +112,7 @@ static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 	# segment with no error anybody would see.
 	out.mine_cells = seg.mine_cells.duplicate()
 	out.checker_cells = seg.checker_cells.duplicate()
+	out.water_spawn_cells = seg.water_spawn_cells.duplicate()
 	out.root = Node3D.new()
 	out.root.name = "Segment_%s" % seg.name
 

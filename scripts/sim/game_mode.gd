@@ -61,7 +61,7 @@ const POOLS := [
 	"rushers", "gunners", "zombies", "plinko", "hats", "specials",
 	"deployables", "stones", "elevators", "spikes", "mutable", "mounds",
 	"graves", "merchants", "hearts", "bullets", "leash", "checkpoint",
-	"drone", "rescue", "bus",
+	"drone", "rescue", "bus", "swallows",
 ]
 
 # The three answers a mode may give about a pool. RUNS_DIFFERENTLY is not
@@ -87,7 +87,7 @@ const MODES := {
 		"overrides": {},
 		"terrain": TERRAIN_SECTIONS,
 		"pools": {
-			"rushers": RUNS, "gunners": RUNS, "zombies": RUNS, "plinko": RUNS,
+			"rushers": RUNS, "gunners": RUNS, "zombies": RUNS, "swallows": RUNS, "plinko": RUNS,
 			"hats": RUNS, "specials": RUNS, "deployables": RUNS, "stones": RUNS,
 			"elevators": RUNS, "spikes": RUNS, "mutable": RUNS, "mounds": RUNS,
 			"graves": RUNS, "merchants": RUNS, "hearts": RUNS, "bullets": RUNS,
@@ -120,7 +120,7 @@ const MODES := {
 		"terrain": TERRAIN_BLANK,
 		"pools": {
 			# Nothing that threatens, and nothing that is placed INTO terrain.
-			"rushers": OFF, "gunners": OFF, "zombies": OFF, "plinko": OFF,
+			"rushers": OFF, "gunners": OFF, "zombies": OFF, "swallows": OFF, "plinko": OFF,
 			"deployables": OFF, "stones": OFF, "spikes": OFF, "mutable": OFF,
 			"mounds": OFF, "graves": OFF, "merchants": OFF,
 			# ...and everything that belongs to the PLAYERS rather than to the
@@ -168,7 +168,7 @@ const MODES := {
 			# `graves` rides with them because a zombie is not spawned, it is
 			# RAISED: the terrain places a grave and the pool wakes the pack. One
 			# without the other is a headstone nobody comes out of.
-			"zombies": RUNS, "graves": RUNS,
+			"zombies": RUNS, "swallows": RUNS, "graves": RUNS,
 			# Nothing else the bridge would have put there. A rusher on a race
 			# track is a bridge hazard that wandered into the wrong game.
 			# AND THE DEPLOYABLES POOL, because the track scatters armed MINES and
@@ -216,7 +216,7 @@ const MODES := {
 			# corner; the hazards are the hole in the middle and the mines. The
 			# zombies that make the bus route a fight would make this one a fight
 			# with a lap timer attached, which is a different game.
-			"gunners": OFF, "rushers": OFF, "zombies": OFF, "plinko": OFF,
+			"gunners": OFF, "rushers": OFF, "zombies": OFF, "swallows": OFF, "plinko": OFF,
 			"mutable": OFF, "stones": OFF, "spikes": OFF, "mounds": OFF,
 			"graves": OFF, "merchants": OFF, "elevators": OFF,
 			# And everything that belongs to the party.

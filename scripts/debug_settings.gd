@@ -211,6 +211,24 @@ const OPTIONS := {
 		"help": "Pins the generator to one set-piece so you can actually find the thing you are trying to judge. Every section that can carry it will. Set it BEFORE starting a run -- segments already built are not rebuilt -- and treat it as a solo tool: it changes what the terrain generator returns, and the bridge being a pure function of (seed, count) is what lets a joining client build the world from two numbers.",
 	},
 
+	"channel_rarity": {
+		"section": "World",
+		"kind": KIND_INT,
+		"label": "Water channel rarity (1 in N)",
+		"default": 3, "min": 1, "max": 12,
+		"mirrors": "WATER_CHANNEL_IN",
+		"help": "How often a GENERATED section is cut with a water channel, as 1-in-N. Set to 1 and every generated section that can carry one does. Pair it with Swallow rarity to go looking for a bubble swallow on purpose instead of walking until the dice agree -- a swallow needs water, so on the defaults you are waiting on two rolls and about one section in twelve. AUTHORED MAPS ARE NEVER DRESSED and are not affected by either knob, so playtest_bridge's channel will never carry a swallow however this is set. Same warning as Merchant rarity: this is an input to the terrain generator, the bridge is a pure function of its seed, and a client that disagrees builds a different bridge. Solo and dev only, and set it BEFORE starting a run.",
+	},
+
+	"swallow_rarity": {
+		"section": "World",
+		"kind": KIND_INT,
+		"label": "Bubble swallow rarity (1 in N)",
+		"default": 2, "min": 1, "max": 12,
+		"mirrors": "SWALLOW_RARITY",
+		"help": "How often a generated section that HAS water gets a bubble swallow, as 1-in-N. Set to 1 and every body of water in a generated section has one. Note what that does and does not promise: it cannot conjure water, so with the channel roll at its default you still only meet one about every twelfth section -- set Water channel rarity to 1 as well. The dressing pass also refuses to put a swallow within its own reach of a merchant, a mode selector or a bus post, so a section can roll one and correctly have none. Solo and dev only; it changes the world itself.",
+	},
+
 	"merchant_rarity": {
 		"section": "World",
 		"kind": KIND_INT,

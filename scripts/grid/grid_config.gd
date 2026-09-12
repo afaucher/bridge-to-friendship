@@ -152,6 +152,17 @@ const DECK_GLYPHS := {
 
 # --- Cell contents ------------------------------------------------------------
 
+# WHAT LIVES IN A WATER CELL. Not a `Content` value and deliberately so: content
+# is what stands in a cell of DECK, and the dressing pass refuses to put any of it
+# in water -- a shop or a mound in a current is a thing you cannot stand at. These
+# are the exceptions to that, so they are recorded beside the grid instead, the
+# same way mines and checkpoints are.
+#
+# APPENDED, NEVER REORDERED, for the same reason `Kind` says so: the integer is
+# what a placement record carries, and inserting one in the middle would silently
+# turn every swallow in every level into something else.
+enum WaterKind { SWALLOW, FROG }
+
 enum Content { NONE, PILLAR, LADDER, BOUNCER, SHOOTER, HEART, PICKUP, SPAWN, MOUND, HAT, SKIRMISHER, TURRET, PICKUP_GRENADE, PICKUP_MINE, PICKUP_SHIELD, PICKUP_ROCKET, GATE, TREE, HALF_WALL, SPIKES, PICKUP_LEGS, CRUMBLE, TIMED, ELEVATOR, PICKUP_SHOTGUN, PICKUP_RIFLE, PICKUP_HEAVY, MERCHANT, GRAVE, MODE_POST, BUS_POST }
 
 const CONTENT_GLYPHS := {
