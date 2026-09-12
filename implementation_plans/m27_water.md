@@ -192,7 +192,7 @@ Ordered by the machinery each one needs, not by the order they were asked for.
 Each states the decision it poses, because a hazard that poses no decision is
 texture.
 
-### The Bubble Swallow — a sustained pull
+### The Bubble Swallow — a sustained pull — *planned in full: m28_bubble_swallow.md*
 
 *Kirby-like floating ball. Sucks everything toward it, eats small things, hurts
 large ones. You can outrun it; standing still gets you taken.*
