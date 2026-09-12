@@ -2512,6 +2512,24 @@ func _resolve_rusher_contact(rusher: Node) -> void:
 # `kill()` before retiring rather than a new argument, because `killed` is
 # already the flag meaning "this ended in an EVENT rather than by expiring", and
 # spending itself on a body is exactly that. See the note on the flag itself.
+#
+# AND IT POPS RATHER THAN CRUMPLING. A standing pile is right for a death you
+# caused from across the deck -- it waits there and you walk through it. This one
+# happens against your chest at a run, and a neat heap appearing where the thing
+# was is the wrong punctuation for it: the burst IS the feedback that the charge
+# is over, delivered at the one moment the player is certainly looking.
+#
+# THE BURST POINT IS ITS OWN CENTRE, NOT THE PLAYER'S, and that is the difference
+# between a pop and a spray. `scatter` throws every piece along `piece - from`,
+# so a point beside the body sends the whole pile one way -- correct for a
+# grenade, which arrives from somewhere, and wrong for something that comes apart
+# where it stands. From the middle, the pieces go outward in every direction and
+# the shape of the burst says what caused it.
+#
+# Through `_note_death_burst` rather than by calling `scatter` here, so a contact
+# death takes the same route as an explosive one: the corpse is built scattered
+# rather than built standing and knocked over a frame later, and the client is
+# told by the same RPC instead of needing a second message.
 func _kill_rusher(rusher: Node) -> void:
 	var index: int = _rushers.find(rusher)
 	if index >= 0:
@@ -2519,6 +2537,7 @@ func _kill_rusher(rusher: Node) -> void:
 	if not is_instance_valid(rusher):
 		return
 	rusher.kill()
+	_note_death_burst(rusher, rusher.position)
 	_retire_enemy(rusher, Corpse.Kind.RUSHER)
 
 func rusher_count() -> int:
@@ -4110,12 +4129,21 @@ func _blast_seen(at: Vector3, radius: float) -> void:
 func _note_enemy_death(target: Node, hit) -> void:
 	if int(hit.kind) != Hit.Kind.EXPLOSIVE:
 		return
-	# The entries that are never collected are the ones freed by a path that does
-	# not retire them -- a checkpoint restart clears every pool at once. See the
-	# declaration: bounded rather than tracked.
+	_note_death_burst(target, hit.from)
+
+# THE POINT A DEATH BURSTS OUTWARD FROM, and the only writer of that record.
+#
+# A grenade is one source and a rusher ending against somebody is the other, and
+# they arrive from different passes in different frames -- so the bound below has
+# to live in one place rather than being remembered at each call site.
+#
+# The entries that are never collected are the ones freed by a path that does not
+# retire them -- a checkpoint restart clears every pool at once. See the
+# declaration: bounded rather than tracked.
+func _note_death_burst(target: Node, from: Vector3) -> void:
 	if _death_blast.size() > 128:
 		_death_blast.clear()
-	_death_blast[target.get_instance_id()] = hit.from
+	_death_blast[target.get_instance_id()] = from
 
 # EVERY ENEMY LEAVES THE WORLD THROUGH HERE, AND ONLY SOME OF THEM LEAVE A BODY.
 #

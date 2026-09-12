@@ -23,6 +23,10 @@ extends "res://scripts/test_support/test_case.gd"
 #   6. THE DEATHS THAT ARE NOT DEATHS LEAVE NOTHING. A rusher that burrows and a
 #      body that falls off the bridge both stop existing exactly the way a killed
 #      one does, and neither should leave rubble.
+#   7. AND A RUSHER THAT REACHES YOU POPS. The fourth way a rusher leaves the
+#      world, and the only one that happens against a player -- so it leaves a
+#      pile like the others, and unlike the others it arrives already burst,
+#      outward from its own centre.
 #
 # CLAIM 6 IS THE ONE THAT NEEDED WRITING DOWN. Every other assertion here is
 # about a corpse being present, and CLAUDE.md is blunt that a counter only ever
@@ -655,12 +659,91 @@ func _phase_a_rusher_that_reaches_you() -> void:
 			or player.state == PlayerBody.State.TUMBLE,
 		"the rusher ended by REACHING the player -- health %d from %d, state %d"
 			% [int(player.health), int(noted["health_before"]), int(player.state)])
-	eq(world.corpse_count(), 1,
-		"a rusher that spends itself on somebody leaves a pile (%d) -- it is the "
-			% world.corpse_count()
-		+ "one death that happens at arm's length from a player looking straight "
-		+ "at it, and it was the only one that popped out of existence")
+	if not eq(world.corpse_count(), 1,
+			"a rusher that spends itself on somebody leaves a pile (%d) -- it is the "
+				% world.corpse_count()
+			+ "one death that happens at arm's length from a player looking straight "
+			+ "at it, and it was the only one that popped out of existence"):
+		_advance(10)
+		return
+	_and_it_pops()
 	_advance(10)
+
+# IT COMES APART ON CONTACT RATHER THAN STANDING THERE, and the burst goes
+# OUTWARD rather than one way. Two claims, because the first alone is satisfied
+# by a pile shoved sideways off the deck.
+#
+# SAMPLED ON THE TICK THE CONTACT IS NOTICED, which is the earliest this phase
+# can look: `linear_velocity` is what `scatter` wrote plus whatever the solver
+# has done since, so every frame waited is a frame of gravity and collisions
+# eroding the thing being measured. A phase that sampled forty frames later would
+# be reading where the rubble settled.
+func _and_it_pops() -> void:
+	var corpse: Node = world._corpses[0]
+
+	# "IT IS SCATTERED" IS NOT THE CLAIM, AND THE A/B IS WHAT SAID SO. With the
+	# pop taken out entirely the pile still came apart, because the player it just
+	# ran into is STANDING IN IT -- `_process_corpses` sees a toucher and bursts it
+	# from there a tick later. So `is_intact` is false either way, and asserting it
+	# would have been a wall of green over the feature being absent.
+	#
+	# What actually differs is HOW the pieces leave, on two axes, and both of them
+	# are arithmetic rather than taste: a bump carries boost 1.0 and comes from
+	# wherever the toucher is standing, a pop carries CORPSE_BLAST_BOOST and comes
+	# from the middle of the body.
+
+	# A POP AND NOT A SPRAY, AND THE MEAN DIRECTION IS THE WHOLE OF THE
+	# DIFFERENCE. `scatter` throws each piece along `piece - from`, so the burst
+	# point decides the shape: from the body's own centre the directions cover
+	# every bearing and cancel, and from anywhere beside it -- the player, say --
+	# they all point the same way and the mean is very nearly a unit vector.
+	#
+	# AN ARITHMETIC PROPERTY RATHER THAN A TUNED THRESHOLD, which is why it is
+	# worth asserting at all: the fragments tile a solid of revolution, so a
+	# centre burst cancels by construction and no choice of speed, lift or boost
+	# can change that. The 0.5 is only there to leave room for the solver having
+	# already bounced a piece or two off the deck.
+	var mean := Vector3.ZERO
+	var moving: int = 0
+	var fastest: float = 0.0
+	for piece in corpse.fragments:
+		if not is_instance_valid(piece):
+			continue
+		fastest = maxf(fastest, piece.linear_velocity.length())
+		var flat := Vector3(piece.linear_velocity.x, 0.0, piece.linear_velocity.z)
+		if flat.length() < 0.01:
+			continue
+		moving += 1
+		mean += flat.normalized()
+	print("[CORPSE] pop: %d of %d pieces moving, mean bearing %.3f, fastest %.2f m/s"
+		% [moving, corpse.fragments.size(),
+			(mean / maxf(float(moving), 1.0)).length(), fastest])
+
+	# AND IT IS A BURST RATHER THAN A SHOVE, bounded by arithmetic rather than by
+	# a number somebody liked. `scatter` gives a piece
+	# `(away * SPEED + UP * LIFT) * reach * boost` with `reach` at most 1, so at
+	# the bump's boost of 1.0 NO piece can exceed the length of that pair --
+	# whatever the geometry does. Clearing it means the velocity came from a boost
+	# above 1, and CORPSE_BLAST_BOOST is the only one in play here.
+	var bump_ceiling: float = sqrt(SimConfig.CORPSE_SCATTER_SPEED * SimConfig.CORPSE_SCATTER_SPEED
+		+ SimConfig.CORPSE_SCATTER_LIFT * SimConfig.CORPSE_SCATTER_LIFT)
+	check(fastest > bump_ceiling,
+		"the pieces leave harder than anything a player leaning on the pile could "
+		+ "manage (%.2f m/s against a ceiling of %.2f) -- otherwise the pop is "
+			% [fastest, bump_ceiling]
+		+ "indistinguishable from being bumped by the body it just hit, which is "
+		+ "what happens a tick later anyway")
+	if not check(moving > corpse.fragments.size() / 2,
+			"most of the pieces were actually given velocity (%d of %d) -- "
+				% [moving, corpse.fragments.size()]
+			+ "`is_intact` is a flag and this is the thing the flag is for"):
+		return
+	mean /= float(moving)
+	check(mean.length() < 0.5,
+		"and they go outward in every direction rather than one way (mean bearing "
+		+ "%.3f) -- a burst centred on the body cancels by construction, and one "
+			% mean.length()
+		+ "centred beside it does not")
 
 # --- Helpers ------------------------------------------------------------------
 
