@@ -184,9 +184,17 @@ func is_in_play() -> bool:
 func is_dangerous() -> bool:
 	return state == State.CHASE
 
-# SHOT. The only thing that ENDS a rusher rather than postponing it, and the
-# reason the weapon-special category earns a slot at all -- see hazards.md: a
+# ENDED RATHER THAN POSTPONED, which a round is the only WEAPON that manages --
+# the reason the weapon-special category earns a slot at all; see hazards.md: a
 # dash deflects, a timer outlasts, a round removes.
+#
+# THE OTHER SETTER IS THE RUSHER ITSELF, spending its body on a player it
+# reached. Both are ENDINGS, and that is what this flag distinguishes -- from a
+# burrow and from a fall, the two ways of stopping existing that nobody caused.
+# `_retire_enemy` reads it to decide whether a death leaves a pile, and for a
+# while it did not get to read it at all on the contact path: the contact freed
+# the body itself, so the one death a player is standing next to was the one that
+# left nothing behind.
 #
 # A flag rather than an immediate free: the pool walks its list once per tick and
 # removes what is spent, so a rusher that vanished mid-iteration would be a freed

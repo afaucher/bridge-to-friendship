@@ -2496,12 +2496,30 @@ func _resolve_rusher_contact(rusher: Node) -> void:
 		_kill_rusher(rusher)
 		return
 
+# THE FOURTH WAY A RUSHER LEAVES THE WORLD, AND IT WENT OUT THROUGH A SIDE DOOR.
+#
+# Reported from play: a rusher that reaches you pops out of existence, while one
+# you shoot comes apart. Both are true and this line is why -- the other three
+# exits (shot, burrowed, fallen) all run through `_retire_enemy`, which decides
+# whether a death earned a pile. This one called `queue_free` directly and was
+# never offered the choice.
+#
+# THE CONNECTING RUSHER IS THE MOST DESERVING DEATH OF THE FOUR. It is the only
+# one that happens at arm's length from a player who is looking straight at it,
+# and it is the moment the hazard is resolved: the thing that was chasing you is
+# gone, and it was gone with nothing to show for it.
+#
+# `kill()` before retiring rather than a new argument, because `killed` is
+# already the flag meaning "this ended in an EVENT rather than by expiring", and
+# spending itself on a body is exactly that. See the note on the flag itself.
 func _kill_rusher(rusher: Node) -> void:
 	var index: int = _rushers.find(rusher)
 	if index >= 0:
 		_rushers.remove_at(index)
-	if is_instance_valid(rusher):
-		rusher.queue_free()
+	if not is_instance_valid(rusher):
+		return
+	rusher.kill()
+	_retire_enemy(rusher, Corpse.Kind.RUSHER)
 
 func rusher_count() -> int:
 	return _rushers.size()
@@ -4101,16 +4119,17 @@ func _note_enemy_death(target: Node, hit) -> void:
 
 # EVERY ENEMY LEAVES THE WORLD THROUGH HERE, AND ONLY SOME OF THEM LEAVE A BODY.
 #
-# THERE ARE THREE WAYS TO STOP EXISTING AND ONLY ONE IS A DEATH. A rusher burrows
-# back down when it outlives its welcome; anything at all can go off the side of
-# the bridge; a gunner is culled once the party has walked far enough past it.
-# None of those should leave rubble, and the culled one least of all -- it is
-# behind the party, out of sight, and the pieces would be a lie about a fight
-# that never happened.
+# FOUR WAYS TO STOP EXISTING AND TWO OF THEM ARE DEATHS. A rusher burrows back
+# down when it outlives its welcome; anything at all can go off the side of the
+# bridge; a gunner is culled once the party has walked far enough past it. None
+# of those should leave rubble, and the culled one least of all -- it is behind
+# the party, out of sight, and the pieces would be a lie about a fight that never
+# happened. The two that count are a weapon and a rusher spending itself on
+# somebody it caught.
 #
-# `killed` is the flag all three bodies set when a WEAPON ends them, and it is
-# the only one of the three conditions in their is_spent() that means somebody
-# did this. The height test then removes the case where both are true at once:
+# `killed` is the flag those bodies set when something ENDS them, and it is the
+# only one of the three conditions in their is_spent() that means somebody did
+# this. The height test then removes the case where both are true at once:
 # shot on the way down is still a fall, and a corpse assembled below the deck is
 # a corpse nobody will ever see.
 #

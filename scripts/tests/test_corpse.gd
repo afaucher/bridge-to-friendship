@@ -35,6 +35,7 @@ const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
 const Corpse = preload("res://scripts/sim/corpse.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
+const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 
 # EVERY ENEMY THAT EARNS ONE. `spawner` names the world's own spawn helper so the
@@ -110,6 +111,7 @@ func _physics_process(_delta: float) -> void:
 		6: _phase_a_client_runs_its_own_piles()
 		7: _phase_a_round_knocks_it_down()
 		8: _phase_a_blast_knocks_a_standing_pile_down()
+		9: _phase_a_rusher_that_reaches_you()
 		_: finish()
 
 func _advance(next_phase: int) -> void:
@@ -591,6 +593,74 @@ func _phase_a_blast_knocks_a_standing_pile_down() -> void:
 			check(not world._corpses[0].is_intact(),
 				"a blast knocks over a pile that was already standing")
 		_advance(9)
+
+# --- 10. A rusher that REACHES you leaves a pile too --------------------------
+#
+# THE FOURTH WAY A RUSHER LEAVES THE WORLD, AND THIS FILE HAD NEVER EXERCISED IT.
+# Every claim above kills things with a weapon; the two claims below them are
+# about the endings that are NOT deaths. Nobody had ever let a rusher finish its
+# own job -- so the one exit that freed the body directly, without ever asking
+# `_retire_enemy` whether the death earned a pile, went unmeasured for the whole
+# life of the feature and was reported from play.
+#
+# It is CLAUDE.md's half-a-gate note in its exact shape: a rule with two halves
+# where only the half somebody thought of was written down. The burrow phase says
+# "a rusher that stops existing by expiring leaves nothing" -- and a rusher that
+# stops existing by CONNECTING satisfies that sentence just as well, which is why
+# the negative claim could not catch this.
+#
+# THE CONTACT IS THE WORLD'S TO NOTICE. Nothing here calls `_kill_rusher`, or the
+# phase would pass with `_resolve_rusher_contact` deleted.
+func _phase_a_rusher_that_reaches_you() -> void:
+	if phase_frame == 1:
+		_reset()
+		if not world.players.has(1):
+			world._spawn_player(1, 0)
+		subject = world._spawn_rusher(TEST_SPOT)
+		noted["contact_at"] = 0
+		return
+
+	# THE SAME STAGING EVERY OTHER PHASE DOES, and needed for a second reason
+	# here: `_resolve_rusher_contact` refuses a rusher that is not `is_in_play()`,
+	# so a player parked on a RISING one waits underground forever and the phase
+	# reports a timeout rather than a failure.
+	if int(noted.get("contact_at", 0)) == 0:
+		if not is_instance_valid(subject) or not subject.is_in_play():
+			return
+		var player: Node = world.player_body(1)
+		player.position = subject.position + Vector3(0.5, 0.0, 0.0)
+		player.velocity = Vector3.ZERO
+		noted["health_before"] = int(player.health)
+		noted["contact_at"] = phase_frame
+		return
+
+	# POLLED WITH A DEADLINE rather than sampled at a chosen frame. How many ticks
+	# the two bodies take to resolve against each other is somebody else's clock.
+	if world._rushers.size() > 0:
+		if phase_frame < int(noted["contact_at"]) + 90:
+			return
+		check(false,
+			"the rusher never reached the player, so this phase measured nothing "
+			+ "-- the staging is wrong, not the code under test")
+		_advance(10)
+		return
+
+	# AND THAT IT WENT BY CONTACT, which removes the second explanation. A rusher
+	# can leave `_rushers` by burrowing or by falling, and both of those SHOULD
+	# leave nothing -- so "no rusher and no corpse" would be a perfectly correct
+	# world if it got there another way, and the assertion below would be blaming
+	# the wrong code.
+	var player: Node = world.player_body(1)
+	check(int(player.health) < int(noted["health_before"])
+			or player.state == PlayerBody.State.TUMBLE,
+		"the rusher ended by REACHING the player -- health %d from %d, state %d"
+			% [int(player.health), int(noted["health_before"]), int(player.state)])
+	eq(world.corpse_count(), 1,
+		"a rusher that spends itself on somebody leaves a pile (%d) -- it is the "
+			% world.corpse_count()
+		+ "one death that happens at arm's length from a player looking straight "
+		+ "at it, and it was the only one that popped out of existence")
+	_advance(10)
 
 # --- Helpers ------------------------------------------------------------------
 
