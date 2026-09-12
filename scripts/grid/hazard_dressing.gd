@@ -357,6 +357,13 @@ static func _candidates(seg, kind: String) -> Array:
 		for x in seg.width:
 			if not seg.is_solid(x, z):
 				continue
+			# NOR IN A RIVER. Water is solid, so without this it is an ordinary
+			# candidate -- and the dressing pass would put a merchant, a mound or
+			# a turret in a current that pushes. The shop is the clearest case:
+			# buying means standing still, and you cannot stand still in a
+			# channel.
+			if seg.kind_at(x, z) == GridConfig.Kind.WATER:
+				continue
 			if seg.kind_at(x, z) == GridConfig.Kind.RAMP:
 				# Nothing settles on a slope -- the hat and special rules already
 				# say so, and a mound rising out of a hillside is worse.

@@ -926,6 +926,22 @@ func _recompute_water_flow() -> void:
 		# cannot have one.
 		var here: Vector3 = cell_surface_world(cell)
 		var down := Vector3.ZERO
+		# AN OUTLET HAS NOTHING LOWER THAN IT, so the gradient finds nothing and
+		# the lip -- the one cell a player most needs to be pushed off -- came out
+		# with no current at all. Seen by dumping the map: a full-width channel
+		# read `o<<<<<<<>>>>>>>o`, still at both ends, and a three-cell fragment
+		# between two holes was still along its whole length.
+		#
+		# So an outlet flows AT THE GAP. Its direction is toward wherever the deck
+		# stops, which is the same question that made it an outlet.
+		if int(dist[cell]) == 0:
+			for dir in 4:
+				var out_cell: Vector2i = cell + GridConfig.DIR_CELLS[dir]
+				if is_solid(out_cell):
+					continue
+				var off: Vector3 = cell_surface_world(out_cell) - here
+				off.y = 0.0
+				down += off.normalized()
 		for dir in 4:
 			var n: Vector2i = cell + GridConfig.DIR_CELLS[dir]
 			if not dist.has(n):
