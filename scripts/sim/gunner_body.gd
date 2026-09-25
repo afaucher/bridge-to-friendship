@@ -1,4 +1,4 @@
-extends CharacterBody3D
+extends "res://scripts/sim/actors/enemy_body.gd"
 
 # What every enemy that SHOOTS has in common. Subclassed by skirmisher_body.gd
 # and turret_body.gd; never spawned directly.
@@ -13,21 +13,21 @@ extends CharacterBody3D
 # What stays here is the part they genuinely share: line of sight, the cadence,
 # dying to a weapon rather than to a body, and how a client is told about it.
 
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const Corpse = preload("res://scripts/sim/corpse.gd")
 
 # THE WIRE DISCRIMINATOR, and all that is left of the old flag. A client is told
 # which kind an enemy is so it can build the right scene; no BEHAVIOUR reads it.
 enum Kind { SKIRMISHER, TURRET }
 
-var gunner_id: int = 0
+# The network id, under the name everything outside this file has always used.
+var gunner_id: int:
+	get: return id
+	set(value): id = value
 var kind: int = Kind.SKIRMISHER
 
 var facing: float = 0.0
 var fire_timer: float = 0.0
-var grounded: bool = false
-var killed: bool = false
 var world: Node = null
 
 # HOW AWAKE IT IS, 0 asleep and 1 ready to shoot. See the block in sim_config.gd
@@ -53,30 +53,14 @@ var wake_rate: float = 0.0
 var last_seen: Vector3 = Vector3.ZERO
 var has_last_seen: bool = false
 
-func _ready() -> void:
-	floor_max_angle = deg_to_rad(SimConfig.MAX_WALK_ANGLE_DEG)
+# ENDED BY A WEAPON (EnemyBody.receive_hit). Both kinds die to BULLET and
+# EXPLOSIVE -- the deflectable/destructible split hazards.md calls the most
+# consequential line in the document. What a BODY arriving does is the half they
+# disagree about, so `receive_impact` is a subclass decision: a skirmisher is
+# knocked about, a turret is bolted down.
 
-func is_spent() -> bool:
-	return killed or position.y < SimConfig.FALL_KILL_Y
-
-func kill() -> void:
-	killed = true
-
-# ENDED BY A WEAPON. Both kinds die to BULLET and EXPLOSIVE -- that is the
-# deflectable/destructible split hazards.md calls the most consequential line in
-# the document. What a BODY arriving does is the half they disagree about, so it
-# is a subclass decision.
-func receive_hit(hit) -> bool:
-	match hit.kind:
-		Hit.Kind.BULLET, Hit.Kind.EXPLOSIVE:
-			kill()
-			return true
-		_:
-			return receive_impact(hit)
-
-# Overridden. A skirmisher is knocked about; a turret is bolted down.
-func receive_impact(_hit) -> bool:
-	return false
+func corpse_kind() -> int:
+	return Corpse.Kind.TURRET if kind == Kind.TURRET else Corpse.Kind.SKIRMISHER
 
 # --- Per tick -----------------------------------------------------------------
 
@@ -94,7 +78,7 @@ func step(target: Node) -> void:
 			# read for the case where it was already pointed your way.
 			aim_at(GridConfig.yaw_of_vector(to_target))
 	move_for(target)
-	_fall_and_move()
+	_apply_gravity_and_move()
 
 # ALERT RISES WHILE IT CAN SEE SOMEBODY AND FALLS WHILE IT CANNOT, at very
 # different rates. The asymmetry is the whole design -- see sim_config.gd.
@@ -128,13 +112,7 @@ func move_for(_target: Node) -> void:
 func aim_at(yaw: float) -> void:
 	facing = yaw
 
-func _fall_and_move() -> void:
-	if grounded:
-		velocity.y = -SimConfig.FLOOR_STICK
-	else:
-		velocity.y -= SimConfig.GRAVITY * SimConfig.TICK_DELTA
-	move_and_slide()
-	grounded = is_on_floor()
+func _after_move() -> void:
 	_point_gun()
 
 # The visible barrel follows `facing`, on a pivot, exactly as the player's held
@@ -229,7 +207,7 @@ func muzzle() -> Vector3:
 
 # Clients are TOLD where an enemy is; they never simulate one. Same as a rusher.
 func capture_state() -> Array:
-	return [gunner_id, kind, position, facing]
+	return [id, kind, position, facing]
 
 # `kind` is NOT read back off the wire: the client used it to pick which scene to
 # build, and that scene's script already set it. Assigning it here would let a

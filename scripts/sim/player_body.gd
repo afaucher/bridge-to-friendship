@@ -16,10 +16,10 @@ extends CharacterBody3D
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
-# Safe: character_style.gd preloads NOTHING AT ALL, so this cannot close the
-# class cycle CLAUDE.md warns HANGS a run rather than failing it. Keep it that
-# way -- it is a leaf on purpose, which is what lets both the sim and the menu
-# import it.
+# Safe: character_style.gd preloads nothing but core/hash.gd, which preloads
+# nothing at all, so this cannot close the class cycle CLAUDE.md warns HANGS a
+# run rather than failing it. Keep it that way -- it is a leaf on purpose, which
+# is what lets both the sim and the menu import it.
 const CharacterStyle = preload("res://scripts/sim/character_style.gd")
 # A VIEW SCRIPT, PRELOADED BY A SIM ONE, and deliberately: the bar over this
 # body's head is already a view built here, colours and all, and the alternative

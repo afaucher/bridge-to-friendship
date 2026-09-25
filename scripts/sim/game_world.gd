@@ -21,9 +21,7 @@ const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
 const BridgeCameraScript = preload("res://scripts/ui/bridge_camera.gd")
 const BallScene = preload("res://scenes/plinko_ball.tscn")
-const RusherScene = preload("res://scenes/rusher.tscn")
 const RusherBody = preload("res://scripts/sim/rusher_body.gd")
-const ZombieScene = preload("res://scenes/zombie.tscn")
 const ZombieBody = preload("res://scripts/sim/zombie_body.gd")
 const HatPool = preload("res://scripts/sim/hat_pool.gd")
 const SpecialPool = preload("res://scripts/sim/special_pool.gd")
@@ -36,8 +34,6 @@ const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
-const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
-const TurretScene = preload("res://scenes/turret.tscn")
 const GrenadeScene = preload("res://scenes/grenade.tscn")
 const MineScene = preload("res://scenes/mine.tscn")
 # The SCRIPT, for its statics. Reading a script-level member through the
@@ -51,6 +47,9 @@ const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
 const NetTelemetry = preload("res://scripts/net/net_telemetry.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
+const RusherSystem = preload("res://scripts/sim/systems/rusher_system.gd")
+const ZombieSystem = preload("res://scripts/sim/systems/zombie_system.gd")
+const GunnerSystem = preload("res://scripts/sim/systems/gunner_system.gd")
 const Hash = preload("res://scripts/core/hash.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
@@ -269,17 +268,55 @@ var _bullets: Array = []
 var _bullets_root: Node3D = null
 var _next_bullet_id: int = 0
 
-# --- gunners: skirmishers and turrets ---
+# --- enemies: world systems ---------------------------------------------------
 #
-# TWO SCRIPTS, ONE POOL. They are separate types (skirmisher_body.gd,
-# turret_body.gd) over a shared base, and everything this file does with them --
-# stepping, targeting, culling, the wire -- is written against the base, so a
-# third kind is a script and a scene and nothing here. They are the first enemies
-# that make the GEOMETRY part of the fight: a rusher is answered by moving, and
-# these are answered by breaking line of sight or closing the distance.
-var _gunners: Array = []
-var _gunners_root: Node3D = null
-var _next_gunner_id: int = 0
+# Each pool is a WorldSystem (scripts/sim/world/): its list, its root node, its
+# ids, its host tick, its snapshot section and its teardown in one object. See
+# scripts/sim/systems/.
+#
+# GUNNERS: TWO SCRIPTS, ONE POOL. Skirmisher and turret are separate types over a
+# shared base, and the pool is written against the base, so a third kind is a
+# script and a scene and nothing here. They are the first enemies that make the
+# GEOMETRY part of the fight: a rusher is answered by moving, these by breaking
+# line of sight or closing the distance.
+#
+# ZOMBIES are a separate pool from the rushers even though both are enemies that
+# walk. Different wake rule (a grave raises a PACK), different contact rule (a
+# zombie recoils, a rusher is spent), different walk.
+#
+# IDS ARE HOST-ASSIGNED AND MONOTONIC, never a creation-order index. An enemy is
+# created mid-run by a trigger, so the stone list's "both machines loaded the same
+# segments in the same order" trick does not apply -- and a zombie's WALK is drawn
+# off its id, so two with the same id would perform the same choreography.
+var rushers = RusherSystem.new()
+var zombies = ZombieSystem.new()
+var gunners = GunnerSystem.new()
+
+# The enemy pools, in the order they tick. Everything that must ask "every enemy"
+# -- a blast, the aim snap, the wipe -- walks this rather than naming the three.
+func enemy_systems() -> Array:
+	return [rushers, zombies, gunners]
+
+# Their bodies, one list per pool.
+func enemy_lists() -> Array:
+	var out: Array = []
+	for system in enemy_systems():
+		out.append(system.items)
+	return out
+
+# The old names, forwarded. Tests and tools read these; new code asks the system.
+var _gunners: Array:
+	get: return gunners.items
+var _gunners_root: Node3D:
+	get: return gunners.root
+var _rushers: Array:
+	get: return rushers.items
+var _rushers_root: Node3D:
+	get: return rushers.root
+var _zombies: Array:
+	get: return zombies.items
+var _zombies_root: Node3D:
+	get: return zombies.root
 
 # --- deployables: live things on the deck ---
 #
@@ -307,25 +344,6 @@ var _deployables: Array = []
 var _deployables_root: Node3D = null
 var _next_deployable_id: int = 0
 
-# --- rushers ---
-var _rushers: Array = []
-var _rushers_root: Node3D = null
-# HOST-ASSIGNED AND MONOTONIC, never a creation-order index. A rusher is created
-# mid-run by a trigger, so the stone list's "both machines loaded the same
-# segments in the same order" trick does not apply -- two clients that woke
-# different mounds first would disagree about which rusher is which.
-var _next_rusher_id: int = 0
-
-# --- zombies ---
-#
-# A separate pool from the rushers even though both are enemies that walk. They
-# share nothing except the deck: different wake rule (a grave raises a PACK),
-# different contact rule (a zombie recoils, a rusher is spent), different walk.
-# Folding them together would be a list with a kind flag on every line of every
-# loop, which is the shape gunner_body.gd was already split out of on 2026-08-14.
-var _zombies: Array = []
-var _zombies_root: Node3D = null
-
 # --- What is left where an enemy was ------------------------------------------
 #
 # See scripts/sim/corpse.gd. These are COSMETIC: nothing authoritative reads one,
@@ -351,10 +369,6 @@ var _corpses_root: Node3D = null
 # because the value of a stale entry is one wrong scatter origin and the cost of
 # tracking it properly is a hook in every teardown.
 var _death_blast: Dictionary = {}
-# Host-assigned and monotonic, for the same reason the rusher's is -- and it does
-# double duty here, because a zombie's WALK is drawn off its id. Two zombies with
-# the same id would perform the same choreography.
-var _next_zombie_id: int = 0
 
 # --- the run ---
 # CHECKPOINTS ARE GONE (M16). They existed to answer "where does the party
@@ -401,15 +415,9 @@ func _ready() -> void:
 	_balls_root = Node3D.new()
 	_balls_root.name = "Balls"
 	add_child(_balls_root)
-	# Rushers too: they walk the deck, so they live in world space and let the
-	# pitch be something they climb rather than something that tilts them.
-	_rushers_root = Node3D.new()
-	_rushers_root.name = "Rushers"
-	add_child(_rushers_root)
-	# And zombies, for the identical reason.
-	_zombies_root = Node3D.new()
-	_zombies_root.name = "Zombies"
-	add_child(_zombies_root)
+	# Rushers and zombies too: they walk the deck, so they live in world space.
+	rushers.attach(self)
+	zombies.attach(self)
 
 	# WHERE THE DEAD GO. Its own root, like every pool, so a corpse is never a
 	# child of the thing it replaced -- that node is being freed on the same tick.
@@ -435,9 +443,7 @@ func _ready() -> void:
 	_bullets_root = Node3D.new()
 	_bullets_root.name = "Bullets"
 	add_child(_bullets_root)
-	_gunners_root = Node3D.new()
-	_gunners_root.name = "Gunners"
-	add_child(_gunners_root)
+	gunners.attach(self)
 	_deployables_root = Node3D.new()
 	_deployables_root.name = "Deployables"
 	add_child(_deployables_root)
@@ -821,11 +827,11 @@ func _host_tick() -> void:
 	# Before the rescue pass: a rusher can tumble someone into a hole, and the
 	# rescue pass is what notices they left the world. Running it after means the
 	# consequence lands on the same tick as the cause rather than the next one.
-	_process_rushers()
+	rushers.step()
 	# Beside the rushers and for the same reason: a zombie can tumble somebody into
 	# a hole, and the rescue pass below is what notices they left the world.
-	_process_zombies()
-	_process_gunners()
+	zombies.step()
+	gunners.step()
 	# Before the rescue pass for the same reason rushers are: a blast is the single
 	# biggest way to put somebody off the bridge, and the consequence should land on
 	# the tick that caused it.
@@ -1081,7 +1087,10 @@ func _is_player(target) -> bool:
 # so a body that is not in one of them cannot be mistaken for an enemy however
 # many of an enemy's properties it happens to have.
 func _is_enemy(target) -> bool:
-	return _rushers.has(target) or _gunners.has(target) or _zombies.has(target)
+	for system in enemy_systems():
+		if system.items.has(target):
+			return true
+	return false
 
 # DEATHS, ON THE RISING EDGE OF BEING OUT OF PLAY.
 #
@@ -1732,7 +1741,9 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 		_announce_swallow_gone(swallow)
 		_swallows.remove_at(i)
 		swallow.queue_free()
-	for pool in [_rushers, _gunners, _zombies, _balls, _deployables, _corpses]:
+	for system in enemy_systems():
+		system.discard_from_row(cut_row)
+	for pool in [_balls, _deployables, _corpses]:
 		for i in range(pool.size() - 1, -1, -1):
 			var body = pool[i]
 			if not is_instance_valid(body):
@@ -1894,20 +1905,12 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(ball):
 			ball.queue_free()
 	_balls.clear()
-	# Rushers go with them. A wipe rewinds the party to a checkpoint, and leaving
-	# the thing that killed them still standing where they respawn is a loop, not
-	# a setback. Mounds stay SPENT, though: the ground the party already fought
-	# over does not reload with it.
-	for rusher in _rushers:
-		if is_instance_valid(rusher):
-			rusher.queue_free()
-	_rushers.clear()
-	# Zombies go with them, same rule and same exception: the bodies are cleared,
-	# the GRAVES stay empty. Ground the party already fought over does not reload.
-	for zombie in _zombies:
-		if is_instance_valid(zombie):
-			zombie.queue_free()
-	_zombies.clear()
+	# EVERY ENEMY GOES WITH THEM. A wipe rewinds the party to a checkpoint, and
+	# leaving the thing that killed them still standing where they respawn is a
+	# loop, not a setback. Mounds and graves stay SPENT, though: the bodies are
+	# cleared, the ground the party already fought over does not reload with them.
+	for system in enemy_systems():
+		system.clear()
 	# AND THE MINES, thrown or scattered. Same rule as the rushers above: a wipe
 	# rewinds the party, so what the round left lying about does not survive it --
 	# and the terrain's own mines are rebuilt with the corridor, so leaving these
@@ -1916,11 +1919,7 @@ func _restart_at_checkpoint() -> void:
 		if is_instance_valid(d):
 			d.queue_free()
 	_deployables.clear()
-	for gunner in _gunners:
-		if is_instance_valid(gunner):
-			gunner.queue_free()
-	_gunners.clear()
-	# And what those three left behind. A pile standing on ground the party is
+	# And what the enemies left behind. A pile standing on ground the party is
 	# about to re-fight is scenery from a fight that has been undone.
 	clear_corpses()
 	# Hats go too. A wipe rewinds the party to a checkpoint, and hats scattered
@@ -2338,126 +2337,16 @@ func _resolve_ball_hits(ball: Node) -> void:
 func ball_count() -> int:
 	return _balls.size()
 
-# --- Rushers ------------------------------------------------------------------
-#
-# The first DESTRUCTIBLE hazard. See design_ideas/hazards.md; the body's own
-# behaviour is in rusher_body.gd. This is the part that only the host may do:
-# deciding when a mound wakes, who each rusher is chasing, and what a contact
-# costs. A client is told the results and invents none of them.
 func _process_rushers() -> void:
-	if not mode_runs("rushers"):
-		return
-	if not is_host:
-		return
-	_wake_mounds()
-
-	for i in range(_rushers.size() - 1, -1, -1):
-		var rusher: Node = _rushers[i]
-		if not is_instance_valid(rusher):
-			_rushers.remove_at(i)
-			continue
-
-		# Target chosen HERE, per tick, because it is a host decision. Re-picked
-		# rather than locked on: a rusher that kept chasing someone who has since
-		# been carried off by a drone is a rusher chasing a corpse.
-		var target: Node = _nearest_target(rusher)
-		rusher.target_peer = int(target.peer_id) if target != null else 0
-		rusher.step(target.position if target != null else Vector3.ZERO, target != null)
-
-		if rusher.is_spent():
-			_rushers.remove_at(i)
-			_retire_enemy(rusher, Corpse.Kind.RUSHER)
-			continue
-
-		_resolve_rusher_contact(rusher)
-
-# A player within RUSHER_TRIGGER_RADIUS wakes the mound they are standing near.
-# Deliberately proximity and not a collision: the mound has no collider, because
-# a lump you can bump into is a wall, and the trigger has to be able to fire on a
-# player who merely walked PAST rather than onto it.
-func _wake_mounds() -> void:
-	if grid == null:
-		return
-	if _rushers.size() >= SimConfig.RUSHER_MAX:
-		return
-	# A COPY of the keys: take_mound() erases from the dictionary being iterated.
-	for cell in grid.mound_cells():
-		var at: Vector3 = grid.mound_surface_world(cell)
-		for peer_key in players.keys():
-			var body: Node = players[int(peer_key)]
-			# Someone hanging off a lip or already down cannot trip anything --
-			# waking a rusher onto a player who has no verbs left is a punishment
-			# with no decision in it.
-			if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
-				continue
-			if body.position.distance_to(at) > SimConfig.RUSHER_TRIGGER_RADIUS:
-				continue
-			# The same sight test that gates the chase gates the WAKE. Otherwise a
-			# player walking past on the far side of a pillar spends the mound on a
-			# rusher that rises with nobody to run at, stands still for ten seconds
-			# and burrows -- an authored hazard consumed without ever being one.
-			if not _clear_line(to_global(at), body.global_position):
-				continue
-			if grid.take_mound(cell):
-				_spawn_rusher(at)
-				# A mound changes state exactly ONCE in its life, so this is a
-				# discrete event and goes reliably -- unlike the rusher itself,
-				# which rides the unreliable per-tick snapshot. Losing this packet
-				# would leave a client drawing a lump that is not there, forever,
-				# and nothing later would correct it.
-				if networked:
-					_mound_taken.rpc(cell.x, cell.y)
-			break
+	rushers.step()
 
 func _spawn_rusher(at: Vector3) -> Node:
-	var rusher: Node3D = RusherScene.instantiate()
-	_next_rusher_id += 1
-	rusher.rusher_id = _next_rusher_id
-	rusher.name = "Rusher_%d" % _next_rusher_id
-	_rushers_root.add_child(rusher)
-	_rushers.append(rusher)
-	rusher.begin_rise(at)
-	return rusher
-
-# Nearest player who can actually be chased. Someone hanging, downed or in
-# transit is not a target: the rusher would stand over them running on the spot,
-# which looks like a bug and is a hit nobody could have avoided.
-#
-# AND IT MUST BE ABLE TO SEE THEM. Without that, a rusher with no pathfinding
-# walks into the near side of a pillar and grinds there for its whole lifetime --
-# the straight line that makes it cheap also makes it stupid, and a hazard that
-# is visibly stuck stops being threatening. With it, breaking line of sight
-# becomes a real answer, and it is the one that pairs with the burrow timer:
-# get something solid between you and it, and outliving it is a plan rather than
-# a hope.
-#
-# A rusher that can see nobody simply STANDS THERE. It does not wander or guess:
-# guessing needs a search behaviour, which is the pathfinding this design bought
-# its way out of.
-func _nearest_target(rusher: Node) -> Node:
-	var best: Node = null
-	var best_distance := INF
-	for peer_key in players.keys():
-		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		if body.is_awaiting_rescue() or _returning.has(peer):
-			continue
-		var d: float = body.position.distance_to(rusher.position)
-		if d >= best_distance:
-			continue
-		if not _can_see(rusher, body):
-			continue
-		best_distance = d
-		best = body
-	return best
+	return rushers.spawn(at)
 
 # Deck, parapets and pillars block sight; players do not. Hiding BEHIND A FRIEND
 # would make the friend a shield, which is a mechanic this game has not decided
 # to have -- and the one it does have for that is the shove.
 const SIGHT_BLOCKERS := Layers.SIGHT_BLOCKERS
-
-func _can_see(rusher: Node, body: Node) -> bool:
-	return _clear_line(rusher.global_position, body.global_position)
 
 # GLOBAL positions, not local. Two GameWorlds in one process share a single
 # physics space (the test harness offsets them by a kilometre precisely because
@@ -2472,371 +2361,34 @@ func _clear_line(from_global: Vector3, to_global: Vector3) -> bool:
 	# occlude itself or the other.
 	return space.intersect_ray(query).is_empty()
 
-# What a rusher does when it reaches somebody -- and what a dashing player does
-# to it. Resolved here, by proximity, for the same reason ball hits are: the
-# outcome is a game rule, not a physics response, and it has to be decided in one
-# place and once.
-func _resolve_rusher_contact(rusher: Node) -> void:
-	if not rusher.is_in_play():
-		return
-	for peer_key in players.keys():
-		var body: Node = players[int(peer_key)]
-		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
-			continue
-		if body.position.distance_to(rusher.position) > SimConfig.RUSHER_HIT_RADIUS + PlayerBody.HALF_HEIGHT:
-			continue
-
-		# A DASHING PLAYER WINS THE EXCHANGE. Checked before the hit, so the two
-		# can never both happen -- and it is the free answer available to
-		# everyone, which is what keeps a weaponless player from being stranded.
-		if body.state == PlayerBody.State.SHOVE:
-			rusher.deflect(GridConfig.yaw_vector(body.shove_yaw))
-			return
-
-		# ALREADY DEFLECTED, SO IT CANNOT COLLECT ON THE COUNTER IT LOST. `continue`
-		# rather than `return`: this rusher is harmless to THIS player, but another
-		# player may still be mid-dash and entitled to bat it further.
-		#
-		# Without this the dash was a counter that lost. See rusher_body's
-		# is_dangerous(): the dash is six ticks, the stagger it buys is a hundred
-		# and twenty, and the player spent the counter, walked into the thing they
-		# had just deflected, and was tumbled by it with the cooldown still running.
-		if not rusher.is_dangerous():
-			continue
-
-		# Otherwise it reaches you: tumble, one hit point, and it is SPENT.
-		# Expending itself is the whole reason a single rusher cannot chain-tumble
-		# someone who is already out of control and has no way to answer.
-		var along := Vector3(rusher.velocity.x, 0.0, rusher.velocity.z)
-		if along.length_squared() < 0.0001:
-			along = (body.position - rusher.position)
-			along.y = 0.0
-		if along.length_squared() < 0.0001:
-			along = Vector3(0.0, 0.0, 1.0)
-		along = along.normalized()
-
-		body.receive_hit(Hit.make(Hit.Kind.IMPACT, SimConfig.RUSHER_DAMAGE,
-			rusher.position, SimConfig.RUSHER_KNOCKBACK, SimConfig.RUSHER_KNOCKBACK_LIFT))
-		_kill_rusher(rusher)
-		return
-
-# THE FOURTH WAY A RUSHER LEAVES THE WORLD, AND IT WENT OUT THROUGH A SIDE DOOR.
-#
-# Reported from play: a rusher that reaches you pops out of existence, while one
-# you shoot comes apart. Both are true and this line is why -- the other three
-# exits (shot, burrowed, fallen) all run through `_retire_enemy`, which decides
-# whether a death earned a pile. This one called `queue_free` directly and was
-# never offered the choice.
-#
-# THE CONNECTING RUSHER IS THE MOST DESERVING DEATH OF THE FOUR. It is the only
-# one that happens at arm's length from a player who is looking straight at it,
-# and it is the moment the hazard is resolved: the thing that was chasing you is
-# gone, and it was gone with nothing to show for it.
-#
-# `kill()` before retiring rather than a new argument, because `killed` is
-# already the flag meaning "this ended in an EVENT rather than by expiring", and
-# spending itself on a body is exactly that. See the note on the flag itself.
-#
-# AND IT POPS RATHER THAN CRUMPLING. A standing pile is right for a death you
-# caused from across the deck -- it waits there and you walk through it. This one
-# happens against your chest at a run, and a neat heap appearing where the thing
-# was is the wrong punctuation for it: the burst IS the feedback that the charge
-# is over, delivered at the one moment the player is certainly looking.
-#
-# THE BURST POINT IS ITS OWN CENTRE, NOT THE PLAYER'S, and that is the difference
-# between a pop and a spray. `scatter` throws every piece along `piece - from`,
-# so a point beside the body sends the whole pile one way -- correct for a
-# grenade, which arrives from somewhere, and wrong for something that comes apart
-# where it stands. From the middle, the pieces go outward in every direction and
-# the shape of the burst says what caused it.
-#
-# Through `_note_death_burst` rather than by calling `scatter` here, so a contact
-# death takes the same route as an explosive one: the corpse is built scattered
-# rather than built standing and knocked over a frame later, and the client is
-# told by the same RPC instead of needing a second message.
 func _kill_rusher(rusher: Node) -> void:
-	var index: int = _rushers.find(rusher)
-	if index >= 0:
-		_rushers.remove_at(index)
-	if not is_instance_valid(rusher):
-		return
-	rusher.kill()
-	_note_death_burst(rusher, rusher.position)
-	_retire_enemy(rusher, Corpse.Kind.RUSHER)
+	rushers.kill(rusher)
 
 func rusher_count() -> int:
-	return _rushers.size()
+	return rushers.count()
 
-# --- Zombies ------------------------------------------------------------------
-#
-# The first enemy that arrives as a GROUP. See design_ideas/hazards.md; the walk
-# itself is in zombie_body.gd. This is the part only the host may do: deciding
-# when a grave opens, how many come out, who each of them is chasing, and what a
-# bite costs. A client is told the results and invents none of them.
 func _process_zombies() -> void:
-	if not mode_runs("zombies"):
-		return
-	if not is_host:
-		return
-	_wake_graves()
-
-	for i in range(_zombies.size() - 1, -1, -1):
-		var zombie: Node = _zombies[i]
-		if not is_instance_valid(zombie):
-			_zombies.remove_at(i)
-			continue
-
-		# Re-picked per tick, like the rusher's, and it matters MORE here: a pack
-		# that locked on at the moment it rose would all chase the same player
-		# forever, which is the one arrangement that turns a group into a single
-		# enemy with five bodies.
-		var target: Node = _nearest_target(zombie)
-		zombie.target_peer = int(target.peer_id) if target != null else 0
-		zombie.step(target.position if target != null else Vector3.ZERO, target != null)
-
-		if zombie.is_spent():
-			_zombies.remove_at(i)
-			_retire_enemy(zombie, Corpse.Kind.ZOMBIE)
-			continue
-
-		_resolve_zombie_contact(zombie)
-
-# A player within ZOMBIE_TRIGGER_RADIUS opens the grave they walked near. Same
-# shape as _wake_mounds, including the sight test -- a grave spent on a player who
-# never saw it is an authored encounter consumed without ever being one, and that
-# is worth three to five enemies here rather than one.
-func _wake_graves() -> void:
-	if grid == null:
-		return
-	# CHECKED AGAINST THE WHOLE PACK, not against one. The cap is a backstop for
-	# authored density being wrong, and a grave that opens with two slots left
-	# would deliver a pack of two -- which is not the hazard anybody authored. It
-	# opens in full or it waits.
-	if _zombies.size() + SimConfig.ZOMBIE_PACK_MAX > SimConfig.ZOMBIE_MAX:
-		return
-	# A COPY of the keys: take_grave() erases from the dictionary being iterated.
-	for cell in grid.grave_cells():
-		var at: Vector3 = grid.grave_surface_world(cell)
-		for peer_key in players.keys():
-			var body: Node = players[int(peer_key)]
-			if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
-				continue
-			if body.position.distance_to(at) > SimConfig.ZOMBIE_TRIGGER_RADIUS:
-				continue
-			if not _clear_line(to_global(at), body.global_position):
-				continue
-			if grid.take_grave(cell):
-				_spawn_pack(cell, at)
-				# A grave changes state exactly ONCE in its life, so this is a
-				# discrete event and goes RELIABLY -- unlike the zombies
-				# themselves, which ride the unreliable per-tick snapshot. Losing
-				# this packet would leave a client drawing a slab that is not
-				# there, forever, with nothing later to correct it.
-				if networked:
-					_grave_taken.rpc(cell.x, cell.y)
-			break
-
-# THE PACK. Three to five bodies from one cell, arranged in a RING.
-#
-# THE RING IS NOT DECORATION. Two perfectly coincident bodies depenetrate into a
-# degenerate normal that drives both of them DOWN through the deck -- measured,
-# and in CLAUDE.md as the trap every placement in this game has to answer. This is
-# the most concentrated instance of it the project has: five bodies, one cell, one
-# tick. ZOMBIE_PACK_RADIUS leaves 1.12 m between neighbours against a body 0.9 m
-# across.
-#
-# The count and the ring's rotation are drawn from the CELL, not from the global
-# RNG. A grave is authored terrain, so what comes out of it should be the same
-# thing every time that ground is replayed -- and it means a test can name a cell
-# and know what it will get.
-func _spawn_pack(cell: Vector2i, at: Vector3) -> Array:
-	var span: int = SimConfig.ZOMBIE_PACK_MAX - SimConfig.ZOMBIE_PACK_MIN + 1
-	var roll: int = Hash.mix(cell.x * 73856093 + cell.y * 19349663)
-	var count: int = SimConfig.ZOMBIE_PACK_MIN + (roll % span)
-	# So two graves side by side do not produce two identically-oriented rings.
-	var phase: float = float(Hash.mix(roll + 1) % 3600) * 0.1
-
-	var raised: Array = []
-	for i in count:
-		var angle: float = deg_to_rad(phase + 360.0 * float(i) / float(count))
-		var slot: Vector3 = at + Vector3(sin(angle), 0.0, cos(angle)) * SimConfig.ZOMBIE_PACK_RADIUS
-		# THE BACKSTOP, not the rule. The dressing pass and the validator both
-		# refuse a grave without deck on all eight sides, so this should never
-		# fire on authored or generated ground; it is here because the cost of
-		# being wrong is a body falling off the bridge the instant it exists, and
-		# because nothing downstream would report that as anything but a pack that
-		# turned up short.
-		if not _deck_under(slot):
-			continue
-		raised.append(_spawn_zombie(slot))
-	return raised
-
-# Is there something to stand on beneath this point? A short downward ray against
-# the world layer only, from head height.
-func _deck_under(at: Vector3) -> bool:
-	var space := get_world_3d().direct_space_state
-	if space == null:
-		return true
-	var from: Vector3 = to_global(at)
-	var to: Vector3 = from - Vector3(0.0, SimConfig.ZOMBIE_HEIGHT + 1.5, 0.0)
-	# Layer 1 only -- the deck. A pack member standing on another pack member's
-	# head is not "there is ground here", and neither is one resting on a stone
-	# that a blast is about to remove.
-	return not space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, 1)).is_empty()
+	zombies.step()
 
 func _spawn_zombie(at: Vector3) -> Node:
-	var zombie: Node3D = ZombieScene.instantiate()
-	_next_zombie_id += 1
-	zombie.zombie_id = _next_zombie_id
-	zombie.name = "Zombie_%d" % _next_zombie_id
-	_zombies_root.add_child(zombie)
-	_zombies.append(zombie)
-	zombie.begin_rise(at)
-	return zombie
-
-# What a zombie does when it reaches somebody, and what a dashing player does to
-# it. Resolved here by proximity for the same reason every other contact in this
-# file is: the outcome is a game rule, not a physics response, and it has to be
-# decided in one place and once.
-#
-# STRUCTURALLY THE RUSHER'S, WITH ONE DIFFERENCE, and the difference is the whole
-# enemy: a rusher is SPENT on contact, a zombie RECOILS. See recoil_from() -- with
-# five of them, being spent on contact would mean the pack lands five hits and
-# deletes itself, and the rule that exists to stop one enemy chain-tumbling a
-# helpless player would be protecting nobody.
-func _resolve_zombie_contact(zombie: Node) -> void:
-	if not zombie.is_in_play():
-		return
-	for peer_key in players.keys():
-		var body: Node = players[int(peer_key)]
-		if body.is_awaiting_rescue() or _returning.has(int(peer_key)):
-			continue
-		if body.position.distance_to(zombie.position) > SimConfig.ZOMBIE_HIT_RADIUS + PlayerBody.HALF_HEIGHT:
-			continue
-
-		# A DASHING PLAYER WINS THE EXCHANGE, checked before the hit so the two can
-		# never both happen. The free answer available to everyone, which is what
-		# keeps a weaponless player from being stranded in front of a pack.
-		if body.state == PlayerBody.State.SHOVE:
-			zombie.deflect(GridConfig.yaw_vector(body.shove_yaw))
-			return
-
-		# Already deflected, or still recovering from its last bite, so it cannot
-		# collect on a counter it lost. `continue` rather than `return`: this
-		# zombie is harmless to THIS player, but another player may still be
-		# mid-dash and entitled to bat it further.
-		if not zombie.is_dangerous():
-			continue
-
-		# A CHANCE OF A TUMBLE, ROLLED PER CONTACT. A rusher always tumbles because
-		# it only gets to do it once; a zombie gets to do it repeatedly, and a
-		# hazard that reliably takes your control away every time it touches you is
-		# one you cannot play out of.
-		#
-		# Below the roll it is damage and NOTHING ELSE -- receive_hit tumbles on any
-		# push at all, so "no tumble" has to mean no knockback. That reads as being
-		# bitten rather than run over, which is what it is.
-		var tumbles: bool = zombie._draw() < SimConfig.ZOMBIE_TUMBLE_CHANCE
-		var push: float = SimConfig.ZOMBIE_KNOCKBACK if tumbles else 0.0
-		var lift: float = SimConfig.ZOMBIE_KNOCKBACK_LIFT if tumbles else 0.0
-		body.receive_hit(Hit.make(Hit.Kind.IMPACT, SimConfig.ZOMBIE_DAMAGE,
-			zombie.position, push, lift))
-		# KNOCKED OFF, NOT KILLED. Unconditional -- it happens whether or not the
-		# damage landed, because a player inside HIT_GRACE has still been walked
-		# into and a zombie that stayed pressed against them would bite again the
-		# tick the grace expires, forever.
-		zombie.recoil_from(body.position)
-		return
+	return zombies.spawn(at)
 
 func zombie_count() -> int:
-	return _zombies.size()
+	return zombies.count()
 
 # --- Gunners ------------------------------------------------------------------
 
 func gunner_count() -> int:
-	return _gunners.size()
+	return gunners.count()
 
 func _process_gunners() -> void:
-	if not mode_runs("gunners"):
-		return
-	if not is_host:
-		return
-	if grid != null:
-		for entry in grid.take_authored_gunner_cells():
-			_spawn_gunner(grid.cell_surface_world(entry[0]) + Vector3(0.0, 1.0, 0.0),
-				int(entry[1]))
+	gunners.step()
 
-	for i in range(_gunners.size() - 1, -1, -1):
-		var gunner: Node = _gunners[i]
-		if not is_instance_valid(gunner):
-			_gunners.remove_at(i)
-			continue
-		if gunner.is_spent() or gunner.position.z > _trailing_edge_z():
-			_gunners.remove_at(i)
-			# A TURRET SHATTERS TOO, and it is the reason corpse.gd stopped looking
-			# for a single mesh called "Mesh": a turret is a tapered base, a ring
-			# and a gun barrel, in two different greys. Bolted down in life, and
-			# no less breakable for it.
-			_retire_enemy(gunner, Corpse.Kind.TURRET if int(gunner.kind) == GunnerBody.Kind.TURRET else Corpse.Kind.SKIRMISHER)
-			continue
-
-		# LINE OF SIGHT GATES BOTH HALVES, and for a gunner it matters more than
-		# it does for a rusher. A rusher with no sight stands still, which is
-		# merely wasteful; a GUN that fired through a pillar would have no
-		# counter-play at all, and cover is the whole answer to these.
-		var target: Node = _nearest_visible_player(gunner)
-		gunner.step(target)
-		if target == null:
-			continue
-		var range_to: float = gunner.position.distance_to(target.position)
-		# The target goes in as well as the distance: a turret also has to be able
-		# to BEAR on it, and that is a question about angle that only the turret
-		# can answer.
-		if gunner.wants_to_fire(range_to, target):
-			gunner.note_fired()
-			_spawn_round(gunner.muzzle(),
-				_spread((target.global_position + Vector3(0.0, 0.25, 0.0) - gunner.muzzle()).normalized()),
-				0, gunner.get_rid())
-
-func _nearest_visible_player(gunner: Node) -> Node:
-	var best: Node = null
-	var best_d: float = INF
-	for peer_key in players.keys():
-		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		if body.is_awaiting_rescue() or _returning.has(peer):
-			continue
-		var d: float = gunner.position.distance_to(body.position)
-		if d >= best_d:
-			continue
-		if not _clear_line(gunner.global_position + Vector3(0.0, 0.25, 0.0),
-				body.global_position):
-			continue
-		best = body
-		best_d = d
-	return best
-
-# THE KIND PICKS THE SCENE AND NOTHING ELSE. `kind` is not assigned onto the body
-# afterwards -- each script sets its own in _init, so the scene is the single
-# source of truth and a scene wired to the wrong script cannot quietly report
-# itself as the other thing over the wire.
 func _spawn_gunner(at: Vector3, kind: int) -> Node:
-	var scene: PackedScene = TurretScene if kind == GunnerBody.Kind.TURRET else SkirmisherScene
-	var gunner: Node3D = scene.instantiate()
-	_next_gunner_id += 1
-	gunner.gunner_id = _next_gunner_id
-	gunner.world = self
-	gunner.name = "Gunner_%d" % _next_gunner_id
-	_gunners_root.add_child(gunner)
-	gunner.position = at
-	_gunners.append(gunner)
-	return gunner
+	return gunners.spawn(at, kind)
 
 func _gunner_by_id(id: int) -> Node:
-	for gunner in _gunners:
-		if is_instance_valid(gunner) and gunner.gunner_id == id:
-			return gunner
-	return null
+	return gunners.by_id(id)
 
 # --- Hats ---------------------------------------------------------------------
 
@@ -3896,7 +3448,7 @@ func _snap_to_enemy(body: Node, target: Vector3) -> Vector3:
 	along /= span
 	var best: Vector3 = target
 	var best_distance: float = span
-	for list in [_rushers, _gunners, _zombies]:
+	for list in enemy_lists():
 		for enemy in list:
 			if not is_instance_valid(enemy) or enemy.is_spent():
 				continue
@@ -4544,7 +4096,7 @@ func _corpse_toucher(at: Vector3) -> Variant:
 			return body.position
 	# Enemies too. A pack walking over one of its own knocks it apart, which is
 	# the picture that makes a corpse read as an object rather than as a decal.
-	for list in [_rushers, _zombies, _gunners]:
+	for list in enemy_lists():
 		for enemy in list:
 			if is_instance_valid(enemy) and enemy.position.distance_to(at) <= reach:
 				return enemy.position
@@ -4615,7 +4167,7 @@ func _anything_walking_within(centre: Vector3, radius: float) -> bool:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and not body.is_awaiting_rescue() 				and body.position.distance_to(centre) <= radius:
 			return true
-	for group in [_rushers, _gunners, _zombies]:
+	for group in enemy_lists():
 		for node in group:
 			if is_instance_valid(node) and node.position.distance_to(centre) <= radius:
 				return true
@@ -4631,7 +4183,7 @@ func _blast_targets(centre: Vector3, radius: float) -> Array:
 		var body: Node = players[int(peer_key)]
 		if is_instance_valid(body) and body.position.distance_to(centre) <= radius:
 			out.append(body)
-	for group in [_rushers, _gunners, _zombies, _balls, _hats.all(), _specials.all(), _deployables]:
+	for group in enemy_lists() + [_balls, _hats.all(), _specials.all(), _deployables]:
 		for node in group:
 			if is_instance_valid(node) and node.has_method("receive_hit") 					and node.position.distance_to(centre) <= radius:
 				out.append(node)
@@ -6496,10 +6048,10 @@ const SNAPSHOT_SECTIONS := ["players", "stones", "layout", "balls", "rushers",
 # built inline in _broadcast_snapshot because they are not pools.
 func _snapshot_sources() -> Array:
 	return [
-		["balls", _ball_snapshot], ["rushers", _rusher_snapshot],
+		["balls", _ball_snapshot], ["rushers", rushers.snapshot],
 		["hats", _hat_snapshot], ["specials", _special_snapshot],
-		["bullets", _bullet_snapshot], ["gunners", _gunner_snapshot],
-		["deployables", _deployable_snapshot], ["zombies", _zombie_snapshot],
+		["bullets", _bullet_snapshot], ["gunners", gunners.snapshot],
+		["deployables", _deployable_snapshot], ["zombies", zombies.snapshot],
 		["buses", _bus_snapshot],
 	]
 
@@ -6508,10 +6060,10 @@ func _snapshot_sources() -> Array:
 # answer from last tick's roster is an answer about a different world.
 func _snapshot_sinks() -> Array:
 	return [
-		["balls", _apply_ball_snapshot], ["rushers", _apply_rusher_snapshot],
-		["zombies", _apply_zombie_snapshot], ["hats", _apply_hat_snapshot],
+		["balls", _apply_ball_snapshot], ["rushers", rushers.apply_snapshot],
+		["zombies", zombies.apply_snapshot], ["hats", _apply_hat_snapshot],
 		["specials", _apply_special_snapshot], ["bullets", _apply_bullet_snapshot],
-		["gunners", _apply_gunner_snapshot],
+		["gunners", gunners.apply_snapshot],
 		["deployables", _apply_deployable_snapshot], ["buses", _apply_bus_snapshot],
 	]
 
@@ -6595,112 +6147,11 @@ func _ball_by_id(id: int) -> Node:
 			return ball
 	return null
 
-# Rushers ride the per-tick snapshot exactly like balls: host-authoritative,
-# never predicted. No velocity on the wire -- a client does not integrate one, so
-# sending it would be paying MTU for a number nobody reads. See the CLAUDE.md
-# note about the 4595-byte snapshot that would not fit ENet's 1392.
-func _gunner_snapshot(keyframe: bool) -> Array:
-	var out: Array = []
-	for gunner in _gunners:
-		if is_instance_valid(gunner):
-			out.append(gunner.capture_state())
-	return SnapshotDelta.encode(out, _section("gunners"), keyframe)
-
-# Self-healing like every other pool: one the host stops naming has been shot.
-func _apply_gunner_snapshot(section: Array) -> void:
-	var seen: Dictionary = _seen_from(section)
-	for entry in SnapshotDelta.changed_of(section):
-		var id: int = int(entry[0])
-		var gunner: Node = _gunner_by_id(id)
-		if gunner == null:
-			gunner = _spawn_gunner(entry[2], int(entry[1]))
-			gunner.gunner_id = id
-		gunner.apply_state(entry)
-
-	for i in range(_gunners.size() - 1, -1, -1):
-		var existing: Node = _gunners[i]
-		if not is_instance_valid(existing) or not seen.has(existing.gunner_id):
-			_gunners.remove_at(i)
-			if is_instance_valid(existing):
-				existing.queue_free()
-
-func _rusher_snapshot(keyframe: bool) -> Array:
-	var out: Array = []
-	for rusher in _rushers:
-		if is_instance_valid(rusher):
-			out.append(rusher.capture_state())
-	return SnapshotDelta.encode(out, _section("rushers"), keyframe)
-
-# Self-healing by construction, same as the ball set: a dropped packet costs a
-# frame of staleness rather than an enemy that exists forever on one machine.
-# THIS IS ALSO HOW A CLIENT LEARNS A RUSHER DIED -- it stops being mentioned.
-func _apply_rusher_snapshot(section: Array) -> void:
-	var seen: Dictionary = _seen_from(section)
-	for entry in SnapshotDelta.changed_of(section):
-		var id: int = int(entry[0])
-		var rusher: Node = _rusher_by_id(id)
-		if rusher == null:
-			rusher = RusherScene.instantiate()
-			rusher.rusher_id = id
-			rusher.name = "Rusher_%d" % id
-			_rushers_root.add_child(rusher)
-			_rushers.append(rusher)
-		rusher.apply_state(entry)
-
-	for i in range(_rushers.size() - 1, -1, -1):
-		var existing: Node = _rushers[i]
-		if not is_instance_valid(existing) or not seen.has(existing.rusher_id):
-			_rushers.remove_at(i)
-			if is_instance_valid(existing):
-				existing.queue_free()
-
 func _rusher_by_id(id: int) -> Node:
-	for rusher in _rushers:
-		if is_instance_valid(rusher) and rusher.rusher_id == id:
-			return rusher
-	return null
-
-# ITS OWN SECTION, not a `kind` field bolted onto the rusher's.
-#
-# The gunners share one because a skirmisher and a turret genuinely differ only in
-# which scene to build; a client draws them from the same five numbers. A zombie
-# carries a sixth (`move_kind`), so sharing would mean padding every rusher entry
-# with a field it does not have, on every tick, for the whole life of the wire.
-func _zombie_snapshot(keyframe: bool) -> Array:
-	var out: Array = []
-	for zombie in _zombies:
-		if is_instance_valid(zombie):
-			out.append(zombie.capture_state())
-	return SnapshotDelta.encode(out, _section("zombies"), keyframe)
-
-# Self-healing like every other pool, and THIS IS ALSO HOW A CLIENT LEARNS A
-# ZOMBIE DIED -- it stops being mentioned. A dropped packet costs a frame of
-# staleness rather than an enemy that exists forever on one machine.
-func _apply_zombie_snapshot(section: Array) -> void:
-	var seen: Dictionary = _seen_from(section)
-	for entry in SnapshotDelta.changed_of(section):
-		var id: int = int(entry[0])
-		var zombie: Node = _zombie_by_id(id)
-		if zombie == null:
-			zombie = ZombieScene.instantiate()
-			zombie.zombie_id = id
-			zombie.name = "Zombie_%d" % id
-			_zombies_root.add_child(zombie)
-			_zombies.append(zombie)
-		zombie.apply_state(entry)
-
-	for i in range(_zombies.size() - 1, -1, -1):
-		var existing: Node = _zombies[i]
-		if not is_instance_valid(existing) or not seen.has(existing.zombie_id):
-			_zombies.remove_at(i)
-			if is_instance_valid(existing):
-				existing.queue_free()
+	return rushers.by_id(id)
 
 func _zombie_by_id(id: int) -> Node:
-	for zombie in _zombies:
-		if is_instance_valid(zombie) and zombie.zombie_id == id:
-			return zombie
-	return null
+	return zombies.by_id(id)
 
 # LOOSE AND FLYING HATS ONLY. Who is WEARING what travels reliably instead -- see
 # _wear_hat. This is the split the plan calls the expensive mistake available

@@ -1,4 +1,4 @@
-extends CharacterBody3D
+extends "res://scripts/sim/actors/rising_enemy.gd"
 
 # A zombie. It claws out of an authored grave IN A PACK, closes on the nearest
 # player in threes and ones, bites whoever it reaches, and rots away if it never
@@ -35,9 +35,8 @@ extends CharacterBody3D
 # that line.
 
 const Hash = preload("res://scripts/core/hash.gd")
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const Corpse = preload("res://scripts/sim/corpse.gd")
 
 enum State {
 	RISE,       # clawing out. The telegraph: cannot touch you, cannot be touched
@@ -52,18 +51,12 @@ enum State {
 # exists.
 enum Move { SHUFFLE, LUNGE }
 
-var zombie_id: int = 0
-var state: int = State.RISE
-var state_timer: float = 0.0
-
-# Total time since it broke the surface, INCLUDING the rise -- one clock, same as
-# the rusher's, because the player experiences it as one appearance.
-var age: float = 0.0
-
-# Host-decided every tick. A client is told the answer and invents nothing.
-var target_peer: int = 0
-
-var grounded: bool = false
+# The network id, under the name everything outside this file has always used.
+# `state`, `state_timer`, `age` (one clock including the rise, same as the
+# rusher's) and `target_peer` (host-decided) live on RisingEnemy.
+var zombie_id: int:
+	get: return id
+	set(value): id = value
 
 # --- The move in progress -----------------------------------------------------
 #
@@ -95,20 +88,25 @@ const MOVE_TIMEOUT := 2.5
 # five zombies end up performing the same choreography.
 var _rolls: int = 0
 
-# Where the deck was when it woke: the rise animates from ZOMBIE_HEIGHT below this
-# to standing on it.
-var _emerge_from: Vector3 = Vector3.ZERO
+func _rise_height() -> float:
+	return SimConfig.ZOMBIE_HEIGHT
 
-func _ready() -> void:
-	floor_max_angle = deg_to_rad(SimConfig.MAX_WALK_ANGLE_DEG)
+func _rise_seconds() -> float:
+	return SimConfig.ZOMBIE_RISE_SECONDS
 
-func begin_rise(at: Vector3) -> void:
-	position = at - Vector3(0.0, SimConfig.ZOMBIE_HEIGHT, 0.0)
-	_emerge_from = at
-	velocity = Vector3.ZERO
-	state = State.RISE
-	state_timer = 0.0
-	age = 0.0
+func _risen_state() -> int:
+	return State.WALK
+
+# It rots. The floor under a weaponless player, the same one the rusher's burrow
+# provides -- longer, because there are more of them, and outliving a pack is
+# meant to be grim rather than impossible.
+func _lifetime() -> float:
+	return SimConfig.ZOMBIE_LIFETIME
+
+func corpse_kind() -> int:
+	return Corpse.Kind.ZOMBIE
+
+func _on_begin_rise() -> void:
 	_last_position = position
 	_facing_from = position
 
@@ -129,19 +127,12 @@ func step(target: Vector3, has_target: bool) -> void:
 		State.STAGGER:
 			_step_settling(SimConfig.ZOMBIE_STAGGER_SECONDS)
 
-# Straight up out of the ground on rails, exactly like a rusher's, and for the
-# identical reason: a telegraph whose length depends on what it collided with on
-# the way up is not a promise.
-func _step_rise() -> void:
-	var t: float = clampf(state_timer / SimConfig.ZOMBIE_RISE_SECONDS, 0.0, 1.0)
-	position = _emerge_from - Vector3(0.0, SimConfig.ZOMBIE_HEIGHT * (1.0 - t), 0.0)
-	velocity = Vector3.ZERO
-	if t >= 1.0:
-		state = State.WALK
-		state_timer = 0.0
-		_last_position = position
-		_budget = 0.0
-		_travelled = 0.0
+# The rise itself is RisingEnemy's, on rails exactly like a rusher's: a telegraph
+# whose length depends on what it collided with on the way up is not a promise.
+func _on_risen() -> void:
+	_last_position = position
+	_budget = 0.0
+	_travelled = 0.0
 
 # How fast this move goes. A PERCENTAGE of the shipped constant, the same shape
 # the rusher's knob has, so a playtest report says something about the value in
@@ -238,16 +229,8 @@ func _step_settling(duration: float) -> void:
 		_budget = 0.0
 		_travelled = 0.0
 
-func _apply_gravity_and_move() -> void:
-	if grounded:
-		# The same trick as the player and the rusher: a small downward push while
-		# grounded, because velocity.y == 0 does not reliably produce a floor
-		# collision and everything keyed off `grounded` then flickers with it.
-		velocity.y = -SimConfig.FLOOR_STICK
-	else:
-		velocity.y -= SimConfig.GRAVITY * SimConfig.TICK_DELTA
-	move_and_slide()
-	grounded = is_on_floor()
+# The fall-and-move is EnemyBody's; a zombie turns to face where it went after.
+func _after_move() -> void:
 	_face_travel()
 
 # WHICH WAY IT IS POINTING, DERIVED FROM WHERE IT WENT -- on the host and on every
@@ -336,38 +319,15 @@ func is_in_play() -> bool:
 func is_dangerous() -> bool:
 	return state == State.WALK
 
-# SHOT. The only thing that ENDS a zombie rather than postponing it. A flag rather
-# than an immediate free, for the same reason the rusher's is: the pool walks its
-# list once per tick and removes what is spent, so one that vanished mid-iteration
-# would be a freed object still sitting in an array being read.
-var killed: bool = false
-
-func kill() -> void:
-	killed = true
-
-func receive_hit(hit) -> bool:
-	match hit.kind:
-		Hit.Kind.BULLET, Hit.Kind.EXPLOSIVE:
-			kill()
-			return true
-		_:
-			# A dash. Deflected along the way the hit was travelling, which for a
-			# contact is away from the body that arrived.
-			deflect(hit.direction_to(position))
-			return true
-
-# It rots. The floor under a weaponless player, the same one the rusher's burrow
-# provides -- longer, because there are more of them, and outliving a pack is
-# meant to be grim rather than impossible.
-func is_spent() -> bool:
-	return killed or age > SimConfig.ZOMBIE_LIFETIME or position.y < SimConfig.FALL_KILL_Y
-
+# SHOT is the only thing that ENDS a zombie rather than postponing it --
+# EnemyBody.receive_hit, with a dash batting it away via RisingEnemy.
+#
 # Clients are TOLD where a zombie is; they never simulate one. `move_kind` rides
 # along so a client can lean the mesh into a lunge -- it is the only part of the
 # walk that is visible, and deriving it on the far end would mean shipping the
 # heading, the budget and the roll counter to reproduce a lean.
 func capture_state() -> Array:
-	return [zombie_id, position, state, target_peer, move_kind]
+	return [id, position, state, target_peer, move_kind]
 
 func apply_state(s: Array) -> void:
 	position = s[1]

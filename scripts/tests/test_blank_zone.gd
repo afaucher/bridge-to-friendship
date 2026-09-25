@@ -307,36 +307,36 @@ func _the_pools_it_turns_off_do_not_run() -> void:
 	# wrapper over `GameMode.runs()` -- so all of it would pass with the gates
 	# unwired, which is CLAUDE.md's "asserting the helper is not asserting the
 	# pass". This is the pass: a live rusher, ticked, in each mode.
+	#
+	# AND IT CLEARS UP, rather than merely freezing. A pool a mode switches off
+	# must not keep what it already had standing -- the bus shipped parking a
+	# vehicle on the ordinary bridge that way -- so a rusher alive when its round
+	# turns blank is removed, not left standing still over somebody's lobby.
 	var at: Vector3 = world.player_body(1).global_position + Vector3(0.0, 0.6, -6.0)
-	var rusher: Node = world._spawn_rusher(at)
-	if check(rusher != null and is_instance_valid(rusher), "a rusher exists to watch"):
-		world.round_machine.state = RoundMachine.State.RUNNING
-		world.run_modes = [GameMode.BLANK]
-		var start: Vector3 = rusher.global_position
+	world.round_machine.state = RoundMachine.State.RUNNING
+
+	# THE CONTROL FIRST, and it has to be able to succeed: if a rusher would not
+	# have moved in base either, "it went" says nothing at all. Same lesson as the
+	# hat that could not be shot because the control was never lifted clear.
+	world.run_modes = [GameMode.BASE]
+	var control: Node = world._spawn_rusher(at)
+	if check(control != null and is_instance_valid(control), "a rusher exists to watch"):
+		var start: Vector3 = control.global_position
 		for _i in 30:
 			world._process_rushers()
-		var moved_blank: float = start.distance_to(rusher.global_position)
-
-		# THE CONTROL, and it has to be able to succeed: if the rusher would not
-		# have moved in base either, "it did not move" says nothing at all. Same
-		# lesson as the hat that could not be shot because the control was never
-		# lifted clear of the deck.
-		world.run_modes = [GameMode.BASE]
-		start = rusher.global_position
-		for _i in 30:
-			world._process_rushers()
-		var moved_base: float = start.distance_to(rusher.global_position)
-
-		print("[blank] a rusher moved %.3f m in a blank zone, %.3f m in base"
-			% [moved_blank, moved_base])
+		var moved_base: float = start.distance_to(control.global_position)
+		print("[blank] a rusher moved %.3f m in base" % moved_base)
 		check(moved_base > 0.05,
-			"the control moves in base (%.3f m) -- without that, 'it did not move' "
+			"the control moves in base (%.3f m) -- without that, 'it went' "
 				% moved_base + "is a claim about a rusher that was never going to")
-		near(moved_blank, 0.0, 0.001,
-			"and the same rusher does not move in a blank zone (%.3f m): the pool "
-				% moved_blank
-			+ "is gated at the top of its tick, not merely declared off in a table")
+
 		world.run_modes = [GameMode.BLANK]
+		world._process_rushers()
+		eq(world.rusher_count(), 0,
+			"and the moment the round is blank the pool is EMPTY -- gated at the top "
+			+ "of its tick and cleared, not merely declared off in a table")
+		check(not is_instance_valid(control) or control.is_queued_for_deletion(),
+			"that rusher specifically is gone rather than frozen in place")
 	check(off.size() >= 8,
 		"and it really does switch a lot off (%d of %d) -- a second row that "
 			% [off.size(), GameMode.POOLS.size()]
