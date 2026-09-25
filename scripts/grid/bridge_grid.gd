@@ -123,6 +123,16 @@ func truncate_run(keep: int) -> void:
 
 	_free_props_past(cut_row)
 	_forget_cells_past(cut_row)
+	# THE STONE LIST HOLDS NODES, NOT CELLS, so neither sweep above reaches it --
+	# and it is the network identity of every stone (an index into it). Left
+	# holding the freed stones it went on numbering them, so the host's indices
+	# ran past a late joiner's (who built the run fresh), and every snapshot
+	# raised on assigning a freed instance to a typed var.
+	_stone_list = _stone_list.filter(func(st): return is_instance_valid(st) \
+		and not (st as Node).is_queued_for_deletion())
+	_falling = _falling.filter(func(st): return is_instance_valid(st) \
+		and not (st as Node).is_queued_for_deletion())
+	_rebuild_cell_map()
 	# The field is a property of the whole run's water, so a truncation can move
 	# an outlet -- cutting a segment off can open a channel that was closed.
 	_recompute_water_flow()

@@ -251,7 +251,7 @@ func _the_level_goes_and_the_party_stays() -> void:
 	# that introduced corpses rather than after a report -- a corpse lies where an
 	# enemy died for eight seconds, so a mode change while one is cooling leaves it
 	# over the hole the road used to be. Short window, same shape.
-	world._show_corpse(0, past + Vector3(0.0, 0.0, 0.3), Vector3.ZERO, false)
+	world._show_corpse(0, past + Vector3(0.0, 0.0, 0.3), 0.0, 0.0, Vector3.ZERO, false)
 	var corpse: Variant = world._corpses[world._corpses.size() - 1] 		if world._corpses.size() > 0 else null
 	if not check(corpse != null, "a corpse exists to sort"):
 		return

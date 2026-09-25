@@ -1572,8 +1572,22 @@ func _rebuild_corridor_ahead() -> void:
 		return
 	_discard_level_entities_past(keep)
 	grid.truncate_run(keep)
+	# A CLIENT HAS TO THROW IT AWAY TOO. `_extend_run_to` only ever builds FORWARD
+	# from what a client already holds, so without this a re-pick reached clients
+	# as "you now have N segments" when they already had N -- the old corridor
+	# stood on every client while the host played the new one. Reliable, and sent
+	# before the extension below, so the two arrive in that order.
+	if networked:
+		_truncate_run_to.rpc(keep)
 	run_modes = _modes_for(keep)
 	_extend_run()
+
+@rpc("authority", "call_remote", "reliable")
+func _truncate_run_to(keep: int) -> void:
+	if grid == null or keep >= grid.segment_count():
+		return
+	_discard_level_entities_past(keep)
+	grid.truncate_run(keep)
 
 # SOMEBODY DASHED THE SELECTOR. M25 phase 2.
 #
@@ -1996,7 +2010,10 @@ func _extend_run_to(seed_value: int, wanted: int, modes: Array = [],
 		# pure function of (seed, index), which is the same guarantee that lets a
 		# joining client be told two numbers instead of a world.
 		grid.dress_hazards = true
-		grid.build_run(seed_value, wanted, run_modes)
+		# AND THE SEEDS. A round the selector re-picked has a seed of its own, and
+		# building it from the run seed is a different bridge -- see
+		# test_run_seed_sync.
+		grid.build_run(seed_value, wanted, run_modes, run_seeds)
 
 # --- Spike blocks (M17) -------------------------------------------------------
 #
@@ -7323,7 +7340,7 @@ func host_add_peer(peer: int) -> void:
 		# A newcomer arriving mid-mode has to build the corridor it is standing in,
 		# not the base one, and a second packet would leave a window where it had
 		# built the wrong world.
-		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count(), run_modes)
+		_extend_run_to.rpc_id(peer, grid.run_seed, grid.segment_count(), run_modes, run_seeds)
 		# AFTER the run, never before: this names cells that only exist once the
 		# newcomer has built the segments holding them. Both are reliable, so the
 		# order they are sent in is the order they arrive in.
