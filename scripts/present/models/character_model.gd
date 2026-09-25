@@ -132,7 +132,7 @@ func place_eye(facing: Node3D, node_name: String, eye: Dictionary) -> void:
 		dark.roughness = 0.4
 		pupil_node.material_override = dark
 
-# The chosen accessory: horns, antlers, a tail, or nothing.
+# The chosen accessory: horns, antlers, a moose rack, a tail, a shrimp tail, or nothing.
 #
 # MESH ONLY. NO CollisionShape3D, NO LAYER, NO MASK, AND THAT IS A RULE RATHER
 # THAN AN OVERSIGHT. art_direction.md's contract rule 3 allows decorative

@@ -218,7 +218,8 @@ const EYE_PUPIL := Color(0.06, 0.06, 0.08)
 
 # --- The accessory slot -------------------------------------------------------
 #
-# ONE AT A TIME, or none (decided 2026-08-20). Horns, antlers, or a tail.
+# ONE AT A TIME, or none (decided 2026-08-20). Horns, antlers, a moose rack, a
+# tail, or a shrimp's tail.
 #
 # The single slot is doing more work than it looks. The camera reads silhouette
 # from above, the head already carries a tower of hats, and independent toggles
@@ -238,13 +239,18 @@ const ACCESSORY_TAIL := "tail"
 # beam with points along it; a moose rack is a flat PALM with points around its
 # edge. Nothing about the elk data could be scaled into one.
 const ACCESSORY_MOOSE := "moose"
+# A SHRIMP'S TAIL: a segmented shell and a tail fan. A separate entry from `tail`
+# because it is a different STRUCTURE, the same reason the moose is not a bigger
+# elk: the tail is one continuous tapering stalk, and this is a row of armour
+# plates that ends in a fan.
+const ACCESSORY_SHRIMP := "shrimp_tail"
 
 # APPENDED, NEVER INSERTED. The order here is not load-bearing the way
 # SetPieces.LIBRARY's is -- accessories are stored by NAME precisely so it cannot
 # be -- but the character screen walks this list, so inserting in the middle
 # reshuffles the buttons under somebody who had learned where theirs was.
 const ACCESSORIES := [ACCESSORY_NONE, ACCESSORY_HORNS, ACCESSORY_ANTLERS,
-	ACCESSORY_MOOSE, ACCESSORY_TAIL]
+	ACCESSORY_MOOSE, ACCESSORY_TAIL, ACCESSORY_SHRIMP]
 
 # THE SPREAD CEILING, and it is the mirror of the nose's protrusion FLOOR.
 #
@@ -577,6 +583,56 @@ static func accessory_parts(kind: String) -> Array:
 				{"pos": Vector3(0.0, -0.042, 1.288), "dir": Vector3(0.0, 0.45, 0.893), "radius": 0.150, "tip": 0.115, "length": 0.32},
 				{"pos": Vector3(0.0, 0.135, 1.524), "dir": Vector3(0.0, 0.75, 0.661), "radius": 0.115, "tip": 0.080, "length": 0.28},
 				{"pos": Vector3(0.0, 0.354, 1.654), "dir": Vector3(0.0, 0.95, 0.312), "radius": 0.080, "tip": 0.0, "length": 0.24},
+			]
+		ACCESSORY_SHRIMP:
+			# A SHRIMP'S TAIL, and the two things that make it one rather than the
+			# tail above are both about STRUCTURE, not size.
+			#
+			# THE SHELL IS PLATES, AND THE STEPS ARE THE POINT. The tail's joins match
+			# exactly so it reads as one tapering stalk; here each plate FLARES a
+			# little to its rear rim and the next one starts NARROWER, tucked 0.03
+			# back inside it. That lip at every join is what makes a row of cones read
+			# as armour. It is the tail's rule deliberately inverted, and
+			# test_accessory asserts it that way round.
+			#
+			# THE BACK ARCHES. Six plates pitched from 40 degrees up at the rump to
+			# 32 down at the last, so the shell humps over and dips into the fan --
+			# the curl a shrimp has, opened out far enough to stay off the deck.
+			#
+			# THE FAN LIES FLAT, which is the reading from the game camera: it looks
+			# down at 45 degrees, and a fan standing upright is edge-on to it. The
+			# telson points straight back with two uropods a side splayed at 30 and 60
+			# degrees, all five pitched 8 degrees down and rooted along a short rim
+			# rather than at one point (the moose's lesson: from one origin a fan is a
+			# starburst). Each blade is a LEAF, two chained cones -- narrow at the root,
+			# broad in the middle, a point at the end -- because a single cone is a
+			# spike, and a shrimp's tail fan is paddles.
+			#
+			# COMPUTED, NOT EYEBALLED: every plate starts at the previous plate's end
+			# less the tuck, each plate's base radius is 0.84 of the previous tip, and
+			# every blade is aimed from its named yaw and the fan's pitch. The chain,
+			# the lips, the leaves, the flatness and the spread are each asserted in
+			# test_accessory, and each assertion was A/B'd against a mutation of the
+			# one property it names.
+			return [
+				# --- the shell: six plates, a chain with a lip at every join ---
+				{"pos": Vector3(0.000, -0.036, 0.447), "dir": Vector3(0.000, 0.643, 0.766), "radius": 0.170, "tip": 0.179, "length": 0.20},
+				{"pos": Vector3(0.000, 0.052, 0.585), "dir": Vector3(0.000, 0.454, 0.891), "radius": 0.150, "tip": 0.158, "length": 0.19},
+				{"pos": Vector3(0.000, 0.101, 0.731), "dir": Vector3(0.000, 0.208, 0.978), "radius": 0.133, "tip": 0.139, "length": 0.18},
+				{"pos": Vector3(0.000, 0.107, 0.874), "dir": Vector3(0.000, -0.070, 0.998), "radius": 0.117, "tip": 0.123, "length": 0.17},
+				{"pos": Vector3(0.000, 0.077, 1.005), "dir": Vector3(0.000, -0.326, 0.946), "radius": 0.103, "tip": 0.108, "length": 0.16},
+				{"pos": Vector3(0.000, 0.021, 1.116), "dir": Vector3(0.000, -0.530, 0.848), "radius": 0.091, "tip": 0.077, "length": 0.15},
+				# --- the fan: telson, then the inner and outer uropods a side ---
+				{"pos": Vector3(0.000, -0.008, 1.220), "dir": Vector3(0.000, -0.139, 0.990), "radius": 0.035, "tip": 0.075, "length": 0.15},
+				{"pos": Vector3(0.000, -0.040, 1.452), "dir": Vector3(0.000, -0.139, 0.990), "radius": 0.075, "length": 0.32},
+				{"pos": Vector3(0.080, -0.008, 1.214), "dir": Vector3(0.495, -0.139, 0.858), "radius": 0.040, "tip": 0.105, "length": 0.16},
+				{"pos": Vector3(0.193, -0.040, 1.411), "dir": Vector3(0.495, -0.139, 0.858), "radius": 0.105, "length": 0.30},
+				{"pos": Vector3(-0.080, -0.008, 1.214), "dir": Vector3(-0.495, -0.139, 0.858), "radius": 0.040, "tip": 0.105, "length": 0.16},
+				{"pos": Vector3(-0.193, -0.040, 1.411), "dir": Vector3(-0.495, -0.139, 0.858), "radius": 0.105, "length": 0.30},
+				{"pos": Vector3(0.134, -0.008, 1.183), "dir": Vector3(0.858, -0.139, 0.495), "radius": 0.040, "tip": 0.110, "length": 0.15},
+				{"pos": Vector3(0.314, -0.037, 1.286), "dir": Vector3(0.858, -0.139, 0.495), "radius": 0.110, "length": 0.27},
+				{"pos": Vector3(-0.134, -0.008, 1.183), "dir": Vector3(-0.858, -0.139, 0.495), "radius": 0.040, "tip": 0.110, "length": 0.15},
+				{"pos": Vector3(-0.314, -0.037, 1.286), "dir": Vector3(-0.858, -0.139, 0.495), "radius": 0.110, "length": 0.27},
 			]
 		_:
 			return []

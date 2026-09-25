@@ -15,7 +15,7 @@ extends CanvasLayer
 # than a stage of construction:
 #
 #   colour     a free picker. Saved, replicated, worn.
-#   accessory  horns, antlers, a tail, or none. One at a time.
+#   accessory  horns, antlers, a moose rack, a tail, a shrimp tail, or none. One at a time.
 #   nose       NOT a choice. It is the facing marker the dash depends on, and its
 #              colour is derived from the body so it can never be hidden.
 #   eyes       NOT a choice. Everybody has them; what varies comes from a saved

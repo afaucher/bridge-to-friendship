@@ -21,7 +21,7 @@ Built so far (2026-08-20), in the order it landed:
 | **the derived nose colour** | shipped — `character_style.gd` |
 | **personal colour** | shipped end to end: chosen on the screen, saved to `user://player.cfg`, worn by the body, and replicated to everyone |
 | **eyes** | shipped, and **not as a slot** — see below |
-| **one accessory slot** | shipped — horns, antlers, a tail, or none |
+| **one accessory slot** | shipped — horns, antlers, a moose rack, a tail, a shrimp tail, or none |
 | **colour in the HUD** | shipped — drawn as an **outline** around your own panel and each friend row |
 
 The nose was deliberately narrowed to one shape. The original ask was a *better
@@ -342,13 +342,14 @@ There is no body colour that hides both, so there is nothing to derive.
 One at a time. Mesh only — no `CollisionShape3D`, no layer, no mask. All hang off
 `Facing` so they turn with the aim, and none of them raise `mount_y`.
 
-**Three are built; `EARS` and `SPIKES` are catalogued and not implemented.**
+**Built: horns, antlers, the moose rack, the tail and the shrimp tail. `EARS` and `SPIKES` are catalogued and not implemented.**
 
 | variant | shape | measured spread | note |
 |---|---|---|---|
 | **HORNS** | two thick swept cones off the sides of the head, 0.15 × 0.80 | ~0.60 | **SHIPPED.** The safest shape: short, close to the head, unmistakable |
 | **ANTLERS** | a nine-part-per-side **elk rack** — see below | ~0.50 | **SHIPPED**, on the fourth attempt |
 | **TAIL** | **five chained segments** curving from back-and-down to nearly vertical | 0.22 | **SHIPPED.** Each segment's tip radius is the next one's base, so it tapers as one tail rather than reading as five spikes |
+| **SHRIMP TAIL** | **six shell plates** arching off the rump into a flat **tail fan** of five leaf-shaped blades (telson + two uropods a side, at 0/30/60 degrees) | ~0.56 | **BUILT 2026-09-25, NOT YET PLAYED.** The tail's join rule inverted: each plate starts *narrower* than the last one ends, and that lip is what reads as armour. Each blade is two chained cones that swell and then point, because one cone is a spike and a fan is paddles. The fan is pitched only 8 degrees down, so the 45-degree game camera sees it in plan. Shot from behind in `art/shots_accessories.json` (`shrimp_*`) |
 
 **The antlers took four goes, and each failure was worth recording** — they are
 the hardest thing in this document to get right because a wrong one still *looks

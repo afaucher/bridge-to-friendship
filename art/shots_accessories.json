@@ -46,7 +46,19 @@
       {"name": "acc_horns", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.8,
        "accessory": "horns", "ortho_size": 2.6},
       {"name": "acc_tail", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 0.6,
-       "accessory": "tail", "ortho_size": 2.6, "cam_yaw": 35.0, "cam_pitch": -30.0}
+       "accessory": "tail", "ortho_size": 2.6, "cam_yaw": 35.0, "cam_pitch": -30.0},
+
+      {"_comment": "THE SHRIMP TAIL AT THE GAME'S OWN ANGLE, FROM BEHIND. yaw 0 faces away from the camera, which is a player walking up the bridge -- the way most of play is seen, and the only view in which a tail is not hidden behind the body that wears it.",
+       "name": "shrimp_game", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 0.6,
+       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 0.0, "cam_pitch": -45.0},
+      {"_comment": "PROFILE: the arch of the shell and the lip at each plate show here and nowhere else.",
+       "name": "shrimp_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.6,
+       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 90.0, "cam_pitch": -6.0},
+      {"_comment": "TOP: the fan in plan, which is what the game camera mostly sees of it.",
+       "name": "shrimp_top", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 0.6,
+       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 0.0, "cam_pitch": -88.0},
+      {"name": "shrimp_three_quarter", "scene": "res://scenes/player.tscn", "yaw": 20.0, "focus_y": 0.6,
+       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 35.0, "cam_pitch": -30.0}
     ]
   },
 

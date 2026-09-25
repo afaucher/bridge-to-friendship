@@ -92,7 +92,7 @@ static func save_character_seed(character_seed: int) -> void:
 	cfg.set_value(SECTION, KEY_SEED, character_seed)
 	cfg.save(path())
 
-# The chosen accessory: horns, antlers, a tail, or nothing.
+# The chosen accessory: horns, antlers, a moose rack, a tail, a shrimp tail, or nothing.
 #
 # CHOSEN, so it has a default and no roll -- the colour's rule, not the seed's.
 # The default is NONE because an accessory the game handed you would not be a

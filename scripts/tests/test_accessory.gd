@@ -1,6 +1,6 @@
 extends "res://scripts/test_support/test_case.gd"
 
-# The accessory slot: horns, antlers, a tail, or nothing.
+# The accessory slot: horns, antlers, a moose rack, a tail, a shrimp tail, or nothing.
 #
 # THIS FEATURE'S WHOLE CLAIM IS THAT IT CHANGES NOTHING BUT THE PICTURE, so most
 # of this file is about what an accessory must NOT do. Two rules carry it, and
@@ -43,6 +43,7 @@ func setup(main) -> void:
 	_test_none_is_nothing(main)
 	_test_unknown_names_wear_nothing(main)
 	_test_the_tail_is_quieter_than_the_nose()
+	_test_the_shrimp_is_plated_and_fanned()
 	_test_hat_tower_unmoved(main)
 	finish()
 
@@ -60,7 +61,8 @@ func _accessory_root(body: Node3D) -> Node3D:
 # CLAUDE.md, on three guns that shipped as a floating barrel. Same trap here.
 
 func _test_every_kind_builds(main) -> void:
-	for kind in [CharacterStyle.ACCESSORY_HORNS, CharacterStyle.ACCESSORY_ANTLERS, CharacterStyle.ACCESSORY_TAIL]:
+	for kind in [CharacterStyle.ACCESSORY_HORNS, CharacterStyle.ACCESSORY_ANTLERS,
+			CharacterStyle.ACCESSORY_TAIL, CharacterStyle.ACCESSORY_SHRIMP]:
 		var body: Node3D = _fresh(main)
 		body.apply_look(CharacterStyle.DEFAULT_BODY, 1, kind)
 		var root: Node3D = _accessory_root(body)
@@ -399,6 +401,109 @@ func _test_the_tail_is_quieter_than_the_nose() -> void:
 		if not check(CharacterStyle.accessory_colour(body) == CharacterStyle.nose_colour(body),
 				"the accessory wears the nose's colour"):
 			return
+
+# --- 6b. THE SHRIMP TAIL: PLATES AND A FAN ------------------------------------
+#
+# What separates it from the tail, as structure. Each claim is one the plain tail
+# would FAIL, which is the point: two accessories that pass the same assertions
+# are the same accessory in two sizes.
+#
+#   1. THE SHELL IS PLATES. Every join has a LIP -- the next plate starts
+#      narrower than the one before it ends -- and no GAP: it starts inside the
+#      plate before it. The tail asserts the opposite (matching radii), because a
+#      tail is one stalk and this is armour.
+#   2. THE BACK ARCHES: plates rise off the rump, then fall into the fan.
+#   3. THE FAN IS PADDLES, NOT SPIKES: each blade is two chained cones that
+#      swell from the root and come to a point -- a leaf.
+#   4. THE FAN SPREADS AND LIES FLAT, which is the reading from a camera that
+#      looks down at 45 degrees. Spread is measured against the shell's own
+#      width, so "wide" means wider than the thing it hangs off.
+
+const SHRIMP_PLATES := 6
+
+func _test_the_shrimp_is_plated_and_fanned() -> void:
+	var parts: Array = CharacterStyle.accessory_parts(CharacterStyle.ACCESSORY_SHRIMP)
+	if not check(parts.size() > SHRIMP_PLATES, "the shrimp tail has a shell and a fan -- %d parts"
+			% parts.size()):
+		return
+	var plates: Array = parts.slice(0, SHRIMP_PLATES)
+	var blades: Array = parts.slice(SHRIMP_PLATES)
+
+	# --- 1. plates: a lip at every join, and no gap ---
+	var widest_plate: float = 0.0
+	for i in range(SHRIMP_PLATES):
+		widest_plate = maxf(widest_plate, maxf(float(plates[i]["radius"]), float(plates[i].get("tip", 0.0))))
+	for i in range(SHRIMP_PLATES - 1):
+		var a: Dictionary = plates[i]
+		var b: Dictionary = plates[i + 1]
+		check(float(b["radius"]) < float(a.get("tip", 0.0)) - 0.01,
+			"plate %d starts narrower than plate %d ends, so the join is a lip -- %.3f against %.3f"
+				% [i + 1, i, float(b["radius"]), float(a.get("tip", 0.0))])
+		var start: Vector3 = _base_of(b)
+		var a_base: Vector3 = _base_of(a)
+		var a_end: Vector3 = _tip_of(a)
+		# Inside plate a: between its two ends along its own axis, and close to it.
+		var axis: Vector3 = (a["dir"] as Vector3).normalized()
+		var along: float = (start - a_base).dot(axis)
+		var off_axis: float = ((start - a_base) - axis * along).length()
+		check(along > 0.0 and along < float(a["length"]) and off_axis < 0.01,
+			"plate %d starts INSIDE plate %d, so there is no gap -- %.3f along a %.2f plate, %.3f off it"
+				% [i + 1, i, along, float(a["length"]), off_axis])
+		check(start.distance_to(a_end) < 0.06,
+			"and only just inside -- %.3f from its end" % start.distance_to(a_end))
+
+	# --- 2. the back arches ---
+	var first: Vector3 = (plates[0]["dir"] as Vector3).normalized()
+	var last: Vector3 = (plates[SHRIMP_PLATES - 1]["dir"] as Vector3).normalized()
+	check(first.y > 0.3, "the shell rises off the rump -- %.3f" % first.y)
+	check(last.y < -0.3, "and falls into the fan -- %.3f" % last.y)
+	for i in range(1, SHRIMP_PLATES):
+		var prev: Vector3 = (plates[i - 1]["dir"] as Vector3).normalized()
+		var here: Vector3 = (plates[i]["dir"] as Vector3).normalized()
+		check(here.y < prev.y, "plate %d bends further down than the one before -- %.3f after %.3f"
+			% [i, here.y, prev.y])
+
+	# --- 3. every blade is a leaf ---
+	if not check(blades.size() >= 6 and blades.size() % 2 == 0,
+			"the fan is blades of two segments each -- %d parts" % blades.size()):
+		return
+	var tips: Array = []
+	for j in range(0, blades.size(), 2):
+		var root: Dictionary = blades[j]
+		var point: Dictionary = blades[j + 1]
+		check(float(root.get("tip", 0.0)) > float(root["radius"]) * 1.5,
+			"blade %d swells from its root -- %.3f to %.3f"
+				% [j / 2, float(root["radius"]), float(root.get("tip", 0.0))])
+		near(float(point["radius"]), float(root.get("tip", 0.0)), 0.001,
+			"and its point starts as broad as the swell ends")
+		check(float(point.get("tip", 0.0)) == 0.0, "and comes to a point")
+		check(_tip_of(root).distance_to(_base_of(point)) < 0.01,
+			"blade %d is one leaf, not two pieces" % [j / 2])
+		tips.append(_tip_of(point))
+		# --- 4a. flat: no blade stands up or hangs down ---
+		var d: Vector3 = (point["dir"] as Vector3).normalized()
+		check(absf(d.y) < 0.3, "blade %d lies flat enough to read from above -- %.3f" % [j / 2, d.y])
+
+	# --- 4b. it spreads: tips span well beyond the shell, on both sides ---
+	var left: float = 0.0
+	var right: float = 0.0
+	for t in tips:
+		left = minf(left, (t as Vector3).x)
+		right = maxf(right, (t as Vector3).x)
+	check(right > widest_plate * 1.5 and -left > widest_plate * 1.5,
+		"the fan spreads well outside the shell on both sides -- %.3f / %.3f against a shell %.3f wide"
+			% [left, right, widest_plate])
+	near(right, -left, 0.01, "and symmetrically")
+
+	# --- and like the tail: long enough to see, clear of the deck ---
+	var reach: float = 0.0
+	for part in parts:
+		reach = maxf(reach, _tip_of(part).z)
+		var low: float = float(part["pos"].y) - maxf(float(part["radius"]), float(part.get("tip", 0.0)))
+		check(low > -PlayerBody.HALF_HEIGHT + 0.15,
+			"every part hangs clear of the deck -- %.3f against feet at %.3f" % [low, -PlayerBody.HALF_HEIGHT])
+	check(reach - PlayerBody.RADIUS > 0.35,
+		"long enough to see from the bridge camera -- %.3f behind the body" % (reach - PlayerBody.RADIUS))
 
 # --- 7. THE HAT TOWER IS UNTOUCHED --------------------------------------------
 #
