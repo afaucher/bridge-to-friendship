@@ -6465,30 +6465,71 @@ func _broadcast_snapshot() -> void:
 	# measure each section separately. The point of a per-section size is that when
 	# the total climbs, the column that climbed says which pool -- a total alone
 	# only says that something did.
-	var balls: Array = _ball_snapshot(keyframe)
-	var rushers: Array = _rusher_snapshot(keyframe)
-	var hats: Array = _hat_snapshot(keyframe)
-	var specials: Array = _special_snapshot(keyframe)
-	var bullets: Array = _bullet_snapshot(keyframe)
-	var gunners: Array = _gunner_snapshot(keyframe)
-	var deployables: Array = _deployable_snapshot(keyframe)
-	var zombies: Array = _zombie_snapshot(keyframe)
-	var buses: Array = _bus_snapshot(keyframe)
+	var named: Dictionary = {"players": entries, "stones": stones, "layout": layout}
+	for section in _snapshot_sources():
+		named[section[0]] = (section[1] as Callable).call(keyframe)
 
 	if _telemetry != null:
 		_telemetry.note_sent(0)
 		# ONLY ON A SAMPLE TICK. Sizing every section every tick would be an
 		# instrument heavy enough to change what it is measuring.
 		if _telemetry.due_to_size():
-			_telemetry.note_sections({
-				"players": entries, "stones": stones, "layout": layout,
-				"balls": balls, "rushers": rushers, "hats": hats,
-				"specials": specials, "bullets": bullets, "gunners": gunners,
-				"deployables": deployables, "zombies": zombies, "buses": buses,
-			})
+			_telemetry.note_sections(named)
 
-	_apply_snapshot.rpc(tick, entries, stones, balls, layout,
-		rushers, hats, specials, bullets, gunners, deployables, zombies, buses)
+	var sections: Array = []
+	for key in SNAPSHOT_SECTIONS:
+		sections.append(named[key])
+	_apply_snapshot.rpc(tick, sections)
+
+# THE SNAPSHOT'S SECTIONS, IN WIRE ORDER, BY NAME.
+#
+# It was thirteen positional RPC arguments, threaded through the broadcast, the
+# receiver, the delay queue (by index: `held[1]` to `held[12]`) and the consumer
+# -- four hand-kept lists of twelve, where swapping two neighbours silently fed
+# one pool's entries to another's applier. Now the wire carries ONE array in this
+# order, and everything that reads it asks for a section by name. A new pool is
+# an entry here and in `_snapshot_sources` / `_snapshot_sinks`.
+const SNAPSHOT_SECTIONS := ["players", "stones", "layout", "balls", "rushers",
+	"hats", "specials", "bullets", "gunners", "deployables", "zombies", "buses"]
+
+# The per-pool encoders, by section name. `players`, `stones` and `layout` are
+# built inline in _broadcast_snapshot because they are not pools.
+func _snapshot_sources() -> Array:
+	return [
+		["balls", _ball_snapshot], ["rushers", _rusher_snapshot],
+		["hats", _hat_snapshot], ["specials", _special_snapshot],
+		["bullets", _bullet_snapshot], ["gunners", _gunner_snapshot],
+		["deployables", _deployable_snapshot], ["zombies", _zombie_snapshot],
+		["buses", _bus_snapshot],
+	]
+
+# The per-pool appliers, IN THE ORDER THEY MUST RUN. Buses last of the pools and
+# before the players: `_reconcile` asks whether the local player is aboard, and an
+# answer from last tick's roster is an answer about a different world.
+func _snapshot_sinks() -> Array:
+	return [
+		["balls", _apply_ball_snapshot], ["rushers", _apply_rusher_snapshot],
+		["zombies", _apply_zombie_snapshot], ["hats", _apply_hat_snapshot],
+		["specials", _apply_special_snapshot], ["bullets", _apply_bullet_snapshot],
+		["gunners", _apply_gunner_snapshot],
+		["deployables", _apply_deployable_snapshot], ["buses", _apply_bus_snapshot],
+	]
+
+# The wire array back into names. A section a shorter (older) array does not
+# carry reads as empty rather than as an error.
+static func _sections_by_name(sections: Array) -> Dictionary:
+	var named: Dictionary = {}
+	for i in SNAPSHOT_SECTIONS.size():
+		var key: String = SNAPSHOT_SECTIONS[i]
+		if i < sections.size():
+			named[key] = sections[i]
+		elif key == "layout":
+			named[key] = PackedInt32Array()
+		elif key == "stones":
+			named[key] = []
+		else:
+			named[key] = SnapshotDelta.empty()
+	return named
 
 # Balls are FULLY AUTHORITATIVE and never predicted. The cheap alternative --
 # clients simulating them from a shared seed -- is tempting and specifically
@@ -6948,10 +6989,7 @@ func _bullet_by_id(id: int) -> Node:
 	return null
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array, zombies: Array,
-		buses: Array = []) -> void:
+func _apply_snapshot(server_tick: int, sections: Array) -> void:
 	if is_host:
 		return
 	# COUNTED WHERE IT ARRIVES, before the delay queue and before anything can
@@ -6959,39 +6997,28 @@ func _apply_snapshot(server_tick: int, entries: Array, stones: Array, balls: Arr
 	# side measures what the host tried to do, which is the number that looks fine
 	# in exactly the case worth investigating.
 	if _telemetry != null:
-		_telemetry.note_received([entries, stones, balls, layout, rushers, hats,
-			specials, bullets, gunners, deployables, zombies, buses])
+		_telemetry.note_received(sections)
 	_adopt_server_tick(server_tick)
 	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies, buses])
+		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, sections])
 		return
-	_consume_snapshot(entries, stones, balls, layout, rushers, hats, specials, bullets, gunners, deployables, zombies, buses)
+	_consume_snapshot(sections)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
-		_consume_snapshot(held[1], held[2], held[3], held[4], held[5], held[6], held[7], held[8], held[9], held[10], held[11], held[12])
+		_consume_snapshot(held[1])
 
-func _consume_snapshot(entries: Array, stones: Array, balls: Array,
-		layout: PackedInt32Array, rushers: Array, hats: Array, specials: Array,
-		bullets: Array, gunners: Array, deployables: Array, zombies: Array,
-		buses: Array = []) -> void:
+func _consume_snapshot(sections: Array) -> void:
+	var named: Dictionary = _sections_by_name(sections)
+	var entries: Array = named["players"]
 	if grid != null:
-		grid.apply_stone_snapshot(stones)
+		grid.apply_stone_snapshot(named["stones"])
+		var layout: PackedInt32Array = named["layout"]
 		if layout.size() > 0:
 			grid.apply_stone_layout(layout)
-	_apply_ball_snapshot(balls)
-	_apply_rusher_snapshot(rushers)
-	_apply_zombie_snapshot(zombies)
-	_apply_hat_snapshot(hats)
-	_apply_special_snapshot(specials)
-	_apply_bullet_snapshot(bullets)
-	_apply_gunner_snapshot(gunners)
-	_apply_deployable_snapshot(deployables)
-	# BEFORE THE PLAYERS, and that ordering is load-bearing rather than tidy:
-	# `_reconcile` below asks whether the local player is aboard a bus, and an
-	# answer from last tick's roster is an answer about a different world.
-	_apply_bus_snapshot(buses)
+	for sink in _snapshot_sinks():
+		(sink[1] as Callable).call(named[sink[0]])
 	for e in SnapshotDelta.changed_of(entries):
 		var peer: int = int(e[S_PEER])
 		var body: Node = players.get(peer)
