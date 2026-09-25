@@ -26,23 +26,20 @@ extends RefCounted
 # DURING PLAY, on one machine, with nobody watching.
 
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const BaseMode = preload("res://scripts/sim/modes/base_mode.gd")
 
 const BASE := 0
 const BLANK := 1
 const TRACK := 2
 const RACE := 3
 
-# WHICH GENERATOR FILLS A MODE'S SECTIONS. Declared, like everything else here --
-# BridgeGrid reads it and calls the matching function, so a mode never reaches
-# into the generator and the generator never asks what mode it is.
-#
-# This is the seam the bus and the shooter actually need. Neither is `section()`
-# with knobs on: a bus wants a route and a shooter wants a corridor, and both are
-# "this mode makes its own ground".
-const TERRAIN_SECTIONS := "sections"      # the ordinary generated bridge
-const TERRAIN_BLANK := "blank"            # flat, empty, undressed
-const TERRAIN_TRACK := "track"            # the serpentine bus route
-const TERRAIN_RACE := "race"              # a closed circuit with an infield
+# WHICH GENERATOR FILLS A MODE'S SECTIONS, by name. The generator itself is each
+# mode's `generate_section`; these names remain for anything that asks which KIND
+# of ground a mode makes.
+const TERRAIN_SECTIONS = BaseMode.TERRAIN_SECTIONS
+const TERRAIN_BLANK = BaseMode.TERRAIN_BLANK
+const TERRAIN_TRACK = BaseMode.TERRAIN_TRACK
+const TERRAIN_RACE = BaseMode.TERRAIN_RACE
 
 # EVERY POOL THAT TICKS, NAMED. A mode owes each of these an answer, and the point
 # of the list is that the answers are explicit rather than implied by whatever
@@ -64,168 +61,50 @@ const POOLS := [
 	"drone", "rescue", "bus", "swallows",
 ]
 
-# The three answers a mode may give about a pool. RUNS_DIFFERENTLY is not
-# implemented by anything yet and exists so that the day a mode needs it, it is a
-# value in a table rather than a fourth concept invented under pressure.
-const RUNS := "runs"
-const OFF := "off"
-const DIFFERENT := "differently"
+# The three answers a mode may give about a pool. See BaseMode.
+const RUNS = BaseMode.RUNS
+const OFF = BaseMode.OFF
+const DIFFERENT = BaseMode.DIFFERENT
 
-# THE REGISTRY. One entry per mode; base is the only one in phase 1 and that is
-# deliberate -- the seam is what is being built, not a second game.
-#
-# `pools` is spelled out rather than defaulted. A default would make an unanswered
-# pool look answered, which is the exact silence this table exists to prevent, and
-# `missing_pools()` would then have nothing to find.
-const MODES := {
-	BASE: {
-		"name": "Bridge With Friends",
-		"blurb": "The normal mode. Cross together, keep your hats.",
-		# NOTHING OVERRIDDEN, and that is a real entry rather than an omission:
-		# base composing an empty dictionary over the defaults is the same code
-		# path every other mode will take, so the composition is exercised daily.
-		"overrides": {},
-		"terrain": TERRAIN_SECTIONS,
-		"pools": {
-			"rushers": RUNS, "gunners": RUNS, "zombies": RUNS, "swallows": RUNS, "plinko": RUNS,
-			"hats": RUNS, "specials": RUNS, "deployables": RUNS, "stones": RUNS,
-			"elevators": RUNS, "spikes": RUNS, "mutable": RUNS, "mounds": RUNS,
-			"graves": RUNS, "merchants": RUNS, "hearts": RUNS, "bullets": RUNS,
-			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
-			# NO BUS ON THE ORDINARY BRIDGE. It is the blank zone's whole content,
-			# and a vehicle on a bridge full of pillars and holes is a different
-			# feature with a different set of problems.
-			"bus": OFF,
-		},
-	},
-
-	# A ZONE WITH NOTHING IN IT. The second mode, and deliberately not a gameplay
-	# variant: what it exercises is that A MODE GENERATES ITS OWN GROUND, which is
-	# the seam the bus and the shooter both need and the one thing no amount of
-	# tuning base would have built.
-	#
-	# EVERY POOL IT SWITCHES OFF IS A ROW IN THE SUBSYSTEM x MODE GRID, which is
-	# the obligation that could not be paid with one mode: a table with one row is
-	# a table where every entry agrees with every other by construction.
-	#
-	# THE TERRAIN IS EMPTY AND SO ARE THE POOLS, and those are two different
-	# statements. `no_dress` keeps the dressing pass off the ground; these keep the
-	# WORLD's own spawners off it. A blank zone with rushers walking about would be
-	# flat terrain with the usual threats on it, which is not a blank zone -- and
-	# it would read as the mode having failed to take effect rather than as a bug.
-	BLANK: {
-		"name": "Void",
-		"blurb": "The empty map. Nothing here but you and the bus.",
-		"overrides": {},
-		"terrain": TERRAIN_BLANK,
-		"pools": {
-			# Nothing that threatens, and nothing that is placed INTO terrain.
-			"rushers": OFF, "gunners": OFF, "zombies": OFF, "swallows": OFF, "plinko": OFF,
-			"deployables": OFF, "stones": OFF, "spikes": OFF, "mutable": OFF,
-			"mounds": OFF, "graves": OFF, "merchants": OFF,
-			# ...and everything that belongs to the PLAYERS rather than to the
-			# level keeps running. A zone you cannot be rescued in, or that eats
-			# your hats, would be a punishment rather than an empty room.
-			"hats": RUNS, "specials": RUNS, "elevators": RUNS, "hearts": RUNS,
-			"bullets": RUNS, "leash": RUNS, "checkpoint": RUNS, "drone": RUNS,
-			"rescue": RUNS,
-			# THE ONE THING IN IT. An empty room is not a minigame; the bus is
-			# what the emptiness is FOR.
-			"bus": RUNS,
-		},
-	},
-
-	# THE BUS ROUTE. A serpentine carved out of the same canvas the blank zone
-	# leaves whole: full-width lanes joined at alternating ends, so the driving is
-	# lateral and the corners are where the rows advance. See SegmentGen.bus_track.
-	#
-	# EVERY POOL THIS RUNS IS ONE ITS TERRAIN PLACES CONTENT FOR, and that is not a
-	# coincidence -- it is the subsystem x mode grid finally doing its job. A
-	# gauntlet lane writes SKIRMISHER glyphs and a strip lane writes TIMED ones, so
-	# `gunners` and `mutable` MUST run here or the track would be drawn full of
-	# things that never move. That is the silence this table exists to prevent,
-	# arriving from the direction nobody watches: not a pool running where it
-	# should not, but content placed for a pool that is switched off.
-	#
-	# `test_game_mode` now checks that correspondence for every mode rather than
-	# leaving it to whoever adds the next lane flavour.
-	TRACK: {
-		"name": "Bus Survival",
-		"blurb": "Get the bus to the other side. Zombies on the verges.",
-		"overrides": {},
-		"terrain": TERRAIN_TRACK,
-		"pools": {
-			# What the track itself places.
-			"bus": RUNS, "gunners": RUNS, "mutable": RUNS,
-			# AND THE ZOMBIES, WHICH ARE THE ONLY THING ON THIS TRACK THAT CAN
-			# TOUCH YOU. Every other threat here shoots: a skirmisher's round
-			# launches a rider at 8.25 m/s, below BUS_EJECT_SPEED, so gunfire
-			# chips and nothing could throw anybody out of a bus. A zombie hits
-			# at 11.28, which is over the line -- so the rule that a body-check
-			# takes your seat finally has something to do it, and defending the
-			# bus becomes the passengers' job while the driver keeps going.
-			#
-			# `graves` rides with them because a zombie is not spawned, it is
-			# RAISED: the terrain places a grave and the pool wakes the pack. One
-			# without the other is a headstone nobody comes out of.
-			"zombies": RUNS, "swallows": RUNS, "graves": RUNS,
-			# Nothing else the bridge would have put there. A rusher on a race
-			# track is a bridge hazard that wandered into the wrong game.
-			# AND THE DEPLOYABLES POOL, because the track scatters armed MINES and
-			# a mine is a deployable. Switched off, they would be placed, drawn,
-			# and never tick -- scenery in the shape of a hazard, which is the
-			# exact silence this table exists to prevent.
-			"deployables": RUNS,
-			"rushers": OFF, "plinko": OFF,
-			"stones": OFF, "spikes": OFF, "mounds": OFF,
-			"merchants": OFF, "elevators": OFF,
-			# And everything that belongs to the party.
-			"hats": RUNS, "specials": RUNS, "hearts": RUNS, "bullets": RUNS,
-			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
-		},
-	},
-
-	# THE RACE CIRCUIT. A closed ring with a hole in the middle -- see
-	# implementation_plans/m26_race_track.md and SegmentGen.race_loop.
-	#
-	# WHAT IS HERE AND WHAT IS NOT. This is the mode existing and being drivable:
-	# you can pick it, it builds circuits, and the bus and the mines work on them.
-	# The LAPS are not here. Crossing a gate does nothing yet, nothing is timed,
-	# and nothing is on screen -- the gates are generated and recorded and no
-	# subsystem reads them.
-	#
-	# AND THE RUN STILL ADVANCES, which is the honest shape of what phase 2 left
-	# undone. A circuit cannot stream: it is bounded and comes back on itself, and
-	# the right answer is one arena the run does not move through. What this
-	# builds instead is a CHAIN of circuits joined at their caps -- drivable, and
-	# each one lappable, but the party can also just keep going forwards, which is
-	# the bridge's win condition wearing a racetrack. Fixing that means teaching
-	# `_extend_run`, the leash and the round machine that a run can be closed, and
-	# that is its own phase rather than something to bolt on here.
-	RACE: {
-		"name": "Race Track",
-		"blurb": "Best lap time wins. Cross the white line to start.",
-		"overrides": {},
-		"terrain": TERRAIN_RACE,
-		"pools": {
-			# The vehicle, and the mines the circuit scatters. Both are placed by
-			# the terrain, so both must run or the track is drawn full of things
-			# that never move.
-			"bus": RUNS, "deployables": RUNS,
-			# NOTHING THAT SHOOTS OR CHASES. A circuit is about the line and the
-			# corner; the hazards are the hole in the middle and the mines. The
-			# zombies that make the bus route a fight would make this one a fight
-			# with a lap timer attached, which is a different game.
-			"gunners": OFF, "rushers": OFF, "zombies": OFF, "swallows": OFF, "plinko": OFF,
-			"mutable": OFF, "stones": OFF, "spikes": OFF, "mounds": OFF,
-			"graves": OFF, "merchants": OFF, "elevators": OFF,
-			# And everything that belongs to the party.
-			"hats": RUNS, "specials": RUNS, "hearts": RUNS, "bullets": RUNS,
-			"leash": RUNS, "checkpoint": RUNS, "drone": RUNS, "rescue": RUNS,
-		},
-	},
-
+# THE REGISTRY: one script per mode in scripts/sim/modes/, each overriding only
+# what it changes about the base game. What each mode IS -- its name, its pools,
+# its generator, its scoring, its HUD -- lives in its own file; this is the list
+# of them and the questions everything else asks.
+const MODE_SCRIPTS := {
+	BASE: preload("res://scripts/sim/modes/base_mode.gd"),
+	BLANK: preload("res://scripts/sim/modes/blank_mode.gd"),
+	TRACK: preload("res://scripts/sim/modes/track_mode.gd"),
+	RACE: preload("res://scripts/sim/modes/race_mode.gd"),
 }
+
+# One instance of each, built once.
+static var _defs: Dictionary = {}
+
+# THE OLD TABLE'S SHAPE, for readers that walk it (`MODES[mode]["name"]`). Built
+# from the classes, so it cannot disagree with them.
+static var MODES: Dictionary = _build_table()
+
+static func _build_table() -> Dictionary:
+	var out: Dictionary = {}
+	for mode in MODE_SCRIPTS:
+		var d = def(mode)
+		out[mode] = {
+			"name": d.display_name(), "blurb": d.blurb(), "overrides": d.overrides(),
+			"terrain": d.terrain(), "pools": d.pools(),
+		}
+	return out
+
+# THE MODE ITSELF. An unregistered id is the base game, for the reason `policy`
+# answers RUNS: a half-written mode must not be able to produce a corridor nobody
+# can cross or switch a subsystem off by accident.
+static func def(mode: int):
+	if not MODE_SCRIPTS.has(mode):
+		mode = BASE
+	if not _defs.has(mode):
+		var d = MODE_SCRIPTS[mode].new()
+		d.id = mode
+		_defs[mode] = d
+	return _defs[mode]
 
 # WHAT CONTENT A MODE'S TERRAIN PLACES, and which pool has to be running for it to
 # mean anything. Read by the test that checks the two agree -- see the note on
@@ -254,23 +133,17 @@ const CONTENT_POOLS := {
 # lives and a player reading it will report the gap, which is the fastest way for
 # it to get built.
 static func blurb_of(mode: int) -> String:
-	return str(MODES.get(mode, {}).get("blurb", ""))
+	return def(mode).blurb() if exists(mode) else ""
 
 static func exists(mode: int) -> bool:
-	return MODES.has(mode)
+	return MODE_SCRIPTS.has(mode)
 
 static func name_of(mode: int) -> String:
-	if not MODES.has(mode):
-		return "?"
-	return str(MODES[mode]["name"])
+	return def(mode).display_name() if exists(mode) else "?"
 
 static func ids() -> Array:
-	return MODES.keys()
+	return MODE_SCRIPTS.keys()
 
-# WHAT THIS MODE SAYS ABOUT A POOL. An unknown mode or an unnamed pool answers
-# RUNS -- the base behaviour -- because a half-declared mode must not be able to
-# switch a subsystem off by accident. `missing_pools()` is what makes the omission
-# visible; this is what keeps the game playable while somebody fixes it.
 static func policy(mode: int, pool: String) -> String:
 	if not MODES.has(mode):
 		return RUNS
@@ -314,3 +187,37 @@ static func terrain(mode: int) -> String:
 	if not MODES.has(mode):
 		return TERRAIN_SECTIONS
 	return str(MODES[mode].get("terrain", TERRAIN_SECTIONS))
+
+# --- What each mode brings -----------------------------------------------------
+
+# Its colour on the selector. A mode nobody registered is the neutral grey.
+static func colour_of(mode: int) -> Color:
+	return def(mode).colour() if exists(mode) else Color(0.55, 0.55, 0.58)
+
+# ONE SLOT OF A MODE'S GROUND. BridgeGrid calls this and nothing else, so a mode
+# never reaches into the grid and the grid never asks which mode it is.
+static func generate_section(mode: int, width: int, slot_seed: int, slot: int):
+	return def(mode).generate_section(width, slot_seed, slot)
+
+# The world systems one mode brings.
+static func systems_of(mode: int) -> Array:
+	return def(mode).systems()
+
+# EVERY SYSTEM ANY MODE BRINGS, once each. The world builds all of them at start,
+# so a mode chosen mid-run finds its system already standing -- and each system
+# decides for itself whether it has anything to do.
+static func all_systems() -> Array:
+	var out: Array = []
+	for mode in MODE_SCRIPTS:
+		for script in systems_of(mode):
+			if not out.has(script):
+				out.append(script)
+	return out
+
+# What decides this mode's round, in order. See RoundMachine.rank_entries.
+static func ranking_of(mode: int) -> Array:
+	return def(mode).ranking()
+
+# The HUD widgets this mode adds.
+static func hud_widgets_of(mode: int) -> Array:
+	return def(mode).hud_widgets()

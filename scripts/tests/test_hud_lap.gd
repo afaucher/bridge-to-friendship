@@ -28,6 +28,7 @@ const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const HudScript = preload("res://scripts/ui/hud.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
 
 const A := 41
 const B := 57
@@ -45,6 +46,9 @@ func setup(main) -> void:
 	world.segment_paths = ["res://segments/test_flat.seg"]
 	world.start(true, A, false)
 	world_under_test(world)
+	# A RACE ROUND. The lap clock is the race mode's own widget, so this is the
+	# only kind of round it appears in -- see the last phase for the other half.
+	world.run_modes = [GameMode.RACE]
 	world._spawn_player(A, 0)
 	world._spawn_player(B, 1)
 	for peer in [A, B]:
@@ -94,6 +98,17 @@ func _physics_process(_delta: float) -> void:
 			if world.tick < _at + 3:
 				return
 			_and_only_for_that_player()
+			# AND A ROUND THAT IS NOT A RACE HAS NO LAP CLOCK AT ALL. The widget
+			# comes with the mode: it used to be built for every mode and hidden
+			# by having nothing in it.
+			world.run_modes = [GameMode.BASE]
+			_phase = 3
+			_at = world.tick
+		3:
+			if world.tick < _at + 3:
+				return
+			check(hud._own_lap == null and hud._own_lap_live == null,
+				"a bridge round has no lap clock -- the widget left with the mode")
 			done = true
 			finish()
 

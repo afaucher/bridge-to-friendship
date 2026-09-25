@@ -43,6 +43,10 @@ static func build(world: Node, for_peer: int = -1) -> Dictionary:
 	model["own"] = _own_entry(world, peer, body)
 	model["friends"] = _friend_entries(world, peer, body)
 	model["round"] = round_entry(world)
+	# THE PIECES OF HUD THIS ROUND'S MODE ASKS FOR -- the round being played, or
+	# about to be (see `playing_name` below for why that is the run plan's answer
+	# and not the selector's).
+	model["widgets"] = GameMode.hud_widgets_of(world.mode_for_round(world.round_index()))
 	return model
 
 # THE ROUND, AS DATA. Everything the player is told about what phase they are in
@@ -377,8 +381,12 @@ static func bearing_to(offset: Vector3) -> float:
 #
 # Reported as "it still lists '3 hats' under 1st instead of the lap time" -- the
 # board named hats in every mode, and in a race the hats had decided nothing.
+#
+# ASKED OF THE ENTRY FIRST: the host names the deciding key with the mode's own
+# rules when it ranks the board (`decided_by`), so a client does not have to know
+# which mode the round was. The fallback is for a board built without one.
 static func rank_reason(entry: Dictionary) -> String:
-	match RoundMachine.rank_key(entry):
+	match str(entry.get("decided_by", RoundMachine.rank_key(entry))):
 		"lap":
 			# The same clock the HUD shows, so a time on the board and a time in
 			# the corner of the screen are read the same way.

@@ -363,27 +363,11 @@ static func _mode_of_slot(modes: Array, i: int) -> int:
 		return GameMode.BASE
 	return int(modes[round_index])
 
-# THE ONE PLACE A MODE'S TERRAIN DECLARATION IS ACTED ON. The mode names a
-# generator and this calls it -- so a mode never reaches into SegmentGen and
-# SegmentGen never asks what mode it is. Adding the bus's route or the shooter's
-# corridor is a branch here and an entry in the registry, not a change to either.
+# THE ONE PLACE A MODE'S GROUND IS ASKED FOR. The mode's own `generate_section`
+# decides -- so adding the shooter's corridor is a script in scripts/sim/modes/,
+# not a branch here, and the grid never asks which mode it is.
 func _section_for_mode(mode: int, seed_value: int, i: int):
-	match GameMode.terrain(mode):
-		GameMode.TERRAIN_BLANK:
-			return SegmentGen.blank_zone(width, seed_value, i)
-		GameMode.TERRAIN_TRACK:
-			return SegmentGen.bus_track(width, seed_value, i)
-		GameMode.TERRAIN_RACE:
-			# ONE CIRCUIT PER ROUND, HANDED OUT A SLICE PER SLOT. The round is the
-			# seed, so all five slots compute the same circuit and each takes its
-			# own piece of it -- which is what makes them one track rather than
-			# five. See SegmentGen.race_loop.
-			return SegmentGen.race_loop(width, seed_value,
-				SegmentPool.round_of_slot(i),
-				(i % (SegmentPool.SECTIONS_PER_ROUND + 1)) - 1,
-				SegmentPool.SECTIONS_PER_ROUND)
-		_:
-			return SegmentGen.section(width, seed_value, i)
+	return GameMode.generate_section(mode, width, seed_value, i)
 
 # A segment that was never a file. Everything after parsing is identical, which
 # is the point of generating SegmentData rather than text: the validator, the

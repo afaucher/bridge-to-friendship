@@ -296,6 +296,15 @@ var gunners = GunnerSystem.new()
 # Picking up and firing the specials and the sidearm. See items/weapon_defs.gd.
 var weapons = WeaponSystem.new()
 
+# THE SYSTEMS A MODE BRINGS (BaseMode.systems): one of each, across every
+# registered mode, built at start so a mode chosen mid-run finds its system
+# already standing. Each decides for itself whether it has anything to do -- the
+# lap tracker runs where its terrain put gates. By `system_name`.
+var mode_systems: Dictionary = {}
+
+func mode_system(system_name: String):
+	return mode_systems.get(system_name, null)
+
 # The enemy pools, in the order they tick. Everything that must ask "every enemy"
 # -- a blast, the aim snap, the wipe -- walks this rather than naming the three.
 func enemy_systems() -> Array:
@@ -327,15 +336,19 @@ var _zombies_root: Node3D:
 # Thrown grenades, and the land mine when it lands. A short list on purpose: the
 # fuse is what bounds it, so there is no cap and no cull-the-oldest rule the way
 # there is for balls and loose specials.
-# --- Laps. See _process_laps. ---------------------------------------------------
-var _on_lap_gate: Dictionary = {}      # peer -> the gate it is standing in
-var _lap_next: Dictionary = {}         # peer -> the gate index expected next
-var _lap_from: Dictionary = {}         # peer -> tick the running lap started
-var _best_lap: Dictionary = {}         # peer -> best completed lap, in ticks
-# A DIRECT COUNT AT THE LINE THAT DOES IT. Every other way of noticing a lap
-# happened has been an instrument this project later found was measuring
-# something else.
-var laps_completed: int = 0
+# --- Laps: LapTracker, which the race mode brings. The old names, forwarded. ---
+var laps:
+	get: return mode_system("laps")
+var _on_lap_gate: Dictionary:
+	get: return laps.on_gate
+var _lap_next: Dictionary:
+	get: return laps.next_gate
+var _lap_from: Dictionary:
+	get: return laps.lap_from
+var _best_lap: Dictionary:
+	get: return laps.best
+var laps_completed: int:
+	get: return laps.laps_completed if laps != null else 0
 
 var _next_bus_id: int = 0
 # The roster last announced for each bus id, so _announce_bus_roster sends on a
@@ -423,6 +436,10 @@ func _ready() -> void:
 	rushers.attach(self)
 	zombies.attach(self)
 	weapons.attach(self)
+	for script in GameMode.all_systems():
+		var system = script.new()
+		system.attach(self)
+		mode_systems[system.system_name] = system
 
 	# WHERE THE DEAD GO. Its own root, like every pool, so a corpse is never a
 	# child of the thing it replaced -- that node is being freed on the same tick.
@@ -622,6 +639,11 @@ func _physics_process(_delta: float) -> void:
 	# rather than being told. Nothing reads a lean back: not capture_state, not the
 	# snapshot, not a pickup radius.
 	_hats.pose_worn(players, PlayerBody.HALF_HEIGHT, SimConfig.TICK_DELTA)
+	# WHAT THE MODE'S SYSTEMS DRAW -- the lap gates, lit for the local player. After
+	# both ticks, so the gate that lights up is the one you want NEXT rather than
+	# the one you just crossed, and on every machine, because it is per-viewer.
+	for system in mode_systems.values():
+		system.present()
 	_apply_carry_weight()
 	_pose_held_specials()
 	_pose_sidearms()
@@ -849,10 +871,8 @@ func _host_tick() -> void:
 	# AFTER THE BODIES HAVE MOVED, including riders, who are POSED by the bus
 	# rather than stepping -- so a lap crossed at 13 m/s is noticed on the tick it
 	# happens rather than the one after.
-	_process_laps()
-	# AFTER THE LAPS, so the gate that lights up is the one you want NEXT rather
-	# than the one you just crossed.
-	_show_lap_gates()
+	for system in mode_systems.values():
+		system.step()
 	_process_rescue()
 	_process_hearts()
 	# LAST, AND AFTER EVERY BODY HAS STEPPED. Never inline in the step loop above:
@@ -943,11 +963,8 @@ func clear_round_stats() -> void:
 	# round three's board showed -- and RANKED ON -- a lap driven in round one,
 	# and a lap left half-driven when a round ended carried its start tick into
 	# the next one, where it would come out minutes long.
-	_best_lap.clear()
-	_lap_next.clear()
-	_lap_from.clear()
-	_on_lap_gate.clear()
-	laps_completed = 0
+	if laps != null:
+		laps.reset()
 
 # THE ROUND, WRITTEN DOWN. Once per round, on the host, on a path no game state
 # can gate.
@@ -4217,190 +4234,43 @@ func _sync_open_cells(layout: PackedInt32Array) -> void:
 	if grid != null:
 		grid.apply_open_cells(layout)
 
-# --- Rescue: one countdown, two states, one drone -----------------------------
-#
-# LEDGE_HANG and DOWNED are the same situation wearing different hats -- immobile,
-# no verbs, a countdown, a teammate who can end it early, and the drone if nobody
-# does. Handled together on purpose: two near-identical implementations would
-# drift apart, and every rule that applies to one applies to the other.
-# THE BUS. M25 phase 3.
-#
-# HOST ONLY, like every other decision. A client is told where the bus is and who
-# is on it; it never drives, because it has no input for a vehicle somebody else
-# is steering and a client that integrated its own steering would be predicting a
-# thing it cannot see the input for.
-#
-# GATED ON THE MODE, which is the first real customer of the pool policy that M25
-# phase 1 built. A bus on the ordinary bridge would be a vehicle among pillars and
-# holes -- a different feature with a different set of problems -- so BASE declares
-# it OFF and the blank zone declares it ON, and this line is the whole enforcement.
-# --- Laps ----------------------------------------------------------------------
-#
-# THE RULE, WHICH IS SHORTER THAN IT SOUNDS. Crossing the start line always
-# begins a lap. Crossing it again ends one -- but it only COUNTS if every other
-# gate was touched in order on the way round, and otherwise it silently starts
-# over. So a cut corner is not punished, it just does not score, which is the
-# right severity for a thing you did to yourself.
-#
-# HELD PER PLAYER, NOT PER BUS. Four people in one bus post the same time and
-# that is true; somebody who steps off and boards another keeps their own
-# progress. It also means a lap driven and a lap walked are the same object,
-# which they are.
-#
-# EDGE-TRIGGERED ON THE GATE, not level-triggered. A gate is several cells deep
-# in the direction you cross it at walking pace, so a level trigger would fire
-# for every tick you were inside one -- and on the start line that means
-# restarting the lap five times in a row and never completing one.
+# --- Laps: see systems/lap_tracker.gd. The old names, forwarded. --------------
+
 func _process_laps() -> void:
-	if grid == null or not is_host or grid.lap_gate_cells.is_empty():
-		return
-	for peer_key in players.keys():
-		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		if body == null or not is_instance_valid(body):
-			continue
-		var at: int = grid.lap_gate_at(grid.cell_of_world(body.position))
-		if at < 0:
-			_on_lap_gate.erase(peer)
-			continue
-		if int(_on_lap_gate.get(peer, -1)) == at:
-			continue                  # still standing in the one we already counted
-		_on_lap_gate[peer] = at
-		_touch_lap_gate(peer, at)
+	if laps != null:
+		laps.step()
 
-# WHICH GATE THIS PLAYER IS DRIVING AT NEXT.
-#
-# NOT THE SAME AS `_lap_next`, and the difference is the whole of what a player
-# needs to see. `_lap_next` counts up 1, 2, 3 and then runs off the end of the
-# list -- there is no gate 4 on a four-gate circuit, because the thing you go to
-# after the last checkpoint is the START LINE again. And before you have started
-# a lap at all there is no entry, and the answer is also the start line.
-#
-# So both ends of the sequence mean 0, which is a thing the counter cannot say
-# and the HUD has to know.
+# ONE PLAYER'S LAP PROGRESS, told reliably whenever it changes. -1 is "no lap in
+# progress". See LapTracker: this used never to reach a client at all.
+@rpc("authority", "call_remote", "reliable")
+func _lap_state(peer: int, next: int, from: int, best_ticks: int) -> void:
+	if is_host or laps == null:
+		return
+	laps.apply_remote(peer, next, from, best_ticks)
+
+@rpc("authority", "call_remote", "reliable")
+func _lap_reset() -> void:
+	if is_host or laps == null:
+		return
+	laps.reset()
+
 func next_lap_gate_of(peer: int) -> int:
-	if grid == null or grid.lap_gate_count() == 0:
-		return -1
-	var want: int = int(_lap_next.get(peer, 0))
-	return 0 if want <= 0 or want >= grid.lap_gate_count() else want
+	return laps.next_gate_of(peer) if laps != null else -1
 
-# THE GATES, COLOURED FOR THE PERSON LOOKING AT THEM.
-#
-# THEY WERE INVISIBLE UNTIL NOW -- recorded, sequenced, tested, and drawn by
-# nothing, so a player could not find the start line and reported being unable to
-# start a race at all. A rule you cannot see is not a rule.
-#
-# ALTERNATING SHADES OF BLUE, from the ask, so the circuit reads as a numbered
-# sequence rather than as identical marks; the start line is paler than any of
-# them because it is the one that is not a checkpoint but a finish. And YOURS is
-# lit: the gate that is next for the local player glows, which is the only part
-# of this that is per-viewer and the reason each mark carries its own material.
-const GATE_SHADE_A := Color(0.16, 0.30, 0.58)
-const GATE_SHADE_B := Color(0.28, 0.47, 0.78)
-const GATE_START := Color(0.86, 0.89, 0.95)
-const GATE_NEXT := Color(0.42, 0.86, 1.00)
 
-func _show_lap_gates() -> void:
-	if grid == null:
-		return
-	var marks: Dictionary = grid.lap_gate_marks()
-	if marks.is_empty():
-		return
-	var target: int = next_lap_gate_of(local_peer)
-	for cell in marks:
-		var mark: Node = marks[cell]
-		if not is_instance_valid(mark):
-			continue
-		var idx: int = grid.lap_gate_at(cell)
-		var want: Color = GATE_START if idx == 0 else 			(GATE_SHADE_A if idx % 2 == 1 else GATE_SHADE_B)
-		var lit: bool = idx == target
-		if lit:
-			want = GATE_NEXT
-		# AND THE CHECKER SURVIVES THE TINT.
-		#
-		# These are the deck's own squares now rather than plates laid on them, and
-		# the parity is not decoration: it is what makes distance readable from a
-		# fixed 45-degree camera, on the one surface where judging distance at
-		# speed is the whole activity. `GridConfig.gate_colour` makes the same
-		# point about the lobby strip -- same parity rule, different palette, so a
-		# player counting squares across it counts the same squares.
-		#
-		# The old overlay flattened each gate cell to one colour and broke the
-		# pattern across every band, which nobody decided; it fell out of the plate
-		# being a separate object.
-		#
-		# TWO AXES, AND THEY MUST NOT FIGHT: the HUE says which gate this is (and
-		# whether it is yours), the LIGHTNESS says which square. A parity swing
-		# small enough to read as shading rather than as a second signal.
-		var pale: bool = (int(cell.x) + int(cell.y)) % 2 == 0
-		want = want.lightened(0.10) if pale else want.darkened(0.10)
-		var material := mark.material_override as StandardMaterial3D
-		if material == null or material.albedo_color == want:
-			continue
-		material.albedo_color = want
-		material.emission_enabled = true
-		material.emission = want
-		# THE ONE YOU WANT IS BRIGHTER, not a different hue nobody has learned
-		# yet. Everything else on the circuit stays legible as a gate.
-		material.emission_energy_multiplier = 0.9 if lit else 0.25
-
-func _touch_lap_gate(peer: int, at: int) -> void:
-	if at != 0:
-		# ONLY THE NEXT ONE COUNTS. Touching gate 3 before gate 2 is ignored
-		# rather than resetting: the lap is already lost, and taking it away at
-		# the moment somebody drives over a checkpoint would read as the gate
-		# being broken.
-		if at == int(_lap_next.get(peer, -1)):
-			_lap_next[peer] = at + 1
-		return
-	# The start line, which is both the finish and the start.
-	if int(_lap_next.get(peer, -1)) >= grid.lap_gate_count():
-		var lap: int = tick - int(_lap_from.get(peer, tick))
-		if lap > 0:
-			laps_completed += 1
-			var best: int = int(_best_lap.get(peer, 0))
-			if best == 0 or lap < best:
-				_best_lap[peer] = lap
-	_lap_from[peer] = tick
-	_lap_next[peer] = 1
-
-# THE BEST LAP THIS PLAYER HAS DRIVEN, in ticks, or 0 for nobody who has
-# finished one. ZERO IS NOT A GOOD TIME -- it is the absence of one, and every
-# reader has to know that, which is why it is stated here rather than left to be
-# discovered by whoever sorts on it. See RoundMachine.rank_entries.
 func best_lap_of(peer: int) -> int:
-	return int(_best_lap.get(peer, 0))
+	return laps.best_of(peer) if laps != null else 0
 
-# HOW LONG THE LAP IN PROGRESS HAS BEEN RUNNING, in ticks, or 0 when there is
-# none. The HUD's live clock.
-#
-# ZERO MEANS "NOT DRIVING A LAP", the same convention `best_lap_of` uses for
-# "never finished one" -- two dictionaries, one rule about zero, so nothing
-# downstream has to remember which is which.
-# THE RUNNING LAP, THROWN AWAY. Not the best, which was earned and is kept.
-#
-# Every piece of the in-progress lap goes together: which gate is expected next,
-# when it started, and which gate the body is standing on. Leaving any one of
-# them would mean a player who died mid-lap came back part-way through a sequence
-# they are no longer driving.
 func _abandon_lap(peer: int) -> void:
-	_lap_next.erase(peer)
-	_lap_from.erase(peer)
-	_on_lap_gate.erase(peer)
+	if laps != null:
+		laps.abandon(peer)
 
-# EVERY LAP IN PROGRESS, THROWN AWAY. The bests are untouched.
-#
-# For the end of a round: a lap is something you drive during one, and the clock
-# going on ticking in the lobby afterwards is a timer for a lap nobody is driving.
-# Called by RoundMachine._enter_lobby, which is where a round is definitively over.
 func abandon_running_laps() -> void:
-	for peer_key in players.keys():
-		_abandon_lap(int(peer_key))
+	if laps != null:
+		laps.abandon_all()
 
 func lap_elapsed_of(peer: int) -> int:
-	if not _lap_next.has(peer):
-		return 0
-	return maxi(0, tick - int(_lap_from.get(peer, tick)))
+	return laps.elapsed_of(peer) if laps != null else 0
 
 func _process_buses() -> void:
 	if not is_host:
@@ -6534,6 +6404,9 @@ func host_add_peer(peer: int) -> void:
 	# announced by a one-off reliable message rather than by the snapshot -- so
 	# somebody arriving after that message was sent would never hear about it.
 	# Same reason the roster of players is replayed just below.
+	# LAP PROGRESS IS ANNOUNCED ON CHANGE, for the same reason.
+	if laps != null:
+		laps.replay_to(peer)
 	# A SWALLOW IS ANNOUNCED ON CHANGE, so a joiner has to be told the current
 	# state of every one outright -- nothing about it may change for minutes.
 	for swallow in _swallows:

@@ -164,8 +164,7 @@ func _a_round_names_what_is_running() -> void:
 	# anchors because the test asserted the anchors.
 	var screen: float = hud.get_viewport().get_visible_rect().size.x
 	var left: float = hud._playing_name.global_position.x
-	print("[hudmode] at %d px the summary starts at %.0f, the lap clock at %.0f"
-		% [screen, left, hud._own_lap_live.global_position.x])
+	print("[hudmode] at %d px the summary starts at %.0f" % [screen, left])
 	check(left > screen * 0.5,
 		"the round summary sits past the middle (%.0f of %.0f), opposite the lap "
 			% [left, screen * 0.5]

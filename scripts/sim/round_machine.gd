@@ -26,6 +26,7 @@ extends RefCounted
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
+const GameMode = preload("res://scripts/sim/game_mode.gd")
 
 enum State { LOBBY, RUNNING, CLOSING, SCORING }
 
@@ -370,12 +371,24 @@ func _rearmost_row(world) -> int:
 #
 # A pure function of (who reached, how many hats), so the ranking is testable as
 # a table of cases rather than by playing a round.
-static func rank_entries(entries: Array) -> Array:
+# EACH MODE NAMES ITS KEYS, IN ORDER (BaseMode.ranking): the bridge ranks on hats,
+# then tower height, then arrival; the race puts its lap in front of that. The
+# comparison each key means is written once, in `_key_above`, so a new mode that
+# ranks on something new adds a case there and names it in its own ranking. That
+# is the "scorer per mode" this comment promised when there was only one mode,
+# without the growing if-chain it warned about.
+#
+# DEFAULT_RANKING is every key, lap first, for callers that do not know the mode:
+# a lap of 0 means nobody finished one, so outside a race the key is inert and
+# everything falls through to hats exactly as before.
+const DEFAULT_RANKING := ["lap", "hats", "hat_height", "made_it"]
+
+static func rank_entries(entries: Array, ranking: Array = DEFAULT_RANKING) -> Array:
 	var out: Array = entries.duplicate()
 	out.sort_custom(func(a, b):
-		if _scores_above(a, b):
+		if _scores_above(a, b, ranking):
 			return true
-		if _scores_above(b, a):
+		if _scores_above(b, a, ranking):
 			return false
 		# A STABLE TIE-BREAK, and it has to be something. Peer id is arbitrary but
 		# it is the same arbitrary on every machine, which a sort on equal keys is
@@ -389,41 +402,44 @@ static func rank_entries(entries: Array) -> Array:
 # the sort separated can never be numbered as a tie. `display_ranks` used to
 # re-list the keys by hand and forgot the lap, which printed two racers with
 # different lap times as joint first on the one board where laps decide.
-static func _scores_above(a: Dictionary, b: Dictionary) -> bool:
-	# LAP TIME FIRST, AND ZERO IS NOT A GOOD TIME.
-	#
-	# `lap` is the best completed lap in ticks, and 0 means nobody finished
-	# one -- so the comparison is in two parts, and skipping the first is the
-	# obvious bug: sorting ascending on the raw number hands the win to every
-	# player who never crossed the line, which is everybody in every mode that
-	# has no circuit in it.
-	#
-	# WHICH IS ALSO WHY THERE IS NO MODE BRANCH HERE. Outside the race nobody
-	# has a lap, every entry is 0, both parts tie, and the comparison falls
-	# through to hats exactly as it did before. A key that is inert when the
-	# feature is absent beats an `if mode == RACE` that somebody has to
-	# remember to keep in step.
-	var al: int = int(a.get("lap", 0))
-	var bl: int = int(b.get("lap", 0))
-	if (al > 0) != (bl > 0):
-		return al > 0                     # any lap beats no lap
-	if al > 0 and al != bl:
-		return al < bl                    # and then quicker wins
-	var ah: int = int(a.get("hats", 0))
-	var bh: int = int(b.get("hats", 0))
-	if ah != bh:
-		return ah > bh
-	# In centimetres, so the comparison is exact and the wire carries an int
-	# like every other field on the board.
-	var at: int = int(a.get("hat_height", 0))
-	var bt: int = int(b.get("hat_height", 0))
-	if at != bt:
-		return at > bt
-	var ar: bool = bool(a.get("made_it", false))
-	var br: bool = bool(b.get("made_it", false))
-	if ar != br:
-		return ar
+static func _scores_above(a: Dictionary, b: Dictionary,
+		ranking: Array = DEFAULT_RANKING) -> bool:
+	for key in ranking:
+		var verdict: int = _key_above(str(key), a, b)
+		if verdict != 0:
+			return verdict > 0
 	return false
+
+# +1 if `a` is better than `b` on this one key, -1 if worse, 0 if they tie on it.
+static func _key_above(key: String, a: Dictionary, b: Dictionary) -> int:
+	match key:
+		"lap":
+			# LAP TIME, AND ZERO IS NOT A GOOD TIME. `lap` is the best completed lap
+			# in ticks and 0 means nobody finished one -- so the comparison is in two
+			# parts, and skipping the first is the obvious bug: sorting ascending on
+			# the raw number hands the win to every player who never crossed the line.
+			var al: int = int(a.get("lap", 0))
+			var bl: int = int(b.get("lap", 0))
+			if (al > 0) != (bl > 0):
+				return 1 if al > 0 else -1        # any lap beats no lap
+			if al > 0 and al != bl:
+				return 1 if al < bl else -1       # and then quicker wins
+			return 0
+		"made_it":
+			var ar: bool = bool(a.get("made_it", false))
+			var br: bool = bool(b.get("made_it", false))
+			if ar == br:
+				return 0
+			return 1 if ar else -1
+		_:
+			# MORE IS BETTER: hats, and the tower's height in centimetres (an int,
+			# so the comparison is exact and the wire carries it like every other
+			# field on the board).
+			var av: int = int(a.get(key, 0))
+			var bv: int = int(b.get(key, 0))
+			if av == bv:
+				return 0
+			return 1 if av > bv else -1
 
 # WHICH FIELD ACTUALLY DECIDED THIS ROW, as a key.
 #
@@ -432,20 +448,19 @@ static func _scores_above(a: Dictionary, b: Dictionary) -> bool:
 # was. Reported: "on the victory screen it still lists '3 hats' under 1st instead
 # of the lap time." In a race the hats did not decide anything; the lap did.
 #
-# THE SAME PRECEDENCE AS THE COMPARATOR, KEPT NEXT TO IT, because two
-# implementations of one fact is a thing this project has paid for. This does not
-# re-sort; it answers which of the comparator's keys is the one that ran out
-# first for THIS entry, and it walks them in the comparator's own order.
-#
-# AND IT NEEDS NO MODE BRANCH, for the reason written above the comparator: a lap
-# of 0 means nobody finished one, so outside a race every entry falls through to
-# hats exactly as before. A key that is inert when the feature is absent beats an
-# `if mode == RACE` somebody has to remember to keep in step.
-static func rank_key(entry: Dictionary) -> String:
-	if int(entry.get("lap", 0)) > 0:
-		return "lap"
-	if int(entry.get("hats", 0)) > 0:
-		return "hats"
+# THE SAME LIST AS THE COMPARATOR, walked in its order: the first key this entry
+# has anything for. Height is never the answer -- it only settles a tie on count,
+# and "3 hats" is still what the row is about.
+static func rank_key(entry: Dictionary, ranking: Array = DEFAULT_RANKING) -> String:
+	for key in ranking:
+		match str(key):
+			"hat_height":
+				continue
+			"made_it":
+				return "made_it"
+			_:
+				if int(entry.get(key, 0)) > 0:
+					return str(key)
 	return "made_it"
 
 # THE RANK SHOWN, WHICH IS NOT THE ORDER (M19).
@@ -464,7 +479,7 @@ static func rank_key(entry: Dictionary) -> String:
 # Keeping these two apart is the whole trick. Folding ties into the sort would
 # mean a comparator that answers "equal" for two rows, and a sort on equal keys is
 # not promised to be stable across machines.
-static func display_ranks(ordered: Array) -> Array:
+static func display_ranks(ordered: Array, ranking: Array = DEFAULT_RANKING) -> Array:
 	var out: Array = []
 	for i in ordered.size():
 		if i == 0:
@@ -474,7 +489,8 @@ static func display_ranks(ordered: Array) -> Array:
 		var above: Dictionary = ordered[i - 1]
 		# THE SORT'S OWN RULE, asked both ways: two rows tie exactly when neither
 		# scores above the other. See _scores_above.
-		var same: bool = not _scores_above(here, above) and not _scores_above(above, here)
+		var same: bool = not _scores_above(here, above, ranking) \
+			and not _scores_above(above, here, ranking)
 		out.append(int(out[i - 1]) if same else i + 1)
 	return out
 
@@ -510,10 +526,16 @@ func rank(world) -> Array:
 			# the board and the numbers describing it to arrive out of step.
 			"stats": world.stats_of(peer),
 		})
-	var ordered: Array = rank_entries(entries)
-	var ranks: Array = display_ranks(ordered)
+	# BY THE RULES OF THE ROUND JUST PLAYED. SCORING is entered before the lobby,
+	# so the round index still names that round and `current_mode` is its mode.
+	var ranking: Array = GameMode.ranking_of(world.current_mode())
+	var ordered: Array = rank_entries(entries, ranking)
+	var ranks: Array = display_ranks(ordered, ranking)
 	for i in ordered.size():
 		ordered[i]["rank"] = int(ranks[i])
+		# WHAT DECIDED IT, decided here with the rules, and carried on the entry --
+		# a client printing the board does not have to know which mode it was.
+		ordered[i]["decided_by"] = rank_key(ordered[i], ranking)
 	# THE BADGES ARE COMPUTED ONCE, ON THE HOST, and shipped. A client working them
 	# out for itself would be deriving them from numbers it was handed anyway, and
 	# any disagreement -- a dropped field, a different registry order after an

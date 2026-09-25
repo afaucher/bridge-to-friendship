@@ -1453,7 +1453,7 @@ about *method*, not about that game.
   `test_hud_rescue_visible` 28782, `test_debug_replication` 28783,
   `test_dash_prediction` 28784, `test_contact_prediction` 28785,
   `test_character_replication` 28786, `test_zombie_replication` 28787,
-  `test_net_telemetry` 28788, `test_bus_replication` 28789, `test_run_seed_sync` 28790, `test_swallow_replication` 28791. (28781 was held
+  `test_net_telemetry` 28788, `test_bus_replication` 28789, `test_run_seed_sync` 28790, `test_swallow_replication` 28791, `test_lap_replication` 28792. (28781 was held
   for M8.5's hat replication test and is now `test_run_session`.) Pick the next free one and add it
   here.
 - **A sim or long-running harness needs an UNCONDITIONAL heartbeat,** or you

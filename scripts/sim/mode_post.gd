@@ -26,7 +26,6 @@ extends StaticBody3D
 # standing still behind a wall while it is re-cut.
 
 const Layers = preload("res://scripts/core/layers.gd")
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 
 const LAYER := Layers.POSTS      # shared with the bus post
@@ -47,16 +46,8 @@ var showing: int = GameMode.BASE
 
 var _banner: MeshInstance3D = null
 
-# ONE COLOUR PER MODE, and the post is the only place they are used. Deliberately
-# not from the hat palette: a hat is loot and this is furniture, and the one thing
-# a player must never do is read the selector as something to collect.
-const MODE_COLOURS := {
-	GameMode.BASE: Color(0.42, 0.62, 0.86),
-	GameMode.BLANK: Color(0.86, 0.84, 0.52),
-	GameMode.TRACK: Color(0.82, 0.68, 0.22),   # the bus's own deck yellow
-	GameMode.RACE: Color(0.85, 0.85, 0.88),    # start-line white
-}
-const UNKNOWN_COLOUR := Color(0.55, 0.55, 0.58)
+# ONE COLOUR PER MODE -- each mode's own `colour()`, so a new mode brings its
+# colour with it rather than needing a row in a second table here.
 
 func _ready() -> void:
 	collision_layer = LAYER
@@ -132,7 +123,7 @@ func _apply_colour() -> void:
 	var material := _banner.material_override as StandardMaterial3D
 	if material == null:
 		return
-	var colour: Color = MODE_COLOURS.get(showing, UNKNOWN_COLOUR)
+	var colour: Color = GameMode.colour_of(showing)
 	material.albedo_color = colour
 	# LIT FROM ITSELF, so the banner reads at a distance and in the shadow the
 	# lobby's walls throw. It is a signal rather than a surface.

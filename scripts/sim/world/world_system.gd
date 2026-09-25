@@ -25,6 +25,9 @@ var pool_name: String = ""
 # The snapshot section this system owns, or "" if it does not ride the snapshot.
 var section_name: String = ""
 
+# How the world names it when a mode brings it (see BaseMode.systems).
+var system_name: String = ""
+
 func attach(w) -> void:
 	world = w
 	_attached()
@@ -40,6 +43,11 @@ func step() -> void:
 	host_tick()
 
 func host_tick() -> void:
+	pass
+
+# EVERY MACHINE, AFTER BOTH TICKS: what this system DRAWS, which is per-viewer and
+# decides nothing, so a client does it for itself rather than being told.
+func present() -> void:
 	pass
 
 # --- The snapshot -------------------------------------------------------------

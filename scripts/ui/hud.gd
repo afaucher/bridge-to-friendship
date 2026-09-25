@@ -17,6 +17,8 @@ extends CanvasLayer
 # (that was Godot 3), and a HUD is not worth a theme resource.
 
 const HudModel = preload("res://scripts/ui/hud_model.gd")
+const HudWidgets = preload("res://scripts/ui/hud/hud_widgets.gd")
+const LapClock = preload("res://scripts/ui/hud/widgets/lap_clock.gd")
 const TeammateMarkers = preload("res://scripts/ui/teammate_markers.gd")
 const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
@@ -29,23 +31,14 @@ const COLOR_SLOT_EMPTY := Color(0.26, 0.27, 0.32)
 const COLOR_TEXT := Color(0.92, 0.93, 0.96)
 const COLOR_DIM := Color(0.62, 0.64, 0.70)
 const COLOR_ALERT := Color(1.00, 0.45, 0.22)
-# The lap clock. Start-line white rather than the alert orange: a lap time is
-# something you did well, and every other coloured thing on this HUD is a
-# warning.
-const COLOR_LAP := Color(0.85, 0.86, 0.92)
-
-# Where the lap clock sits across the top: a third of the way over, which is
-# between the top-left own panel and the centred round column at any width.
-const LAP_ANCHOR_X := 0.3
+# Best laps on the friend rows. The clock itself is a widget: see LapClock.
+const COLOR_LAP := LapClock.COLOR_LAP
 
 # And the mode summary, mirrored across the round column: between it and the
 # friends panel top-right, at the distance from centre the lap clock sits on the
 # other side. A pair reads as a pair because of where they are, not because they
 # are the same size.
 const MODE_ANCHOR_X := 0.7
-# The lap being driven right now, brighter than the best beside it: it is the
-# number changing, and the one a driver is actually watching.
-const COLOR_LAP_LIVE := Color(1.00, 0.97, 0.80)
 # The mode name in the lobby. Warm and bright: it is an announcement of what
 # everybody is about to do, not a warning about anything.
 const COLOR_MODE := Color(0.98, 0.90, 0.62)
@@ -116,8 +109,16 @@ var world: Node = null
 var _own_panel: Control = null
 var _own_outline: PanelContainer = null
 var _own_name: Label = null
-var _own_lap: Label = null
-var _own_lap_live: Label = null
+# THE MODE'S OWN PIECES, by id (see hud/hud_widgets.gd). Built when the round's
+# mode asks for them and freed when it stops.
+var _widgets: Dictionary = {}
+
+# The lap clock's two labels, for the tests that measure them. Null when the
+# round's mode has no lap clock.
+var _own_lap: Label:
+	get: return _widgets["lap_clock"].best if _widgets.has("lap_clock") else null
+var _own_lap_live: Label:
+	get: return _widgets["lap_clock"].live if _widgets.has("lap_clock") else null
 var _mode_name: Label = null
 var _mode_blurb: Label = null
 # The same pair again, in the top strip, for while a round is running. See
@@ -169,7 +170,6 @@ func _ready() -> void:
 	_build_own_panel()
 	_build_friends_panel()
 	_build_markers()
-	_build_lap_panel()
 	_build_playing_panel()
 	_build_round_panel()
 	_build_score_screen()
@@ -181,8 +181,11 @@ func _process(_delta: float) -> void:
 		_own_panel.visible = false
 		_friends_panel.visible = false
 		_score_screen.visible = false
+		for id in _widgets:
+			_widgets[id].visible = false
 		return
 	_update_own(model["own"])
+	_sync_widgets(model)
 	_update_friends(model["friends"])
 	_update_markers(model["friends"])
 	_update_round(model.get("round", {}))
@@ -204,6 +207,8 @@ func _process(_delta: float) -> void:
 	_own_panel.visible = not showing
 	_friends_panel.visible = not showing
 	_round_panel.visible = not showing
+	for id in _widgets:
+		_widgets[id].visible = not showing
 	if _markers != null:
 		_markers.visible = _markers.visible and not showing
 
@@ -273,45 +278,24 @@ func _update_markers(friends: Array) -> void:
 
 # --- The round ----------------------------------------------------------------
 
-# THE LAP CLOCK, ON ITS OWN, IN THE TOP STRIP BETWEEN THE HUD AND THE ROUND LINE.
-#
-# It used to sit beside your name inside the own panel at 16 px, which is the
-# size of a status caption. Reported as "that counter is WAY too small" -- and it
-# was the wrong KIND of thing to be in that panel as well as the wrong size. The
-# own panel is a list you look AT between moments; a lap clock while you are
-# driving is a number you catch out of the corner of your eye, which is exactly
-# what the note on _round_label says the centre strip is for. So it moves up
-# there and takes ROUND's size with it.
-#
-# ANCHORED AT A FRACTION rather than offset from the panel beside it. The own
-# panel's width depends on the player's name, their hats and their held weapon,
-# so pinning to its edge would make the clock move whenever any of those changed.
-# A third of the way across is between the two at every resolution and stays put.
-#
-# THE RUNNING CLOCK AND THE BEST, STILL TWO LABELS AND NOT ONE DOING BOTH. A
-# single label showing the live lap while driving and the best otherwise hides
-# your target at the only moment you are chasing it -- you cross the line and the
-# next lap starts on the same tick, so the best would flash past in a frame. The
-# best stays small underneath: it is the thing you check, not the thing you watch.
-func _build_lap_panel() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	margin.anchor_left = LAP_ANCHOR_X
-	margin.anchor_right = LAP_ANCHOR_X
-	margin.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	margin.add_theme_constant_override("margin_top", 14)
-	add_child(margin)
-
-	var column := VBoxContainer.new()
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	margin.add_child(column)
-
-	_own_lap_live = _label("", 44, COLOR_LAP_LIVE)
-	_own_lap_live.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(_own_lap_live)
-	_own_lap = _label("", 18, COLOR_LAP)
-	_own_lap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(_own_lap)
+# THE MODE'S WIDGETS: build what it asks for, free what it no longer does, and
+# refresh the rest. Keyed by id so a widget that stays asked for keeps its nodes
+# (and its layout) from one frame to the next.
+func _sync_widgets(model: Dictionary) -> void:
+	var wanted: Array = model.get("widgets", [])
+	for id in _widgets.keys():
+		if not wanted.has(id):
+			_widgets[id].queue_free()
+			_widgets.erase(id)
+	for id in wanted:
+		if _widgets.has(id) or not HudWidgets.exists(str(id)):
+			continue
+		var widget: Control = HudWidgets.make(str(id))
+		add_child(widget)
+		widget.build(_label)
+		_widgets[id] = widget
+	for id in _widgets:
+		_widgets[id].refresh(model)
 
 # WHAT YOU ARE PLAYING, opposite the lap clock.
 #
@@ -541,11 +525,6 @@ func _build_own_panel() -> void:
 
 func _update_own(own: Dictionary) -> void:
 	_own_name.text = str(own.get("name", ""))
-	var best: String = HudModel.lap_label(int(own.get("best_lap", 0)))
-	_own_lap.text = ("best " + best) if best != "" else ""
-	_own_lap.visible = best != ""
-	_own_lap_live.text = HudModel.lap_label(int(own.get("lap_running", 0)))
-	_own_lap_live.visible = _own_lap_live.text != ""
 	_set_outline(_own_outline, own.get("colour", Color.TRANSPARENT))
 	_set_avatar(_own_face, int(own.get("steam_id", 0)))
 
