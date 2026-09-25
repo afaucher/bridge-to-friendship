@@ -43,6 +43,7 @@ const PACK := 5
 
 var harness: Node = null
 var frame: int = 0
+const DEADLINE := 600
 var phase: int = 0
 var host_world: Node = null
 var client_world: Node = null
@@ -107,6 +108,13 @@ func _physics_process(_delta: float) -> void:
 		frame = 0
 		return
 
+	# POLLED WITH A DEADLINE, not sampled at a chosen frame. The pack rides the
+	# unreliable snapshot, and under a full parallel gate the first few that name
+	# it can simply not arrive -- a fixed frame 20 failed about one gate in three
+	# with the client holding none of them, against correct code. See CLAUDE.md,
+	# "a net test that samples a chosen frame is a coin flip".
+	if phase == 2 and frame > 20 and client_world.zombie_count() < PACK and frame < DEADLINE:
+		return
 	if phase == 2 and frame > 20:
 		_test_the_whole_pack_crossed()
 		_test_they_are_in_the_same_places()
@@ -120,6 +128,8 @@ func _physics_process(_delta: float) -> void:
 		frame = 0
 		return
 
+	if phase == 3 and frame > 20 and client_world.zombie_count() > PACK - 1 and frame < DEADLINE:
+		return
 	if phase == 3 and frame > 20:
 		_test_the_dead_one_is_dropped()
 		finish()
