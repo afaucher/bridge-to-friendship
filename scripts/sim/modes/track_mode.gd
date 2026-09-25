@@ -1,5 +1,7 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
+const BusTrackGen = preload("res://scripts/grid/gen/bus_track_gen.gd")
+
 # THE BUS ROUTE. A serpentine carved out of the same canvas the blank zone leaves
 # whole: full-width lanes joined at alternating ends, so the driving is lateral
 # and the corners are where the rows advance. See SegmentGen.bus_track.
@@ -27,7 +29,7 @@ func terrain() -> String:
 	return TERRAIN_TRACK
 
 func generate_section(width: int, slot_seed: int, slot: int):
-	return SegmentGen.bus_track(width, slot_seed, slot)
+	return BusTrackGen.bus_track(width, slot_seed, slot)
 
 func pools() -> Dictionary:
 	return {

@@ -1,5 +1,7 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
+const RaceCircuitGen = preload("res://scripts/grid/gen/race_circuit_gen.gd")
+
 # THE RACE CIRCUIT. A closed ring with a hole in the middle -- see
 # implementation_plans/m26_race_track.md and SegmentGen.race_loop.
 #
@@ -26,7 +28,7 @@ func terrain() -> String:
 # all five slots compute the same circuit and each takes its own piece of it --
 # which is what makes them one track rather than five.
 func generate_section(width: int, slot_seed: int, slot: int):
-	return SegmentGen.race_loop(width, slot_seed,
+	return RaceCircuitGen.race_loop(width, slot_seed,
 		SegmentPool.round_of_slot(slot),
 		(slot % (SegmentPool.SECTIONS_PER_ROUND + 1)) - 1,
 		SegmentPool.SECTIONS_PER_ROUND)

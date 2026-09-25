@@ -15,7 +15,7 @@ extends RefCounted
 # ADDING A MODE IS A SCRIPT HERE AND A LINE IN game_mode.gd's registry. Its
 # terrain, its rules, its scoring and its HUD all live in the one file.
 
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const SectionGen = preload("res://scripts/grid/gen/section_gen.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 
 # The three answers a mode may give about a pool. DIFFERENT is not implemented by
@@ -62,7 +62,7 @@ func terrain() -> String:
 # selector rolls one) and `slot` the slot's index in the run. The lobby between
 # rounds is never asked: it is always base.
 func generate_section(width: int, slot_seed: int, slot: int):
-	return SegmentGen.section(width, slot_seed, slot)
+	return SectionGen.section(width, slot_seed, slot)
 
 # EVERY POOL THAT TICKS, ANSWERED. Spelled out rather than defaulted -- a default
 # would make an unanswered pool look answered, which is the silence

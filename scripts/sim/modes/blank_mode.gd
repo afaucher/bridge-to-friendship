@@ -1,5 +1,7 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
+const BlankZoneGen = preload("res://scripts/grid/gen/blank_zone_gen.gd")
+
 # A ZONE WITH NOTHING IN IT. The second mode, and deliberately not a gameplay
 # variant: what it exercises is that A MODE GENERATES ITS OWN GROUND, which is
 # the seam the bus and the shooter both need and the one thing no amount of
@@ -24,7 +26,7 @@ func terrain() -> String:
 	return TERRAIN_BLANK
 
 func generate_section(width: int, slot_seed: int, slot: int):
-	return SegmentGen.blank_zone(width, slot_seed, slot)
+	return BlankZoneGen.blank_zone(width, slot_seed, slot)
 
 func pools() -> Dictionary:
 	return {
