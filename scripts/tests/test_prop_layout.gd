@@ -51,4 +51,43 @@ func setup(main) -> void:
 	if check(merchant != null, "a sold-out merchant still stands"):
 		check(not merchant.can_trade(), "and has nothing left to sell")
 	grid.queue_free()
+	_the_sweep_reaches_every_component(main)
 	finish()
+
+# AND A TRUNCATED CORRIDOR TAKES ITS PROPS' RECORDS WITH IT, in every component.
+#
+# truncate_run finds cell records by reflection rather than by name, which is the
+# only reason moving the props out of BridgeGrid was safe -- and the only way it
+# stays safe is if the reflection is pointed at every component. So after a real
+# cut, no component holds a cell past it. Asserted generically, over every
+# Dictionary and Array a component has, so the next prop kind is covered the day
+# it is added to prop_components().
+func _the_sweep_reaches_every_component(main) -> void:
+	var grid := Node3D.new()
+	grid.set_script(BridgeGridScript)
+	main.add_child(grid)
+	grid.dress_hazards = true
+	grid.build_run(2026, 13)
+	var keep: int = 7
+	var cut_row: int = grid.first_row_of_segment(keep)
+	var before: int = _cells_past(grid, cut_row)
+	check(before > 0, "the run had prop records past the cut to sweep (%d)" % before)
+	grid.truncate_run(keep)
+	eq(_cells_past(grid, cut_row), 0, "and after the cut no component keeps one")
+	grid.queue_free()
+
+func _cells_past(grid: Node, cut_row: int) -> int:
+	var n := 0
+	for holder in grid.prop_components():
+		for entry in holder.get_property_list():
+			var value = holder.get(str(entry.get("name", "")))
+			if value is Dictionary:
+				for k in value:
+					if k is Vector2i and (k as Vector2i).y >= cut_row:
+						n += 1
+			elif value is Array:
+				for item in value:
+					var cell = item[0] if item is Array and (item as Array).size() > 0 else item
+					if cell is Vector2i and (cell as Vector2i).y >= cut_row:
+						n += 1
+	return n

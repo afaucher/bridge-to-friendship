@@ -13,9 +13,10 @@ extends RefCounted
 # shooters fresh -- a heart the party ate, back on the deck on one machine. Here
 # `spawn` asks, for every kind.
 #
-# THE GRID STILL OWNS THE CELLS AND THE ROOT NODES LIVE UNDER IT, so its own
-# sweeps (truncate_run) still find them; `forget_past` is how the records here
-# are swept, because they are no longer properties of the grid.
+# THE ROOT NODES LIVE UNDER THE GRID, so truncate_run's node sweep still frees
+# them, and its reflection sweep walks every prop component's properties the way
+# it walks its own -- so `nodes` and `spent` are forgotten past a cut without
+# anything here having to know about it (test_prop_layout).
 
 var grid = null
 var root: Node3D = null
@@ -106,11 +107,3 @@ func apply_layout(data: PackedInt32Array) -> void:
 		mark_spent(cell)
 		take(cell)
 		i += 2
-
-# --- The corridor going away ----------------------------------------------------
-
-func forget_past(cut_row: int) -> void:
-	for cell in nodes.keys():
-		if (cell as Vector2i).y >= cut_row:
-			nodes.erase(cell)
-	spent = spent.filter(func(c): return (c as Vector2i).y < cut_row)

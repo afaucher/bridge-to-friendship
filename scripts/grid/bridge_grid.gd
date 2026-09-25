@@ -119,10 +119,6 @@ func truncate_run(keep: int) -> void:
 
 	_free_props_past(cut_row)
 	_forget_cells_past(cut_row)
-	# THE PROP RECORDS ARE NOT PROPERTIES OF THIS OBJECT any more, so the sweep
-	# above cannot see them; each kind forgets its own.
-	for props in consumable_props():
-		props.forget_past(cut_row)
 	# THE STONE LIST HOLDS NODES, NOT CELLS, so neither sweep above reaches it --
 	# and it is the network identity of every stone (an index into it). Left
 	# holding the freed stones it went on numbering them, so the host's indices
@@ -150,16 +146,28 @@ func _free_props_past(cut_row: int) -> void:
 				root.remove_child(prop)
 				prop.queue_free()
 
-# Every cell record past the cut, found by walking this object's own properties.
-# A Vector2i in a grid IS a cell, so anything holding one can be swept without
-# being named; `gate_rows` and `gate_bands` are rows rather than cells and are the
-# only two that have to be spelled out.
+# Every cell record past the cut, found by walking this object's own properties
+# AND EVERY PROP COMPONENT'S. A Vector2i in a grid IS a cell, so anything holding
+# one can be swept without being named; `gate_rows` and `gate_bands` are rows
+# rather than cells and are the only two that have to be spelled out.
+#
+# THE COMPONENTS ARE WALKED THE SAME WAY, and that is what made moving the props
+# out of this file safe: the sweep never named a prop, so a record that moved into
+# a component would have silently stopped being swept -- a rebuilt corridor with
+# the old one's elevators still in the map.
 func _forget_cells_past(cut_row: int) -> void:
-	for entry in get_property_list():
+	for holder in [self] + prop_components():
+		_forget_cells_in(holder, cut_row)
+
+	gate_rows = gate_rows.filter(func(r): return int(r) < cut_row)
+	gate_bands = gate_bands.filter(func(b): return int(b[0]) < cut_row)
+
+func _forget_cells_in(holder: Object, cut_row: int) -> void:
+	for entry in holder.get_property_list():
 		var key: String = str(entry.get("name", ""))
 		if key == "":
 			continue
-		var value = get(key)
+		var value = holder.get(key)
 		if value is Dictionary:
 			var drop: Array = []
 			for k in (value as Dictionary):
@@ -169,9 +177,6 @@ func _forget_cells_past(cut_row: int) -> void:
 				(value as Dictionary).erase(k)
 		elif value is Array:
 			_filter_cells(value as Array, cut_row)
-
-	gate_rows = gate_rows.filter(func(r): return int(r) < cut_row)
-	gate_bands = gate_bands.filter(func(b): return int(b[0]) < cut_row)
 
 # One array, in place. Handles a bare cell and the [cell, extra] pairs the
 # authored-content lists hold; anything else is left alone, because an array this
@@ -409,6 +414,31 @@ var merchants = MerchantProps.new()
 func consumable_props() -> Array:
 	return [mounds, graves, hearts, shooters, merchants]
 
+# THE REST OF THE PROPS: moving terrain (elevators, crumbling and timed slabs) and
+# decor with rules (ladders, cover, spikes). See scripts/grid/props/.
+const MovingTerrain = preload("res://scripts/grid/props/moving_terrain.gd")
+const DecorProps = preload("res://scripts/grid/props/decor_props.gd")
+var moving = MovingTerrain.new()
+var decor = DecorProps.new()
+
+# WHAT A MODE PUTS ON THE GROUND THAT THE BRIDGE DOES NOT: the selector, the bus
+# post, and the race's checkpoints.
+const PostProps = preload("res://scripts/grid/props/post_props.gd")
+const LapGates = preload("res://scripts/grid/props/lap_gates.gd")
+var mode_post_props = PostProps.new(ModePost, "ModePosts", "ModePost")
+var bus_post_props = PostProps.new(BusPost, "BusPosts", "BusPost")
+var lap_gates = LapGates.new()
+
+const SPIKE_HEIGHT = DecorProps.SPIKE_HEIGHT
+const SPIKE_COUNT = DecorProps.SPIKE_COUNT
+var spike_lift: Dictionary:
+	get: return decor.spike_lift
+
+# Every prop component, for the ones that have to be told something by all of
+# them -- attaching, and the corridor sweep.
+func prop_components() -> Array:
+	return consumable_props() + [moving, decor, mode_post_props, bus_post_props, lap_gates]
+
 func dressed_theme_of(index: int) -> String:
 	return str(_dressed_themes.get(index, ""))
 
@@ -473,10 +503,8 @@ var authored_mine_cells: Array = []
 # the same reason: the grid records the place, the world owns the thing.
 var authored_water_spawns: Array = []
 # cell -> gate index, in RUN coordinates. See the note where it is filled.
-var lap_gate_cells: Dictionary = {}
-var _bus_posts: Dictionary = {}
-var _bus_post_root: Node3D = null
-var _lap_gate_marks: Dictionary = {}
+var lap_gate_cells: Dictionary:
+	get: return lap_gates.cells
 
 # WHICH LAP GATE IS UNDER THIS CELL, or -1. The whole lap system talks to the
 # grid through this one question.
@@ -488,16 +516,13 @@ var _lap_gate_marks: Dictionary = {}
 # that meant two things until the day they differed; naming them apart on the way
 # in is cheaper than splitting them later.
 func lap_gate_at(cell: Vector2i) -> int:
-	return int(lap_gate_cells.get(cell, -1))
+	return lap_gates.at(cell)
 
 # HOW MANY DISTINCT LAP GATES THE RUN CARRIES. Read off the record rather than from
 # SegmentGen.RACE_CHECKPOINTS: a lap is complete when every gate THIS TRACK has
 # was touched, and a constant would be a second place for that fact to live.
 func lap_gate_count() -> int:
-	var seen := {}
-	for cell in lap_gate_cells:
-		seen[int(lap_gate_cells[cell])] = true
-	return seen.size()
+	return lap_gates.count()
 
 func take_authored_water_spawns() -> Array:
 	var out: Array = authored_water_spawns.duplicate()
@@ -677,7 +702,7 @@ func _ready() -> void:
 	_stone_root = Node3D.new()
 	_stone_root.name = "Stones"
 	add_child(_stone_root)
-	for props in consumable_props():
+	for props in prop_components():
 		props.attach(self)
 
 const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
@@ -828,14 +853,9 @@ func load_segment(seg) -> void:
 	for entry in built.checker_cells:
 		var gc: Vector2i = entry[0]
 		var run_cell := Vector2i(gc.x, gc.y + z_offset)
-		lap_gate_cells[run_cell] = int(entry[1])
-		# THE DECK SQUARE, not a plate laid on it. The builder gave this cell its
-		# own material for exactly this; the world tints it. A gate whose mesh is
-		# missing -- a cell the deck pass skipped, an elevator or a mutable slab --
-		# simply is not in the map, and the tint pass walks what is there.
-		var square = built.checker_meshes.get(gc)
-		if square != null and is_instance_valid(square):
-			_lap_gate_marks[run_cell] = square
+		# THE DECK SQUARE, not a plate laid on it: the builder gave this cell its
+		# own material for exactly this, and the world tints it.
+		lap_gates.record(run_cell, int(entry[1]), built.checker_meshes.get(gc))
 
 	for entry in built.special_cells:
 		var sc: Vector2i = entry[0]
@@ -1049,7 +1069,7 @@ func is_solid(cell: Vector2i) -> bool:
 	# the only place mutable terrain touches the rest of the game, which is what
 	# makes it a small feature: the deck answers a different question, and nothing
 	# else changes.
-	if _open_cells.has(cell):
+	if moving.is_cell_open(cell):
 		return false
 	var r := _resolve(cell)
 	if r.is_empty():
@@ -1330,96 +1350,7 @@ func apply_spent_graves(layout: PackedInt32Array) -> void:
 # stating: an elevator never has to refuse to move, so nothing about it is a
 # decision.
 func _spawn_elevator(cell: Vector2i) -> void:
-	if _mutable_root == null:
-		_mutable_root = Node3D.new()
-		_mutable_root.name = "Mutable"
-		add_child(_mutable_root)
-
-	var high: float = cell_surface(cell).y
-	# THE DECK IT SERVES is the lowest solid neighbour: an elevator is authored at
-	# the height it RISES TO, and where it comes back down to is read off the
-	# terrain rather than authored twice and allowed to disagree with it.
-	var low: float = high
-	for dir in 4:
-		var side: Vector2i = cell + GridConfig.DIR_CELLS[dir]
-		if is_solid(side):
-			low = minf(low, cell_surface(side).y)
-
-	var thick: float = GridConfig.DECK_THICKNESS
-	# ANIMATABLE, NOT STATIC. A StaticBody3D moved by hand does not push what is
-	# standing on it -- it teleports through it -- and the whole point of this slab
-	# is that it carries somebody.
-	var body := AnimatableBody3D.new()
-	body.name = "Elevator_%d_%d" % [cell.x, cell.y]
-	body.collision_layer = Layers.WORLD
-	body.collision_mask = 0
-	body.sync_to_physics = true
-	body.position = Vector3(cell_surface(cell).x, low - thick * 0.5, cell_surface(cell).z)
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	# OVERSIZED BY A HAIR, and the first version had it INSET by one -- which is
-	# the same seam trap CLAUDE.md carries from the ramps, except this box moves.
-	#
-	# Measured: with a 4 cm gap between the platform and the deck beside it, a body
-	# walking on at full stick STOPPED DEAD at the boundary and stayed there, with
-	# the platform level and nothing above foot height in the way. A flat-bottomed
-	# cylinder does not cross a gap, it catches the far lip of one — and two boxes
-	# placed exactly face to face are the same problem with the gap set to zero.
-	# Overlapping buries the platform's vertical face INSIDE the deck box, so a
-	# body crossing at deck height never meets an exposed edge at all.
-	box.size = Vector3(GridConfig.CELL_SIZE + 0.06, thick, GridConfig.CELL_SIZE + 0.06)
-	shape.shape = box
-	body.add_child(shape)
-	_mutable_root.add_child(body)
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.ELEVATOR_COLOUR
-	mat.metallic = 0.5
-	mat.roughness = 0.4
-	var mesh := MeshInstance3D.new()
-	var cube := BoxMesh.new()
-	cube.size = box.size
-	mesh.mesh = cube
-	mesh.material_override = mat
-	body.add_child(mesh)
-
-	_shaft_frame(cell, low, high)
-	_elevators[cell] = {"body": body, "low": low, "high": high}
-
-# FOUR POSTS THAT DO NOT MOVE, marking where the shaft is.
-#
-# Without them a lift is unreadable in both of its states, and each failure is
-# its own kind of unfair. DOWN, it is a slab flush with the deck: you walk over
-# the way up without noticing it. UP, its cell is an open hole with nothing
-# around it, which is a trap rather than a hazard — you cannot avoid a thing
-# whose only tell is that the floor is missing.
-#
-# NO COLLIDER. The posts are at the corners, which is exactly where a body
-# squeezes past a doorway, and a decoration that catches a player is worse than
-# no decoration. They are scenery, and the platform is the only solid thing here.
-func _shaft_frame(cell: Vector2i, low: float, high: float) -> void:
-	if is_equal_approx(low, high):
-		return
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.ELEVATOR_COLOUR.darkened(0.35)
-	mat.metallic = 0.6
-	mat.roughness = 0.5
-
-	var span: float = high - low
-	var post := BoxMesh.new()
-	# Up to the top of the travel, so the frame is as tall as the thing is
-	# capable of being. A frame that stopped short would say the lift did too.
-	post.size = Vector3(0.12, span, 0.12)
-	var half: float = GridConfig.CELL_SIZE * 0.5 - 0.06
-	var centre: Vector3 = cell_surface(cell)
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var bar := MeshInstance3D.new()
-			bar.mesh = post
-			bar.material_override = mat
-			bar.position = Vector3(centre.x + sx * half, low + span * 0.5,
-				centre.z + sz * half)
-			_mutable_root.add_child(bar)
+	moving.spawn_elevator(cell)
 
 # WHERE A PLATFORM'S SURFACE IS AT TICK `t`. Rise, dwell, fall, dwell -- and the
 # dwells are not decoration: a platform that reverses the instant it arrives is
@@ -1428,41 +1359,15 @@ func _shaft_frame(cell: Vector2i, low: float, high: float) -> void:
 # The phase comes off the CELL so neighbours are not synchronised, the same way
 # timed blocks are, and for the same reason.
 func elevator_surface_y(cell: Vector2i, at_tick: int) -> float:
-	if not _elevators.has(cell):
-		return 0.0
-	var record: Dictionary = _elevators[cell]
-	var low: float = record["low"]
-	var high: float = record["high"]
-	if is_equal_approx(low, high):
-		return high
-	var rise: int = SimConfig.ELEVATOR_RISE_TICKS
-	var dwell: int = SimConfig.ELEVATOR_DWELL_TICKS
-	var period: int = (rise + dwell) * 2
-	var phase: int = absi(cell.x * 11 + cell.y * 17) % period
-	var at: int = (at_tick + phase) % period
-	if at < rise:
-		return lerpf(low, high, float(at) / float(rise))
-	at -= rise
-	if at < dwell:
-		return high
-	at -= dwell
-	if at < rise:
-		return lerpf(high, low, float(at) / float(rise))
-	return low
+	return moving.elevator_surface_y(cell, at_tick)
 
 # Called once per sim tick, on BOTH machines, because there is nothing to agree
 # about beyond the tick itself.
 func step_elevators(at_tick: int) -> void:
-	for cell in _elevators:
-		var body: Node = _elevators[cell]["body"]
-		if not is_instance_valid(body):
-			continue
-		body.position.y = elevator_surface_y(cell, at_tick) - GridConfig.DECK_THICKNESS * 0.5
+	moving.step_elevators(at_tick)
 
 func elevator_low_high(cell: Vector2i) -> Vector2:
-	if not _elevators.has(cell):
-		return Vector2.ZERO
-	return Vector2(_elevators[cell]["low"], _elevators[cell]["high"])
+	return moving.elevator_low_high(cell)
 
 # --- Mutable terrain (M17 phase 8) -------------------------------------------
 #
@@ -1486,93 +1391,29 @@ func elevator_low_high(cell: Vector2i) -> Vector2:
 # to DEFER a close. A rule with one authoritative exception is not deterministic,
 # and two mechanisms agreeing most of the time is worse than one that always does.
 func _spawn_mutable(cell: Vector2i, content: int) -> void:
-	if _mutable_root == null:
-		_mutable_root = Node3D.new()
-		_mutable_root.name = "Mutable"
-		add_child(_mutable_root)
-
-	var top: Vector3 = cell_surface(cell)
-	var thick: float = GridConfig.DECK_THICKNESS
-
-	var body := StaticBody3D.new()
-	body.name = "Mutable_%d_%d" % [cell.x, cell.y]
-	body.collision_layer = Layers.WORLD     # world, like the deck it stands in for
-	body.collision_mask = 0
-	body.position = top - Vector3(0.0, thick * 0.5, 0.0)
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(GridConfig.CELL_SIZE, thick, GridConfig.CELL_SIZE)
-	shape.shape = box
-	body.add_child(shape)
-	_mutable_root.add_child(body)
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.CRUMBLE_COLOUR if content == GridConfig.Content.CRUMBLE 		else GridConfig.TIMED_COLOUR
-	var mesh := MeshInstance3D.new()
-	var cube := BoxMesh.new()
-	cube.size = box.size
-	mesh.mesh = cube
-	mesh.material_override = mat
-	mesh.position = body.position
-	_mutable_root.add_child(mesh)
-
-	_mutable[cell] = {"body": body, "mesh": mesh, "content": content}
+	moving.spawn_mutable(cell, content)
 
 func mutable_content(cell: Vector2i) -> int:
-	if not _mutable.has(cell):
-		return GridConfig.Content.NONE
-	return int(_mutable[cell]["content"])
+	return moving.mutable_content(cell)
 
 func is_cell_open(cell: Vector2i) -> bool:
-	return _open_cells.has(cell)
+	return moving.is_cell_open(cell)
 
 # Returns whether anything CHANGED, so the caller knows when to spend a packet.
 # The nodes are hidden and disabled rather than freed: a cell that comes back has
 # to come back identical, and rebuilding it would be a second construction path
 # for a thing that already exists.
 func set_cell_open(cell: Vector2i, open: bool) -> bool:
-	if not _mutable.has(cell):
-		return false
-	if open == _open_cells.has(cell):
-		return false
-	if open:
-		_open_cells[cell] = true
-	else:
-		_open_cells.erase(cell)
-	var record: Dictionary = _mutable[cell]
-	var body: Node = record["body"]
-	var mesh: Node = record["mesh"]
-	if is_instance_valid(body):
-		# DISABLED DEFERRED. Godot forbids changing a body's collision state from
-		# inside the physics step, and this is called from the sim tick.
-		body.set_deferred("process_mode", Node.PROCESS_MODE_DISABLED if open else Node.PROCESS_MODE_INHERIT)
-		body.set_deferred("collision_layer", 0 if open else 1)
-	if is_instance_valid(mesh):
-		mesh.visible = not open
-
-	return true
+	return moving.set_cell_open(cell, open)
 
 # The open set as flat x,z pairs, the same shape as spent_mound_layout() and for
 # the same reason: a joining client rebuilds the bridge from the seed, which
 # gives it every mutable cell CLOSED. One compact message reconciles that.
 func open_cell_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _open_cells:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return moving.open_cell_layout()
 
 func apply_open_cells(layout: PackedInt32Array) -> void:
-	var wanted: Dictionary = {}
-	var i := 0
-	while i + 1 < layout.size():
-		wanted[Vector2i(layout[i], layout[i + 1])] = true
-		i += 2
-	# BOTH DIRECTIONS. A layout is the whole truth about the open set, so a cell
-	# this machine thinks is open and the host does not has to CLOSE — a
-	# one-directional apply would leave a client standing on air the host filled in.
-	for cell in _mutable:
-		set_cell_open(cell, wanted.has(cell))
+	moving.apply_open_cells(layout)
 
 # --- Cover and spikes (M17) ---------------------------------------------------
 #
@@ -1585,17 +1426,8 @@ var spike_cells: Array = []            # Vector2i, run space
 # merged into the deck rectangles — see SegmentBuilder.is_mutable for why that
 # is the whole reason this feature is cheap.
 var mutable_cells: Array = []          # Vector2i, run space, in load order
-var _mutable_root: Node3D = null
-var _mutable: Dictionary = {}          # Vector2i -> {"body":, "mesh":, "content":}
-var _open_cells: Dictionary = {}       # Vector2i -> true while the slab is GONE
 # ELEVATORS (M17 phase 9).
 var elevator_cells: Array = []         # Vector2i, run space
-var _elevators: Dictionary = {}        # Vector2i -> {"body":, "mesh":, "low":, "high":}
-var _cover_root: Node3D = null
-var _ladder_root: Node3D = null
-var _spike_root: Node3D = null
-var _spikes: Dictionary = {}           # Vector2i -> the spike prop, so the world can raise it
-var spike_lift: Dictionary = {}        # Vector2i -> 0..1, how far out they are
 
 # A LADDER, AT LAST GIVEN A BODY. The glyph has been authorable since M2 and the
 # loader has collected it since M2, and until M17 phase 6 nothing was ever built
@@ -1639,112 +1471,10 @@ func ladder_face(cell: Vector2i) -> Vector3:
 	return best
 
 func _spawn_ladder(cell: Vector2i) -> void:
-	if _ladder_root == null:
-		_ladder_root = Node3D.new()
-		_ladder_root.name = "Ladders"
-		add_child(_ladder_root)
-
-	var rungs := Node3D.new()
-	rungs.name = "Ladder_%d_%d" % [cell.x, cell.y]
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.LADDER_COLOUR
-	mat.roughness = 0.8
-
-	# ON THE FACE OF THE DROP, NOT AT THE CELL CENTRE (fixed 2026-08-16, reported
-	# from playtest as "the ladder is inside a solid block, you can't see it").
-	#
-	# A ladder is authored on the HIGH cell — the deck it delivers you to — and
-	# the first version hung its rails straight down from that cell's middle,
-	# which is the inside of a solid deck column. Invisible, and the climb worked
-	# anyway, because PlayerBody._step_climb had already been fixed to hold the
-	# body on the cliff FACE: the state and the art disagreed about where the
-	# ladder was, and only the art was wrong.
-	#
-	# Same face, same arithmetic, one place each. If _ladder_face ever changes,
-	# this has to change with it or the disagreement comes straight back.
-	var face: Vector3 = ladder_face(cell)
-	var drop: float = maxf(
-		float(height_at(cell) - height_at(cell + GridConfig.cell_step(face)))
-			* GridConfig.HEIGHT_UNIT,
-		GridConfig.HEIGHT_UNIT)
-	# Half a cell out, plus a hair so the rails stand PROUD of the face rather
-	# than z-fighting with it.
-	rungs.position = cell_surface(cell) + face * (GridConfig.CELL_SIZE * 0.5 + 0.06)
-	# Turned to lie flat against the wall it is bolted to, so the rails are the
-	# width of the ladder rather than its depth.
-	rungs.rotation.y = atan2(face.x, face.z)
-
-	for side in [-0.28, 0.28]:
-		var rail := MeshInstance3D.new()
-		var post := BoxMesh.new()
-		post.size = Vector3(0.09, drop, 0.09)
-		rail.mesh = post
-		rail.material_override = mat
-		rail.position = Vector3(side, -drop * 0.5, 0.0)
-		rungs.add_child(rail)
-
-	var count: int = maxi(2, int(drop / 0.4))
-	for i in count:
-		var rung := MeshInstance3D.new()
-		var bar := BoxMesh.new()
-		bar.size = Vector3(0.64, 0.07, 0.07)
-		rung.mesh = bar
-		rung.material_override = mat
-		rung.position = Vector3(0.0, -drop * (float(i) + 0.5) / float(count), 0.0)
-		rungs.add_child(rung)
-
-	_ladder_root.add_child(rungs)
+	decor.spawn_ladder(cell)
 
 func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
-	if _cover_root == null:
-		_cover_root = Node3D.new()
-		_cover_root.name = "Cover"
-		add_child(_cover_root)
-
-	var body := StaticBody3D.new()
-	body.name = ("Tree_%d_%d" if is_tree else "HalfWall_%d_%d") % [cell.x, cell.y]
-	body.collision_layer = Layers.WORLD        # world: solid, and a sight blocker for free
-	body.collision_mask = 0
-	body.position = cell_surface(cell)
-
-	# THIN AND TALL versus WIDE AND LOW. A tree hides one player and is walked
-	# around in a step; a half wall hides a line of fire and has to be flanked.
-	var size := Vector3(0.5, 3.0, 0.5) if is_tree else Vector3(1.7, 1.1, 0.35)
-	var shape := BoxShape3D.new()
-	shape.size = size
-	var col := CollisionShape3D.new()
-	col.shape = shape
-	col.position = Vector3(0.0, size.y * 0.5, 0.0)
-	body.add_child(col)
-
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	mesh.mesh = box
-	mesh.position = col.position
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.TREE_TRUNK_COLOUR if is_tree else GridConfig.HALF_WALL_COLOUR
-	mat.roughness = 0.9
-	mesh.material_override = mat
-	body.add_child(mesh)
-
-	if is_tree:
-		# A canopy, purely so a tree reads as a tree from the fixed camera rather
-		# than as a thin brown post. No collider: the trunk is the cover.
-		var crown := MeshInstance3D.new()
-		var ball := SphereMesh.new()
-		ball.radius = 0.85
-		ball.height = 1.7
-		crown.mesh = ball
-		crown.position = Vector3(0.0, 3.0, 0.0)
-		var leaf := StandardMaterial3D.new()
-		leaf.albedo_color = GridConfig.TREE_COLOUR
-		leaf.roughness = 0.95
-		crown.material_override = leaf
-		body.add_child(crown)
-
-	_cover_root.add_child(body)
+	decor.spawn_cover(cell, is_tree)
 
 # THE BLOCK ITSELF IS NOT THE HAZARD. It is ordinary deck you can stand on; what
 # hurts is the spikes it drives into the cells AROUND it, which is why it is
@@ -1760,64 +1490,15 @@ func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
 # THEY RISE RATHER THAN APPEAR. The lift is driven by the world from the same
 # tick-derived phase that decides the damage, so the movement IS the telegraph:
 # a player sees them coming up and has the length of the ramp to step off.
-const SPIKE_COUNT := 3                 # 3 x 3 across the cell
-const SPIKE_HEIGHT := 0.8
 
 func _spawn_spikes(cell: Vector2i) -> void:
-	if _spike_root == null:
-		_spike_root = Node3D.new()
-		_spike_root.name = "Spikes"
-		add_child(_spike_root)
-
-	var prop := Node3D.new()
-	prop.name = "Spikes_%d_%d" % [cell.x, cell.y]
-	prop.position = cell_surface(cell)
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GridConfig.SPIKE_COLOUR
-	# Metallic and smooth, so the points catch the light and separate from the
-	# matte deck they come out of.
-	mat.roughness = 0.25
-	mat.metallic = 0.6
-
-	# A cone is a cylinder with no top. Sized so nine of them fill the cell
-	# without touching -- a solid bed of them would be the slab again.
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = 0.16
-	cone.height = SPIKE_HEIGHT
-	cone.radial_segments = 6
-
-	var step: float = GridConfig.CELL_SIZE / float(SPIKE_COUNT + 1)
-	for ix in SPIKE_COUNT:
-		for iz in SPIKE_COUNT:
-			var spike := MeshInstance3D.new()
-			spike.mesh = cone
-			spike.material_override = mat
-			spike.position = Vector3(
-				-GridConfig.CELL_SIZE * 0.5 + step * float(ix + 1),
-				SPIKE_HEIGHT * 0.5,
-				-GridConfig.CELL_SIZE * 0.5 + step * float(iz + 1))
-			prop.add_child(spike)
-
-	prop.visible = false
-	_spike_root.add_child(prop)
-	_spikes[cell] = prop
+	decor.spawn_spikes(cell)
 
 # How far out, 0 to 1. The WORLD decides, from the tick, so every machine agrees
 # without anything being sent. Below 0 they are inside the deck slab, which is a
 # metre thick and hides them completely.
 func set_spikes_lift(cell: Vector2i, lift: float) -> void:
-	# Kept as well as applied, so the state is readable rather than having to be
-	# inferred from a mesh position. A test that has to reverse-engineer a
-	# transform to find out what the sim decided is a test measuring the view.
-	spike_lift[cell] = lift
-	var prop: Node3D = _spikes.get(cell)
-	if prop == null or not is_instance_valid(prop):
-		return
-	prop.visible = lift > 0.02
-	var base: Vector3 = cell_surface(cell)
-	prop.position = Vector3(base.x, base.y - SPIKE_HEIGHT * (1.0 - lift), base.z)
+	decor.set_spikes_lift(cell, lift)
 
 func mound_count() -> int:
 	return mounds.count()
@@ -1858,8 +1539,6 @@ func blast_mounds(centre: Vector3, radius: float) -> int:
 # function of the segment, so every machine builds its own and the only thing that
 # ever crosses the wire is what it is SHOWING. A choice is not a function of a
 # seed, which is the one way this differs from every other piece of content.
-var _mode_posts: Dictionary = {}    # Vector2i -> the post standing there
-var _mode_post_root: Node3D = null
 
 # THE GATE, PAINTED ON THE DECK.
 #
@@ -1881,51 +1560,23 @@ var _mode_post_root: Node3D = null
 # overlay plates needed, since those were the grid's own children and had to be
 # swept separately.
 func lap_gate_marks() -> Dictionary:
-	return _lap_gate_marks
+	return lap_gates.marks
 
 func _spawn_bus_post(cell: Vector2i) -> void:
-	if _bus_post_root == null:
-		_bus_post_root = Node3D.new()
-		_bus_post_root.name = "BusPosts"
-		add_child(_bus_post_root)
-	var post = BusPost.new()
-	post.cell = cell
-	post.position = cell_surface(cell)
-	_bus_post_root.add_child(post)
-	post.name = "BusPost_%d_%d" % [cell.x, cell.y]
-	_bus_posts[cell] = post
+	bus_post_props.spawn(cell)
 
 # Every bus post currently built. The world asks rather than tracking them, the
 # same bargain the mode posts already make.
 func bus_posts() -> Array:
-	var out: Array = []
-	for cell in _bus_posts:
-		var post = _bus_posts[cell]
-		if is_instance_valid(post):
-			out.append(post)
-	return out
+	return bus_post_props.all()
 
 func _spawn_mode_post(cell: Vector2i) -> void:
-	if _mode_post_root == null:
-		_mode_post_root = Node3D.new()
-		_mode_post_root.name = "ModePosts"
-		add_child(_mode_post_root)
-	var post = ModePost.new()
-	post.cell = cell
-	post.position = cell_surface(cell)
-	_mode_post_root.add_child(post)
-	post.name = "ModePost_%d_%d" % [cell.x, cell.y]
-	_mode_posts[cell] = post
+	mode_post_props.spawn(cell)
 
 # Every post currently built, so the world can keep their banners in step with the
 # selection without knowing where any of them are.
 func mode_posts() -> Array:
-	var out: Array = []
-	for cell in _mode_posts:
-		var post = _mode_posts[cell]
-		if is_instance_valid(post):
-			out.append(post)
-	return out
+	return mode_post_props.all()
 
 func _spawn_merchant(cell: Vector2i) -> void:
 	merchants.spawn(cell)
