@@ -1,4 +1,4 @@
-extends RefCounted
+extends "res://scripts/sim/items/item_pool.gd"
 
 # Every special in the world, and the rules about who is holding one.
 #
@@ -10,57 +10,32 @@ extends RefCounted
 #
 # See implementation_plans/m12_machine_gun.md.
 
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
 const SpecialScene = preload("res://scenes/special.tscn")
 
-# The body's own radius, so "within pickup radius" is measured from the edge of a
-# player rather than from their centre line.
-const PLAYER_HALF_WIDTH := 0.4
+# The list, the lookup, the cull and the nearest-wins rule are ItemPool's; so are
+# PLAYER_HALF_WIDTH and TIE_EPSILON. What is left here is what a SPECIAL means:
+# one slot, a swap, and a magazine.
 
-# How close counts as a dead heat. Same value and same argument as
-# HatPool.TIE_EPSILON: two players symmetric about a pickup are never EXACTLY
-# equidistant once a physics tick has moved them, so a tie-break written on float
-# equality never fires and every "tie" is settled by rounding noise.
-const TIE_EPSILON := 0.05
+func _max_loose() -> int:
+	return SimConfig.SPECIAL_MAX_LOOSE
 
-var _specials: Array = []
-var _root: Node3D = null
-
-# Host-assigned and monotonic. See special_body.special_id for why this is not an
-# index.
-var _next_id: int = 0
-
-func attach(root: Node3D) -> void:
-	_root = root
-
-func count() -> int:
-	return _specials.size()
-
-# THE LIVE ARRAY, NOT A COPY -- deliberately, because the snapshot builders walk
-# it every tick and a per-tick duplicate is a cost for nothing.
-#
-# SO ANY LOOP THAT DESTROYS MUST `.duplicate()` FIRST. `destroy` calls
-# `remove_at` on this array, and removing while iterating skips the next
-# element -- which is a sweep that quietly clears half of what it was asked to.
-# That shipped three times as "the items are all placed in the sky"; see
-# GameWorld._discard_level_entities_past.
-func all() -> Array:
-	return _specials
-
-func by_id(id: int) -> Node:
-	for s in _specials:
-		if is_instance_valid(s) and s.special_id == id:
-			return s
-	return null
+# THE CAP BOUNDS LITTER, NOT THE LEVEL. Authored pickups are excluded, because an
+# author who places twelve gets twelve -- the alternative, measured 2026-08-14, is
+# that the twelfth silently deletes the FIRST, and the first is the rack beside
+# the spawn. Nothing errors and nothing logs; the specials are simply not there.
+# Authored ones are still culled by the streaming window, so walking a long
+# bridge does not accumulate them forever.
+func _cap_exempt(item: Node) -> bool:
+	return bool(item.authored)
 
 # What this peer is holding, or null. THE ONE SLOT, expressed as a lookup rather
 # than as a field on the player: the player owns no item state at all, which is
 # what keeps every item out of capture_state() by construction instead of by
 # discipline.
 func held_by(peer: int) -> Node:
-	for s in _specials:
+	for s in _items:
 		if is_instance_valid(s) and s.mode == SpecialBody.Mode.HELD and s.owner_peer == peer:
 			return s
 	return null
@@ -70,14 +45,10 @@ func held_by(peer: int) -> Node:
 func spawn_loose(at: Vector3, kind: int = SpecialBody.Kind.MACHINE_GUN,
 		ammo: int = -1, authored: bool = false) -> Node:
 	var s: Node3D = SpecialScene.instantiate()
-	_next_id += 1
-	s.special_id = _next_id
 	s.kind = kind
 	s.authored = authored
 	s.ammo = ammo if ammo >= 0 else _full_ammo(kind)
-	s.name = "Special_%d" % s.special_id
-	_root.add_child(s)
-	_specials.append(s)
+	_add(s, "Special")
 	s.apply_kind_look()
 	s.place_loose(at)
 	return s
@@ -86,11 +57,8 @@ func spawn_loose(at: Vector3, kind: int = SpecialBody.Kind.MACHINE_GUN,
 # the id comes from the host, so it must not touch _next_id.
 func adopt(id: int, kind: int) -> Node:
 	var s: Node3D = SpecialScene.instantiate()
-	s.special_id = id
 	s.kind = kind
-	s.name = "Special_%d" % id
-	_root.add_child(s)
-	_specials.append(s)
+	_add(s, "Special", id)
 	s.apply_kind_look()
 	return s
 
@@ -123,56 +91,7 @@ static func full_ammo(kind: int) -> int:
 static func _base_ammo(kind: int) -> int:
 	return WeaponDefs.base_ammo(kind)
 
-func destroy(s: Node) -> void:
-	var index: int = _specials.find(s)
-	if index >= 0:
-		_specials.remove_at(index)
-	if is_instance_valid(s):
-		s.queue_free()
-
-func clear() -> void:
-	for s in _specials:
-		if is_instance_valid(s):
-			s.queue_free()
-	_specials.clear()
-
 # --- Host: the per-tick pass --------------------------------------------------
-
-# Age the dropped specials, remove the ones that left the world, and keep the
-# loose population inside its cap.
-func step(trailing_z: float) -> void:
-	for i in range(_specials.size() - 1, -1, -1):
-		var s: Node = _specials[i]
-		if not is_instance_valid(s):
-			_specials.remove_at(i)
-			continue
-		if s.mode == SpecialBody.Mode.HELD:
-			continue
-		s.step()
-		# Off the bottom of the world, or behind the streaming window. FALLING
-		# DESTROYS IT, exactly as it destroys hats: leaving a free weapon at the
-		# spot that just killed you would rescue the one failure the design does
-		# not rescue.
-		if s.is_gone() or s.position.z > trailing_z:
-			_specials.remove_at(i)
-			s.queue_free()
-
-	# THE CAP BOUNDS LITTER, NOT THE LEVEL. Authored pickups are excluded, because
-	# an author who places twelve gets twelve -- the alternative, measured
-	# 2026-08-14, is that the twelfth silently deletes the FIRST, and the first is
-	# the rack beside the spawn. Nothing errors and nothing logs; the specials are
-	# simply not there.
-	#
-	# Authored ones are still culled by the streaming window a few lines above, so
-	# walking a long bridge does not accumulate them forever.
-	var loose: Array = []
-	for s in _specials:
-		if is_instance_valid(s) and s.mode != SpecialBody.Mode.HELD and not s.authored:
-			loose.append(s)
-	# Oldest first: ids are monotonic, so a lower id is an older special.
-	loose.sort_custom(func(a, b): return a.special_id < b.special_id)
-	while loose.size() > SimConfig.SPECIAL_MAX_LOOSE:
-		destroy(loose.pop_front())
 
 # WHO PICKS UP WHAT.
 #
@@ -190,8 +109,7 @@ func step(trailing_z: float) -> void:
 # reliably. Deciding and announcing are separate on purpose.
 func resolve_pickups(players: Dictionary, can_carry: Callable) -> Array:
 	var claimed: Array = []
-	var peers: Array = players.keys().duplicate()
-	peers.sort()
+	var peers: Array = sorted_peers(players)
 
 	# Tracked WITHIN the pass. A player who took one special this tick must not
 	# also take the next one along -- otherwise walking down a line of pickups
@@ -199,29 +117,12 @@ func resolve_pickups(players: Dictionary, can_carry: Callable) -> Array:
 	# the one-slot rule doing the opposite of what it is for.
 	var taken: Dictionary = {}
 
-	for s in _specials:
+	for s in _items:
 		if not is_instance_valid(s) or not s.is_collectable():
 			continue
-
-		var winner: int = 0
-		var best: float = INF
-		for peer_key in peers:
-			var peer: int = int(peer_key)
-			if taken.has(peer):
-				continue
-			var body: Node = players[peer]
-			if not can_carry.call(peer, body):
-				continue
-			var d: float = body.position.distance_to(s.position)
-			if d > SimConfig.SPECIAL_PICKUP_RADIUS + PLAYER_HALF_WIDTH:
-				continue
-			# MEANINGFULLY nearer to win. Inside TIE_EPSILON the two are the same
-			# distance as far as the rule is concerned, so the peer already held
-			# keeps it -- and `peers` is ascending, so that is the lower id.
-			if d < best - TIE_EPSILON:
-				best = d
-				winner = peer
-
+		var eligible := func(peer: int, body: Node) -> bool:
+			return not taken.has(peer) and can_carry.call(peer, body)
+		var winner: int = nearest_claimant(s, players, peers, SimConfig.SPECIAL_PICKUP_RADIUS, eligible)
 		if winner != 0:
 			claimed.append([s, winner, held_by(winner)])
 			taken[winner] = true

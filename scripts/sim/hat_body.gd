@@ -1,4 +1,4 @@
-extends RigidBody3D
+extends "res://scripts/sim/items/carried_item.gd"
 
 # A hat. See implementation_plans/m8_5_hats.md.
 #
@@ -19,8 +19,6 @@ extends RigidBody3D
 # plinko_ball.gd, which argues this at length.
 
 const Layers = preload("res://scripts/core/layers.gd")
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 
 enum Mode { WORN, FLYING, LOOSE }
@@ -35,7 +33,9 @@ const WORN_LAYER := Layers.WORN_HATS
 # list indices because both machines load the same segments in the same order; a
 # hat can be created mid-run by a player joining, so creation order is not agreed
 # and copying that pattern is a bug that only shows up with a late joiner.
-var hat_id: int = 0
+var hat_id: int:
+	get: return id
+	set(value): id = value
 
 # THE FIELD THAT MAKES THIS FUNNY RATHER THAN ADMINISTRATIVE. It travels with the
 # hat forever and is never reset on pickup: you keep wearing the hat you stole,
@@ -53,14 +53,9 @@ var style_id: int = 0:
 		if is_inside_tree():
 			HatStyle.apply(self)
 
-var mode: int = Mode.LOOSE
-
-# Only meaningful while WORN: whose head, and how far up the stack.
-var owner_peer: int = 0
+# Only meaningful while WORN: how far up the stack (whose head is `owner_peer`).
+# `mode`, `owner_peer` and `settle_grace` live on CarriedItem.
 var stack_index: int = 0
-
-# Counts down once the hat has stopped moving. Only at zero is it collectable.
-var settle_grace: float = 0.0
 
 # Where it was last tick, for the displacement test in step(). `_has_last` rather
 # than a sentinel position, because the first tick after a launch has nothing to
@@ -79,10 +74,8 @@ var lean: Vector2 = Vector2.ZERO
 var lean_vel: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
-	gravity_scale = SimConfig.GRAVITY / 9.8
-	continuous_cd = true
-
-	# A HAT MUST NOT ROLL, and this is not a nicety.
+	super()
+	# A HAT MUST NOT ROLL, and this is not a nicety (CarriedItem locks rotation).
 	#
 	# The generated shapes made some hats tall cylinders, and a cylinder that
 	# lands on its side ROLLS -- down a bridge that WAS pitched 4 degrees by
@@ -94,8 +87,6 @@ func _ready() -> void:
 	#
 	# Locking rotation also settles what a resting hat LOOKS like -- upright, the
 	# way it was worn -- rather than however it happened to topple.
-	lock_rotation = true
-	linear_damp = 0.6
 	# Again here, because the id is usually assigned BEFORE the node enters the
 	# tree -- at which point the setter above cannot safely reach the children.
 	HatStyle.apply(self)
@@ -207,38 +198,12 @@ func lean_basis() -> Basis:
 # explosion is free and looks right.
 #
 # A HELD or WORN one is untouched: it is not in the world to be thrown.
-func receive_hit(hit) -> bool:
-	if hit.kind != Hit.Kind.EXPLOSIVE or mode == Mode.WORN:
-		return false
-	launch(position, hit.launch_for(position))
-	return true
+# (receive_hit: CarriedItem's -- only a blast, and never a worn one.)
 
-func is_collectable() -> bool:
-	return mode == Mode.LOOSE
-
-func is_gone() -> bool:
-	return position.y < SimConfig.FALL_KILL_Y
-
-# Dropped onto the deck by an author, or spawned already settled. Collectable at
-# once: nobody dislodged it, so there is no re-collect to prevent.
-func place_loose(at: Vector3) -> void:
-	mode = Mode.LOOSE
-	settle_grace = 0.0
-	_set_simulated(true)
-	position = at
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
-
-# Knocked off a head. Arcs, lands, and is uncollectable until it has settled.
-func launch(from: Vector3, velocity: Vector3) -> void:
-	mode = Mode.FLYING
-	settle_grace = SimConfig.HAT_SETTLE_GRACE
-	_set_simulated(true)
-	position = from
-	linear_velocity = velocity
-	# No spin: rotation is locked so a hat cannot roll away down the pitch. See
-	# _ready.
-	angular_velocity = Vector3.ZERO
+# Knocked off a head. Arcs, lands, and is uncollectable until it has settled
+# (CarriedItem.launch). No spin: rotation is locked so a hat cannot roll away.
+func _settle_grace() -> float:
+	return SimConfig.HAT_SETTLE_GRACE
 
 # Put on a head. The physics body stops existing as far as the world is
 # concerned: frozen, no collision, positioned by whoever is wearing it.
@@ -248,17 +213,11 @@ func launch(from: Vector3, velocity: Vector3) -> void:
 # the collider would silently change how players stand on each other, mid-run, per
 # hat.
 func wear(peer: int, index: int) -> void:
-	mode = Mode.WORN
-	owner_peer = peer
 	stack_index = index
-	settle_grace = 0.0
 	# A hat arrives on a head UPRIGHT, whatever the last stack it was on was doing.
 	lean = Vector2.ZERO
 	lean_vel = Vector2.ZERO
-	_set_simulated(false)
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
-	rotation = Vector3.ZERO
+	_carry(peer)
 
 func _set_simulated(simulated: bool) -> void:
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC

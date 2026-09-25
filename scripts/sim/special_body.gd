@@ -1,4 +1,4 @@
-extends RigidBody3D
+extends "res://scripts/sim/items/carried_item.gd"
 
 # A special: a pickup with a fixed number of uses, of which the machine gun is
 # the first. See implementation_plans/m12_machine_gun.md and game_concept.md
@@ -22,9 +22,7 @@ extends RigidBody3D
 # own split for M12, applied: the half of a special that affects walking is legs,
 # and legs are not this.
 
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
 
 enum Mode { HELD, FLYING, LOOSE }
 
@@ -41,7 +39,9 @@ const Kind = WeaponDefs.Kind
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
 # the same trap hat_body.gd documents.
-var special_id: int = 0
+var special_id: int:
+	get: return id
+	set(value): id = value
 
 var kind: int = Kind.MACHINE_GUN
 
@@ -51,23 +51,18 @@ var kind: int = Kind.MACHINE_GUN
 # makes a half-spent weapon on the deck a real decision rather than litter.
 var ammo: int = 0
 
-var mode: int = Mode.LOOSE
-
 # PLACED BY AN AUTHOR, not dropped by a player. It is the difference between the
 # level and the litter, and the loose cap bounds only the litter -- see
 # SpecialPool.step. Without it, authoring more pickups than SPECIAL_MAX_LOOSE
 # silently deletes the oldest of them, which is the ones nearest the spawn.
 var authored: bool = false
 
-# Only meaningful while HELD.
-var owner_peer: int = 0
+# `mode`, `owner_peer` (only meaningful while HELD) and `settle_grace` live on
+# CarriedItem.
 
 # Seconds until the next round may leave. Host-side, and reset on pickup so a
 # swap is not a way to fire faster.
 var fire_timer: float = 0.0
-
-# Counts down once the body has stopped moving. Only at zero is it collectable.
-var settle_grace: float = 0.0
 
 # --- The trigger, host-side ----------------------------------------------------
 #
@@ -87,16 +82,10 @@ var charge: float = 0.0
 func charge_fraction() -> float:
 	return clampf(charge / SimConfig.GRENADE_CHARGE_TIME, 0.0, 1.0)
 
-func _ready() -> void:
-	gravity_scale = SimConfig.GRAVITY / 9.8
-	continuous_cd = true
-	# A DROPPED WEAPON MUST NOT ROLL. The deck WAS pitched 4 degrees by design, and
-	# a body that keeps rolling never drops below SPECIAL_SETTLE_SPEED, so it never
-	# becomes LOOSE and is never collectable -- a gun that runs away down the
-	# bridge. Cost hat_body.gd a test to find; inherited here rather than
-	# rediscovered.
-	lock_rotation = true
-	linear_damp = 0.6
+# A DROPPED WEAPON MUST NOT ROLL. The deck WAS pitched 4 degrees by design, and a
+# body that keeps rolling never drops below SPECIAL_SETTLE_SPEED, so it never
+# becomes LOOSE and is never collectable -- a gun that runs away down the bridge.
+# Cost hat_body.gd a test to find; CarriedItem._ready locks rotation for both.
 
 func kind_name() -> String:
 	return WeaponDefs.name_of(kind)
@@ -178,62 +167,30 @@ func step() -> void:
 # explosion is free and looks right.
 #
 # A HELD or WORN one is untouched: it is not in the world to be thrown.
-func receive_hit(hit) -> bool:
-	if hit.kind != Hit.Kind.EXPLOSIVE or mode == Mode.HELD:
-		return false
-	drop(position, hit.launch_for(position))
-	return true
+# (receive_hit: CarriedItem's -- only a blast, and never a held one.)
 
 func is_collectable() -> bool:
-	return mode == Mode.LOOSE and ammo > 0
-
-func is_gone() -> bool:
-	return position.y < SimConfig.FALL_KILL_Y
+	return super() and ammo > 0
 
 func is_spent() -> bool:
 	return ammo <= 0
-
-# Placed by an author, or spawned already settled. Collectable at once: nobody
-# dropped it, so there is no re-collect to prevent.
-func place_loose(at: Vector3) -> void:
-	mode = Mode.LOOSE
-	settle_grace = 0.0
-	_set_simulated(true)
-	position = at
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
 
 # Dropped, because its holder picked up a different one. Lands, and is
 # uncollectable until it settles -- so a swap is not a way to pick your own gun
 # straight back up.
 func drop(from: Vector3, velocity: Vector3) -> void:
-	mode = Mode.FLYING
-	settle_grace = SimConfig.SPECIAL_SETTLE_GRACE
-	_set_simulated(true)
-	position = from
-	linear_velocity = velocity
-	angular_velocity = Vector3.ZERO
+	launch(from, velocity)
+
+func _settle_grace() -> float:
+	return SimConfig.SPECIAL_SETTLE_GRACE
 
 # Into somebody's hands. The physics body stops existing as far as the world is
 # concerned: frozen, no collision, positioned by whoever is holding it.
 func hold(peer: int) -> void:
-	mode = Mode.HELD
-	owner_peer = peer
-	settle_grace = 0.0
+	_carry(peer)
 	# RESET ON PICKUP, so walking over a fresh gun does not fire a free round from
 	# a timer that ran down while the last one was on the floor.
 	fire_timer = SimConfig.MG_FIRE_INTERVAL
-	_set_simulated(false)
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
-	rotation = Vector3.ZERO
-
-func _set_simulated(simulated: bool) -> void:
-	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-	freeze = not simulated
-	var shape := get_node_or_null("Shape") as CollisionShape3D
-	if shape != null:
-		shape.disabled = not simulated
 
 # Clients are TOLD where a loose special is; they never simulate one.
 func apply_remote(new_mode: int, at: Vector3, remaining: int) -> void:

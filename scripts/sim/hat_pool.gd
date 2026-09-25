@@ -1,4 +1,4 @@
-extends RefCounted
+extends "res://scripts/sim/items/item_pool.gd"
 
 # Every hat in the world, and the rules about who gets one.
 #
@@ -8,60 +8,20 @@ extends RefCounted
 # (per-tick, predicted, reconciled); world state is grid cells and stone bodies.
 # This is neither, and hearts and specials are its second and third clients.
 
-const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const HatBody = preload("res://scripts/sim/hat_body.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 const HatScene = preload("res://scenes/hat.tscn")
 
-# The body's own radius, so "within pickup radius" is measured from the edge of a
-# player rather than from their centre line.
-const PLAYER_HALF_WIDTH := 0.4
+# The list, the lookup, the cull and the nearest-wins rule are ItemPool's; so are
+# PLAYER_HALF_WIDTH and TIE_EPSILON. What is left here is what a HAT means: a
+# stack you wear, posed every frame, and a pickup that adds to it.
 
-# HOW CLOSE COUNTS AS A DEAD HEAT.
-#
-# Without this the tie-break is dead code. The plan says ascending peer id breaks
-# a tie and that ties are not rare -- they are what two players symmetric about a
-# hat produce. But two bodies that started symmetric are never EXACTLY equidistant
-# once a physics tick has moved them, so a tie-break written on float equality
-# would never fire once, and the winner of every "tie" would be decided by
-# rounding noise instead of by a stated rule.
-#
-# 5 cm against a 70 cm pickup radius: wide enough that genuine symmetry lands
-# inside it, narrow enough that a player who is actually nearer still wins.
-const TIE_EPSILON := 0.05
-
-var _hats: Array = []
-var _root: Node3D = null
-
-# Host-assigned and monotonic. See hat_body.hat_id for why this is not an index.
-var _next_id: int = 0
-
-func attach(root: Node3D) -> void:
-	_root = root
-
-func count() -> int:
-	return _hats.size()
-
-# THE LIVE ARRAY, NOT A COPY -- deliberately, because the snapshot builders walk
-# it every tick and a per-tick duplicate is a cost for nothing.
-#
-# SO ANY LOOP THAT DESTROYS MUST `.duplicate()` FIRST. `destroy` calls
-# `remove_at` on this array, and removing while iterating skips the next
-# element -- which is a sweep that quietly clears half of what it was asked to.
-# That shipped three times as "the items are all placed in the sky"; see
-# GameWorld._discard_level_entities_past.
-func all() -> Array:
-	return _hats
-
-func by_id(id: int) -> Node:
-	for hat in _hats:
-		if is_instance_valid(hat) and hat.hat_id == id:
-			return hat
-	return null
+func _max_loose() -> int:
+	return SimConfig.HAT_MAX_LOOSE
 
 func worn_by(peer: int) -> Array:
 	var out: Array = []
-	for hat in _hats:
+	for hat in _items:
 		if is_instance_valid(hat) and hat.mode == HatBody.Mode.WORN and hat.owner_peer == peer:
 			out.append(hat)
 	out.sort_custom(func(a, b): return a.stack_index < b.stack_index)
@@ -154,8 +114,6 @@ func forget_wearer(peer: int) -> void:
 # Host only. A client never invents a hat; it is told the id and the style.
 func spawn_loose(at: Vector3, style: int = -1) -> Node:
 	var hat: Node3D = HatScene.instantiate()
-	_next_id += 1
-	hat.hat_id = _next_id
 	if style < 0:
 		# ORDINARY ONLY. The tall band is reserved for the merchant and this is the
 		# line that enforces it -- every hat in the game that is not handed over a
@@ -164,9 +122,7 @@ func spawn_loose(at: Vector3, style: int = -1) -> Node:
 		# remember. See HatStyle.random_ordinary_style.
 		style = HatStyle.random_ordinary_style()
 	hat.style_id = style
-	hat.name = "Hat_%d" % hat.hat_id
-	_root.add_child(hat)
-	_hats.append(hat)
+	_add(hat, "Hat")
 	hat.place_loose(at)
 	return hat
 
@@ -174,57 +130,14 @@ func spawn_loose(at: Vector3, style: int = -1) -> Node:
 # id comes from the host, so it must not touch _next_id.
 func adopt(id: int, style: int) -> Node:
 	var hat: Node3D = HatScene.instantiate()
-	hat.hat_id = id
 	hat.style_id = style
-	hat.name = "Hat_%d" % id
-	_root.add_child(hat)
-	_hats.append(hat)
-	return hat
-
-func destroy(hat: Node) -> void:
-	var index: int = _hats.find(hat)
-	if index >= 0:
-		_hats.remove_at(index)
-	if is_instance_valid(hat):
-		hat.queue_free()
+	return _add(hat, "Hat", id)
 
 func clear() -> void:
-	for hat in _hats:
-		if is_instance_valid(hat):
-			hat.queue_free()
-	_hats.clear()
+	super()
 	_prev_velocity.clear()
 
 # --- Host: the per-tick pass --------------------------------------------------
-
-# Age the flying hats, drop the ones that left the world, and keep the loose
-# population inside its cap.
-#
-# THE CULL IS NOT OPTIONAL. An endless run scattering hats leaks bodies forever;
-# the oldest loose hat goes first, so the debris behind the party clears rather
-# than the hat somebody is walking toward.
-func step(trailing_z: float) -> void:
-	for i in range(_hats.size() - 1, -1, -1):
-		var hat: Node = _hats[i]
-		if not is_instance_valid(hat):
-			_hats.remove_at(i)
-			continue
-		if hat.mode == HatBody.Mode.WORN:
-			continue
-		hat.step()
-		# Off the bottom of the world, or behind the streaming window.
-		if hat.is_gone() or hat.position.z > trailing_z:
-			_hats.remove_at(i)
-			hat.queue_free()
-
-	var loose: Array = []
-	for hat in _hats:
-		if is_instance_valid(hat) and hat.mode != HatBody.Mode.WORN:
-			loose.append(hat)
-	# Oldest first: ids are monotonic, so a lower id is an older hat.
-	loose.sort_custom(func(a, b): return a.hat_id < b.hat_id)
-	while loose.size() > SimConfig.HAT_MAX_LOOSE:
-		destroy(loose.pop_front())
 
 # WHO GETS THE HAT, and this is the part the plan warns about.
 #
@@ -245,8 +158,7 @@ func step(trailing_z: float) -> void:
 # them reliably. Deciding and announcing are separate on purpose.
 func resolve_pickups(players: Dictionary, can_carry: Callable, worn_count: Callable) -> Array:
 	var claimed: Array = []
-	var peers: Array = players.keys().duplicate()
-	peers.sort()
+	var peers: Array = sorted_peers(players)
 
 	# Counted WITHIN the pass, not read fresh per hat. A dash down a line of loose
 	# hats collects several in one tick -- which is one of the better moments this
@@ -257,29 +169,13 @@ func resolve_pickups(players: Dictionary, can_carry: Callable, worn_count: Calla
 	for peer_key in peers:
 		taken[int(peer_key)] = int(worn_count.call(int(peer_key)))
 
-	for hat in _hats:
+	for hat in _items:
 		if not is_instance_valid(hat) or not hat.is_collectable():
 			continue
-
-		var winner: int = 0
-		var best: float = INF
-		for peer_key in peers:
-			var peer: int = int(peer_key)
-			var body: Node = players[peer]
-			if not can_carry.call(peer, body):
-				continue
-			if int(taken[peer]) >= SimConfig.HAT_MAX_STACK:
-				continue
-			var d: float = body.position.distance_to(hat.position)
-			if d > SimConfig.HAT_PICKUP_RADIUS + PLAYER_HALF_WIDTH:
-				continue
-			# MEANINGFULLY nearer to win. Inside TIE_EPSILON the two are the same
-			# distance as far as the rule is concerned, so the peer already held
-			# keeps it -- and `peers` is ascending, so that is the lower id.
-			if d < best - TIE_EPSILON:
-				best = d
-				winner = peer
-
+		# FULL HEADS ARE OUT OF THE RACE, counted within this pass.
+		var eligible := func(peer: int, body: Node) -> bool:
+			return can_carry.call(peer, body) and int(taken[peer]) < SimConfig.HAT_MAX_STACK
+		var winner: int = nearest_claimant(hat, players, peers, SimConfig.HAT_PICKUP_RADIUS, eligible)
 		if winner != 0:
 			claimed.append([hat, winner, int(taken[winner])])
 			taken[winner] = int(taken[winner]) + 1
