@@ -32,6 +32,20 @@ var client_peer: int = 0
 var phase: int = 0
 var phase_frame: int = 0
 var zero_while_alone: bool = true
+# The frame the client first saw itself DOWNED, or -1. The quiet window is
+# measured from THERE, not from when the host downed it: under a loaded parallel
+# gate the snapshot carrying the state can take longer than any chosen frame.
+var seen_down_at: int = -1
+
+# POLLED, NOT SAMPLED. Both waits used to be a single chosen frame (20 and 30),
+# which CLAUDE.md names as a coin flip on the unreliable snapshot, and the first
+# of them lost the flip in a six-way parallel gate on 2026-09-25 ("expected 5,
+# got 0") while passing solo every time.
+const DOWN_DEADLINE := 240
+const QUIET_WINDOW := 25
+# The revive completes at REVIVE_SECONDS (90 ticks), which would put the bar back
+# to NO_BAR and read as the failure this hunts -- so the deadline stays inside it.
+const HELP_DEADLINE := 80
 
 func setup(_main) -> void:
 	timeout_seconds = 40.0
@@ -88,16 +102,16 @@ func _phase_down_the_client() -> void:
 
 func _phase_nobody_helping() -> void:
 	var own: Dictionary = _client_own()
-	if phase_frame < 20:
-		# Give the state itself time to replicate before believing anything.
-		return
-	if phase_frame == 20:
+	if seen_down_at < 0:
+		if int(own.get("state", -1)) != PlayerBody.State.DOWNED and phase_frame < DOWN_DEADLINE:
+			return
 		eq(int(own["state"]), PlayerBody.State.DOWNED, "the client sees itself go down")
 		eq(str(own["state_label"]), "DOWN", "and reports it")
 		check(bool(own["needs_help"]), "and knows it needs help")
+		seen_down_at = phase_frame
 	if float(own["rescue"]) > 0.001:
 		zero_while_alone = false
-	if phase_frame >= 45:
+	if phase_frame >= seen_down_at + QUIET_WINDOW:
 		check(zero_while_alone,
 			"with nobody in range the client's rescue bar stays EMPTY -- if this fails the bar is not measuring anything")
 		var host_body: Node = harness.host_world.player_body(client_peer)
@@ -123,6 +137,8 @@ func _phase_helper_arrives() -> void:
 		"the host is running the revive (%.3f s)" % host_body.rescue_progress)
 
 	var client_fraction: float = float(own["rescue"])
+	if client_fraction <= 0.05 and phase_frame < HELP_DEADLINE:
+		return
 	check(client_fraction > 0.05,
 		"and the CLIENT can see it -- rescue bar at %.2f, not stuck empty" % client_fraction)
 	check(client_fraction <= 1.0, "without overflowing its bar")
