@@ -46,6 +46,16 @@ const QUIET_WINDOW := 25
 # The revive completes at REVIVE_SECONDS (90 ticks), which would put the bar back
 # to NO_BAR and read as the failure this hunts -- so the deadline stays inside it.
 const HELP_DEADLINE := 80
+# THE CLIENT IS ALWAYS BEHIND, so agreement is asked of the host's RECENT past,
+# not of its present. Comparing two moving values across a lossy link measures
+# the link: in a loaded gate on 2026-09-25 the client read 0.078 while the host
+# read 0.333, 23 ticks of honest lag. The claim that matters -- the client shows
+# the SAME quantity on the same scale -- is that its value is one the host really
+# had within the last LAG_WINDOW ticks. A wrong scale (the haul's seconds, the
+# bleed-out's) matches nothing in that history.
+const LAG_WINDOW := 40
+const AGREE := 0.03
+var host_history: Array = []
 
 func setup(_main) -> void:
 	timeout_seconds = 40.0
@@ -127,26 +137,34 @@ func _phase_helper_arrives() -> void:
 	# REVIVE_SECONDS is 1.5s = 90 ticks, so sample well inside that: a revive that
 	# COMPLETES would put the player back in WALK and the bar back to NO_BAR,
 	# which would read as the same failure this test is hunting.
+	# Recorded from the FIRST tick of the phase, so the history covers every value
+	# a lagging client could still be showing.
+	var host_body: Node = harness.host_world.player_body(client_peer)
+	var expected: float = clampf(host_body.rescue_progress / SimConfig.REVIVE_SECONDS, 0.0, 1.0)
+	host_history.append(expected)
 	if phase_frame < 30:
 		return
 
 	var own: Dictionary = _client_own()
-	var host_body: Node = harness.host_world.player_body(client_peer)
+
+	var client_fraction: float = float(own["rescue"])
+	var matched: bool = false
+	for k in range(maxi(0, host_history.size() - LAG_WINDOW), host_history.size()):
+		if absf(client_fraction - float(host_history[k])) < AGREE:
+			matched = true
+			break
+	if (client_fraction <= 0.05 or not matched) and phase_frame < HELP_DEADLINE:
+		return
 
 	check(host_body.rescue_progress > 0.0,
 		"the host is running the revive (%.3f s)" % host_body.rescue_progress)
-
-	var client_fraction: float = float(own["rescue"])
-	if client_fraction <= 0.05 and phase_frame < HELP_DEADLINE:
-		return
 	check(client_fraction > 0.05,
 		"and the CLIENT can see it -- rescue bar at %.2f, not stuck empty" % client_fraction)
 	check(client_fraction <= 1.0, "without overflowing its bar")
-
 	# The two ends agree about how far along it is, not merely that it is nonzero.
-	var expected: float = clampf(host_body.rescue_progress / SimConfig.REVIVE_SECONDS, 0.0, 1.0)
-	near(client_fraction, expected, 0.25,
-		"and agrees with the host about how far along it is")
+	check(matched,
+		"and shows a value the host really had in the last %d ticks -- client %.3f, host now %.3f"
+			% [LAG_WINDOW, client_fraction, expected])
 
 	harness.shutdown()
 	finish()
