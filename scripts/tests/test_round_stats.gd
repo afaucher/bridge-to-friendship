@@ -262,6 +262,21 @@ func _test_display_ranks() -> void:
 			{"hats": 2, "hat_height": 70, "made_it": true}]), [1, 1],
 		"but equal counts at equal height still are")
 
+	# LAP TIME SEPARATES EQUAL HATS, on the board where laps decide. The sort put
+	# the quicker racer first and the number said joint first, because
+	# display_ranks re-listed the sort's keys by hand and left the lap off.
+	var by_lap: Array = RoundMachine.rank_entries([
+		{"peer": 1, "lap": 2400, "hats": 0, "made_it": true},
+		{"peer": 2, "lap": 1800, "hats": 0, "made_it": true},
+	])
+	eq(int(by_lap[0]["peer"]), 2, "the quicker lap sorts first")
+	eq(RoundMachine.display_ranks(by_lap), [1, 2],
+		"and is numbered first ALONE -- different laps on equal hats are not a tie")
+	eq(RoundMachine.display_ranks([
+			{"lap": 1800, "hats": 1, "made_it": true},
+			{"lap": 1800, "hats": 1, "made_it": true}]), [1, 1],
+		"while an identical lap on identical hats still is")
+
 	# ...AND THE SORT AGREES WITH THE NUMBER. Same table through rank_entries: the
 	# taller tower comes first, and COUNT still outranks HEIGHT, because the count
 	# is what the round is about and the height only settles an argument between

@@ -373,45 +373,57 @@ func _rearmost_row(world) -> int:
 static func rank_entries(entries: Array) -> Array:
 	var out: Array = entries.duplicate()
 	out.sort_custom(func(a, b):
-		# LAP TIME FIRST, AND ZERO IS NOT A GOOD TIME.
-		#
-		# `lap` is the best completed lap in ticks, and 0 means nobody finished
-		# one -- so the comparison is in two parts, and skipping the first is the
-		# obvious bug: sorting ascending on the raw number hands the win to every
-		# player who never crossed the line, which is everybody in every mode that
-		# has no circuit in it.
-		#
-		# WHICH IS ALSO WHY THERE IS NO MODE BRANCH HERE. Outside the race nobody
-		# has a lap, every entry is 0, both parts tie, and the comparison falls
-		# through to hats exactly as it did before. A key that is inert when the
-		# feature is absent beats an `if mode == RACE` that somebody has to
-		# remember to keep in step.
-		var al: int = int(a.get("lap", 0))
-		var bl: int = int(b.get("lap", 0))
-		if (al > 0) != (bl > 0):
-			return al > 0                     # any lap beats no lap
-		if al > 0 and al != bl:
-			return al < bl                    # and then quicker wins
-		var ah: int = int(a.get("hats", 0))
-		var bh: int = int(b.get("hats", 0))
-		if ah != bh:
-			return ah > bh
-		# In centimetres, so the comparison is exact and the wire carries an int
-		# like every other field on the board.
-		var at: int = int(a.get("hat_height", 0))
-		var bt: int = int(b.get("hat_height", 0))
-		if at != bt:
-			return at > bt
-		var ar: bool = bool(a.get("made_it", false))
-		var br: bool = bool(b.get("made_it", false))
-		if ar != br:
-			return ar
+		if _scores_above(a, b):
+			return true
+		if _scores_above(b, a):
+			return false
 		# A STABLE TIE-BREAK, and it has to be something. Peer id is arbitrary but
 		# it is the same arbitrary on every machine, which a sort on equal keys is
 		# not promised to be -- two clients showing the board in a different order
 		# is a disagreement about the round.
 		return int(a.get("peer", 0)) < int(b.get("peer", 0)))
 	return out
+
+# DOES `a` SCORE STRICTLY ABOVE `b`. The comparator WITHOUT its tie-break, and the
+# one definition of "better" both the sort and the printed rank use -- so a row
+# the sort separated can never be numbered as a tie. `display_ranks` used to
+# re-list the keys by hand and forgot the lap, which printed two racers with
+# different lap times as joint first on the one board where laps decide.
+static func _scores_above(a: Dictionary, b: Dictionary) -> bool:
+	# LAP TIME FIRST, AND ZERO IS NOT A GOOD TIME.
+	#
+	# `lap` is the best completed lap in ticks, and 0 means nobody finished
+	# one -- so the comparison is in two parts, and skipping the first is the
+	# obvious bug: sorting ascending on the raw number hands the win to every
+	# player who never crossed the line, which is everybody in every mode that
+	# has no circuit in it.
+	#
+	# WHICH IS ALSO WHY THERE IS NO MODE BRANCH HERE. Outside the race nobody
+	# has a lap, every entry is 0, both parts tie, and the comparison falls
+	# through to hats exactly as it did before. A key that is inert when the
+	# feature is absent beats an `if mode == RACE` that somebody has to
+	# remember to keep in step.
+	var al: int = int(a.get("lap", 0))
+	var bl: int = int(b.get("lap", 0))
+	if (al > 0) != (bl > 0):
+		return al > 0                     # any lap beats no lap
+	if al > 0 and al != bl:
+		return al < bl                    # and then quicker wins
+	var ah: int = int(a.get("hats", 0))
+	var bh: int = int(b.get("hats", 0))
+	if ah != bh:
+		return ah > bh
+	# In centimetres, so the comparison is exact and the wire carries an int
+	# like every other field on the board.
+	var at: int = int(a.get("hat_height", 0))
+	var bt: int = int(b.get("hat_height", 0))
+	if at != bt:
+		return at > bt
+	var ar: bool = bool(a.get("made_it", false))
+	var br: bool = bool(b.get("made_it", false))
+	if ar != br:
+		return ar
+	return false
 
 # WHICH FIELD ACTUALLY DECIDED THIS ROW, as a key.
 #
@@ -460,12 +472,9 @@ static func display_ranks(ordered: Array) -> Array:
 			continue
 		var here: Dictionary = ordered[i]
 		var above: Dictionary = ordered[i - 1]
-		# EVERY KEY THE SORT USES, or the list is ordered by one rule and numbered
-		# by another -- two players separated by tower height would be printed as
-		# joint first while sitting in a deliberate order.
-		var same: bool = int(here.get("hats", 0)) == int(above.get("hats", 0)) \
-			and int(here.get("hat_height", 0)) == int(above.get("hat_height", 0)) \
-			and bool(here.get("made_it", false)) == bool(above.get("made_it", false))
+		# THE SORT'S OWN RULE, asked both ways: two rows tie exactly when neither
+		# scores above the other. See _scores_above.
+		var same: bool = not _scores_above(here, above) and not _scores_above(above, here)
 		out.append(int(out[i - 1]) if same else i + 1)
 	return out
 
