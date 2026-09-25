@@ -21,10 +21,10 @@ extends "res://scripts/test_support/test_case.gd"
 # free-standing post has THREE neighbours tied at deck level, and then the
 # tie-break is the whole answer -- local order picks one, the pitch picks another.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const MAP := "res://segments/test_watchpost.seg"
 const LADDER := Vector2i(7, 5)

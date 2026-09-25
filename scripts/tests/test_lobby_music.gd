@@ -23,9 +23,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      the one thing that must not.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const LobbyMusic = preload("res://scripts/present/audio/lobby_music.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 

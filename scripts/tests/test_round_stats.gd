@@ -14,8 +14,8 @@ extends "res://scripts/test_support/test_case.gd"
 #   a win the whole party shares is not a win (and so solo gets nothing)
 #   rarest first, capped at three
 
-const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const StatRegistry = preload("res://scripts/sim/world/stat_registry.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
 
 func setup(_main) -> void:
 	_test_registry_is_wired()

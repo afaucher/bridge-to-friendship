@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfrusher1"]
 
-[ext_resource type="Script" path="res://scripts/sim/rusher_body.gd" id="1_rusher"]
+[ext_resource type="Script" path="res://scripts/sim/actors/rusher_body.gd" id="1_rusher"]
 
 ; A cylinder like the player, for the same reason: it never tips, so a rusher
 ; stays something with a predictable footprint. Shorter and slightly fatter than

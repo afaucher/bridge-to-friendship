@@ -26,12 +26,12 @@ extends "res://scripts/test_support/test_case.gd"
 # weapon category is that a shove only DEFLECTS a destructible, so a weapon that
 # cannot end one is "a shove you can do from further away" -- which is free.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const RusherBody = preload("res://scripts/sim/rusher_body.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const RusherBody = preload("res://scripts/sim/actors/rusher_body.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # Yaw 0 is north is -Z, and a higher cell z is further north. So a player left at
 # facing 0 is pointing at every cell with a larger z than their own, which is what

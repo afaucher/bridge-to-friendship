@@ -16,8 +16,8 @@ extends "res://scripts/test_support/test_case.gd"
 # typed in here, so adding or removing a pickup keeps it true.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const MAP := "res://segments/playtest_bridge.seg"
 

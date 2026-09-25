@@ -18,9 +18,9 @@ extends "res://scripts/test_support/test_case.gd"
 # would pass a grid that ignored the seed; the second alone would pass a
 # generator that never recorded anything.
 
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
 
 const RUN_SEED := 31337
 # Chosen so that every round's seed is far from the run seed. Any values work;

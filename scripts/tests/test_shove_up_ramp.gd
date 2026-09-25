@@ -28,11 +28,11 @@ extends "res://scripts/test_support/test_case.gd"
 # Re-indented and measured 2026-08-22: the shoved player gains 4.84 m of the
 # 1.41 m needed and ends at row 12, in control. The verb was fine the whole time.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # The playtest bridge's steep ramp: x 10-11, one cell at z 7, climbing 2 height
 # units over one 2 m cell -- 45 degrees, above max_walk_slope.

@@ -265,12 +265,12 @@ at `HAT_MAX_LOOSE` with the oldest culled first.
 
 | # | work | files |
 |---|---|---|
-| 1 | Hat body: three modes, world-only collision, land/settle, fall-out | `scripts/sim/hat_body.gd`, `scenes/hat.tscn` |
-| 2 | Hat pool: id assignment, the list, the pickup pass, snapshot/apply, cull | `scripts/sim/hat_pool.gd` |
-| 3 | Worn stack on the player: attach node, `dislodge_hats()`, stack cap | `scripts/sim/player_body.gd`, `scenes/player.tscn` |
-| 4 | World wiring: pickup pass after the step loop, hats in the snapshot, the reliable events, drop-in dump | `scripts/sim/game_world.gd` |
-| 5 | Dislodge triggers on `TUMBLE` / `LEDGE_HANG` entry, and on leaving the world | `scripts/sim/player_body.gd` (M5 states) |
-| 6 | Authoring: `Content.HAT`, `^`, builder + grid spawn | `scripts/grid/grid_config.gd`, `segment_builder.gd`, `bridge_grid.gd` |
+| 1 | Hat body: three modes, world-only collision, land/settle, fall-out | `scripts/sim/items/hat_body.gd`, `scenes/hat.tscn` |
+| 2 | Hat pool: id assignment, the list, the pickup pass, snapshot/apply, cull | `scripts/sim/items/hat_pool.gd` |
+| 3 | Worn stack on the player: attach node, `dislodge_hats()`, stack cap | `scripts/sim/actors/player/player_body.gd`, `scenes/player.tscn` |
+| 4 | World wiring: pickup pass after the step loop, hats in the snapshot, the reliable events, drop-in dump | `scripts/sim/world/game_world.gd` |
+| 5 | Dislodge triggers on `TUMBLE` / `LEDGE_HANG` entry, and on leaving the world | `scripts/sim/actors/player/player_body.gd` (M5 states) |
+| 6 | Authoring: `Content.HAT`, `^`, builder + grid spawn | `scripts/level/grid_config.gd`, `segment_builder.gd`, `bridge_grid.gd` |
 | 7 | Scoring: per-player score, the bank hook, wipe revert | checkpoint code (M8) |
 | 8 | Tunables | `scripts/sim/sim_config.gd` |
 | 9 | HUD: own hat count and score, friends' hat count | M9 |

@@ -23,11 +23,11 @@ extends "res://scripts/test_support/test_case.gd"
 #   3. A segment that cannot be crossed at all is refused separately from one
 #      that cannot be entered, because those are different authoring mistakes.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
 
 func setup(_main) -> void:
 	timeout_seconds = 60.0

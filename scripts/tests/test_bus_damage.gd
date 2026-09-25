@@ -39,15 +39,15 @@ extends "res://scripts/test_support/test_case.gd"
 #   5. The bus itself is not a target and not a weapon: no receive_hit, and a
 #      mask that drives it through anything alive.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const BusRig = preload("res://scripts/test_support/bus_rig.gd")
-const BusBody = preload("res://scripts/sim/bus_body.gd")
+const BusBody = preload("res://scripts/sim/actors/bus_body.gd")
 
 var world: Node3D = null
 var bus: Node = null

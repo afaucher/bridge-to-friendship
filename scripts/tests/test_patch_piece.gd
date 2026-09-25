@@ -25,11 +25,11 @@ extends "res://scripts/test_support/test_case.gd"
 # deck, no island -- is true of everything this test can see, whatever the
 # generator did. Those numbers are printed instead.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 const SEEDS := 400
 const WIDTH := GridConfig.DEFAULT_WIDTH

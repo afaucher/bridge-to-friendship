@@ -18,7 +18,7 @@ extends MarginContainer
 # target at the only moment you are chasing it -- you cross the line and the next
 # lap starts on the same tick, so the best would flash past in a frame.
 
-const HudModel = preload("res://scripts/ui/hud_model.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
 
 # Start-line white rather than the alert orange: a lap time is something you did
 # well, and every other coloured thing on this HUD is a warning.

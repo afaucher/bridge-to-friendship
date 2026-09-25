@@ -23,10 +23,10 @@ extends "res://scripts/test_support/test_case.gd"
 # a slot that silently accepted a second weapon would make the rule a comment.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var a: CharacterBody3D = null

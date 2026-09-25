@@ -7,8 +7,8 @@ extends "res://scripts/test_support/test_case.gd"
 # parapet suppressed grows a railing exactly the same way, and the author gets no
 # warning -- the presence is DERIVED, so a file that says nothing produces one.
 
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 
 var done := false
 

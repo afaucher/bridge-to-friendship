@@ -2,8 +2,8 @@
 
 **Status: DONE (2026-08-08).** Twenty tests passing, four of them new.
 
-Shipped: `scripts/ui/hud_model.gd` (the decisions, headless-testable),
-`scripts/ui/hud.gd` (the Control tree, built in code), player names as world
+Shipped: `scripts/ui/hud/hud_model.gd` (the decisions, headless-testable),
+`scripts/ui/hud/hud.gd` (the Control tree, built in code), player names as world
 state with a Steam-or-fallback source, and the `rescue_progress` replication fix.
 
 **Both gaps this plan predicted were real.** `rescue_progress` was host-only, and
@@ -112,12 +112,12 @@ first time a state enum changes.
 **Separate the model from the view**, the same way the grid is authoritative data
 and the scene is a view of it:
 
-- **`scripts/ui/hud_model.gd`** — a pure function from world state to a plain
+- **`scripts/ui/hud/hud_model.gd`** — a pure function from world state to a plain
   data structure. Own health and max, own state, own countdown fraction, own
   slot list, and a friends array (name, health, state, countdown, distance,
   bearing) sorted stably. No node references, no rendering, no engine types
   beyond `Vector3`.
-- **`scripts/ui/hud.gd` + `scenes/hud.tscn`** — Control nodes that draw whatever
+- **`scripts/ui/hud/hud.gd` + `scenes/hud.tscn`** — Control nodes that draw whatever
   the model says. Thin by construction. Untested, and that is fine, because it
   contains no decisions.
 
@@ -180,11 +180,11 @@ the row, because it is testable as a bearing in the model and costs no layout.
 
 | # | work | files |
 |---|---|---|
-| 1 | `rescue_progress` into `capture_state()`/`apply_state()`, and a networked test that a client sees it move | `scripts/sim/player_body.gd` |
+| 1 | `rescue_progress` into `capture_state()`/`apply_state()`, and a networked test that a client sees it move | `scripts/sim/actors/player/player_body.gd` |
 | 2 | Player names as session state on `NetworkManager`: Steam persona where available, deterministic fallback on ENet, replicated at join | `scripts/net/network_manager.gd`, `steam_manager.gd` |
-| 3 | `hud_model.gd` — world state to a plain structure, with slots and a sorted friends list | `scripts/ui/hud_model.gd` |
-| 4 | `hud.tscn` + `hud.gd` — pips, slots, friend rows, countdowns | `scenes/hud.tscn`, `scripts/ui/hud.gd` |
-| 5 | Wire into `main.gd` beside the existing menu `CanvasLayer`; show on session start, hide on menu | `scripts/main.gd`, `scenes/main.tscn` |
+| 3 | `hud_model.gd` — world state to a plain structure, with slots and a sorted friends list | `scripts/ui/hud/hud_model.gd` |
+| 4 | `hud.tscn` + `hud.gd` — pips, slots, friend rows, countdowns | `scenes/hud.tscn`, `scripts/ui/hud/hud.gd` |
+| 5 | Wire into `main.gd` beside the existing menu `CanvasLayer`; show on session start, hide on menu | `scripts/app/main.gd`, `scenes/main.tscn` |
 | 6 | Bearing and distance per friend | `hud_model.gd` |
 
 Item 1 is a simulation fix that happens to have been found by scoping a UI

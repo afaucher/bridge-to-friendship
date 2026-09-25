@@ -21,13 +21,13 @@ extends "res://scripts/test_support/test_case.gd"
 #   4. What this does to AUTHORED content, reported as a number rather than
 #      assumed to be zero.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # From test_setback.seg. Rows 2-8 are set back 3 columns each side; rows 4-6 also
 # carry a two-cell gap at columns 7-8.

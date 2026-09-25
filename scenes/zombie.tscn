@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://btfzombie1"]
 
-[ext_resource type="Script" path="res://scripts/sim/zombie_body.gd" id="1_zombie"]
+[ext_resource type="Script" path="res://scripts/sim/actors/zombie_body.gd" id="1_zombie"]
 
 ; BETWEEN THE OTHER TWO, DELIBERATELY: a rusher is 1.4 and a skirmisher is 1.7,
 ; and this sits at 1.55 between them. That is the uncomfortable case for a

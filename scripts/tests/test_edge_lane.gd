@@ -26,9 +26,9 @@ extends "res://scripts/test_support/test_case.gd"
 # arithmetic said there was room in the elevator case too.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const LANE := 0            # the outermost column, against the parapet
 const CONTROL_LANE := 7    # open deck, nothing beside it

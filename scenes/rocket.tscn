@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfrocket1"]
 
-[ext_resource type="Script" path="res://scripts/sim/bullet.gd" id="1_bullet"]
+[ext_resource type="Script" path="res://scripts/sim/combat/bullet.gd" id="1_bullet"]
 
 ; A ROCKET IS A ROUND THAT EXPLODES, so it runs bullet.gd -- the same travel, the
 ; same sweep, the same replication. Only the silhouette and what happens at the

@@ -30,10 +30,10 @@ extends "res://scripts/test_support/test_case.gd"
 #      something is impossible, and this project has a standing note about
 #      skipping those.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # The BANDS the fixture draws, two rows deep each (2026-08-15). One row is 2 m,
 # and a party of four told to gather on it is four players jostling on a strip

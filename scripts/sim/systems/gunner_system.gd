@@ -4,7 +4,7 @@ extends "res://scripts/sim/systems/enemy_pool.gd"
 # (never woken by a trigger), so the host drains the grid's authored cells and
 # spawns them where the terrain says.
 
-const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
+const GunnerBody = preload("res://scripts/sim/actors/gunner_body.gd")
 const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 const TurretScene = preload("res://scenes/turret.tscn")
 

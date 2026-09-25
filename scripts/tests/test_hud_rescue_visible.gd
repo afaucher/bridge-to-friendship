@@ -19,9 +19,9 @@ extends "res://scripts/test_support/test_case.gd"
 
 const PORT := 28782
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
-const HudModel = preload("res://scripts/ui/hud_model.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 # Far enough that REVIVE_RADIUS (2.5 m) cannot reach, close enough to stay on the
 # gym floor.

@@ -61,7 +61,7 @@ where two clients start showing different boards.
 ## Phase 0 — the registry, the counters, and the wire
 
 **The registry first, because it is what makes every later stat one line.**
-`scripts/sim/stat_registry.gd`, in exactly the shape `DebugSettings.OPTIONS`
+`scripts/sim/world/stat_registry.gd`, in exactly the shape `DebugSettings.OPTIONS`
 already proved:
 
 ```gdscript

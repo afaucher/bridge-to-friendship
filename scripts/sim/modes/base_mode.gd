@@ -15,8 +15,8 @@ extends RefCounted
 # ADDING A MODE IS A SCRIPT HERE AND A LINE IN game_mode.gd's registry. Its
 # terrain, its rules, its scoring and its HUD all live in the one file.
 
-const SectionGen = preload("res://scripts/grid/gen/section_gen.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const SectionGen = preload("res://scripts/level/gen/section_gen.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
 
 # The three answers a mode may give about a pool. DIFFERENT is not implemented by
 # anything yet and exists so that the day a mode needs it, it is a value in a

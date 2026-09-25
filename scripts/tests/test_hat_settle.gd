@@ -19,12 +19,12 @@ extends "res://scripts/test_support/test_case.gd"
 # The claim is one sentence: N seconds after the stack pops, every hat has
 # reached one of its three endings.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const HatBody = preload("res://scripts/sim/hat_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const HatBody = preload("res://scripts/sim/items/hat_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # At the lip of the wide hole in test_flat: row 6 is missing from column 4 to 21,
 # so row 5 is a long edge with deck behind it.

@@ -23,12 +23,12 @@ extends "res://scripts/test_support/test_case.gd"
 #      satisfied by an oracle that passes everything -- and this project has
 #      shipped that hole twice, most recently at 250 seeds.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
 
 func setup(_main) -> void:
 	timeout_seconds = 180.0

@@ -16,12 +16,12 @@ extends "res://scripts/test_support/test_case.gd"
 # correct numbers about a rect of zero. Asserting the INPUT to a layout is not
 # asserting the layout -- measure what the player is looking at.
 
-const CharacterScreenScript = preload("res://scripts/ui/character_screen.gd")
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterScreenScript = preload("res://scripts/ui/screens/character_screen.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
-const HatConfig = preload("res://scripts/hat_config.gd")
-const HatStyle = preload("res://scripts/sim/hat_style.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const HatConfig = preload("res://scripts/app/prefs/hat_config.gd")
+const HatStyle = preload("res://scripts/sim/items/hat_style.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 func setup(_main) -> void:
 	var screen: CanvasLayer = CharacterScreenScript.new()

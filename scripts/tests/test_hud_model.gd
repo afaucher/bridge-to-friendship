@@ -14,11 +14,11 @@ extends "res://scripts/test_support/test_case.gd"
 # field means four different things depending on state, and getting that wrong
 # produces a bar that is plausibly wrong rather than obviously broken.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const HudModel = preload("res://scripts/ui/hud_model.gd")
-const Hud = preload("res://scripts/ui/hud.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
+const Hud = preload("res://scripts/ui/hud/hud.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 var world: Node3D = null
 var a: CharacterBody3D = null

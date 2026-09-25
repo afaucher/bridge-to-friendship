@@ -13,11 +13,11 @@ extends "res://scripts/test_support/test_case.gd"
 # the slope is right, the endpoints are right, and the slab is simply in slightly
 # the wrong place -- but a player walking up stops at the top and cannot get on.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentBuilder = preload("res://scripts/level/segment_builder.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # test_ascent's three routes. Gentle is 4 cells at 1 unit each; steep is 2 cells
 # at 2 units each; both finish at height 4.

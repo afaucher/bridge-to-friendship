@@ -16,9 +16,9 @@ extends "res://scripts/test_support/test_case.gd"
 #   3. Every section still validates, solo. A route that strands a lone player is
 #      worse than a boring one, and drop-in makes a party of one a real case.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 const SEEDS := 80
 const WIDTH := GridConfig.DEFAULT_WIDTH

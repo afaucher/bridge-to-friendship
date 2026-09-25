@@ -21,10 +21,10 @@ extends "res://scripts/test_support/test_case.gd"
 # say anything, and an accessory must not break it so badly that a player stops
 # reading as a player.
 
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
-const HatPool = preload("res://scripts/sim/hat_pool.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const HatPool = preload("res://scripts/sim/items/hat_pool.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 func setup(main) -> void:
 	_test_every_kind_builds(main)

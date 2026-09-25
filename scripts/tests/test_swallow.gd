@@ -21,17 +21,17 @@ extends "res://scripts/test_support/test_case.gd"
 #      when it leaves the world unkilled -- attributed, because a score that
 #      changes with no event is a bug as far as the player can tell.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const HatBody = preload("res://scripts/sim/hat_body.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const HatBody = preload("res://scripts/sim/items/hat_body.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
 
 const A := 41
 

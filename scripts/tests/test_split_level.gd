@@ -22,10 +22,10 @@ extends "res://scripts/test_support/test_case.gd"
 #   3. A cell with NO solid neighbour stays thin.
 #   4. Both halves are still walkable deck, and the box count has not exploded.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentBuilder = preload("res://scripts/level/segment_builder.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # test_split.seg: columns 0-4 are high (height 3), 5-9 are low (height 0).
 const HIGH_X := 2

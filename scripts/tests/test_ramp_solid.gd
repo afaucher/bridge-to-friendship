@@ -26,11 +26,11 @@ extends "res://scripts/test_support/test_case.gd"
 # wrong, it is cheap to measure exactly, and it cannot be crossed quickly enough
 # to hide.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # test_ascent's two ramps. Gentle is 4 cells rising 1 unit each (x2..x5, rows
 # 3..6); steep is 2 cells rising 2 each (x12..x13, rows 5..6). Both are checked:

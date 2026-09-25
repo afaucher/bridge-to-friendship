@@ -1,6 +1,6 @@
 [gd_scene load_steps=8 format=3 uid="uid://btfturret1"]
 
-[ext_resource type="Script" path="res://scripts/sim/turret_body.gd" id="1_turret"]
+[ext_resource type="Script" path="res://scripts/sim/actors/turret_body.gd" id="1_turret"]
 
 ; BOLTED-DOWN FURNITURE, and the silhouette is doing real work. Across 60 m a
 ; player gets an outline and a colour, and from those two things has to know

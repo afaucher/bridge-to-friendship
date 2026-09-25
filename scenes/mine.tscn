@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfmine1"]
 
-[ext_resource type="Script" path="res://scripts/sim/deployable.gd" id="1_deploy"]
+[ext_resource type="Script" path="res://scripts/sim/items/deployable.gd" id="1_deploy"]
 
 ; FLAT AND DARK, and the silhouette is the safety rule. A grenade is a bright
 ; sphere you are meant to spot in the air; a mine is a disc on the deck that

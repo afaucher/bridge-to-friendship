@@ -12,13 +12,13 @@ extends "res://scripts/test_support/test_case.gd"
 # be: the gate has no Steam client. ENet proves the replication; Steam is the
 # transport swap, and that is exactly why NetworkManager has two.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const PORT := 28781
 const RUN_SEED := 4242

@@ -14,7 +14,7 @@ extends "res://scripts/test_support/test_case.gd"
 #      that one mesh -- the check the four-kinds-share-"Body" bug needed.
 
 const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
 const SpecialScene = preload("res://scenes/special.tscn")
 
 const FIRE_VERBS := ["rounds", "mine", "grenade", ""]

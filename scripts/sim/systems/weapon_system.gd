@@ -16,11 +16,11 @@ extends "res://scripts/sim/world/world_system.gd"
 # deployables in their own pools; this system decides, they hold.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
 const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
-const Deployable = preload("res://scripts/sim/deployable.gd")
+const Deployable = preload("res://scripts/sim/items/deployable.gd")
 
 const Trigger = WeaponDefs.Trigger
 

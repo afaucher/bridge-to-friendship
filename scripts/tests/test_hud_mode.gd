@@ -23,12 +23,12 @@ extends "res://scripts/test_support/test_case.gd"
 # AND THE LOBBY BANNER HAD NO TEST AT ALL until this file. It was added from a
 # playtest report, shipped, and nothing ever asserted it drew anything.
 
-const HudModel = preload("res://scripts/ui/hud_model.gd")
-const HudScript = preload("res://scripts/ui/hud.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
+const HudScript = preload("res://scripts/ui/hud/hud.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
 
 const A := 41
 

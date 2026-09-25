@@ -29,11 +29,11 @@ extends "res://scripts/test_support/test_case.gd"
 # again at 250. A test run on the wrong object cannot fail however many samples it
 # takes. This one has been A/B'd with the rule removed; it goes red.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 const WIDTH := 15
 const SECTIONS := 400

@@ -18,7 +18,7 @@ extends "res://scripts/test_support/test_case.gd"
 # is the "mechanically perfect and invisible" failure CLAUDE.md records from the
 # three guns that shipped as a floating barrel.
 
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 
 func setup(_main) -> void:

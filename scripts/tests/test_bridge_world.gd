@@ -4,11 +4,11 @@ extends "res://scripts/test_support/test_case.gd"
 # walk on it. Plus the geometry claims the builder makes -- deck merging, the
 # ramp slope that IS the co-op gate, and stones landing where they were drawn.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentBuilder = preload("res://scripts/level/segment_builder.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var player: CharacterBody3D = null

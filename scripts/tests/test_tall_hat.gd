@@ -29,11 +29,11 @@ extends "res://scripts/test_support/test_case.gd"
 # fixture-gets-dirtier trap, and here it would silently turn "no gap" into "the
 # first shot worked".
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const HatStyle = preload("res://scripts/sim/hat_style.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const HatStyle = preload("res://scripts/sim/items/hat_style.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # Fine enough that a gap the width of one ordinary slot could not hide between two
 # samples: 5 cm against the 0.35 m an ordinary hat occupies.

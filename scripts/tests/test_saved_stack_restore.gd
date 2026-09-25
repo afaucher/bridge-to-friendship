@@ -17,10 +17,10 @@ extends "res://scripts/test_support/test_case.gd"
 # already known to work.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const HatConfig = preload("res://scripts/hat_config.gd")
-const CharacterConfig = preload("res://scripts/character_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const HatConfig = preload("res://scripts/app/prefs/hat_config.gd")
+const CharacterConfig = preload("res://scripts/app/prefs/character_config.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const SAVED := [101, 202, 303, 404]
 

@@ -34,16 +34,16 @@ const FAR_AWAY := 40.0
 #      and no deadlock.
 #   6. THE BANNER FOLLOWS, and every post shows the same thing.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const ModePost = preload("res://scripts/sim/mode_post.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const ModePost = preload("res://scripts/sim/posts/mode_post.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const WIDTH := 21
 

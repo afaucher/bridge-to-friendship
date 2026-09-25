@@ -22,13 +22,13 @@ extends "res://scripts/test_support/test_case.gd"
 #   4. THE FLOOD CANNOT SEE LEGS. `party_of` has no field for them and this
 #      segment is impassable to every party size, with the pickup sitting in it.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const LOW_CELL := Vector2i(2, 3)
 const HIGH_CELL := Vector2i(2, 4)

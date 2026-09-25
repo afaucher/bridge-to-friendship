@@ -14,8 +14,8 @@ extends "res://scripts/test_support/test_case.gd"
 # wide, every small one also narrow -- which reads as one hat at several scales
 # rather than as different hats.
 
-const HatStyle = preload("res://scripts/sim/hat_style.gd")
-const HatBody = preload("res://scripts/sim/hat_body.gd")
+const HatStyle = preload("res://scripts/sim/items/hat_style.gd")
+const HatBody = preload("res://scripts/sim/items/hat_body.gd")
 const HatScene = preload("res://scenes/hat.tscn")
 
 # THIS FILE IS ABOUT THE ORDINARY CATALOGUE, and since the merchant arrived that

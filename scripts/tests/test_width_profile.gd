@@ -20,14 +20,14 @@ extends "res://scripts/test_support/test_case.gd"
 # ramp that was 5 cm of paper over a DECK_THICKNESS void, which reached playtest
 # as "sometimes I fall through".
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 const SEEDS := 60
 const WIDTH := GridConfig.DEFAULT_WIDTH
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const RUN_SEED := 20260820
 const RUN_SEGMENTS := 12
 

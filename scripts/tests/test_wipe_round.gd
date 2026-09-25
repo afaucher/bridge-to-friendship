@@ -26,11 +26,11 @@ extends "res://scripts/test_support/test_case.gd"
 # else does, so "are there still gates in front of me" is the same question the
 # player was asking, answered by the grid.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 const A := 41

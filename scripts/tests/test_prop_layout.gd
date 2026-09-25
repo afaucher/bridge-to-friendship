@@ -14,7 +14,7 @@ extends "res://scripts/test_support/test_case.gd"
 # them in -- and then the ordinary order, so the check cannot pass by refusing
 # every spawn.
 
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
 
 func setup(main) -> void:
 	var grid := Node3D.new()

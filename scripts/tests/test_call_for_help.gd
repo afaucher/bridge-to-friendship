@@ -35,13 +35,13 @@ extends "res://scripts/test_support/test_case.gd"
 #      match, so a hanging player got nothing. Reported from play 2026-08-23.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const HudModel = preload("res://scripts/ui/hud_model.gd")
-const Markers = preload("res://scripts/ui/teammate_markers.gd")
-const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
+const Markers = preload("res://scripts/ui/hud/teammate_markers.gd")
+const CrisisFlash = preload("res://scripts/present/vfx/crisis_flash.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 
 const SCREEN := Vector2(1280.0, 720.0)
 

@@ -20,10 +20,10 @@ extends "res://scripts/test_support/test_case.gd"
 #      a shield with daylight under it promises a gap that the rule does not have.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const Deployable = preload("res://scripts/sim/deployable.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const Deployable = preload("res://scripts/sim/items/deployable.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var body: CharacterBody3D = null

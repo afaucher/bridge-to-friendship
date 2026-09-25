@@ -31,9 +31,9 @@ extends "res://scripts/test_support/test_case.gd"
 # cannot be read back, so a version that decided placement inside it would be
 # untestable.
 
-const Markers = preload("res://scripts/ui/teammate_markers.gd")
-const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const Markers = preload("res://scripts/ui/hud/teammate_markers.gd")
+const CrisisFlash = preload("res://scripts/present/vfx/crisis_flash.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 # A REAL SCREEN, NOT THE ONE HEADLESS HAS. Measured 2026-08-14: the headless
 # viewport is 64x64, so a friend dead ahead projects to (32, 32) -- correct, and

@@ -45,7 +45,7 @@ Exit: B1, B2.
 
 **Proves:** a text file becomes a bridge you can walk on.
 
-Shipped: `scripts/grid/` (config, parser, validator, builder, runtime grid), the
+Shipped: `scripts/level/` (config, parser, validator, builder, runtime grid), the
 `.seg` format, `segments/test_flat.seg` and `segments/test_ascent.seg`, and two
 tests. Deck cells merge along X into runs (a 30x14 segment is 420 cells and far
 fewer boxes). The validator runs the reachability flood twice — once with a solo

@@ -20,8 +20,8 @@ extends "res://scripts/test_support/test_case.gd"
 # because a desync is "somewhere", and a sample of one row would pass a corridor
 # that differed everywhere else.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 
 const PORT := 28790

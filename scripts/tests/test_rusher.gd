@@ -23,12 +23,12 @@ extends "res://scripts/test_support/test_case.gd"
 #   6. A dashing player deflects it instead, and takes nothing.
 #   7. It burrows after RUSHER_LIFETIME. The floor under a weaponless player.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const RusherBody = preload("res://scripts/sim/rusher_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const RusherBody = preload("res://scripts/sim/actors/rusher_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var victim: CharacterBody3D = null

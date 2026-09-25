@@ -1,6 +1,6 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
-const BusTrackGen = preload("res://scripts/grid/gen/bus_track_gen.gd")
+const BusTrackGen = preload("res://scripts/level/gen/bus_track_gen.gd")
 
 # THE BUS ROUTE. A serpentine carved out of the same canvas the blank zone leaves
 # whole: full-width lanes joined at alternating ends, so the driving is lateral

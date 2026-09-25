@@ -17,13 +17,13 @@ extends "res://scripts/test_support/test_case.gd"
 #   5. It goes off on a FUSE and takes the deck with it -- a rusher inside the
 #      radius dies.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const Deployable = preload("res://scripts/sim/deployable.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const Deployable = preload("res://scripts/sim/items/deployable.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var thrower: CharacterBody3D = null

@@ -548,7 +548,7 @@ Run 2026-08-15. Stage 1 cost six images and paid for itself immediately.
   needle, and says no face, no eyes, no beak.
 - **The API returns JPEG only.** `response_format.mime_type: "image/png"` is a
   400, not a fallback.
-- **The provenance label is a POST STEP** (`scripts/shots/stamp.gd`), never asked
+- **The provenance label is a POST STEP** (`scripts/tools/shots/stamp.gd`), never asked
   of the model: the prompts forbid rendered text, and a model that does render
   text renders it differently every time and in the style of the image -- which
   is exactly what a provenance label must not be.

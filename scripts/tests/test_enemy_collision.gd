@@ -23,8 +23,8 @@ extends "res://scripts/test_support/test_case.gd"
 # why the last section drives a body into one rather than trusting the numbers.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const PlayerScene = preload("res://scenes/player.tscn")
 const RusherScene = preload("res://scenes/rusher.tscn")

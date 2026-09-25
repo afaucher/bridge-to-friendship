@@ -39,12 +39,12 @@ extends "res://scripts/test_support/test_case.gd"
 # gate ran.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const HatStyle = preload("res://scripts/sim/hat_style.gd")
-const HatConfig = preload("res://scripts/hat_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const HatStyle = preload("res://scripts/sim/items/hat_style.gd")
+const HatConfig = preload("res://scripts/app/prefs/hat_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const MERCHANT_A := Vector2i(10, 5)
 

@@ -1,6 +1,6 @@
 extends "res://scripts/test_support/test_case.gd"
 
-# The hats you own, across launches. See scripts/hat_config.gd.
+# The hats you own, across launches. See scripts/app/prefs/hat_config.gd.
 #
 #   * First ever launch gives you a RANDOM hat, and saves it.
 #   * You start every session wearing whatever is saved.
@@ -14,8 +14,8 @@ extends "res://scripts/test_support/test_case.gd"
 # user:// file would quietly change the developer's own saved hat every time the
 # gate ran, which is a test nobody can trust twice.
 
-const HatConfig = preload("res://scripts/hat_config.gd")
-const HatStyle = preload("res://scripts/sim/hat_style.gd")
+const HatConfig = preload("res://scripts/app/prefs/hat_config.gd")
+const HatStyle = preload("res://scripts/sim/items/hat_style.gd")
 
 func setup(_main) -> void:
 	HatConfig.path_override = "user://test_hat_config.cfg"

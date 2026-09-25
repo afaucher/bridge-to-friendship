@@ -18,7 +18,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 ; ORDER MATTERS: autoloads _ready() top to bottom. SteamManager must exist
 ; before NetworkManager, which asks it for a SteamMultiplayerPeer.
-DebugSettings="*res://scripts/debug_settings.gd"
+DebugSettings="*res://scripts/debug/debug_settings.gd"
 SteamManager="*res://scripts/net/steam_manager.gd"
 NetworkManager="*res://scripts/net/network_manager.gd"
 
@@ -180,7 +180,7 @@ system_exit={
 3d_physics/layer_11="mode_post"
 3d_physics/layer_12="bus"
 ; THE PIECES OF A DEAD ENEMY. Deliberately masked by NOTHING except itself and
-; the world -- see scripts/sim/corpse.gd. CLAUDE.md's note that "a layer nothing
+; the world -- see scripts/present/vfx/corpse.gd. CLAUDE.md's note that "a layer nothing
 ; masks is a collider made of nothing" is about a barrier that was supposed to
 ; stop people; this one is supposed not to, and the test asserts the absence the
 ; same way it would assert a presence.

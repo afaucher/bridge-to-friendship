@@ -1189,7 +1189,7 @@ const MG_KNOCKBACK := 8.0
 const MG_KNOCKBACK_LIFT := 2.0
 
 # (There was an MG_TRACER_SECONDS here. Rounds are real objects now, so the line
-# that stood in for one is gone -- see scripts/sim/bullet.gd.)
+# that stood in for one is gone -- see scripts/sim/combat/bullet.gd.)
 
 # --- Gunners: the skirmisher and the turret -----------------------------------
 #
@@ -1599,7 +1599,7 @@ const STONE_RESYNC_TICKS := 30
 # --- Death fragments ----------------------------------------------------------
 #
 # An enemy that dies is replaced by the pieces of itself. See
-# design_ideas/death_fragments.md and scripts/sim/fragment_shape.gd.
+# design_ideas/death_fragments.md and scripts/present/vfx/fragment_shape.gd.
 
 # HOW MANY PIECES A BODY BECOMES. KEEP IT A POWER OF TWO.
 #

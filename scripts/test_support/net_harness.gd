@@ -24,7 +24,7 @@ extends Node
 #   ...wait for harness.ready_to_run...
 #   harness.host_world / harness.client_worlds[0]
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 signal ready_to_run()
 

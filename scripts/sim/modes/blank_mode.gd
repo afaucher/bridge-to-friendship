@@ -1,6 +1,6 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
-const BlankZoneGen = preload("res://scripts/grid/gen/blank_zone_gen.gd")
+const BlankZoneGen = preload("res://scripts/level/gen/blank_zone_gen.gd")
 
 # A ZONE WITH NOTHING IN IT. The second mode, and deliberately not a gameplay
 # variant: what it exercises is that A MODE GENERATES ITS OWN GROUND, which is

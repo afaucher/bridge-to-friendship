@@ -16,9 +16,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      is a drift waiting to happen and exactly the shape this project has been
 #      bitten by before.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
 
 const WIDTH := GridConfig.DEFAULT_WIDTH
 

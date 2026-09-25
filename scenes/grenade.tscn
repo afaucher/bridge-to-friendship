@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3 uid="uid://btfdeploy1"]
 
-[ext_resource type="Script" path="res://scripts/sim/deployable.gd" id="1_deploy"]
+[ext_resource type="Script" path="res://scripts/sim/items/deployable.gd" id="1_deploy"]
 
 ; SMALL AND BRIGHT. A live grenade is the one object on the bridge everybody has
 ; to find instantly -- the thrower most of all, because the fuse is their problem

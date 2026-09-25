@@ -42,10 +42,10 @@ extends "res://scripts/test_support/test_case.gd"
 #      trusts -- the same reasoning as "the deck is sometimes an EVEN number of
 #      cells wide", which was a proof rather than a tuned count.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const BusBody = preload("res://scripts/sim/bus_body.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const BusBody = preload("res://scripts/sim/actors/bus_body.gd")
 
 const WIDTH := 21
 const SEEDS := 24

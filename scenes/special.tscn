@@ -1,6 +1,6 @@
 [gd_scene load_steps=14 format=3 uid="uid://btfspecial1"]
 
-[ext_resource type="Script" path="res://scripts/sim/special_body.gd" id="1_special"]
+[ext_resource type="Script" path="res://scripts/sim/items/special_body.gd" id="1_special"]
 
 ; ONE BODY, FIVE SILHOUETTES.
 ;

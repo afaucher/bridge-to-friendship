@@ -19,13 +19,13 @@ extends "res://scripts/test_support/test_case.gd"
 #   5. A HIT TAKES ITS OWN STRENGTH, and a body arriving takes none. It read
 #      `hit.damage`, a field `Hit` does not have, so everything did exactly 1.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const SwallowBody = preload("res://scripts/sim/swallow_body.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const SwallowBody = preload("res://scripts/sim/actors/swallow_body.gd")
 
 const PORT := 28791
 const A := 41

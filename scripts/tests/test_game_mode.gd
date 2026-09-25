@@ -32,11 +32,11 @@ extends "res://scripts/test_support/test_case.gd"
 #      remembered for the next one rather than re-cutting ground people stand on.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # POOLS THAT BELONG TO A MODE RATHER THAN TO THE GAME. Base is expected NOT to
 # run these, and every entry is a decision somebody has to come here and make --

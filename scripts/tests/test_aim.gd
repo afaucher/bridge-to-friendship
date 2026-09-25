@@ -21,11 +21,11 @@ extends "res://scripts/test_support/test_case.gd"
 #      still moves it exactly one cell, in the nearest cardinal. There is no
 #      20-degree cell to push it into.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # Deliberately not near a quarter turn: 40 degrees west of north is 5 degrees off
 # the halfway line between north and west, so a snap to EITHER neighbour would

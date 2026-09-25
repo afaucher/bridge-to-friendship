@@ -33,10 +33,10 @@ extends "res://scripts/test_support/test_case.gd"
 # same RPC.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const HudModel = preload("res://scripts/ui/hud_model.gd")
-const HudScript = preload("res://scripts/ui/hud.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
+const HudScript = preload("res://scripts/ui/hud/hud.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null

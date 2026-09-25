@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfbullet1"]
 
-[ext_resource type="Script" path="res://scripts/sim/bullet.gd" id="1_bullet"]
+[ext_resource type="Script" path="res://scripts/sim/combat/bullet.gd" id="1_bullet"]
 
 [sub_resource type="SphereMesh" id="Sphere_1"]
 radius = 0.14
@@ -48,7 +48,7 @@ albedo_color = Color(1, 1, 1, 0.55)
 no_depth_test = false
 
 ; A PLAIN Node3D, NOT a physics body, and that is the whole design of it -- see
-; scripts/sim/bullet.gd. It moves itself and the world sweeps a ray along the
+; scripts/sim/combat/bullet.gd. It moves itself and the world sweeps a ray along the
 ; segment it covered, so it hits exactly, never tunnels, and is not in the contact
 ; graph at all.
 [node name="Bullet" type="Node3D"]

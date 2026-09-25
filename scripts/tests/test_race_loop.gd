@@ -33,11 +33,11 @@ extends "res://scripts/test_support/test_case.gd"
 #   6. AND CIRCUITS DIFFER. Same trap as the serpentine's first draft, where the
 #      seed chose one bit and three sections came out identical.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
 
 # BOTH CANVASES, and the narrow one is not padding.
 #

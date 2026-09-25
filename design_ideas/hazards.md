@@ -107,7 +107,7 @@ it is a grid-model change scoped as one, not a hazard.
 **Decided 2026-08-08.** The first enemy, and deliberately the *cheap* one:
 spiders need pathfinding, patrol states and aggro. A rusher needs a direction.
 
-**Built 2026-08-08.** `scripts/sim/rusher_body.gd`, woken and judged by
+**Built 2026-08-08.** `scripts/sim/actors/rusher_body.gd`, woken and judged by
 `GameWorld._process_rushers`, gated by `test_rusher`.
 
 **It rises, then it runs at you.** An authored cell holds a dormant mound
@@ -189,7 +189,7 @@ segments" trick does not apply. This is the same trap written up for hats.
 
 ## Zombies -- the first enemy that is a GROUP
 
-**Decided and built 2026-08-21.** `scripts/sim/zombie_body.gd`, raised and judged
+**Decided and built 2026-08-21.** `scripts/sim/actors/zombie_body.gd`, raised and judged
 by `GameWorld._process_zombies`, gated by `test_zombie`, `test_zombie_walk` and
 `test_zombie_replication`.
 

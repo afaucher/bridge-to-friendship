@@ -14,7 +14,7 @@ const HALF_HEIGHT = PlayerStates.HALF_HEIGHT
 const RADIUS = PlayerStates.RADIUS
 const FOOT_PROBE = PlayerStates.FOOT_PROBE
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 
 # The body this is part of. Untyped: preloading player_body.gd from here would
 # close a class cycle.

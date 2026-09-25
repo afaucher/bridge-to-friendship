@@ -20,12 +20,12 @@ extends "res://scripts/test_support/test_case.gd"
 # five files pass UNCHANGED. A matrix test that re-asserted them would be
 # measuring the same thing twice and would drift from them.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const StoneBody = preload("res://scripts/sim/stone_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const StoneBody = preload("res://scripts/sim/actors/stone_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 

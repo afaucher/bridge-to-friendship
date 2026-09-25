@@ -42,12 +42,12 @@ extends "res://scripts/test_support/test_case.gd"
 # patch at rows 4-5 and would have measured a wall with a hole in it.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentBuilder = preload("res://scripts/level/segment_builder.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var walker: CharacterBody3D = null

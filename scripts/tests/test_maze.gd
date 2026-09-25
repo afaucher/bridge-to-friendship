@@ -14,10 +14,10 @@ extends "res://scripts/test_support/test_case.gd"
 # equally well explained by a broken rig -- and a maze nobody can walk in at all
 # passes a blocking test perfectly.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # Both bodies stand in row 2 -- the first corridor row past the entrance -- and
 # both push EAST. Read off segments/run_maze.seg:

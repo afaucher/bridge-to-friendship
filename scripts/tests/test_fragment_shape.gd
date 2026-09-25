@@ -33,8 +33,8 @@ extends "res://scripts/test_support/test_case.gd"
 # while every one of them was a hollow shell: the cells were exact both times and
 # the drawing was wrong.
 
-const FragmentShape = preload("res://scripts/sim/fragment_shape.gd")
-const Corpse = preload("res://scripts/sim/corpse.gd")
+const FragmentShape = preload("res://scripts/present/vfx/fragment_shape.gd")
+const Corpse = preload("res://scripts/present/vfx/corpse.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 # EVERY CHARACTER, READ FROM ITS OWN SCENE. Not a table of radii: the corpse gets

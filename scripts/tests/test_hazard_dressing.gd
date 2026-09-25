@@ -21,9 +21,9 @@ extends "res://scripts/test_support/test_case.gd"
 #   5. PLACEMENT IS BY RULE: nothing lands on a ramp or on the entry and exit
 #      rows, whatever the budget says.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
 
 const SEG := "res://segments/run_pillars.seg"
 const SEED := 20260816

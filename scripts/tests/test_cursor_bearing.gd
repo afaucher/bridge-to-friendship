@@ -34,9 +34,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      function. Two implementations of one fact is what caused this.
 #   3. The plane still answers when the ray hits nothing.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const AimSource = preload("res://scripts/sim/aim_source.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const AimSource = preload("res://scripts/sim/actors/player/aim_source.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # How far up the target sits, and how far the player stands off to the SIDE of the
 # camera's view line. The offset is the load-bearing one: in line with the

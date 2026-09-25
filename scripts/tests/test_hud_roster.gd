@@ -10,8 +10,8 @@ extends "res://scripts/test_support/test_case.gd"
 # announced over the world's own multiplayer, and the fallback has to be good
 # enough that a session with no Steam still reads as a list of people.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const HudModel = preload("res://scripts/ui/hud_model.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const HudModel = preload("res://scripts/ui/hud/hud_model.gd")
 
 var world: Node3D = null
 

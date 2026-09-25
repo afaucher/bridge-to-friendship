@@ -34,7 +34,7 @@ extends "res://scripts/test_support/test_case.gd"
 const PORT := 28787
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const ZombieBody = preload("res://scripts/sim/zombie_body.gd")
+const ZombieBody = preload("res://scripts/sim/actors/zombie_body.gd")
 
 # Enough that "the client built some" and "the client built the pack" are
 # different statements, which is the failure a group enemy has and a lone one

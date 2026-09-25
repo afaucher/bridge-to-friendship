@@ -29,10 +29,10 @@ extends "res://scripts/test_support/test_case.gd"
 # CONSTRUCTION rather than by a special case -- the same lesson as the deck
 # profile, where a rate cap turned out not to be a gradient.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 const A := 41

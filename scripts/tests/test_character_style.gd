@@ -18,7 +18,7 @@ extends "res://scripts/test_support/test_case.gd"
 # one body colour, and there are now infinitely many. "The nose is far from the
 # body in luminance" is a claim about all of them.
 
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 
 # The floor the rule promises. Deliberately read off the constant rather than
 # written again here -- a test that restates a number is a test that passes when

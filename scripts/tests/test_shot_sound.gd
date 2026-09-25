@@ -27,8 +27,8 @@ extends "res://scripts/test_support/test_case.gd"
 #      sound, and a world somebody is looking at does.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const ShotSound = preload("res://scripts/ui/shot_sound.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const ShotSound = preload("res://scripts/present/audio/shot_sound.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 

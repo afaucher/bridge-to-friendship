@@ -35,13 +35,13 @@ const FAR_AWAY := 40.0
 #   5. AND NOT IN A MODE WITH NO BUSES. The post is terrain; the pool is a mode
 #      declaration, and terrain must not be able to overrule it.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const WIDTH := 21
 const SEEDS := 20

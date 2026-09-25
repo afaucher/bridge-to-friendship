@@ -30,9 +30,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      this project keeps paying for.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const SECOND := 60
 

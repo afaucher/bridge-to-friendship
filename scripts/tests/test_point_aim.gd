@@ -13,11 +13,11 @@ extends "res://scripts/test_support/test_case.gd"
 # re-derived the direction would be checking its own arithmetic.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const PEER := 9
 

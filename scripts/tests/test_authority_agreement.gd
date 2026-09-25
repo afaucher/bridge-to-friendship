@@ -17,7 +17,7 @@ extends "res://scripts/test_support/test_case.gd"
 const PORT := 28779
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
 
 # Both players walk a scripted L-shape, jump, then stop. Different routes on
 # purpose: identical inputs could agree by symmetry rather than by the

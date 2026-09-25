@@ -39,16 +39,16 @@ extends "res://scripts/test_support/test_case.gd"
 #      one, so a mode change that ate a hat because it happened to be lying past
 #      the cut would be unrecoverable and indistinguishable from a bug.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const Deployable = preload("res://scripts/sim/deployable.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const HatBody = preload("res://scripts/sim/hat_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const Deployable = preload("res://scripts/sim/items/deployable.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const HatBody = preload("res://scripts/sim/items/hat_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
 
 const WIDTH := 21
 const SEED := 20260825

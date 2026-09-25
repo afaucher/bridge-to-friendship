@@ -16,7 +16,7 @@ person who noticed the problem is not the person who can try a fix.
 
 ## The foundation already exists, and it already predicted this
 
-`scripts/debug_settings.gd` is a **registry**: a dictionary of options, each with
+`scripts/debug/debug_settings.gd` is a **registry**: a dictionary of options, each with
 a label, choices, a default and a help string, plus environment overrides so a
 headless run can flip one. Its own comment says the two things this milestone is
 about:

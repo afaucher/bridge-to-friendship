@@ -35,11 +35,11 @@ extends "res://scripts/test_support/test_case.gd"
 # the bus's own terms (lane depth against turn radius); this file owns the wiring.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const BusBody = preload("res://scripts/sim/bus_body.gd")
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const BusBody = preload("res://scripts/sim/actors/bus_body.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
 
 const WIDTH := 21
 const SEEDS := 40

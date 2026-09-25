@@ -10,9 +10,9 @@ extends "res://scripts/sim/world/entity_pool.gd"
 # steps, targets or wakes anything, and `step()` is only called on the host.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
 
 # SOMEBODY THIS ENEMY IGNORES. Hanging off a lip, downed, or being carried back
 # by the drone: waking or chasing a player with no verbs left is a punishment

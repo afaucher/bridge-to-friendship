@@ -21,7 +21,7 @@ extends "res://scripts/test_support/test_case.gd"
 # axis its base sits nearest), because the data does not record it; if the
 # inference finds nothing, the structure is not branching at all.
 
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 
 const HEAD_W := 0.8         # the body cylinder's diameter -- the reference

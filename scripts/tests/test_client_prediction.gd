@@ -19,7 +19,7 @@ const PORT := 28780
 const DELAY_TICKS := 8
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
 
 # One tick of walking, plus generous headroom for acceleration and the physics
 # solver. A genuine mispredict correction over 133 ms of divergence would be

@@ -24,7 +24,7 @@ extends "res://scripts/test_support/test_case.gd"
 #      would satisfy every assertion above.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const ZombieBody = preload("res://scripts/sim/zombie_body.gd")
+const ZombieBody = preload("res://scripts/sim/actors/zombie_body.gd")
 const ZombieScene = preload("res://scenes/zombie.tscn")
 
 const SAMPLES := 600

@@ -36,10 +36,10 @@ const PORT := 28789
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 # Long enough that a bus driven at speed covers real ground under a planted
 # rider -- a stationary bus is the "latency instrument read on a stationary body"

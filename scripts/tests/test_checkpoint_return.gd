@@ -35,9 +35,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      actually happened.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
 
 # Every Nth row of the initial run. The sweep is what found the real number; a
 # single sample would have been read as whatever the checkpoint happened to be.

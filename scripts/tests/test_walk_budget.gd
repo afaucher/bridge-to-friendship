@@ -40,10 +40,10 @@ extends "res://scripts/test_support/test_case.gd"
 # is a party on a live playtest_bridge timed end to end -- not this.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 # A short measured window, extrapolated. Simulating the full five minutes is
 # 18,000 ticks per sample and buys nothing: a body at terminal walking speed on

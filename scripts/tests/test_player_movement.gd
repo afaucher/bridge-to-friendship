@@ -7,7 +7,7 @@ extends "res://scripts/test_support/test_case.gd"
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 const REST_Y := 0.9        # capsule half-height; gym ground top sits at y = 0
 const SETTLE_TICKS := 60   # 1s at 60Hz -- a 1.5m fall lands in ~0.35s

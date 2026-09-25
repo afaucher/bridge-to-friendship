@@ -31,13 +31,13 @@ extends "res://scripts/test_support/test_case.gd"
 # reads as though nothing was ever taken. The first version of this test asserted
 # exactly that and failed against a correct fix.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const HatBody = preload("res://scripts/sim/hat_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const HatBody = preload("res://scripts/sim/items/hat_body.gd")
 
 const A := 41
 

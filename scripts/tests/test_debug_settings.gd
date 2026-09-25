@@ -5,8 +5,8 @@ extends "res://scripts/test_support/test_case.gd"
 # the wrong thing -- these assertions are what turn that into a red gate.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SpecialPool = preload("res://scripts/sim/special_pool.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const SpecialPool = preload("res://scripts/sim/items/special_pool.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
 
 func setup(_main) -> void:
 	# Every registered option is well formed, whatever KIND it is. A knob with a

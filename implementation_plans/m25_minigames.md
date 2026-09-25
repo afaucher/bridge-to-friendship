@@ -316,7 +316,7 @@ for a mode with a genuinely different notion of winning.
 
 **Phase 1 — the seam, with nothing new to look at.** *(BUILT 2026-08-25.)*
 
-`scripts/sim/game_mode.gd` is the registry; base is `MODES[0]`. `GameWorld` gained
+`scripts/sim/modes/game_mode.gd` is the registry; base is `MODES[0]`. `GameWorld` gained
 `run_modes` (one entry per round), `current_mode()`, `tuned()` as the single
 composition point, and `selected_mode` / `next_mode` polled only in a lobby.
 
@@ -393,7 +393,7 @@ a mode with a different BODY: per-mode traversal (obligation 4) and per-mode sta
 selector. `merchant_body.gd` was the precedent and most of the answer, exactly as
 predicted: a grid-resident thing you walk up to and dash into.
 
-`scripts/sim/mode_post.gd` is a static body on layer 11, built in code, carrying a
+`scripts/sim/posts/mode_post.gd` is a static body on layer 11, built in code, carrying a
 banner whose colour is the chosen mode. `resolve_shove_contact` dispatches on
 `has_method("can_select")` the same way it does on `can_trade`. One per lobby and
 none in a section — being in a lobby is what makes it safe to be dashable at all,

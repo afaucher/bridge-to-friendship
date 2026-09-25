@@ -15,7 +15,7 @@ extends "res://scripts/test_support/test_case.gd"
 # them agree.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var host: Node3D = null
 var client: Node3D = null

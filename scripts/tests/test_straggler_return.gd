@@ -15,10 +15,10 @@ extends "res://scripts/test_support/test_case.gd"
 # thing being reported is a body landing somewhere there is no deck.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const RUN_SEED := 20260815
 

@@ -13,9 +13,9 @@ extends "res://scripts/test_support/test_case.gd"
 #      even if a stray lap time were on the entry.
 #   4. THE LAP CLOCK AND THE LAP TRACKER COME WITH THE RACE and with nothing else.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const LapTracker = preload("res://scripts/sim/systems/lap_tracker.gd")
 
 func setup(_main) -> void:

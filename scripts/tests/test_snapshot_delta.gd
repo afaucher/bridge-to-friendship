@@ -18,11 +18,11 @@ extends "res://scripts/test_support/test_case.gd"
 # is being tested is what goes ON the wire, and a real client would only confirm
 # that the two halves of an encoder agree with each other.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
 const SnapshotDelta = preload("res://scripts/net/snapshot_delta.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 

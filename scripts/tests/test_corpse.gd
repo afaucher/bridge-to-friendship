@@ -35,11 +35,11 @@ extends "res://scripts/test_support/test_case.gd"
 # kills things exercises one of them.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
-const Corpse = preload("res://scripts/sim/corpse.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const GunnerBody = preload("res://scripts/sim/actors/gunner_body.gd")
+const Corpse = preload("res://scripts/present/vfx/corpse.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 const PlayerScene = preload("res://scenes/player.tscn")
 
 # EVERY ENEMY THAT EARNS ONE. `spawner` names the world's own spawn helper so the

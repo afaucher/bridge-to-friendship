@@ -37,8 +37,8 @@ extends "res://scripts/test_support/test_case.gd"
 const PORT := 28785
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 # COAST TO COAST, which is the session that produced the report. 10 ticks is
 # ~167 ms of one-way staleness on the client's authority.

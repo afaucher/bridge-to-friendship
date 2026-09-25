@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfstone1"]
 
-[ext_resource type="Script" path="res://scripts/sim/stone_body.gd" id="1_stone"]
+[ext_resource type="Script" path="res://scripts/sim/actors/stone_body.gd" id="1_stone"]
 
 ; A CYLINDER, not a box.
 ;

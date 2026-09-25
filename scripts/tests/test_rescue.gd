@@ -18,12 +18,12 @@ extends "res://scripts/test_support/test_case.gd"
 # Everything here runs on the world's own host tick with scripted input, so it
 # exercises the code path the game uses.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const CrisisFlash = preload("res://scripts/ui/crisis_flash.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const CrisisFlash = preload("res://scripts/present/vfx/crisis_flash.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var a: CharacterBody3D = null

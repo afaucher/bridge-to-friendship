@@ -28,16 +28,16 @@ extends "res://scripts/test_support/test_case.gd"
 #   9. PASSENGERS CANNOT MACHINE-GUN EACH OTHER, and CAN still blow each other up.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const BusBody = preload("res://scripts/sim/bus_body.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const SpecialPool = preload("res://scripts/sim/special_pool.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const BusBody = preload("res://scripts/sim/actors/bus_body.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const SpecialPool = preload("res://scripts/sim/items/special_pool.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 
 var world: Node3D = null

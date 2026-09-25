@@ -11,9 +11,9 @@ extends "res://scripts/test_support/test_case.gd"
 # nothing reads is the shape this project keeps finding: a value written, mirrored
 # into a menu, and never once consulted by the code it names.
 
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 
 var done := false
 

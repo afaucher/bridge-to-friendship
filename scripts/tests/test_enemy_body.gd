@@ -14,7 +14,7 @@ extends "res://scripts/test_support/test_case.gd"
 # pool to pile that had to be kept in step by hand.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const Corpse = preload("res://scripts/sim/corpse.gd")
+const Corpse = preload("res://scripts/present/vfx/corpse.gd")
 
 const KINDS := {
 	"res://scenes/rusher.tscn": Corpse.Kind.RUSHER,

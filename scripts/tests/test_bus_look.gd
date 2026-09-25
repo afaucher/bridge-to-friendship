@@ -37,14 +37,14 @@ extends "res://scripts/test_support/test_case.gd"
 #   7. THE BODYWORK GROWS WITH THE BUS. `_build_body` takes the length; forget to
 #      call it on a rebuild and a full bus has cab-length sides and open flanks.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const BusRig = preload("res://scripts/test_support/bus_rig.gd")
-const BusBody = preload("res://scripts/sim/bus_body.gd")
+const BusBody = preload("res://scripts/sim/actors/bus_body.gd")
 
 # How much of a rider has to be behind the sides before "you are in the bus" is
 # true. A third of the way to the hip is shins-and-boots gone.

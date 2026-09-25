@@ -28,14 +28,14 @@ extends "res://scripts/test_support/test_case.gd"
 # throttle carries it clear of the lip in a tick or two -- which is why this
 # never showed up in the bus tests that drive at speed.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 const BusRig = preload("res://scripts/test_support/bus_rig.gd")
 
 const A := 41

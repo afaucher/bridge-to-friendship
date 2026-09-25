@@ -3,9 +3,9 @@ extends "res://scripts/test_support/test_case.gd"
 # The saved character: that it round-trips, that a first run has a real default,
 # and that it shares a file with the saved hat without either eating the other.
 
-const CharacterConfig = preload("res://scripts/character_config.gd")
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
-const HatConfig = preload("res://scripts/hat_config.gd")
+const CharacterConfig = preload("res://scripts/app/prefs/character_config.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
+const HatConfig = preload("res://scripts/app/prefs/hat_config.gd")
 
 # SOMEWHERE DISPOSABLE, AND THIS IS THE FIRST LINE FOR A REASON. Without it this
 # test reads and rewrites the DEVELOPER'S OWN character and hat -- hat_config.gd

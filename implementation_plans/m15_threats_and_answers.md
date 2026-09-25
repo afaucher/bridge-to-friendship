@@ -12,7 +12,7 @@ that is already the wrong shape and then unpicking them.
 
 ## 15a — The damage model
 
-`scripts/sim/hit.gd`: the value, its four kinds, and the helpers that build one.
+`scripts/sim/combat/hit.gd`: the value, its four kinds, and the helpers that build one.
 `receive_hit()` on player, rusher, stone, ball, hat, special. The five existing
 call sites stop deciding what they hit.
 

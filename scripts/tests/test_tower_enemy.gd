@@ -17,15 +17,15 @@ extends "res://scripts/test_support/test_case.gd"
 # perfect and which blocked nothing, because the test built its own input rather
 # than taking the one the caller passes.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const SpecialBody = preload("res://scripts/sim/special_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const Bullet = preload("res://scripts/sim/bullet.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const SpecialBody = preload("res://scripts/sim/items/special_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const Bullet = preload("res://scripts/sim/combat/bullet.gd")
 
 const MAP := "res://segments/test_watchpost.seg"
 const PEER := 918447201

@@ -21,7 +21,7 @@ extends "res://scripts/test_support/test_case.gd"
 
 const PORT := 28786
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 
 # Far apart from each other AND from the default, so no assertion can be
 # satisfied by a value that was simply never changed.

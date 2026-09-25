@@ -1131,7 +1131,7 @@ the moment it is written.
 
 ## Architecture orientation (pointers, not a re-doc)
 
-- **`scripts/main.gd` is the root of everything running.** It owns the menu, the
+- **`scripts/app/main.gd` is the root of everything running.** It owns the menu, the
   spawned avatars, and the two headless entry points (`--run-test`,
   `--run-sim`). The headless check is the FIRST thing `_ready()` does, before
   any menu or network wiring — a test run must not touch Steam.

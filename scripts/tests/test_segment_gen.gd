@@ -23,12 +23,12 @@ extends "res://scripts/test_support/test_case.gd"
 #   5. IT IS DETERMINISTIC. Same seed, same segment -- the guarantee a joining
 #      client rides.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
-const SetPieces = preload("res://scripts/grid/set_pieces.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const HazardDressing = preload("res://scripts/level/hazard_dressing.gd")
+const SetPieces = preload("res://scripts/level/set_pieces.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 const WIDTH := 13
 

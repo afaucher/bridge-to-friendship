@@ -5,8 +5,8 @@ extends "res://scripts/test_support/test_case.gd"
 # the whole suite goes red at once (a broken autoload or a renamed scene fails
 # every test, and only this one says why in a single line).
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
 
 func setup(main) -> void:
 	# Autoloads, by the names the rest of the code calls them.

@@ -1,6 +1,6 @@
 ---
 name: level-authoring
-description: Author or edit level content for Bridge to Friendship — whole segments (`.seg` files in segments/) and M18 set-pieces. Use this whenever the task touches a `.seg` file, the glyph grids ([deck]/[height]/[content]), the set-piece library in scripts/grid/set_pieces.gd, or anything phrased as "make a level / a section / a piece / an arena", "add a ramp or a ladder or a lift somewhere", "place spikes / a turret / a plinko field", "why is this segment rejected", or "the validator says this is uncrossable". Also use it when reviewing someone else's level file, because most of the rules here are ones the oracle cannot check and a file can be perfectly valid and still unfair.
+description: Author or edit level content for Bridge to Friendship — whole segments (`.seg` files in segments/) and M18 set-pieces. Use this whenever the task touches a `.seg` file, the glyph grids ([deck]/[height]/[content]), the set-piece library in scripts/level/set_pieces.gd, or anything phrased as "make a level / a section / a piece / an arena", "add a ramp or a ladder or a lift somewhere", "place spikes / a turret / a plinko field", "why is this segment rejected", or "the validator says this is uncrossable". Also use it when reviewing someone else's level file, because most of the rules here are ones the oracle cannot check and a file can be perfectly valid and still unfair.
 ---
 
 # Authoring levels for Bridge to Friendship
@@ -31,7 +31,7 @@ tags = foot, piece, firefight
 
 ## The glyphs
 
-Read these off `scripts/grid/grid_config.gd` if anything looks stale — that file
+Read these off `scripts/level/grid_config.gd` if anything looks stale — that file
 is the authority, this table is a convenience.
 
 **[deck]** — `.` deck · `_` hole · `~` water · `/` ramp
@@ -226,12 +226,12 @@ an hour of uncommitted work here once already.
 | | |
 |---|---|
 | `segments/*.seg` | every segment and piece |
-| `scripts/grid/grid_config.gd` | glyph tables, cell size, height unit |
-| `scripts/grid/segment_data.gd` | the parser and its header keys |
-| `scripts/grid/segment_validator.gd` | the reachability oracle |
-| `scripts/grid/set_pieces.gd` | the piece library |
-| `scripts/grid/segment_pool.gd` | the segment pool and run plan |
-| `scripts/grid/hazard_dressing.gd` | layer 3 themes and placement rules |
+| `scripts/level/grid_config.gd` | glyph tables, cell size, height unit |
+| `scripts/level/segment_data.gd` | the parser and its header keys |
+| `scripts/level/segment_validator.gd` | the reachability oracle |
+| `scripts/level/set_pieces.gd` | the piece library |
+| `scripts/level/segment_pool.gd` | the segment pool and run plan |
+| `scripts/level/hazard_dressing.gd` | layer 3 themes and placement rules |
 | `design_ideas/world_generation.md` | the three-layer model and its reasoning |
 | `implementation_plans/m18_set_pieces.md` | what a set-piece is and why |
 

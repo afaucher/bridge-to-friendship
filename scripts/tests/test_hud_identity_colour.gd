@@ -12,9 +12,9 @@ extends "res://scripts/test_support/test_case.gd"
 # not a feature, and the shield's bug was entirely in the caller that built the
 # real one. So nothing here constructs a model entry.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const HudScript = preload("res://scripts/ui/hud.gd")
-const CharacterStyle = preload("res://scripts/sim/character_style.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const HudScript = preload("res://scripts/ui/hud/hud.gd")
+const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
 
 # Far apart from each other AND from the default, so no assertion can be
 # satisfied by a colour that was simply never set.

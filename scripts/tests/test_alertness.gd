@@ -45,10 +45,10 @@ extends "res://scripts/test_support/test_case.gd"
 #     the leash cannot cull the subject either.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GunnerBody = preload("res://scripts/sim/actors/gunner_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var victim: CharacterBody3D = null

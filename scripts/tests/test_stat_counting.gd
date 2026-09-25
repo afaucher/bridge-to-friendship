@@ -13,9 +13,9 @@ extends "res://scripts/test_support/test_case.gd"
 # that bug: it would read 100% accuracy for somebody firing into a wall.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const StatRegistry = preload("res://scripts/sim/stat_registry.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const StatRegistry = preload("res://scripts/sim/world/stat_registry.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
 const SkirmisherScene = preload("res://scenes/skirmisher.tscn")
 
 const SHOOTER := 1

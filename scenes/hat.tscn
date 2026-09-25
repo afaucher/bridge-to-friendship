@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://btfhat1"]
 
-[ext_resource type="Script" path="res://scripts/sim/hat_body.gd" id="1_hat"]
+[ext_resource type="Script" path="res://scripts/sim/items/hat_body.gd" id="1_hat"]
 
 ; A PLACEHOLDER SHAPE, and knowingly so. The first pass of hats proves pickup,
 ; stack and dislodge; a hat is a crown and a brim until the generated shapes land

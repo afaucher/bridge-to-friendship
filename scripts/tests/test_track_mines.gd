@@ -26,13 +26,13 @@ extends "res://scripts/test_support/test_case.gd"
 #      the grid rather than as content glyphs, so the correspondence check in
 #      test_bus_route looks straight past them.
 
-const GameMode = preload("res://scripts/sim/game_mode.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const SegmentGen = preload("res://scripts/grid/segment_gen.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const BridgeGridScript = preload("res://scripts/grid/bridge_grid.gd")
-const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
+const GameMode = preload("res://scripts/sim/modes/game_mode.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const SegmentGen = preload("res://scripts/level/segment_gen.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const BridgeGridScript = preload("res://scripts/level/bridge_grid.gd")
+const SegmentPool = preload("res://scripts/level/segment_pool.gd")
 
 const WIDTH := 21
 

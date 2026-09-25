@@ -15,12 +15,12 @@ extends "res://scripts/test_support/test_case.gd"
 # Headless builds the scene tree, it just does not draw it, so every node in here
 # is really constructed and really updated.
 
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
-const HudScript = preload("res://scripts/ui/hud.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
+const HudScript = preload("res://scripts/ui/hud/hud.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const RoundMachine = preload("res://scripts/sim/round_machine.gd")
-const ScoreScreen = preload("res://scripts/ui/score_screen.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const RoundMachine = preload("res://scripts/sim/world/round_machine.gd")
+const ScoreScreen = preload("res://scripts/ui/screens/score_screen.gd")
 
 var world: Node3D = null
 var hud: CanvasLayer = null

@@ -29,13 +29,13 @@ extends "res://scripts/test_support/test_case.gd"
 #      isthmus, so a validator that treated a temporary cell as a hole would
 #      reject it -- and would then reject every segment ever built from these.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
-const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
+const SegmentBuilder = preload("res://scripts/level/segment_builder.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const CRUMBLE_CELL := Vector2i(2, 4)
 const TIMED_LEFT := Vector2i(1, 4)

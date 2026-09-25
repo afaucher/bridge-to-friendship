@@ -13,7 +13,7 @@ work out which constraints are still real.
 
 ## What the camera is today
 
-`scripts/ui/bridge_camera.gd`. Fixed yaw, fixed 45° pitch, pinned to the bridge's
+`scripts/present/bridge_camera.gd`. Fixed yaw, fixed 45° pitch, pinned to the bridge's
 centre line, following the local player in Z and Y only. Framing is derived
 rather than eyeballed: `keep_aspect = KEEP_WIDTH` makes `fov` the HORIZONTAL
 angle, so the distance falls out of the bridge's width —

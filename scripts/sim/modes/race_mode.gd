@@ -1,6 +1,6 @@
 extends "res://scripts/sim/modes/base_mode.gd"
 
-const RaceCircuitGen = preload("res://scripts/grid/gen/race_circuit_gen.gd")
+const RaceCircuitGen = preload("res://scripts/level/gen/race_circuit_gen.gd")
 
 # THE RACE CIRCUIT. A closed ring with a hole in the middle -- see
 # implementation_plans/m26_race_track.md and SegmentGen.race_loop.

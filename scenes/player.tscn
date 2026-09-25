@@ -1,6 +1,6 @@
 [gd_scene load_steps=10 format=3 uid="uid://btfplayer1"]
 
-[ext_resource type="Script" path="res://scripts/sim/player_body.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/sim/actors/player/player_body.gd" id="1_player"]
 
 ; A CYLINDER, not a capsule, and it never tips.
 ;

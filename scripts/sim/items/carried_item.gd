@@ -13,7 +13,7 @@ extends RigidBody3D
 # LOOSE = 2, which is what these constants name for code that handles either.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
 
 const MODE_CARRIED := 0
 const MODE_FLYING := 1

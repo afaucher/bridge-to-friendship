@@ -20,9 +20,9 @@ extends "res://scripts/test_support/test_case.gd"
 # The numbers are printed either way. A cost that has quietly tripled is worth
 # seeing even on a run where nothing failed.
 
-const Corpse = preload("res://scripts/sim/corpse.gd")
+const Corpse = preload("res://scripts/present/vfx/corpse.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 func setup(main) -> void:
 	var root := Node3D.new()

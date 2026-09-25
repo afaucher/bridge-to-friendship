@@ -9,9 +9,9 @@ extends "res://scripts/test_support/test_case.gd"
 # It also asserts that the shipped segments PARSE AND VALIDATE. A broken segment
 # is otherwise found by walking into it.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
-const SegmentData = preload("res://scripts/grid/segment_data.gd")
-const SegmentValidator = preload("res://scripts/grid/segment_validator.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
+const SegmentData = preload("res://scripts/level/segment_data.gd")
+const SegmentValidator = preload("res://scripts/level/segment_validator.gd")
 
 func setup(_main) -> void:
 	_test_shipped_segments()

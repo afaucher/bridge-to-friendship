@@ -30,13 +30,13 @@ extends "res://scripts/test_support/test_case.gd"
 # The alertness wake (2026-08-21) put 1-2 s in front of every one of these, so the
 # windows here are sized to contain it. See test_alertness for the wake itself.
 
-const GridConfig = preload("res://scripts/grid/grid_config.gd")
+const GridConfig = preload("res://scripts/level/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const PlayerBody = preload("res://scripts/sim/player_body.gd")
-const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const PlayerBody = preload("res://scripts/sim/actors/player/player_body.gd")
+const GunnerBody = preload("res://scripts/sim/actors/gunner_body.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 var world: Node3D = null
 var victim: CharacterBody3D = null

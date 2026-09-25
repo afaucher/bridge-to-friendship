@@ -18,8 +18,8 @@ extends "res://scripts/test_support/test_case.gd"
 # hand -- that is the code path the game uses, carry order and all.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const PlayerInput = preload("res://scripts/sim/player_input.gd")
-const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const PlayerInput = preload("res://scripts/sim/actors/player/player_input.gd")
+const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 
 const BODY_HEIGHT := 1.8
 const REST_Y := 0.9

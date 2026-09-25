@@ -11,7 +11,7 @@ extends CharacterBody3D
 # NO class_name, like everything else here: a subclass `extends` this by path.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
-const Hit = preload("res://scripts/sim/hit.gd")
+const Hit = preload("res://scripts/sim/combat/hit.gd")
 
 # ITS NETWORK IDENTITY. Every kind used to carry its own field (`rusher_id`,
 # `zombie_id`, `gunner_id`); those names survive as aliases on the subclasses so
