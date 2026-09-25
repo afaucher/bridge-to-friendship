@@ -23,6 +23,7 @@ extends RigidBody3D
 # and legs are not this.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 
 enum Mode { HELD, FLYING, LOOSE }
@@ -33,7 +34,9 @@ enum Mode { HELD, FLYING, LOOSE }
 # APPENDED, NEVER REORDERED. A kind's integer is what segment_builder resolves an
 # authored glyph to and what the pickup travels as, so inserting one in the middle
 # would silently turn every rocket in every level into a mine.
-enum Kind { MACHINE_GUN, GRENADE, MINE, SHIELD, ROCKET, LEGS, SHOTGUN, RIFLE, HEAVY }
+# The kinds, and everything about each one, live in items/weapon_defs.gd. Aliased
+# here so `SpecialBody.Kind.X` keeps meaning what it always meant.
+const Kind = WeaponDefs.Kind
 
 # Host-assigned and monotonic, NEVER a creation-order index. A special can be
 # created mid-run by a swap, so creation order is not agreed between machines --
@@ -96,26 +99,7 @@ func _ready() -> void:
 	linear_damp = 0.6
 
 func kind_name() -> String:
-	match kind:
-		Kind.MACHINE_GUN:
-			return "MG"
-		Kind.GRENADE:
-			return "NADE"
-		Kind.MINE:
-			return "MINE"
-		Kind.SHIELD:
-			return "SHLD"
-		Kind.ROCKET:
-			return "RKT"
-		Kind.LEGS:
-			return "LEGS"
-		Kind.SHOTGUN:
-			return "SHOT"
-		Kind.RIFLE:
-			return "RIFLE"
-		Kind.HEAVY:
-			return "HEAVY"
-	return "?"
+	return WeaponDefs.name_of(kind)
 
 # WHAT IT LOOKS LIKE ON THE DECK. One scene serves every kind -- the shape, the
 # collision and the held-pivot geometry are identical -- so without this a shield
@@ -132,26 +116,10 @@ func kind_name() -> String:
 # The node that IS this kind. Every silhouette exists in the scene from the start
 # and five of the six are hidden -- see special.tscn for why they are not built
 # on demand.
-const SHAPE_NODES := {
-	Kind.MACHINE_GUN: "Body",
-	Kind.ROCKET: "Rocket",
-	Kind.GRENADE: "Nade",
-	Kind.MINE: "Mine",
-	Kind.SHIELD: "Shield",
-	Kind.LEGS: "Legs",
-	# THE TWO NEW GUNS BORROW THE MACHINE GUN'S SILHOUETTE. They are a gun-shaped
-	# thing with a barrel, which is the reading that matters on the deck, and the
-	# COLOUR is what tells them apart -- the same job it already does for the five
-	# kinds that share this scene. A distinct mesh each is an art task, not a
-	# gameplay one, and this milestone is an A/B about aiming.
-	Kind.SHOTGUN: "Body",
-	Kind.RIFLE: "Body",
-	Kind.HEAVY: "Body",
-}
 
 # ONE WRITE PER MESH, DECIDED BY THE MESH -- not one write per KIND.
 #
-# This used to loop over SHAPE_NODES and set `node.visible = (shape_kind == kind)`
+# This used to loop over a kind -> mesh table and set `node.visible = (shape_kind == kind)`
 # on each pass. That was correct while the mapping was one kind to one mesh, and
 # it broke silently the moment four kinds started sharing "Body": every pass wrote
 # that node's visibility, so the LAST kind in the dictionary decided it for
@@ -168,13 +136,8 @@ const SHAPE_NODES := {
 # means -- "is this the mesh MY kind uses" -- rather than "am I the kind whose
 # turn this is".
 func apply_kind_look() -> void:
-	var mine_node: String = str(SHAPE_NODES.get(kind, ""))
-	var done: Dictionary = {}
-	for shape_kind in SHAPE_NODES:
-		var node_name: String = str(SHAPE_NODES[shape_kind])
-		if done.has(node_name):
-			continue
-		done[node_name] = true
+	var mine_node: String = WeaponDefs.shape_of(kind)
+	for node_name in WeaponDefs.shape_nodes():
 		var node := get_node_or_null(node_name) as MeshInstance3D
 		if node == null:
 			continue
@@ -190,27 +153,10 @@ func apply_kind_look() -> void:
 	if barrel != null:
 		# EVERY GUN HAS ONE. It was the machine gun's tell when the machine gun was
 		# the only thing that pointed; a shotgun and a rifle point too.
-		barrel.visible = kind == Kind.MACHINE_GUN or kind == Kind.SHOTGUN or kind == Kind.RIFLE or kind == Kind.HEAVY
+		barrel.visible = WeaponDefs.has_barrel(kind)
 
 func _kind_colour() -> Color:
-	match kind:
-		Kind.GRENADE:
-			return Color(0.95, 0.75, 0.15)   # the same hazard yellow it throws
-		Kind.MINE:
-			return Color(0.85, 0.22, 0.15)
-		Kind.SHIELD:
-			return Color(0.25, 0.52, 0.88)
-		Kind.ROCKET:
-			return Color(0.55, 0.62, 0.30)   # olive, the only military thing here
-		Kind.LEGS:
-			return Color(0.35, 0.85, 0.70)   # spring green, and the only mobility one
-		Kind.SHOTGUN:
-			return Color(0.80, 0.35, 0.10)   # a hotter, redder orange than the MG
-		Kind.RIFLE:
-			return Color(0.55, 0.80, 0.95)   # pale blue: the only PRECISE warm thing
-		Kind.HEAVY:
-			return Color(0.45, 0.42, 0.40)   # gunmetal, the only HEAVY-looking one
-	return Color(0.95, 0.6, 0.15)            # the machine gun, unchanged
+	return WeaponDefs.colour_of(kind)
 
 # Bookkeeping only -- the physics server moves a dropped special. Called once per
 # sim tick by the pool.

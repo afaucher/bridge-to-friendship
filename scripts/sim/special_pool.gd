@@ -12,6 +12,7 @@ extends RefCounted
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
+const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
 const SpecialScene = preload("res://scenes/special.tscn")
 
 # The body's own radius, so "within pickup radius" is measured from the edge of a
@@ -120,26 +121,7 @@ static func full_ammo(kind: int) -> int:
 	return _scaled(_base_ammo(kind))
 
 static func _base_ammo(kind: int) -> int:
-	match kind:
-		SpecialBody.Kind.MACHINE_GUN:
-			return SimConfig.MG_AMMO
-		SpecialBody.Kind.GRENADE:
-			return SimConfig.GRENADE_AMMO
-		SpecialBody.Kind.MINE:
-			return SimConfig.MINE_AMMO
-		SpecialBody.Kind.SHIELD:
-			return SimConfig.SHIELD_AMMO
-		SpecialBody.Kind.ROCKET:
-			return SimConfig.ROCKET_AMMO
-		SpecialBody.Kind.LEGS:
-			return SimConfig.LEGS_AMMO
-		SpecialBody.Kind.SHOTGUN:
-			return SimConfig.SHOTGUN_AMMO
-		SpecialBody.Kind.RIFLE:
-			return SimConfig.RIFLE_AMMO
-		SpecialBody.Kind.HEAVY:
-			return SimConfig.HEAVY_AMMO
-	return 0
+	return WeaponDefs.base_ammo(kind)
 
 func destroy(s: Node) -> void:
 	var index: int = _specials.find(s)

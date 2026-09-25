@@ -50,6 +50,8 @@ const GameMode = preload("res://scripts/sim/game_mode.gd")
 const RusherSystem = preload("res://scripts/sim/systems/rusher_system.gd")
 const ZombieSystem = preload("res://scripts/sim/systems/zombie_system.gd")
 const GunnerSystem = preload("res://scripts/sim/systems/gunner_system.gd")
+const WeaponSystem = preload("res://scripts/sim/systems/weapon_system.gd")
+const WeaponDefs = preload("res://scripts/sim/items/weapon_defs.gd")
 const Hash = preload("res://scripts/core/hash.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
@@ -291,6 +293,8 @@ var _next_bullet_id: int = 0
 var rushers = RusherSystem.new()
 var zombies = ZombieSystem.new()
 var gunners = GunnerSystem.new()
+# Picking up and firing the specials and the sidearm. See items/weapon_defs.gd.
+var weapons = WeaponSystem.new()
 
 # The enemy pools, in the order they tick. Everything that must ask "every enemy"
 # -- a blast, the aim snap, the wipe -- walks this rather than naming the three.
@@ -418,6 +422,7 @@ func _ready() -> void:
 	# Rushers and zombies too: they walk the deck, so they live in world space.
 	rushers.attach(self)
 	zombies.attach(self)
+	weapons.attach(self)
 
 	# WHERE THE DEAD GO. Its own root, like every pool, so a corpse is never a
 	# child of the thing it replaced -- that node is being freed on the same tick.
@@ -2741,177 +2746,12 @@ func special_held_by(peer: int) -> Node:
 func _process_specials() -> void:
 	if not is_host:
 		return
+	weapons.step()
 
-	if grid != null:
-		for entry in grid.take_authored_special_cells():
-			_specials.spawn_loose(
-				grid.cell_surface_world(entry[0]) + Vector3(0.0, 0.4, 0.0), int(entry[1]),
-				-1, true)
-
-	_specials.step(_trailing_edge_z())
-
-	# WHICH STATES MAY PICK ONE UP. The same set hats use, and the same reason:
-	# collecting something mid-tumble removes the cost of the tumble. A dash may,
-	# because a dash across a contested pickup is exactly the moment this rule is
-	# for.
-	var can_carry := func(peer: int, body: Node) -> bool:
-		if _returning.has(peer):
-			return false
-		return body.state == PlayerBody.State.WALK or body.state == PlayerBody.State.SHOVE
-
-	for claim in _specials.resolve_pickups(players, can_carry):
-		var taken: Node = claim[0]
-		var peer: int = int(claim[1])
-		var replaced: Node = claim[2]
-		# ONE SLOT: the old one leaves the hand before the new one enters it, with
-		# whatever ammo it had. Dropped a step in FRONT of the holder rather than
-		# underneath them -- two bodies at identical coordinates depenetrate into a
-		# degenerate normal and fall through the floor.
-		if replaced != null and is_instance_valid(replaced):
-			_drop_special(replaced, _specials.drop_offset(players[peer]))
-			if networked:
-				_special_dropped.rpc(replaced.special_id, replaced.position)
-		_take_special(taken.special_id, peer)
-		# OWNERSHIP GOES RELIABLY, positions ride the unreliable snapshot. Same
-		# split as hats: a lost pickup that never applies is a client holding a
-		# weapon the host says is on the deck, and nothing re-sends it.
-		if networked:
-			_take_special.rpc(taken.special_id, peer)
-
-	_fire_specials()
-
-# One tick of everybody's trigger.
-#
-# HOST ONLY, AND NEVER PREDICTED. A client has no authority to decide that a round
-# hit somebody, and there is nothing to gain by guessing -- unlike walking, which
-# is predicted precisely because the delay is felt. See physics_and_authority.md:
-# committed actions play from host state.
-func _fire_specials() -> void:
-	for peer_key in players.keys():
-		var peer: int = int(peer_key)
-		var body: Node = players[peer]
-		var weapon: Node = _specials.held_by(peer)
-
-		# NOTHING IN THE SLOT MEANS THE SIDEARM, not nothing (M24).
-		#
-		# This was a bare `continue`, and that was the shape of the problem: a
-		# player whose special had run out had no verb at all until they walked to
-		# the next rack. The pistol fills the gap and needs no lifecycle to do it
-		# -- it is not an item, so there is nothing to pick up, drop or spend, and
-		# "immediately available after a special is used up" is just what falling
-		# through to here means.
-		if weapon == null:
-			_step_sidearm(peer, body)
-			continue
-
-		# AND IT COOLS WHILE A SPECIAL IS OUT. Otherwise a player who emptied a
-		# machine gun mid-burst would come back to a pistol still holding the heat
-		# of a fight that ended a minute ago.
-		body.pistol_heat = maxf(0.0,
-			body.pistol_heat - SimConfig.PISTOL_HEAT_DECAY * SimConfig.TICK_DELTA)
-
-		weapon.fire_timer = maxf(0.0, weapon.fire_timer - SimConfig.TICK_DELTA)
-
-		var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
-		var held: bool = (int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_SPECIAL_HELD) != 0
-
-		# LOSING CONTROL LOSES THE THROW, and that is not merely bookkeeping. If a
-		# lost trigger counted as a RELEASE, being tumbled mid-charge would hurl a
-		# grenade at whatever the tumble happened to leave you facing -- a special
-		# spent, by the game, on your behalf. Cancelling costs the charge and keeps
-		# the ammo, so the cost of being knocked over is the moment rather than the
-		# resource.
-		if not _can_fire(peer, body):
-			weapon.charge = 0.0
-			weapon.was_held = false
-			continue
-
-		# ONE BUTTON, FOUR MEANINGS. The machine gun fires while it is DOWN; a
-		# grenade throws when it comes UP; a mine is laid on the way down; a shield
-		# is simply UP for as long as the button is. Which one a special is, is the
-		# whole difference between them -- the slot, the pickup, the drop and the
-		# HUD box are shared, so this match is where a new special actually lands.
-		var spent_a_use: bool = false
-		match weapon.kind:
-			SpecialBody.Kind.MACHINE_GUN:
-				spent_a_use = _step_machine_gun(body, weapon, held)
-			SpecialBody.Kind.GRENADE:
-				spent_a_use = _step_grenade(peer, body, weapon, held)
-			SpecialBody.Kind.MINE:
-				spent_a_use = _step_mine(peer, body, weapon, held)
-			SpecialBody.Kind.SHIELD:
-				spent_a_use = _step_shield(peer, body, weapon, held)
-			SpecialBody.Kind.ROCKET:
-				spent_a_use = _step_rocket(body, weapon, held)
-			SpecialBody.Kind.LEGS:
-				spent_a_use = _step_legs(body, weapon)
-			SpecialBody.Kind.SHOTGUN:
-				spent_a_use = _step_shotgun(body, weapon, held)
-			SpecialBody.Kind.RIFLE:
-				spent_a_use = _step_rifle(body, weapon, held)
-			SpecialBody.Kind.HEAVY:
-				spent_a_use = _step_heavy(body, weapon, held)
-		weapon.was_held = held
-
-		# SPENT MEANS GONE. An empty special you keep carrying is the worst possible
-		# occupant of a one-slot rule: it does nothing and it stops you picking up
-		# the thing that would.
-		#
-		# CHECKED EVERY TICK RATHER THAN ONLY WHEN A USE WAS SPENT, and NOT while a
-		# shield is still up. A shield spends its use the moment it RISES, so
-		# destroying on the spend would have deleted the last one in the same tick
-		# it was raised -- a third deployment that protected nobody from anything,
-		# and the kind of bug that only shows up on the last charge.
-		if weapon.is_spent() and not (int(weapon.kind) == SpecialBody.Kind.SHIELD 				and body.shielding):
-			var id: int = weapon.special_id
-			_specials.destroy(weapon)
-			if networked:
-				_special_destroyed.rpc(id)
-
-# Held down, and every interval a round leaves.
-# THE SIDEARM: one accurate shot, or a burst that goes everywhere (M24).
-#
-# NO AMMO AND NO OBJECT. There is nothing to decrement and nothing to destroy,
-# which is why this takes a peer and a body rather than a weapon -- the pistol is
-# a property of the player, so the whole item lifecycle has nothing to say about
-# it and none of the pickup, drop or spend paths needed a special case.
-#
-# HEAT IS THE ENTIRE WEAPON. Cold it is a rifle; three rounds into a held trigger
-# it is worse than the machine gun. The relationship that makes it work is the
-# one between the fire rate and the decay: a shot adds more heat than the gap
-# between shots can bleed off, so a HELD trigger climbs and a TAPPED one does
-# not. Everything else here is tuning.
-#
-# THE SIGHT AND THE MUZZLE COME FOR FREE, because the sidearm node carries a
-# Barrel exactly as a special does -- `_muzzle_of` and `aim_direction` take it
-# unchanged, so the round leaves the barrel it is drawn leaving and the laser
-# points where it goes. That was worth arranging rather than special-casing:
-# this project has shipped a hit test that disagreed with its own art twice.
+# The sidearm and the guns, forwarded to WeaponSystem for the tests that drive a
+# single trigger directly.
 func _step_sidearm(peer: int, body: Node) -> void:
-	body.pistol_timer = maxf(0.0, body.pistol_timer - SimConfig.TICK_DELTA)
-	# COOLS FIRST, so the shot below is billed at the heat it was fired WITH
-	# rather than at the heat it caused.
-	body.pistol_heat = maxf(0.0,
-		body.pistol_heat - SimConfig.PISTOL_HEAT_DECAY * SimConfig.TICK_DELTA)
-
-	if not _can_fire(peer, body):
-		return
-	var inp: Array = _current_input.get(peer, PlayerInput.empty(0))
-	if (int(inp[PlayerInput.ACTIONS]) & SimConfig.ACTION_SPECIAL_HELD) == 0:
-		return
-	if body.pistol_timer > 0.0:
-		return
-
-	var sidearm: Node3D = _sidearm_of(body)
-	if sidearm == null:
-		return
-	body.pistol_timer = SimConfig.PISTOL_FIRE_INTERVAL
-	var spread: float = lerpf(SimConfig.PISTOL_SPREAD_DEG,
-		SimConfig.PISTOL_SPREAD_HOT_DEG, clampf(body.pistol_heat, 0.0, 1.0))
-	_spawn_round(_muzzle_of(sidearm, body),
-		_spread(aim_direction(body, sidearm), spread, spread),
-		int(body.peer_id), body.get_rid(), false, SimConfig.PISTOL_DAMAGE)
-	body.pistol_heat = minf(1.0, body.pistol_heat + SimConfig.PISTOL_HEAT_PER_SHOT)
+	weapons.sidearm(peer, body)
 
 # The sidearm's own node on a player, or null. Kept in one place because both the
 # muzzle and the visibility rule ask for it.
@@ -2929,209 +2769,16 @@ func _pose_sidearms() -> void:
 			sidearm.visible = _specials.held_by(peer) == null
 
 func _step_machine_gun(body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = DebugSettings.tuned("mg_fire_interval", SimConfig.MG_FIRE_INTERVAL)
-	weapon.ammo -= 1
-	_fire_round(body, weapon)
-	return true
+	return weapons.use(int(body.peer_id), body, weapon, held)
 
-# HELD DOWN, like the machine gun, and firing on the same timer -- a rocket is a
-# gun, not a thrown thing. The cadence does all the work of making it feel
-# different: at ROCKET_FIRE_INTERVAL two shots take three seconds, so holding the
-# button is not a strategy.
-# THE BODY LAUNCHED; THIS IS THE BILL. Legs are the one special whose effect is
-# NOT applied out here, because the effect is on the player's own vertical
-# velocity and a client predicts that — see PlayerBody._step_walk. So the
-# condition lives there, in the function a replay re-runs, and the world reads the
-# flag it raised rather than re-deriving "did they launch" from the inputs. Two
-# copies of that predicate is two things that have to agree forever, and this
-# project has already paid for that shape more than once.
-#
-# `held` is deliberately not a parameter: whether the button is down is exactly
-# the question the body already answered.
-func _step_legs(body: Node, weapon: Node) -> bool:
-	if not body.legs_fired:
-		return false
-	body.legs_fired = false
-	weapon.ammo -= 1
-	return true
-
-func _step_rocket(body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = SimConfig.ROCKET_FIRE_INTERVAL
-	weapon.ammo -= 1
-	# ZEROED THE SAME WAY THE MACHINE GUN IS, and for the same reason: the barrel
-	# is held to one side of the body, so a rocket sent straight down `facing`
-	# would travel on a line offset by that much forever and miss somebody standing
-	# dead centre. See _fire_round for the full argument.
-	#
-	# BUT NO SPREAD. The cone is what makes the machine gun a suppression weapon; a
-	# rocket is one decision and it goes where it was pointed, or the player is
-	# being asked to gamble two of them on a dice roll.
-	_spawn_round(_muzzle_of(weapon, body), aim_direction(body, weapon),
-		int(body.peer_id), body.get_rid(), true)
-	return true
-
-# THE MACHINE GUN WITH THE BRAKES OFF: faster, wider, and sixty rounds deep.
-#
-# It is the same firing code with different numbers, which is the point -- the
-# weapon is not a new mechanism, it is a different POSITION on the same three
-# dials, and the interesting part is the price it charges to carry (see
-# _apply_carry_weight).
 func _step_heavy(body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = SimConfig.HEAVY_FIRE_INTERVAL
-	weapon.ammo -= 1
-	_spawn_round(_muzzle_of(weapon, body),
-		_spread(aim_direction(body, weapon), SimConfig.HEAVY_SPREAD_DEG,
-			SimConfig.HEAVY_SPREAD_VERTICAL_DEG),
-		int(body.peer_id), body.get_rid(), false, SimConfig.HEAVY_DAMAGE)
-	return true
+	return weapons.use(int(body.peer_id), body, weapon, held)
 
-# A FISTFUL AT ONCE. Seven pellets leave on one trigger pull, each with its own
-# roll inside a wide cone, and the SHOT is what costs ammunition -- not the pellet.
-# That is what makes the magazine eight rather than fifty-six, and what makes each
-# pull a decision the player can count.
-#
-# EVERY PELLET IS AIMED THROUGH aim_direction, so the shotgun gets point aim and
-# the assist for free and the cone is applied on top. A weapon that computed its
-# own direction would be outside the A/B while looking like it was in it.
 func _step_shotgun(body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = SimConfig.SHOTGUN_FIRE_INTERVAL
-	weapon.ammo -= 1
-	var from: Vector3 = _muzzle_of(weapon, body)
-	var aimed: Vector3 = aim_direction(body, weapon)
-	for _pellet in SimConfig.SHOTGUN_PELLETS:
-		_spawn_round(from, _spread(aimed, SimConfig.SHOTGUN_SPREAD_DEG,
-			SimConfig.SHOTGUN_SPREAD_VERTICAL_DEG), int(body.peer_id),
-			body.get_rid(), false, SimConfig.SHOTGUN_DAMAGE)
-	return true
+	return weapons.use(int(body.peer_id), body, weapon, held)
 
-# ONE ROUND, ALMOST EXACTLY WHERE YOU POINTED, SLOWLY.
-#
-# The cone is 0.4 degrees rather than zero. Not squeamishness: a perfectly
-# deterministic line makes two players standing in the same place fire the same
-# round forever, and a hair of scatter is what keeps a burst from being one
-# bullet. It is well inside a body at any range the bridge offers.
 func _step_rifle(body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = SimConfig.RIFLE_FIRE_INTERVAL
-	weapon.ammo -= 1
-	_spawn_round(_muzzle_of(weapon, body),
-		_spread(aim_direction(body, weapon), SimConfig.RIFLE_SPREAD_DEG,
-			SimConfig.RIFLE_SPREAD_VERTICAL_DEG),
-		int(body.peer_id), body.get_rid(), false, SimConfig.RIFLE_DAMAGE)
-	return true
-
-# HELD TO ADJUST DISTANCE, thrown on release.
-#
-# THE RELEASE EDGE IS DERIVED FROM THE LEVEL BIT rather than sent as its own
-# action, so a throw does not depend on one press packet arriving -- see
-# special_body.was_held. The charge is read at the moment the button comes up,
-# which is what makes the hold a decision the player watches themselves make.
-func _step_grenade(peer: int, body: Node, weapon: Node, held: bool) -> bool:
-	if held:
-		weapon.charge = minf(weapon.charge + SimConfig.TICK_DELTA,
-			SimConfig.GRENADE_CHARGE_TIME)
-		return false
-	if not weapon.was_held:
-		return false
-	var fraction: float = weapon.charge_fraction()
-	weapon.charge = 0.0
-	weapon.ammo -= 1
-	_throw_grenade(peer, body, fraction)
-	return true
-
-# A BALLISTIC LOB, not a flat shot. Range is set by SPEED at a fixed angle, which
-# is what makes "hold longer, throw further" one number; and an arc is what lets a
-# grenade clear a parapet a bullet cannot, which is the geometry answer the
-# specials exist to add.
-#
-# The near end of the range is INSIDE the blast on purpose. A tap has to be able
-# to hurt you, or holding longer is strictly better and the verb is decoration.
-func _throw_grenade(peer: int, body: Node, fraction: float) -> void:
-	var distance: float = lerpf(SimConfig.GRENADE_MIN_RANGE, SimConfig.GRENADE_MAX_RANGE,
-		fraction)
-	var angle: float = deg_to_rad(SimConfig.GRENADE_THROW_ANGLE_DEG)
-	# THROUGH GridConfig, NOT sin/cos BY HAND. Written out longhand this was
-	# Vector3(sin(f), 0, cos(f)) -- the exact NEGATION of yaw_vector -- so every
-	# grenade in the game was lobbed over the thrower's shoulder. Measured
-	# 2026-08-14: facing north, the grenade travelled +2.94 m in Z when forward is
-	# -Z. The same expression lives in SpecialPool.drop_offset, where it is
-	# correctly called `away`; copying it and renaming it `forward` is the whole
-	# bug. Nothing caught it because test_grenade measured DISTANCE, which is a
-	# magnitude and has no opinion about which way anything went.
-	var forward: Vector3 = GridConfig.yaw_vector(body.facing)
-
-	# SOLVED FROM THE RELEASE POINT, NOT FROM LEVEL GROUND. The hand is 1.2 m up
-	# and 0.7 m forward, and a grenade launched from a height flies further than
-	# `R = v^2 sin(2a)/g` says -- see GRENADE_RELEASE_HEIGHT for what that cost.
-	#
-	#   0 = h + x tan(a) - g x^2 / (2 v^2 cos^2(a))   ->   v^2 = g x^2 / D
-	#
-	# where x is the horizontal run still to cover and h the height it falls.
-	var run: float = maxf(distance - SimConfig.GRENADE_THROW_FORWARD, 0.5)
-	var denom: float = 2.0 * pow(cos(angle), 2.0) \
-		* (SimConfig.GRENADE_RELEASE_HEIGHT + run * tan(angle))
-	var speed: float = sqrt(SimConfig.GRAVITY * run * run / denom)
-
-	var velocity: Vector3 = forward * speed * cos(angle) + Vector3.UP * speed * sin(angle)
-	var feet: float = body.global_position.y - PlayerBody.HALF_HEIGHT
-	var release := Vector3(
-		body.global_position.x + forward.x * SimConfig.GRENADE_THROW_FORWARD,
-		feet + SimConfig.GRENADE_RELEASE_HEIGHT,
-		body.global_position.z + forward.z * SimConfig.GRENADE_THROW_FORWARD)
-	var d: Node = _spawn_deployable(Deployable.Kind.GRENADE)
-	d.throw_from(release, velocity, peer)
-
-# PLACED AT YOUR FEET, on the button going DOWN. A mine is the one special whose
-# whole verb is spending something now to be paid back later, so there is nothing
-# to hold and nothing to aim -- the decision is WHERE you were standing and WHEN.
-func _step_mine(peer: int, body: Node, weapon: Node, held: bool) -> bool:
-	# THE SAME TRIGGER THE MACHINE GUN USES, down to the timer field: held lays
-	# them on a cadence, a tap lays one. It was one-per-press, which made the same
-	# button behave differently depending on what was in your hands.
-	if not held or weapon.fire_timer > 0.0:
-		return false
-	weapon.fire_timer = SimConfig.MINE_PLACE_INTERVAL
-	weapon.ammo -= 1
-	var spot: Array = _mine_drop_point(body)
-	_spawn_deployable(Deployable.Kind.MINE).place_at(spot[0], peer, bool(spot[1]))
-	return true
-
-# WHERE A MINE GOES: at your feet, one step in front, sitting ON the deck.
-#
-# Returns [point, found_ground]. The downward probe is what makes it sit rather
-# than drop -- placing at the feet and letting gravity do the rest puts the mine
-# wherever the fall ends, which on a ramp or a moving player is not where the
-# button was pressed.
-func _mine_drop_point(body: Node) -> Array:
-	var forward: Vector3 = GridConfig.yaw_vector(body.facing)
-	var feet: float = body.global_position.y - PlayerBody.HALF_HEIGHT
-	var ahead := Vector3(
-		body.global_position.x + forward.x * SimConfig.MINE_DROP_FORWARD,
-		feet,
-		body.global_position.z + forward.z * SimConfig.MINE_DROP_FORWARD)
-
-	var space := get_world_3d().direct_space_state
-	if space != null:
-		var from: Vector3 = ahead + Vector3(0.0, 0.5, 0.0)
-		var query := PhysicsRayQueryParameters3D.create(from,
-			from - Vector3(0.0, SimConfig.MINE_GROUND_PROBE + 0.5, 0.0), 1)
-		var hit: Dictionary = space.intersect_ray(query)
-		if not hit.is_empty():
-			# Its own half-height above the surface, so it rests ON the deck rather
-			# than half inside it.
-			return [Vector3(ahead.x, float(hit["position"].y) + 0.07, ahead.z), true]
-	# Nothing under it -- placed over a hole. Left live so it falls away, which
-	# costs the use and is the right answer.
-	return [ahead, false]
+	return weapons.use(int(body.peer_id), body, weapon, held)
 
 func _spawn_deployable(kind: int) -> Node:
 	var scene: PackedScene = MineScene if kind == Deployable.Kind.MINE else GrenadeScene
@@ -3239,54 +2886,6 @@ func _refresh_shield_flag(peer: int, body: Node) -> void:
 	# refuses and the correction lands on the player's own body. The slot is
 	# replicated, so both machines read the same weapon and the same count.
 	body.has_legs = weapon != null 		and int(weapon.kind) == SpecialBody.Kind.LEGS 		and int(weapon.ammo) > 0
-
-# ONE USE PER DEPLOYMENT, spent when it goes up. There is no timer on the shield:
-# standing still IS the timer, on a bridge that has to be crossed and with things
-# arriving from behind. The anchoring itself is decided in PlayerBody._step_walk,
-# because a client replays that function and a shield applied from out here would
-# be missing on every replayed tick.
-func _step_shield(_peer: int, _body: Node, weapon: Node, held: bool) -> bool:
-	if not held or weapon.was_held:
-		return false
-	weapon.ammo -= 1
-	return true
-
-# A player has to be in control of themselves to fire. Same set that may pick one
-# up, for the same reason: shooting while tumbling would make a tumble free.
-func _can_fire(peer: int, body: Node) -> bool:
-	if _returning.has(peer):
-		return false
-	return body.state == PlayerBody.State.WALK or body.state == PlayerBody.State.SHOVE
-
-# A ROUND IS AN OBJECT IN FLIGHT, spawned at the muzzle. It was a hitscan ray
-# first; playtest asked for balls, and the argument that made a ray right -- ten
-# rounds a second per player is too many objects -- stopped applying when the rate
-# came down to 2.5. See scripts/sim/bullet.gd for what a round actually is (not a
-# rigid body either).
-#
-# IT LEAVES THE BARREL, NOT THE NOSE. Asked for in playtest, and it is not
-# cosmetic: the muzzle is about a metre in front of the body and 45 cm to its
-# right, so a round now starts on the correct side of anything the shooter is
-# standing beside. The weapon hangs off the Facing pivot, which player_body
-# already rotates to match `facing`, so the barrel's global transform IS the
-# answer and nothing here has to re-derive where anyone is pointing.
-func _fire_round(shooter: Node, weapon: Node) -> void:
-	var from: Vector3 = _muzzle_of(weapon, shooter)
-
-	# CONVERGED ON THE AIM RAY, not fired parallel to it, and this is the part
-	# moving the muzzle off the nose actually costs.
-	#
-	# The barrel is held to one side of the body. A round sent straight down
-	# `facing` from there travels on a line offset by that much FOREVER -- so
-	# somebody standing directly in front of you, dead centre, is missed by a
-	# couple of hand-widths at every range. Which reads as the gun being broken.
-	#
-	# Aiming at a point on the body's own aim ray fixes it the way a real weapon is
-	# zeroed: exact at MG_RANGE, and off by less than the muzzle offset everywhere
-	# nearer -- which is well inside a 0.4 m body.
-	var direction: Vector3 = _spread(aim_direction(shooter, weapon))
-
-	_spawn_round(from, direction, int(shooter.peer_id), shooter.get_rid())
 
 # ONE ROUND, whoever fired it. Shared by the player's machine gun and by both
 # gunners -- so an enemy's round is the same object as yours, stopped by the same
@@ -4536,8 +4135,8 @@ func _apply_carry_weight() -> void:
 		if body == null or not is_instance_valid(body):
 			continue
 		var weapon: Node = _specials.held_by(peer)
-		var heavy: bool = weapon != null and is_instance_valid(weapon) 			and int(weapon.kind) == SpecialBody.Kind.HEAVY
-		body.carry_speed = SimConfig.HEAVY_CARRY_SPEED if heavy else 1.0
+		var held: bool = weapon != null and is_instance_valid(weapon)
+		body.carry_speed = WeaponDefs.carry_speed_of(int(weapon.kind)) if held else 1.0
 
 func _pose_held_specials() -> void:
 	for peer_key in players.keys():
