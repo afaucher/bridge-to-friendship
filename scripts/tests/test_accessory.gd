@@ -509,49 +509,68 @@ func _test_the_shrimp_is_plated_and_fanned() -> void:
 
 # --- 6c. AND IT BURNS, AT ONE TIP, TO ONE SIDE -------------------------------
 #
-# A small flame at the point of the outer fan blade on the character's left.
-# Claims, each about the BUILT tree rather than the declared data:
+# A small fire at the point of the outer fan blade on one side: a glowing core,
+# the flame, and a wisp of black smoke. Claims, each about the BUILT tree rather
+# than the declared data:
 #
-#   1. EXACTLY ONE FLAME, and only on the shrimp tail.
+#   1. EXACTLY ONE FIRE, and only on the shrimp tail.
 #   2. AT A TIP, TO ONE SIDE: its position is the point of the blade reaching
 #      furthest out on its side, so a reordered part list cannot move it onto the
 #      shell, the telson or the inner blade and still pass.
-#   3. SMALL, and REALLY DRAWN: a mesh, a colour ramp and a shrink curve are all
-#      set. A wrong CPUParticles3D property name is a runtime error that aborts
-#      the build silently, which is the swallow's bubbles twice over.
-#   4. SWITCHING PUTS IT OUT -- it belongs to the accessory, not the body.
+#   3. THREE LAYERS, EACH REALLY DRAWN: a mesh, a colour ramp and a size curve
+#      on every one. A wrong CPUParticles3D property name is a runtime error that
+#      aborts the build silently, which is the swallow's bubbles twice over.
+#   4. THE LAYERS ARE WHAT THEY ARE FOR: the core glows (additive) and the flame
+#      does not, so it still reads on a pale deck; the flame shrinks as it rises
+#      and the smoke GROWS; the smoke is dark, outlives the flame, starts above
+#      it, and draws behind it.
+#   5. SWITCHING PUTS IT OUT -- it belongs to the accessory, not the body.
 
-func _flames_under(node: Node) -> Array:
+func _fires_under(node: Node) -> Array:
 	var found: Array = []
 	for child in node.get_children():
-		if child is CPUParticles3D:
+		if child.name == "Fire":
 			found.append(child)
-		found.append_array(_flames_under(child))
+		else:
+			found.append_array(_fires_under(child))
 	return found
+
+func _emitters_under(node: Node) -> int:
+	var n: int = 0
+	for child in node.get_children():
+		if child is CPUParticles3D:
+			n += 1
+		n += _emitters_under(child)
+	return n
+
+func _layer(fire: Node, label: String) -> CPUParticles3D:
+	return fire.get_node_or_null(label) as CPUParticles3D
 
 func _test_the_shrimp_tail_burns_at_one_tip(main) -> void:
 	for kind in CharacterStyle.ACCESSORIES:
 		var other: Node3D = _fresh(main)
 		other.apply_look(CharacterStyle.DEFAULT_BODY, 1, kind)
-		var n: int = _flames_under(other).size()
-		eq(n, 1 if kind == CharacterStyle.ACCESSORY_SHRIMP else 0,
-			"%s %s" % [kind, "burns once" if kind == CharacterStyle.ACCESSORY_SHRIMP else "does not burn"])
+		var burning: bool = kind == CharacterStyle.ACCESSORY_SHRIMP
+		eq(_fires_under(other).size(), 1 if burning else 0,
+			"%s %s" % [kind, "burns once" if burning else "does not burn"])
+		if not burning:
+			eq(_emitters_under(other), 0, "and %s has no particles anywhere" % kind)
 		other.queue_free()
 
 	var body: Node3D = _fresh(main)
 	body.apply_look(CharacterStyle.DEFAULT_BODY, 1, CharacterStyle.ACCESSORY_SHRIMP)
 	var root: Node3D = _accessory_root(body)
-	var flames: Array = _flames_under(body)
-	if not check(root != null and flames.size() == 1, "the shrimp tail has its flame to measure"):
+	var fires: Array = _fires_under(body)
+	if not check(root != null and fires.size() == 1, "the shrimp tail has its fire to measure"):
 		body.queue_free()
 		return
-	var fire: CPUParticles3D = flames[0]
+	var fire: Node3D = fires[0]
 	check(fire.get_parent() == root, "and it hangs off the accessory, so it turns with the aim")
 
 	# --- 2. at the outermost blade point on its side ---
 	var parts: Array = CharacterStyle.accessory_parts(CharacterStyle.ACCESSORY_SHRIMP)
 	var side: float = signf(fire.position.x)
-	check(side != 0.0, "the flame is to one side, not on the centreline -- x %.3f" % fire.position.x)
+	check(side != 0.0, "the fire is to one side, not on the centreline -- x %.3f" % fire.position.x)
 	var outermost: Vector3 = Vector3.ZERO
 	for part in parts.slice(SHRIMP_PLATES):
 		if float(part.get("tip", 0.0)) != 0.0:
@@ -563,22 +582,51 @@ func _test_the_shrimp_tail_burns_at_one_tip(main) -> void:
 		"it burns at the point of the outermost blade on that side -- %s against %s"
 			% [fire.position, outermost])
 
-	# --- 3. small, and drawn ---
-	check(fire.emitting and fire.amount > 0 and fire.amount <= 32,
-		"it is a small flame that is burning -- %d particles" % fire.amount)
-	check(fire.emission_sphere_radius <= 0.06,
-		"from a point, not a patch -- %.3f" % fire.emission_sphere_radius)
-	check(fire.mesh != null and fire.color_ramp != null and fire.scale_amount_curve != null,
-		"and it is really drawn: a mesh, a colour ramp and a shrink curve")
-	check(fire.gravity.y > 0.0, "and it rises -- gravity %.2f" % fire.gravity.y)
+	# --- 3. three layers, each drawn ---
+	var core: CPUParticles3D = _layer(fire, "Core")
+	var flame: CPUParticles3D = _layer(fire, "Flame")
+	var smoke: CPUParticles3D = _layer(fire, "Smoke")
+	if not check(core != null and flame != null and smoke != null,
+			"the fire is a core, a flame and smoke"):
+		body.queue_free()
+		return
+	for layer in [core, flame, smoke]:
+		var p: CPUParticles3D = layer
+		check(p.emitting and p.amount > 0 and p.amount <= 32,
+			"%s is small and burning -- %d particles" % [p.name, p.amount])
+		check(p.mesh != null and p.color_ramp != null and p.scale_amount_curve != null,
+			"%s is really drawn: a mesh, a colour ramp and a size curve" % p.name)
+		check(p.gravity.y > 0.0, "%s rises -- gravity %.2f" % [p.name, p.gravity.y])
 
-	# --- 4. switching puts it out ---
+	# --- 4. each layer does its own job ---
+	var core_mat := core.material_override as StandardMaterial3D
+	var flame_mat := flame.material_override as StandardMaterial3D
+	var smoke_mat := smoke.material_override as StandardMaterial3D
+	check(core_mat.blend_mode == BaseMaterial3D.BLEND_MODE_ADD, "the core glows -- it is additive")
+	check(flame_mat.blend_mode == BaseMaterial3D.BLEND_MODE_MIX,
+		"and the flame is mixed, so it still reads on a pale deck")
+	var f_curve: Curve = flame.scale_amount_curve
+	var s_curve: Curve = smoke.scale_amount_curve
+	check(f_curve.sample(1.0) < f_curve.sample(0.0),
+		"the flame shrinks as it rises -- %.2f to %.2f" % [f_curve.sample(0.0), f_curve.sample(1.0)])
+	check(s_curve.sample(1.0) > s_curve.sample(0.0) * 1.5,
+		"and the smoke grows -- %.2f to %.2f" % [s_curve.sample(0.0), s_curve.sample(1.0)])
+	var thickest: Color = Color(1, 1, 1, 0)
+	for i in smoke.color_ramp.get_point_count():
+		var c: Color = smoke.color_ramp.get_color(i)
+		if c.a > thickest.a:
+			thickest = c
+	check(thickest.a > 0.3 and CharacterStyle.luminance(thickest) < 0.15,
+		"the smoke is BLACK where it is thickest -- alpha %.2f, luminance %.3f"
+			% [thickest.a, CharacterStyle.luminance(thickest)])
+	check(smoke.lifetime > flame.lifetime, "and outlives the flame")
+	check(smoke.position.y > 0.0, "and starts above it")
+	check(smoke_mat.render_priority < flame_mat.render_priority,
+		"and draws behind it, so it never dims the fire")
+
+	# --- 5. switching puts it out ---
 	body.apply_look(CharacterStyle.DEFAULT_BODY, 1, CharacterStyle.ACCESSORY_HORNS)
-	var left: int = 0
-	for f in _flames_under(body):
-		if not (f as Node).is_queued_for_deletion():
-			left += 1
-	eq(left, 0, "and switching accessory puts it out")
+	eq(_fires_under(body).size() + _emitters_under(body), 0, "and switching accessory puts it out")
 	body.queue_free()
 
 # --- 7. THE HAT TOWER IS UNTOUCHED --------------------------------------------

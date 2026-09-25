@@ -114,7 +114,20 @@ func _render_studio(studio: Dictionary, item: Dictionary) -> void:
 	var stage := _make_viewport(size, true)
 
 	stage.add_child(SceneLighting.build())
-	stage.add_child(_ground(float(item.get("ground", 12.0))))
+	# THE BACKDROP: one colour for the studio's background AND its floor, because
+	# from the game's 45-degree camera the floor IS most of the background. Unset,
+	# the studio keeps the level's sky and its pale ground, which is right for
+	# judging a model against the bridge and wrong for anything bright or dark
+	# on it -- a flame vanished against that floor, and black smoke would read
+	# only there. Per item, falling back to the studio's.
+	var backdrop: Array = item.get("backdrop", studio.get("backdrop", []))
+	stage.add_child(_ground(float(item.get("ground", 12.0)), backdrop))
+	if backdrop.size() >= 3:
+		var env_node := stage.find_child("WorldEnvironment", true, false) as WorldEnvironment
+		if env_node != null:
+			env_node.environment = env_node.environment.duplicate()
+			env_node.environment.background_mode = Environment.BG_COLOR
+			env_node.environment.background_color = Color(float(backdrop[0]), float(backdrop[1]), float(backdrop[2]))
 
 	# A CORPSE INSTEAD OF A SCENE, and the one studio item that is allowed to run.
 	#
@@ -522,11 +535,13 @@ func _camera(studio: Dictionary, item: Dictionary, focus: Vector3) -> Camera3D:
 	cam.look_at_from_position(cam.position, focus, Vector3.UP)
 	return cam
 
-func _ground(extent: float) -> MeshInstance3D:
+func _ground(extent: float, backdrop: Array = []) -> MeshInstance3D:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(extent, extent)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.62, 0.62, 0.60)
+	if backdrop.size() >= 3:
+		mat.albedo_color = Color(float(backdrop[0]), float(backdrop[1]), float(backdrop[2]))
 	mat.roughness = 1.0
 	var node := MeshInstance3D.new()
 	node.name = "StudioGround"

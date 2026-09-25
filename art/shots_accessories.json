@@ -10,6 +10,8 @@
     "cam_yaw": 0.0,
     "cam_pitch": -45.0,
     "ortho_size": 3.6,
+    "_backdrop_comment": "A SLATE BACKDROP, background and floor both (2026-09-25). The level's sky and pale ground made anything bright vanish -- the tail fire's first render did -- and black smoke reads only against something lighter than itself. Mid-dark and cool, so warm flame, black smoke and every body colour all have contrast against it.",
+    "backdrop": [0.16, 0.18, 0.22],
 
     "items": [
       {"_comment": "THE GAME'S OWN CAMERA. bridge_camera.gd is a fixed 45-degree pitch looking down -Z, so this is the only view that decides whether the thing works in play. Every other shot here is diagnostic; this one is the verdict. The subject faces the camera, which is a player walking TOWARD you.",

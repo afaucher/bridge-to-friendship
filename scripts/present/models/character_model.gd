@@ -194,7 +194,7 @@ func apply_accessory(kind: String, body_colour: Color) -> void:
 	# the fire with it, and hung off Facing so it turns with the aim like the rest.
 	for index in CharacterStyle.accessory_flames(kind):
 		var part: Dictionary = parts[int(index)]
-		var fire: CPUParticles3D = TailFire.build()
+		var fire: Node3D = TailFire.build()
 		fire.position = (part["pos"] as Vector3) \
 			+ (part["dir"] as Vector3).normalized() * (float(part["length"]) * 0.5)
 		root.add_child(fire)
