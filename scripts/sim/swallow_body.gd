@@ -18,6 +18,7 @@ extends CharacterBody3D
 # is no fight to have.
 
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
+const Hit = preload("res://scripts/sim/hit.gd")
 
 # `bus` is 2048 and the layer names run out there; a swallow is an enemy that
 # bullets must find, so it sits with the things bullets already look for.
@@ -285,7 +286,13 @@ func receive_hit(hit) -> bool:
 	# walking a pool rather than by casting a ray.
 	if not surfaced or killed:
 		return false
-	health -= int(hit.damage) if "damage" in hit else 1
+	# ROUNDS AND BLASTS, by their own strength. It read `hit.damage`, which `Hit`
+	# does not have, so every hit of every kind took exactly one point: a rifle
+	# round, a grenade and a dash all the same as a pistol. A dash or a ball is an
+	# IMPACT and does not hurt it, the rule every other enemy here follows.
+	if int(hit.kind) != Hit.Kind.BULLET and int(hit.kind) != Hit.Kind.EXPLOSIVE:
+		return false
+	health -= maxi(1, int(hit.amount))
 	if health <= 0:
 		killed = true
 	return true

@@ -1725,7 +1725,9 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 			continue
 		if grid.cell_of_world(swallow.global_position).y < cut_row:
 			continue
-		_note_lost_bank(swallow)
+		if is_host:
+			_note_lost_bank(swallow)
+		_announce_swallow_gone(swallow)
 		_swallows.remove_at(i)
 		swallow.queue_free()
 	for pool in [_rushers, _gunners, _zombies, _balls, _deployables, _corpses]:
@@ -1883,6 +1885,9 @@ func _restart_at_checkpoint() -> void:
 	# It is more acute here, because a rusher left standing is a hazard and a bus
 	# left standing is the entire mode.
 	_clear_buses()
+	# THE SWALLOWS TOO. Every other thing the level put there goes on a wipe, and
+	# a swallow left standing kept the party's hats in it across the restart.
+	_retire_all_swallows()
 	for ball in _balls:
 		if is_instance_valid(ball):
 			ball.queue_free()
@@ -4249,7 +4254,82 @@ func _spawn_swallow(at: Vector3, cell: Vector2i = Vector2i.ZERO):
 	swallow.name = "Swallow%d" % swallow.swallow_id
 	swallow.global_position = at
 	_swallows.append(swallow)
+	_announce_swallow(swallow)
 	return swallow
+
+# --- Swallows across the wire -------------------------------------------------
+#
+# ALL OF IT RELIABLE, and there is no snapshot section. A swallow does not move,
+# so there is no motion to ride the snapshot, and everything else about it --
+# that it exists, whether it is up, its health, what it is holding, that it died
+# -- is a DECISION (m28 plan, "Replication"). It lives for as long as a bus does,
+# and existence riding the unreliable channel is the bug CLAUDE.md records for
+# the bus.
+#
+# SENT ON CHANGE, compared against what was last sent. It used not to be sent at
+# all: clients never had a swallow, so they never saw one, and a predicted
+# client standing in a pull its own world did not contain diverged from the host
+# on every tick of it. See test_swallow_replication.
+var _swallow_sent: Dictionary = {}     # swallow_id -> the state last announced
+
+func _announce_swallow(swallow) -> void:
+	if not networked or not is_host:
+		return
+	var state: Array = swallow.capture_state()
+	var id: int = int(swallow.swallow_id)
+	if _swallow_sent.get(id, []) == state:
+		return
+	_swallow_sent[id] = state
+	_swallow_state.rpc(id, swallow.cell, state)
+
+func _announce_swallow_gone(swallow) -> void:
+	var id: int = int(swallow.swallow_id)
+	_swallow_sent.erase(id)
+	if networked and is_host:
+		_swallow_gone.rpc(id)
+
+# EVERY SWALLOW, GONE, WITH ITS BANK COUNTED LOST. "If nobody kills it,
+# everything in it is lost" -- the plan's rule, and the same one the corridor cut
+# follows. Used by the mode-off clear and by a wipe.
+func _retire_all_swallows() -> void:
+	for swallow in _swallows:
+		if not is_instance_valid(swallow):
+			continue
+		if is_host:
+			_note_lost_bank(swallow)
+		_announce_swallow_gone(swallow)
+		swallow.queue_free()
+	_swallows.clear()
+
+func _swallow_by_id(id: int):
+	for swallow in _swallows:
+		if is_instance_valid(swallow) and int(swallow.swallow_id) == id:
+			return swallow
+	return null
+
+@rpc("authority", "call_remote", "reliable")
+func _swallow_state(id: int, cell: Vector2i, state: Array) -> void:
+	if is_host or _swallows_root == null:
+		return
+	var swallow = _swallow_by_id(id)
+	if swallow == null:
+		swallow = SwallowBody.new()
+		swallow.swallow_id = id
+		swallow.cell = cell
+		_swallows_root.add_child(swallow)
+		swallow.name = "Swallow%d" % id
+		_swallows.append(swallow)
+	swallow.apply_state(state)
+
+@rpc("authority", "call_remote", "reliable")
+func _swallow_gone(id: int) -> void:
+	if is_host:
+		return
+	var swallow = _swallow_by_id(id)
+	if swallow == null:
+		return
+	_swallows.erase(swallow)
+	swallow.queue_free()
 
 func swallow_count() -> int:
 	return _swallows.size()
@@ -4275,10 +4355,10 @@ func _process_swallows() -> void:
 	# same rule the bus follows, and for the same reason: a mode told not to run
 	# something must not inherit one that is already standing there.
 	elif not mode_runs("swallows"):
-		for swallow in _swallows:
-			if is_instance_valid(swallow):
-				swallow.queue_free()
-		_swallows.clear()
+		# ...AND WHAT IT WAS HOLDING IS LOST, and counted as lost -- the same
+		# accounting the corridor cut does. Freed without it, hats vanished from
+		# the game with nobody's `hats_lost` going up.
+		_retire_all_swallows()
 		return
 	for i in range(_swallows.size() - 1, -1, -1):
 		var swallow = _swallows[i]
@@ -4290,9 +4370,11 @@ func _process_swallows() -> void:
 			# with the corridor -- deliberately does not.
 			_spill_bank(swallow)
 			_swallows.remove_at(i)
+			_announce_swallow_gone(swallow)
 			swallow.queue_free()
 			continue
 		_step_swallow(swallow)
+		_announce_swallow(swallow)
 
 func _step_swallow(swallow) -> void:
 	# UP WHEN SOMEBODY IS IN REACH. Anybody: it is an ambush, not a duel, and the
@@ -7370,6 +7452,12 @@ func host_add_peer(peer: int) -> void:
 	# announced by a one-off reliable message rather than by the snapshot -- so
 	# somebody arriving after that message was sent would never hear about it.
 	# Same reason the roster of players is replayed just below.
+	# A SWALLOW IS ANNOUNCED ON CHANGE, so a joiner has to be told the current
+	# state of every one outright -- nothing about it may change for minutes.
+	for swallow in _swallows:
+		if is_instance_valid(swallow):
+			_swallow_state.rpc_id(peer, int(swallow.swallow_id), swallow.cell,
+				swallow.capture_state())
 	for bus in _buses:
 		if is_instance_valid(bus):
 			var aboard := PackedInt32Array()
