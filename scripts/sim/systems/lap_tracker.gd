@@ -133,6 +133,17 @@ func abandon(peer: int) -> void:
 	on_gate.erase(peer)
 	_announce(peer)
 
+# THE LAP CLOCK STOPS. Reported: "once you finish a race and exit to the lobby,
+# the lap timer should stop." It did not -- the only thing that cleared a running
+# lap was the START of the next round, so a party standing in a lobby watching
+# their clock tick was watching a lap nobody was driving.
+#
+# THE BEST SURVIVES: the board that ranks on best lap is still on screen when this
+# runs, and clearing both would blank the thing the round was scored on at the
+# moment it is being read.
+func on_round_over() -> void:
+	abandon_all()
+
 # EVERY LAP IN PROGRESS, THROWN AWAY; the bests are untouched. For the end of a
 # round: the clock going on ticking in the lobby would be a timer for a lap
 # nobody is driving.

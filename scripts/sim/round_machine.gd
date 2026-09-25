@@ -259,21 +259,12 @@ func _enter_lobby(world) -> void:
 	# is still the whole round. With only that, the party is back in the lobby but
 	# `rear_row` still points at its exit, so rear and target land on the SAME row
 	# and the rear wall stands between the player and the strip they have to cross.
-	# THE LAP CLOCK STOPS. Reported: "once you finish a race and exit to the
-	# lobby, the lap timer should stop." It did not -- `lap_elapsed_of` answers
-	# for as long as the peer is in `_lap_next`, and the only thing that cleared
-	# that was the START of the next round. So a party standing in a lobby
-	# watching their clock tick was watching a lap nobody was driving.
-	#
-	# HERE RATHER THAN AT `_begin_scoring`, because CLOSING is still the round:
-	# a straggler crossing the line during the window is finishing a real lap.
-	# The lobby is where it is definitively over.
-	#
-	# THE BEST SURVIVES -- `abandon_running_laps` clears the lap in PROGRESS and
-	# nothing else. It has to: the board that ranks on best lap is still on screen
-	# when this runs, and clearing both would blank the thing the round was scored
-	# on at the moment it is being read.
-	world.abandon_running_laps()
+	# THE ROUND IS OVER, and every world system hears it (WorldSystem.on_round_over).
+	# HERE RATHER THAN AT `_begin_scoring`, because CLOSING is still the round: a
+	# straggler crossing the line during the window is finishing a real lap. The
+	# lobby is where it is definitively over. The race's lap clock stopping is the
+	# first thing that listens -- see LapTracker.on_round_over.
+	world.round_over()
 	var rearmost: int = _rearmost_row(world)
 	rear_row = world.grid.gate_at_or_before(rearmost)
 	target_row = world.grid.gate_after(rearmost)

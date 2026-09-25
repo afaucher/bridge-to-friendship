@@ -4265,6 +4265,11 @@ func _abandon_lap(peer: int) -> void:
 	if laps != null:
 		laps.abandon(peer)
 
+# THE ROUND IS OVER (RoundMachine, entering a lobby). Every system hears it.
+func round_over() -> void:
+	for system in enemy_systems() + [weapons] + mode_systems.values():
+		system.on_round_over()
+
 func abandon_running_laps() -> void:
 	if laps != null:
 		laps.abandon_all()

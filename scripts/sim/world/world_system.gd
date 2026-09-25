@@ -58,6 +58,12 @@ func snapshot(_keyframe: bool) -> Array:
 func apply_snapshot(_section: Array) -> void:
 	pass
 
+# THE PARTY IS BACK IN A LOBBY: the round just played is definitively over. The
+# scoreboard that ranked it may still be on screen, so this is the place to stop
+# anything still RUNNING, not to clear what the board is reading.
+func on_round_over() -> void:
+	pass
+
 # --- Going away ---------------------------------------------------------------
 
 # A wipe, or the mode switching this pool off: everything this system holds, gone.
