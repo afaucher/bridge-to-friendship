@@ -19,11 +19,6 @@ const StoneScene = preload("res://scenes/stone.tscn")
 # ABORTS THE REST OF THE FUNCTION for that frame without halting the engine. A
 # push then silently does nothing, which reads as "the shove missed".
 const StoneBody = preload("res://scripts/sim/stone_body.gd")
-const HeartScene = preload("res://scenes/heart.tscn")
-const ShooterScene = preload("res://scenes/shooter.tscn")
-const MoundScene = preload("res://scenes/mound.tscn")
-const GraveScene = preload("res://scenes/grave.tscn")
-const MerchantBody = preload("res://scripts/sim/merchant_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
@@ -124,6 +119,10 @@ func truncate_run(keep: int) -> void:
 
 	_free_props_past(cut_row)
 	_forget_cells_past(cut_row)
+	# THE PROP RECORDS ARE NOT PROPERTIES OF THIS OBJECT any more, so the sweep
+	# above cannot see them; each kind forgets its own.
+	for props in consumable_props():
+		props.forget_past(cut_row)
 	# THE STONE LIST HOLDS NODES, NOT CELLS, so neither sweep above reaches it --
 	# and it is the network identity of every stone (an index into it). Left
 	# holding the freed stones it went on numbering them, so the host's indices
@@ -393,6 +392,23 @@ func _load_generated(seg, index: int, slot_seed: int) -> void:
 # dressed. Read by tests; nothing in play needs it.
 var _dressed_themes: Dictionary = {}
 
+# THE CONSUMABLE PROPS, one object per kind -- see scripts/grid/props/. The
+# public methods below (take_mound, spent_grave_layout, open_merchants, ...) are
+# what the world and the tests have always called, and forward to these.
+const MoundProps = preload("res://scripts/grid/props/mound_props.gd")
+const GraveProps = preload("res://scripts/grid/props/grave_props.gd")
+const HeartProps = preload("res://scripts/grid/props/heart_props.gd")
+const ShooterProps = preload("res://scripts/grid/props/shooter_props.gd")
+const MerchantProps = preload("res://scripts/grid/props/merchant_props.gd")
+var mounds = MoundProps.new()
+var graves = GraveProps.new()
+var hearts = HeartProps.new()
+var shooters = ShooterProps.new()
+var merchants = MerchantProps.new()
+
+func consumable_props() -> Array:
+	return [mounds, graves, hearts, shooters, merchants]
+
 func dressed_theme_of(index: int) -> String:
 	return str(_dressed_themes.get(index, ""))
 
@@ -661,6 +677,8 @@ func _ready() -> void:
 	_stone_root = Node3D.new()
 	_stone_root.name = "Stones"
 	add_child(_stone_root)
+	for props in consumable_props():
+		props.attach(self)
 
 const HazardDressing = preload("res://scripts/grid/hazard_dressing.gd")
 
@@ -1138,23 +1156,10 @@ func step_stones() -> void:
 # a ball is authoritative gameplay and the grid is a view of authored data -- the
 # same split that keeps stones' cells in the grid and stones' motion in the sim.
 
-var _shooter_root: Node3D = null
 
-# Live shooters by cell, and the ones that have been destroyed. Exactly the shape
-# `_mounds` / `_spent_mounds` uses, and for the same reasons.
-var _shooters: Dictionary = {}
-var _spent_shooters: Array = []
 
 func _spawn_shooter(cell: Vector2i) -> void:
-	if _shooter_root == null:
-		_shooter_root = Node3D.new()
-		_shooter_root.name = "Shooters"
-		add_child(_shooter_root)
-	var shooter: Node3D = ShooterScene.instantiate()
-	shooter.name = "Shooter_%d_%d" % [cell.x, cell.y]
-	shooter.position = cell_surface(cell) + Vector3(0.0, GridConfig.CELL_SIZE * 0.5, 0.0)
-	_shooter_root.add_child(shooter)
-	_shooters[cell] = shooter
+	shooters.spawn(cell)
 
 # Where a ball leaves the barrel, in the world's space. Above the pillar, so a
 # ball never spawns inside the thing that fired it.
@@ -1164,7 +1169,7 @@ func shooter_muzzle(cell: Vector2i) -> Vector3:
 # The body itself, which is what a blast has to reach -- a metre up on its pillar,
 # not at the muzzle and not on the deck.
 func shooter_body_world(cell: Vector2i) -> Vector3:
-	return cell_surface_world(cell) + Vector3(0.0, GridConfig.CELL_SIZE * 0.5, 0.0)
+	return shooters.surface_world(cell)
 
 # BLOWN UP, AND ONLY BLOWN UP. Asked for 2026-08-14, and it is the same rule a
 # mound already follows: a structure is not answered by gunfire.
@@ -1181,39 +1186,16 @@ func shooter_body_world(cell: Vector2i) -> Vector3:
 # far side would delete the reason to walk into it, and the whole point of the
 # field is that it has to be crossed.
 func blast_shooters(centre: Vector3, radius: float) -> int:
-	var removed := 0
-	# Over a COPY of the keys: take_shooter mutates the dictionary underneath.
-	for cell in _shooters.keys().duplicate():
-		if shooter_body_world(cell).distance_to(centre) <= radius:
-			if take_shooter(cell):
-				removed += 1
-	return removed
+	return shooters.blast(centre, radius)
 
 func take_shooter(cell: Vector2i) -> bool:
-	if not _shooters.has(cell):
-		return false
-	var shooter: Node3D = _shooters[cell]
-	_shooters.erase(cell)
-	_spent_shooters.append(cell)
-	# AND OUT OF THE FIRING LIST, which is what actually stops the balls --
-	# GameWorld._process_plinko walks `shooter_cells` and nothing else.
-	shooter_cells.erase(cell)
-	if is_instance_valid(shooter):
-		shooter.queue_free()
-	return true
+	return shooters.take(cell)
 
 func spent_shooter_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _spent_shooters:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return shooters.layout()
 
 func apply_spent_shooters(layout: PackedInt32Array) -> void:
-	var i := 0
-	while i + 1 < layout.size():
-		take_shooter(Vector2i(layout[i], layout[i + 1]))
-		i += 2
+	shooters.apply_layout(layout)
 
 # --- Hearts -------------------------------------------------------------------
 #
@@ -1221,67 +1203,31 @@ func apply_spent_shooters(layout: PackedInt32Array) -> void:
 # collect. Exclusivity is by construction -- taking one removes it, so a second
 # player arriving a tick later finds nothing.
 
-var _hearts: Dictionary = {}     # Vector2i -> the node drawn there
-var _heart_root: Node3D = null
 
 func _spawn_heart(cell: Vector2i) -> void:
-	if _heart_root == null:
-		_heart_root = Node3D.new()
-		_heart_root.name = "Hearts"
-		add_child(_heart_root)
-	var heart: Node3D = HeartScene.instantiate()
-	heart.name = "Heart_%d_%d" % [cell.x, cell.y]
-	heart.position = cell_surface(cell) + Vector3(0.0, 0.8, 0.0)
-	_heart_root.add_child(heart)
-	_hearts[cell] = heart
+	hearts.spawn(cell)
 
 func heart_count() -> int:
-	return _hearts.size()
+	return hearts.count()
 
 # Take the heart within reach of `world_position`, if there is one. Returns true
 # exactly once per heart.
 func try_take_heart(world_position: Vector3) -> bool:
-	if _hearts.is_empty():
-		return false
-	var local: Vector3 = transform.affine_inverse() * world_position
-	for cell in _hearts.keys():
-		var heart: Node3D = _hearts[cell]
-		if not is_instance_valid(heart):
-			continue
-		if heart.position.distance_to(local) <= SimConfig.HEART_PICKUP_RADIUS:
-			take_heart(cell)
-			return true
-	return false
+	return hearts.try_take_near(world_position)
 
 # REMOVE ONE, BY CELL. Split out of try_take_heart so the host and a client reach
 # the same code: the host arrives here by proximity, a client by being told which
 # cell went. Same shape as take_mound, and for the same reason.
 func take_heart(cell: Vector2i) -> void:
-	var heart = _hearts.get(cell)
-	if heart != null and is_instance_valid(heart):
-		heart.queue_free()
-	_hearts.erase(cell)
-	_taken_hearts[cell] = true
+	hearts.mark_spent(cell)
+	hearts.take(cell)
 
-# WHICH HEARTS HAVE GONE. A heart is built from the segment, so every machine
-# draws one until it is told otherwise -- and nothing told them. Reported from a
-# playtest as "client doesn't see health disappear after pickup": the host ate it,
-# healed the player, and left a heart drawn on every other screen that could never
-# be picked up again.
-var _taken_hearts: Dictionary = {}      # Vector2i -> true
 
 func taken_heart_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _taken_hearts:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return hearts.layout()
 
 func apply_taken_hearts(layout: PackedInt32Array) -> void:
-	var i := 0
-	while i + 1 < layout.size():
-		take_heart(Vector2i(layout[i], layout[i + 1]))
-		i += 2
+	hearts.apply_layout(layout)
 
 # --- Mounds -------------------------------------------------------------------
 #
@@ -1296,23 +1242,9 @@ func apply_taken_hearts(layout: PackedInt32Array) -> void:
 # hazard would then be a function of how long you loiter rather than of where the
 # level designer put it.
 
-var _mounds: Dictionary = {}     # Vector2i -> the node drawn there
-var _mound_root: Node3D = null
-# Which cells have already been used, so a client that joins mid-run can be told
-# in one message rather than being left drawing lumps that are not there.
-var _spent_mounds: Array = []    # Vector2i
 
 func _spawn_mound(cell: Vector2i) -> void:
-	if _mound_root == null:
-		_mound_root = Node3D.new()
-		_mound_root.name = "Mounds"
-		add_child(_mound_root)
-	var mound: Node3D = MoundScene.instantiate()
-	mound.name = "Mound_%d_%d" % [cell.x, cell.y]
-	# Sitting ON the deck, half its own height proud of it.
-	mound.position = cell_surface(cell) + Vector3(0.0, 0.17, 0.0)
-	_mound_root.add_child(mound)
-	_mounds[cell] = mound
+	mounds.spawn(cell)
 
 # --- Graves -------------------------------------------------------------------
 #
@@ -1328,55 +1260,28 @@ func _spawn_mound(cell: Vector2i) -> void:
 # glyph, and SegmentBuilder.grave_cells) rather than left to be inferred from the
 # spawn code.
 
-var _graves: Dictionary = {}     # Vector2i -> the node drawn there
-var _grave_root: Node3D = null
-# Which graves have already emptied, so a client that joins mid-run is told in one
-# message rather than left drawing a slab nothing is under.
-var _spent_graves: Array = []    # Vector2i
 
 func _spawn_grave(cell: Vector2i) -> void:
-	# ALREADY EMPTIED. A client told about this grave before it had built the
-	# segment holding it records the cell and nothing else; this is where that
-	# record is honoured. The spent set stays the single source of truth.
-	if _spent_graves.has(cell):
-		return
-	if _grave_root == null:
-		_grave_root = Node3D.new()
-		_grave_root.name = "Graves"
-		add_child(_grave_root)
-	var grave: Node3D = GraveScene.instantiate()
-	grave.name = "Grave_%d_%d" % [cell.x, cell.y]
-	# Sitting ON the deck, half the slab's own thickness proud of it.
-	grave.position = cell_surface(cell) + Vector3(0.0, 0.09, 0.0)
-	_grave_root.add_child(grave)
-	_graves[cell] = grave
+	graves.spawn(cell)
 
 func grave_count() -> int:
-	return _graves.size()
+	return graves.count()
 
 func grave_cells() -> Array:
-	return _graves.keys()
+	return graves.cells()
 
 # Where a zombie stands once it has finished rising, in the world's space -- the
 # CENTRE of the pack. Where each member actually stands is a ring around this, and
 # that ring is GameWorld's business rather than the grid's: the grid owns where
 # authored things ARE, and the pack's shape is a property of the enemy.
 func grave_surface_world(cell: Vector2i) -> Vector3:
-	return cell_surface_world(cell) + Vector3(0.0, SimConfig.ZOMBIE_HEIGHT * 0.5, 0.0)
+	return graves.surface_world(cell)
 
 # Empty the grave at `cell`: the slab goes and it never comes back. Returns false
 # if there was nothing there, so a caller cannot raise two packs from one grave by
 # asking twice in a frame.
 func take_grave(cell: Vector2i) -> bool:
-	if not _graves.has(cell):
-		return false
-	var grave: Node3D = _graves[cell]
-	_graves.erase(cell)
-	if not _spent_graves.has(cell):
-		_spent_graves.append(cell)
-	if is_instance_valid(grave):
-		grave.queue_free()
-	return true
+	return graves.take(cell)
 
 # A GRAVE IS IMMUNE TO BULLETS AND EMPTIED BY A BLAST, the same rule a mound has
 # and for the same reason: it is flush with the deck, so there is nothing above
@@ -1387,22 +1292,13 @@ func take_grave(cell: Vector2i) -> bool:
 # makes a charge spent on a slab you can see the best trade in the game -- and it
 # is built entirely out of parts that already existed.
 func blast_graves(centre: Vector3, radius: float) -> int:
-	var removed := 0
-	for cell in grave_cells():
-		if grave_surface_world(cell).distance_to(centre) <= radius:
-			if take_grave(cell):
-				removed += 1
-	return removed
+	return graves.blast(centre, radius)
 
 # The spent set as flat x,z pairs -- the same shape as spent_mound_layout(), and
 # sent on join rather than per tick because a grave changes state exactly once in
 # its life.
 func spent_grave_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _spent_graves:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return graves.layout()
 
 # RECORDED EVEN IF THE SEGMENT HOLDING IT IS NOT BUILT YET, which is the merchant's
 # behaviour rather than the mound's. A client can be told about a grave in a
@@ -1411,13 +1307,7 @@ func spent_grave_layout() -> PackedInt32Array:
 # cosmetic; five enemies that should not exist is not, so this one takes the
 # stricter of the two patterns already in the file. _spawn_grave reads the set back.
 func apply_spent_graves(layout: PackedInt32Array) -> void:
-	var i := 0
-	while i + 1 < layout.size():
-		var cell := Vector2i(layout[i], layout[i + 1])
-		if not _spent_graves.has(cell):
-			_spent_graves.append(cell)
-		take_grave(cell)
-		i += 2
+	graves.apply_layout(layout)
 
 # --- Elevators (M17 phase 9) --------------------------------------------------
 #
@@ -1930,14 +1820,14 @@ func set_spikes_lift(cell: Vector2i, lift: float) -> void:
 	prop.position = Vector3(base.x, base.y - SPIKE_HEIGHT * (1.0 - lift), base.z)
 
 func mound_count() -> int:
-	return _mounds.size()
+	return mounds.count()
 
 func mound_cells() -> Array:
-	return _mounds.keys()
+	return mounds.cells()
 
 # Where a rusher stands once it has finished emerging, in the world's space.
 func mound_surface_world(cell: Vector2i) -> Vector3:
-	return cell_surface_world(cell) + Vector3(0.0, SimConfig.RUSHER_HEIGHT * 0.5, 0.0)
+	return mounds.surface_world(cell)
 
 # Wake the mound at `cell`: the lump goes, and it never comes back. Returns false
 # if there was nothing there, so the caller cannot spawn two rushers from one
@@ -1954,12 +1844,7 @@ func mound_surface_world(cell: Vector2i) -> Vector3:
 # Returns how many it removed, so a caller can tell whether the charge was worth
 # spending.
 func blast_mounds(centre: Vector3, radius: float) -> int:
-	var removed := 0
-	for cell in mound_cells():
-		if mound_surface_world(cell).distance_to(centre) <= radius:
-			if take_mound(cell):
-				removed += 1
-	return removed
+	return mounds.blast(centre, radius)
 
 # --- Merchants ----------------------------------------------------------------
 #
@@ -1968,11 +1853,6 @@ func blast_mounds(centre: Vector3, radius: float) -> int:
 # without being told, and the only thing that ever needs to cross the wire is
 # that somebody has traded. See design_ideas/merchant.md.
 
-var _merchants: Dictionary = {}     # Vector2i -> the node standing there
-var _merchant_root: Node3D = null
-# Which merchants have sold, so a joiner is told in one message rather than being
-# left drawing a hat that is not for sale.
-var _spent_merchants: Array = []    # Vector2i
 
 # THE MODE SELECTOR, built from grid content exactly as the merchant is: a pure
 # function of the segment, so every machine builds its own and the only thing that
@@ -2048,84 +1928,35 @@ func mode_posts() -> Array:
 	return out
 
 func _spawn_merchant(cell: Vector2i) -> void:
-	if _merchant_root == null:
-		_merchant_root = Node3D.new()
-		_merchant_root.name = "Merchants"
-		add_child(_merchant_root)
-	var merchant := MerchantBody.new()
-	merchant.name = "Merchant_%d_%d" % [cell.x, cell.y]
-	merchant.cell = cell
-	merchant.position = cell_surface(cell)
-	_merchant_root.add_child(merchant)
-	_merchants[cell] = merchant
-	# A merchant inside a section the party already traded in stays sold. Applied
-	# after the node exists rather than filtered at spawn, so the SPENT SET stays
-	# the single source of truth for that.
-	if _spent_merchants.has(cell):
-		merchant.mark_spent()
+	merchants.spawn(cell)
 
 func merchant_count() -> int:
-	return _merchants.size()
+	return merchants.count()
 
 # Every merchant that has not sold yet. The trade asks this rather than doing its
 # own scene-tree walk -- a spent one is still standing there and still a solid
 # body to dash into, so "is there a merchant here" and "can I trade" are two
 # different questions.
 func open_merchants() -> Array:
-	var out: Array = []
-	for cell in _merchants.keys():
-		var merchant: Node = _merchants[cell]
-		if is_instance_valid(merchant) and merchant.can_trade():
-			out.append(merchant)
-	return out
+	return merchants.open()
 
 func merchant_at_cell(cell: Vector2i) -> Node:
-	var merchant = _merchants.get(cell)
-	return merchant if is_instance_valid(merchant) else null
+	return merchants.at(cell)
 
 func take_merchant(cell: Vector2i) -> bool:
-	var merchant: Node = merchant_at_cell(cell)
-	if merchant == null or not merchant.can_trade():
-		return false
-	merchant.mark_spent()
-	if not _spent_merchants.has(cell):
-		_spent_merchants.append(cell)
-	return true
+	return merchants.take(cell)
 
 # The spent set as flat x,z pairs -- the same shape as spent_mound_layout(), and
 # sent on join rather than per tick because a merchant changes state exactly once
 # in his life.
 func spent_merchant_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _spent_merchants:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return merchants.layout()
 
 func apply_spent_merchants(layout: PackedInt32Array) -> void:
-	var i := 0
-	while i + 1 < layout.size():
-		var cell := Vector2i(layout[i], layout[i + 1])
-		# RECORDED EVEN IF HE IS NOT BUILT YET. A client can be told about a
-		# merchant in a segment its streaming window has not reached; dropping that
-		# would leave him for sale a second time when it does. _spawn_merchant
-		# reads this set back.
-		if not _spent_merchants.has(cell):
-			_spent_merchants.append(cell)
-		var merchant: Node = merchant_at_cell(cell)
-		if merchant != null:
-			merchant.mark_spent()
-		i += 2
+	merchants.apply_layout(layout)
 
 func take_mound(cell: Vector2i) -> bool:
-	if not _mounds.has(cell):
-		return false
-	var mound: Node3D = _mounds[cell]
-	_mounds.erase(cell)
-	_spent_mounds.append(cell)
-	if is_instance_valid(mound):
-		mound.queue_free()
-	return true
+	return mounds.take(cell)
 
 # The spent set as flat x,z pairs -- the same shape as stone_layout(), and for
 # the same reason: a joining client rebuilds the bridge from the seed, which
@@ -2133,17 +1964,10 @@ func take_mound(cell: Vector2i) -> bool:
 # reconciles that, and it is sent once on join rather than every tick, because a
 # mound changes state exactly once in its life.
 func spent_mound_layout() -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for cell in _spent_mounds:
-		out.append(cell.x)
-		out.append(cell.y)
-	return out
+	return mounds.layout()
 
 func apply_spent_mounds(layout: PackedInt32Array) -> void:
-	var i := 0
-	while i + 1 < layout.size():
-		take_mound(Vector2i(layout[i], layout[i + 1]))
-		i += 2
+	mounds.apply_layout(layout)
 
 func all_stones() -> Array:
 	var out: Array = _stones.values().duplicate()
