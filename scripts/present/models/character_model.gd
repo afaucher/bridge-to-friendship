@@ -11,6 +11,7 @@ const HALF_HEIGHT = PlayerStates.HALF_HEIGHT
 const RADIUS = PlayerStates.RADIUS
 const FOOT_PROBE = PlayerStates.FOOT_PROBE
 const CharacterStyle = preload("res://scripts/present/models/character_style.gd")
+const TailFire = preload("res://scripts/present/vfx/tail_fire.gd")
 
 # The body this is part of. Untyped: preloading player_body.gd from here would
 # close a class cycle.
@@ -188,3 +189,12 @@ func apply_accessory(kind: String, body_colour: Color) -> void:
 		piece.position = part["pos"]
 		piece.basis = CharacterStyle.aim_basis(part["dir"])
 		root.add_child(piece)
+
+	# AND WHERE IT BURNS. Children of the same root, so switching accessory takes
+	# the fire with it, and hung off Facing so it turns with the aim like the rest.
+	for index in CharacterStyle.accessory_flames(kind):
+		var part: Dictionary = parts[int(index)]
+		var fire: CPUParticles3D = TailFire.build()
+		fire.position = (part["pos"] as Vector3) \
+			+ (part["dir"] as Vector3).normalized() * (float(part["length"]) * 0.5)
+		root.add_child(fire)

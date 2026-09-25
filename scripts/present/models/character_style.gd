@@ -637,6 +637,25 @@ static func accessory_parts(kind: String) -> Array:
 		_:
 			return []
 
+# WHERE AN ACCESSORY BURNS: indices into accessory_parts(kind), each a flame at
+# that part's TIP. Data rather than a special case in the model, for the same
+# reason the parts are -- a test can measure where it is instead of trusting the
+# drawing.
+#
+# The shrimp tail burns at ONE point, to one side: the outer fan blade on the
+# character's left (+X). One flame, not a pair -- asymmetry is the joke, and a
+# matched pair reads as exhaust. test_accessory asserts this index really is the
+# outermost blade point on a side, so a reordered part list cannot quietly move
+# the fire onto the shell.
+const SHRIMP_FLAME_PART := 13
+
+static func accessory_flames(kind: String) -> Array:
+	match kind:
+		ACCESSORY_SHRIMP:
+			return [SHRIMP_FLAME_PART]
+		_:
+			return []
+
 static func is_accessory(kind: String) -> bool:
 	return ACCESSORIES.has(kind)
 

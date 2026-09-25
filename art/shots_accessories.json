@@ -2,6 +2,7 @@
   "_comment": "The accessory line-up. A SEPARATE manifest from shots.json rather than more items in it, for the reason that file's own header gives: it is the artefact behind the art bake-off, and re-running it has to reproduce the same framings. Run: godot --path . --run-shots art/shots_accessories.json (WINDOWED -- --headless disables rendering).",
 
   "output_dir": "res://tmp/shots/accessories",
+  "_lift_comment": "EVERY PLAYER IS LIFTED 0.9 m. A player's origin is the MIDDLE of its body and the studio ground is at y = 0, so without the lift the floor cut every character in half at the waist; focus_y is raised by the same amount so the framing is unchanged. The ground is 80 m so the edge of it is never in shot.",
   "size": [900, 900],
 
   "studio": {
@@ -12,53 +13,51 @@
 
     "items": [
       {"_comment": "THE GAME'S OWN CAMERA. bridge_camera.gd is a fixed 45-degree pitch looking down -Z, so this is the only view that decides whether the thing works in play. Every other shot here is diagnostic; this one is the verdict. The subject faces the camera, which is a player walking TOWARD you.",
-       "name": "moose_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "name": "moose_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -45.0},
 
       {"_comment": "TRUE FRONT. The view field guides use for a moose, because spread and the brow shovels are both square-on to it.",
-       "name": "moose_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "name": "moose_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -6.0},
 
       {"_comment": "TRUE PROFILE. What separates a moose from an elk fastest: an elk's beam sweeps back over the shoulders and a moose's does not. Any back-sweep shows here and nowhere else.",
-       "name": "moose_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "name": "moose_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "moose", "cam_yaw": 90.0, "cam_pitch": -6.0},
 
       {"_comment": "TRUE TOP. Where palmation is unambiguous -- the plate's outline, the bay between brow and main palm, and the fringe of points are all in plan here.",
-       "name": "moose_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "name": "moose_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "moose", "cam_yaw": 0.0, "cam_pitch": -88.0},
 
-      {"name": "moose_three_quarter", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 0.95,
+      {"name": "moose_three_quarter", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "moose", "cam_yaw": 35.0, "cam_pitch": -30.0},
 
       {"_comment": "AND THE ELK FROM THE SAME FIVE ANGLES. Two racks in one picker are only worth having if a player can tell them apart, and the comparison is worthless unless both are shot identically.",
-       "name": "elk_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+       "name": "elk_game", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -45.0},
-      {"name": "elk_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+      {"name": "elk_front", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -6.0},
-      {"name": "elk_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+      {"name": "elk_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "antlers", "cam_yaw": 90.0, "cam_pitch": -6.0},
-      {"name": "elk_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.95,
+      {"name": "elk_top", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.85, "lift": 0.9, "ground": 80.0,
        "accessory": "antlers", "cam_yaw": 0.0, "cam_pitch": -88.0},
 
       {"_comment": "The rest of the picker, at the game's angle only -- they are settled, and they are here so a change to the shared machinery cannot break one of them unnoticed.",
-       "name": "acc_none", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.7,
+       "name": "acc_none", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.60, "lift": 0.9, "ground": 80.0,
        "accessory": "none", "ortho_size": 2.6},
-      {"name": "acc_horns", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.8,
+      {"name": "acc_horns", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.70, "lift": 0.9, "ground": 80.0,
        "accessory": "horns", "ortho_size": 2.6},
-      {"name": "acc_tail", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 0.6,
+      {"name": "acc_tail", "scene": "res://scenes/player.tscn", "yaw": 200.0, "focus_y": 1.50, "lift": 0.9, "ground": 80.0,
        "accessory": "tail", "ortho_size": 2.6, "cam_yaw": 35.0, "cam_pitch": -30.0},
 
-      {"_comment": "THE SHRIMP TAIL AT THE GAME'S OWN ANGLE, FROM BEHIND. yaw 0 faces away from the camera, which is a player walking up the bridge -- the way most of play is seen, and the only view in which a tail is not hidden behind the body that wears it.",
-       "name": "shrimp_game", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 0.6,
-       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 0.0, "cam_pitch": -45.0},
-      {"_comment": "PROFILE: the arch of the shell and the lip at each plate show here and nowhere else.",
-       "name": "shrimp_profile", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 0.6,
-       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 90.0, "cam_pitch": -6.0},
-      {"_comment": "TOP: the fan in plan, which is what the game camera mostly sees of it.",
-       "name": "shrimp_top", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 0.6,
-       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 0.0, "cam_pitch": -88.0},
-      {"name": "shrimp_three_quarter", "scene": "res://scenes/player.tscn", "yaw": 20.0, "focus_y": 0.6,
-       "accessory": "shrimp_tail", "ortho_size": 3.6, "focus_nudge": [0, 0, 0.9], "cam_yaw": 35.0, "cam_pitch": -30.0}
+      {"_comment": "THE SHRIMP TAIL IN FOUR VIEWS: top, side, back and perspective. Tinted dark so the trim colour it wears reads against the studio, and framed back along the tail so the fan and its flame are in shot.",
+       "name": "shrimp_top", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 1.50, "lift": 0.9, "ground": 80.0,
+       "accessory": "shrimp_tail", "tint": [0.55, 0.12, 0.10], "ortho_size": 3.4, "focus_nudge": [0, 0, 0.55], "cam_yaw": 0.0, "cam_pitch": -88.0},
+      {"name": "shrimp_side", "scene": "res://scenes/player.tscn", "yaw": 180.0, "focus_y": 1.50, "lift": 0.9, "ground": 80.0,
+       "accessory": "shrimp_tail", "tint": [0.55, 0.12, 0.10], "ortho_size": 3.4, "focus_nudge": [0, 0, 0.55], "cam_yaw": 90.0, "cam_pitch": -4.0},
+      {"name": "shrimp_back", "scene": "res://scenes/player.tscn", "yaw": 0.0, "focus_y": 1.50, "lift": 0.9, "ground": 80.0,
+       "accessory": "shrimp_tail", "tint": [0.55, 0.12, 0.10], "ortho_size": 3.4, "focus_nudge": [0, 0, 0.55], "cam_yaw": 0.0, "cam_pitch": -4.0},
+      {"name": "shrimp_perspective", "scene": "res://scenes/player.tscn", "yaw": 20.0, "focus_y": 1.50, "lift": 0.9, "ground": 80.0,
+       "accessory": "shrimp_tail", "tint": [0.55, 0.12, 0.10], "ortho_size": 3.4, "focus_nudge": [0, 0, 0.55], "cam_yaw": 35.0, "cam_pitch": -30.0}
     ]
   },
 
