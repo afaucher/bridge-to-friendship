@@ -33,6 +33,7 @@ const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const PlayerBody = preload("res://scripts/sim/player_body.gd")
 const SpecialBody = preload("res://scripts/sim/special_body.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
+const Layers = preload("res://scripts/core/layers.gd")
 
 var world: Node3D = null
 var body: CharacterBody3D = null
@@ -70,6 +71,7 @@ func _physics_process(_delta: float) -> void:
 
 	_check_modes()
 	_check_dot_is_on_the_shot_line()
+	await _check_dot_stops_where_a_round_does()
 	_check_charge_bar()
 
 	world.view_active = false
@@ -114,6 +116,41 @@ func _check_dot_is_on_the_shot_line() -> void:
 	check(bearing > 0.999,
 		"and it sits ON the line the shot takes (dot-product %.5f with "
 			% bearing + "aim_direction, the function that fires)")
+
+# --- 2b. It stops where a round stops -----------------------------------------
+#
+# "SAME LAYERS A ROUND IS STOPPED BY", said the comment on the sight's ray -- and
+# its mask was world | players | enemies, three of the six. A dot that sails
+# through a pillar, a ball or a worn hat marks a shot that will not happen. So a
+# block on each layer a round DOES stop at is put in the way, and the dot must
+# land on its face rather than at full range.
+
+func _check_dot_stops_where_a_round_does() -> void:
+	DebugSettings.set_value("laser_sight", 2)
+	var muzzle: Vector3 = world._muzzle_of(grenade, body)
+	var along: Vector3 = world.aim_direction(body, grenade)
+	# WORLD FIRST, AS THE CONTROL: the old mask had it, so a failure there is the
+	# rig (a block the ray cannot see yet), not the sight.
+	for layer in [Layers.WORLD, Layers.STONES, Layers.BALLS, Layers.WORN_HATS]:
+		var block := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, 3.0, 1.0)
+		shape.shape = box
+		block.add_child(shape)
+		block.collision_layer = layer
+		block.collision_mask = 0
+		world.add_child(block)
+		block.global_position = muzzle + along * 3.0
+		# A body added this frame is not in the space until the server flushes.
+		await get_tree().physics_frame
+		world._update_laser_sight()
+		var reach: float = (world._dot.global_position - muzzle).length()
+		check(reach < 3.0,
+			"the dot stops at a block on layer %d (%s): %.2f m, not full range"
+				% [layer, Layers.name_of(int(log(float(layer)) / log(2.0)) + 1), reach])
+		world.remove_child(block)
+		block.free()
 
 # --- 3. The bar ---------------------------------------------------------------
 

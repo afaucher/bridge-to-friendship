@@ -34,6 +34,7 @@ extends CharacterBody3D
 # does is a designed rule, not physics. See plinko_ball.gd for the other side of
 # that line.
 
+const Hash = preload("res://scripts/core/hash.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
@@ -211,14 +212,8 @@ func _begin_move(target: Vector3) -> void:
 # rising in the same tick do not walk in step.
 func _draw() -> float:
 	_rolls += 1
-	return float(_mix(zombie_id * 8191 + _rolls * 7919) % 10000) / 9999.0
+	return float(Hash.mix(zombie_id * 8191 + _rolls * 7919) % 10000) / 9999.0
 
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)
 
 # Knocked back and briefly out of it -- shared by RECOVER (it bit somebody) and
 # STAGGER (somebody dashed it). Friction rather than a hard stop, so being knocked

@@ -15,6 +15,7 @@ extends Node
 # resolution is whatever the manifest says regardless of the size of the window
 # the OS gave us. The window is incidental; the SubViewport is the camera.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SceneLighting = preload("res://scripts/ui/scene_lighting.gd")
 const GameWorldScript = preload("res://scripts/sim/game_world.gd")
 const GunnerBody = preload("res://scripts/sim/gunner_body.gd")
@@ -463,7 +464,7 @@ func _render_corpse(studio: Dictionary, item: Dictionary, stage: Node) -> void:
 func _studio_floor(extent: float) -> Node3D:
 	var floor_body := StaticBody3D.new()
 	floor_body.name = "StudioFloor"
-	floor_body.collision_layer = 1
+	floor_body.collision_layer = Layers.WORLD
 	floor_body.collision_mask = 0
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()

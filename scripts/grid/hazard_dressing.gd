@@ -28,6 +28,7 @@ extends RefCounted
 # builds the identical world. So this uses the same local mixer the pool does and
 # never touches the global RNG.
 
+const Hash = preload("res://scripts/core/hash.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
@@ -156,8 +157,8 @@ static func theme_for(run_seed: int, index: int) -> String:
 	for step in range(1, n):
 		if _coprime(step, n):
 			strides.append(step)
-	var stride: int = int(strides[_mix(run_seed + 31) % strides.size()])
-	var base: int = _mix(run_seed) % n
+	var stride: int = int(strides[Hash.mix(run_seed + 31) % strides.size()])
+	var base: int = Hash.mix(run_seed) % n
 	return String(names[(base + index * stride) % n])
 
 # The first stride at or after `want` that is coprime with `n`, so a walk of n
@@ -195,7 +196,7 @@ static func dress(seg, theme: String, run_seed: int, index: int) -> Dictionary:
 	if not THEMES.has(theme):
 		return placed
 	var budget: Dictionary = THEMES[theme]
-	var salt: int = _mix(run_seed + index * 7919)
+	var salt: int = Hash.mix(run_seed + index * 7919)
 
 	# THE MERCHANT GOES FIRST, AND THAT ORDERING IS THE WHOLE RULE. Every kind in
 	# the budget loop below asks "where do I want to be"; he is the first thing on
@@ -330,7 +331,7 @@ static func _place_swallow(seg, salt: int) -> bool:
 	# It cannot conjure water -- see the note on the knob.
 	var rarity: int = maxi(1, int(DebugSettings.tuned(
 		"swallow_rarity", float(SimConfig.SWALLOW_RARITY))))
-	if _mix(salt + 60013) % rarity != 0:
+	if Hash.mix(salt + 60013) % rarity != 0:
 		return false
 	var cells: Array = []
 	for z in range(1, maxi(2, seg.length - 1)):
@@ -347,7 +348,7 @@ static func _place_swallow(seg, salt: int) -> bool:
 	# WALKED RATHER THAN INDEXED ONCE, the same as the merchant: a single seeded
 	# pick that lands on a refused cell is a section that rolled a swallow and
 	# silently has none, in a way nothing reports.
-	var at: int = _mix(salt + 13) % cells.size()
+	var at: int = Hash.mix(salt + 13) % cells.size()
 	var cell: Vector2i = cells[at]
 	if _water_taken(seg, cell):
 		return false
@@ -391,7 +392,7 @@ static func _place_merchant(seg, salt: int) -> bool:
 	# Solo and dev only; see the note on the knob.
 	var rarity: int = maxi(1, int(DebugSettings.tuned(
 		"merchant_rarity", float(SimConfig.MERCHANT_RARITY))))
-	if _mix(salt + 104729) % rarity != 0:
+	if Hash.mix(salt + 104729) % rarity != 0:
 		return false
 	var cells: Array = _candidates(seg, "merchant")
 	if cells.is_empty():
@@ -400,7 +401,7 @@ static func _place_merchant(seg, salt: int) -> bool:
 	# authored cell is a segment that rolled a merchant and silently has none --
 	# the rarity would then be lower than the constant says, in a way nothing
 	# reports.
-	var at: int = _mix(salt + 7) % cells.size()
+	var at: int = Hash.mix(salt + 7) % cells.size()
 	for _i in cells.size():
 		var cell: Vector2i = cells[at]
 		at = (at + 1) % cells.size()
@@ -659,12 +660,3 @@ static func _near_content(seg, x: int, z: int, radius: int) -> bool:
 				return true
 	return false
 
-# The pool's mixer, for the reason the pool has one: the global RNG is seeded
-# once per launch and consumed by everything else, so a world planned from it
-# would differ between two machines that had drawn a different number of randoms.
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)

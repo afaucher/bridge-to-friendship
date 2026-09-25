@@ -9,6 +9,7 @@ extends Node3D
 # the world is an authored segment plus a short list of what has moved, not a
 # scene tree that has to be walked and invented a format for.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 const SegmentBuilder = preload("res://scripts/grid/segment_builder.gd")
@@ -1476,7 +1477,7 @@ func _spawn_elevator(cell: Vector2i) -> void:
 	# is that it carries somebody.
 	var body := AnimatableBody3D.new()
 	body.name = "Elevator_%d_%d" % [cell.x, cell.y]
-	body.collision_layer = 1
+	body.collision_layer = Layers.WORLD
 	body.collision_mask = 0
 	body.sync_to_physics = true
 	body.position = Vector3(cell_surface(cell).x, low - thick * 0.5, cell_surface(cell).z)
@@ -1621,7 +1622,7 @@ func _spawn_mutable(cell: Vector2i, content: int) -> void:
 
 	var body := StaticBody3D.new()
 	body.name = "Mutable_%d_%d" % [cell.x, cell.y]
-	body.collision_layer = 1     # world, like the deck it stands in for
+	body.collision_layer = Layers.WORLD     # world, like the deck it stands in for
 	body.collision_mask = 0
 	body.position = top - Vector3(0.0, thick * 0.5, 0.0)
 	var shape := CollisionShape3D.new()
@@ -1829,7 +1830,7 @@ func _spawn_cover(cell: Vector2i, is_tree: bool) -> void:
 
 	var body := StaticBody3D.new()
 	body.name = ("Tree_%d_%d" if is_tree else "HalfWall_%d_%d") % [cell.x, cell.y]
-	body.collision_layer = 1        # world: solid, and a sight blocker for free
+	body.collision_layer = Layers.WORLD        # world: solid, and a sight blocker for free
 	body.collision_mask = 0
 	body.position = cell_surface(cell)
 

@@ -21,6 +21,7 @@ extends RefCounted
 # numbers and builds the identical world. The mixer is local; the global RNG is
 # never touched.
 
+const Hash = preload("res://scripts/core/hash.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
@@ -462,7 +463,7 @@ static func _lane_gauntlet(seg, z0: int, rows: int, ends: int, salt: int) -> voi
 # Without it every band would draw the same number three times and a long lane
 # would always come with a fast corner.
 static func _band_roll(salt: int, band: int, kind: int, low: int, high: int) -> int:
-	return low + _mix(salt + band * kind) % (high - low + 1)
+	return low + Hash.mix(salt + band * kind) % (high - low + 1)
 
 # HOW DEEP A LANE OF THIS CHARACTER WANTS TO BE. Rolled AFTER the character rather
 # than before it, because the two are not independent.
@@ -505,7 +506,7 @@ static func _apply_lane(seg, z0: int, rows: int, ends: int, kind: int, salt: int
 
 static func bus_track(width: int, run_seed: int, index: int):
 	var w: int = maxi(width, LOBBY_MIN_WIDTH)
-	var salt: int = _mix(run_seed + index * 6151)
+	var salt: int = Hash.mix(run_seed + index * 6151)
 	var length: int = TRACK_ROWS_MIN + salt % (TRACK_ROWS_MAX - TRACK_ROWS_MIN + 1)
 	var seg = _blank("track_%d" % index, w, length)
 	var track_tags: Array[String] = ["foot", "generated", "track"]
@@ -625,7 +626,7 @@ static func section(width: int, run_seed: int, index: int, attempts: int = 24):
 	# rejected maze rerolls into another MAZE rather than quietly becoming a ramp
 	# section. A rarity: the maze is the section with no hazard in it at all, and
 	# a run that keeps serving them is a run with no threat in it.
-	var want_maze: bool = _mix(run_seed + index * 3298541) % 5 == 0
+	var want_maze: bool = Hash.mix(run_seed + index * 3298541) % 5 == 0
 	for attempt in attempts:
 		var seg = _maze_attempt(width, run_seed, index, attempt) if want_maze \
 			else _section_attempt(width, run_seed, index, attempt)
@@ -645,7 +646,7 @@ static func section(width: int, run_seed: int, index: int, attempts: int = 24):
 	return flat
 
 static func _section_attempt(width: int, run_seed: int, index: int, attempt: int):
-	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97)
+	var salt: int = Hash.mix(run_seed + index * 15485863 + attempt * 97)
 	var length: int = 14 + salt % 8
 	var seg = _blank("section_%d" % index, width, length)
 	var section_tags: Array[String] = ["foot", "generated"]
@@ -808,7 +809,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 	var height := 0
 	var row := 0
 	while row < length:
-		var flat: int = 2 + _mix(salt + row * 3301) % 3
+		var flat: int = 2 + Hash.mix(salt + row * 3301) % 3
 		for _f in flat:
 			if row >= length:
 				break
@@ -842,10 +843,10 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		# TWO OFFERS, ONE STAMP. `elif` so a single pass places at most one piece,
 		# while a section may still end up with one of each across passes.
 		var pick = null
-		if placed == null and not wide_pieces.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or _mix(salt + row * 3571) % 4 == 0):
-			pick = wide_pieces[_mix(salt + row * 5023) % wide_pieces.size()]
-		elif patched == null and not patches.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or _mix(salt + row * 2909) % PATCH_ONE_IN == 0):
-			pick = patches[_mix(salt + row * 6763) % patches.size()]
+		if placed == null and not wide_pieces.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or Hash.mix(salt + row * 3571) % 4 == 0):
+			pick = wide_pieces[Hash.mix(salt + row * 5023) % wide_pieces.size()]
+		elif patched == null and not patches.is_empty() 				and row + MAX_PIECE_ROWS + 2 <= length 				and (forced != "off" or Hash.mix(salt + row * 2909) % PATCH_ONE_IN == 0):
+			pick = patches[Hash.mix(salt + row * 6763) % patches.size()]
 		if pick != null:
 			# WHERE IT SITS ACROSS THE BRIDGE (M23 phase 3). A canvas-wide piece has
 			# exactly one answer -- column 0 -- and that is the case this has always
@@ -917,11 +918,11 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 		# and the ramp band is the only thing that has ever disagreed with it. A
 		# split is that disagreement made to last for more than a transition row.
 		if not did_split and safe.size() >= 5 \
-				and _mix(salt + row * 9721) % 4 == 0 \
+				and Hash.mix(salt + row * 9721) % 4 == 0 \
 				and row + SPLIT_RISE_MAX + SPLIT_HOLD_MIN + 2 <= length:
-			var rise: int = 1 + _mix(salt + row * 4801) % SPLIT_RISE_MAX
+			var rise: int = 1 + Hash.mix(salt + row * 4801) % SPLIT_RISE_MAX
 			var hold: int = SPLIT_HOLD_MIN \
-				+ _mix(salt + row * 6491) % maxi(1, SPLIT_HOLD_MAX - SPLIT_HOLD_MIN + 1)
+				+ Hash.mix(salt + row * 6491) % maxi(1, SPLIT_HOLD_MAX - SPLIT_HOLD_MIN + 1)
 			# TWO ROWS OF MARGIN AT THE END, exactly as a plain climb keeps: the exit
 			# row is stamped flat by the fixup below, so a split still running when it
 			# arrives is a split whose high half is silently levelled.
@@ -931,7 +932,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				# A ramp on the LOW side would climb to a height its own half of the
 				# deck does not have, which is a ramp leading nowhere -- the bug this
 				# generator already paid for once at 23 of 239 ramp tops.
-				var high_right: bool = _mix(salt + row * 5407) % 2 == 0
+				var high_right: bool = Hash.mix(salt + row * 5407) % 2 == 0
 				var boundary: int = (int(safe[0]) + int(safe[safe.size() - 1])) / 2 + 1
 				var lane: Array = []
 				for col in safe:
@@ -939,7 +940,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 						lane.append(int(col))
 				if lane.size() >= 2:
 					var sw: int = mini(_ramp_width(salt + row * 2237), lane.size())
-					var sx0: int = _safe_ramp_x0(lane, sw, _mix(salt + row * 3319))
+					var sx0: int = _safe_ramp_x0(lane, sw, Hash.mix(salt + row * 3319))
 					sw = mini(sw, _safe_run_from(lane, sx0))
 					# The climb, on the high side only. Ordinary cells stay down.
 					for k in rise:
@@ -980,9 +981,9 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 					did_split = true
 					continue
 
-		var roll: int = _mix(salt + row * 7717) % 10
+		var roll: int = Hash.mix(salt + row * 7717) % 10
 		if roll < 6:
-			var rise: int = 1 + _mix(salt + row * 911) % 3
+			var rise: int = 1 + Hash.mix(salt + row * 911) % 3
 			# A CLIMB MUST FINISH WITH ROOM TO SPARE, or its top row is the EXIT
 			# ROW -- which the fixup below stamps flat at `low`, the height of the
 			# plateau BELOW. The ramp then climbs to h5 and its own top is reset to
@@ -1014,7 +1015,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			# rows narrowed, because `_pin_ends` raised the zero back up.
 			var lift_clear: int = INSET_END_ROWS + GridConfig.BASELINE_INSET
 			if rise >= 2 and row >= lift_clear and row < length - lift_clear \
-					and _mix(salt + row * 6151) % 3 == 0:
+					and Hash.mix(salt + row * 6151) % 3 == 0:
 				low.append(height)
 				ramp_h.append(-1)
 				ramp_x0.append(0)
@@ -1022,7 +1023,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 				# One column, anchored in the safe corridor for the same reason a
 				# ramp is: a shaft with a hole beside it is somewhere a player
 				# falls off while standing still waiting.
-				lift_x.append(_safe_ramp_x0(safe, 1, _mix(salt + row * 2087)))
+				lift_x.append(_safe_ramp_x0(safe, 1, Hash.mix(salt + row * 2087)))
 				lift_h.append(height + rise)
 				piece_ref.append(null)
 				piece_row.append(0)
@@ -1036,7 +1037,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			# ANCHORED IN THE SAFE CORRIDOR, and clamped to a run of it that is
 			# actually contiguous -- landing half a ramp on a hole is the same bug
 			# as landing all of it there.
-			var x0: int = _safe_ramp_x0(safe, w, _mix(salt + row * 1543))
+			var x0: int = _safe_ramp_x0(safe, w, Hash.mix(salt + row * 1543))
 			w = mini(w, _safe_run_from(safe, x0))
 			for k in rise:
 				if row >= length:
@@ -1060,7 +1061,7 @@ static func _section_attempt(width: int, run_seed: int, index: int, attempt: int
 			# A DROP, and no ramp: falling is free. The cliff that makes a split
 			# level, and the thing hand authoring almost never does because in a
 			# text file it looks like a mistake.
-			height -= mini(height, 1 + _mix(salt + row * 577) % 3)
+			height -= mini(height, 1 + Hash.mix(salt + row * 577) % 3)
 
 	while low.size() < length:
 		low.append(height)
@@ -1291,12 +1292,12 @@ static func _place_channel(seg, salt: int) -> void:
 	# bridges. Solo and dev only.
 	var every: int = maxi(1, int(DebugSettings.tuned(
 		"channel_rarity", float(SimConfig.WATER_CHANNEL_IN))))
-	if _mix(salt + 5501) % every != 0:
+	if Hash.mix(salt + 5501) % every != 0:
 		return
 	var bands: Array = _channel_bands(seg)
 	if bands.is_empty():
 		return
-	var z0: int = int(bands[_mix(salt + 911) % bands.size()])
+	var z0: int = int(bands[Hash.mix(salt + 911) % bands.size()])
 	# THREE SHAPES, ROLLED, EACH FALLING BACK TO THE NEXT. A straight channel is
 	# one push across your path; a dog-leg turns a corner and its turn runs ALONG
 	# the bridge, so crossing it means being shoved up or down the deck for a
@@ -1309,7 +1310,7 @@ static func _place_channel(seg, salt: int) -> void:
 	# band. Rolling without them would turn "this shape does not fit" into "this
 	# section has no water", which is the absence a reroll-and-validate generator
 	# hides so well.
-	match _mix(salt + 4099) % 3:
+	match Hash.mix(salt + 4099) % 3:
 		0:
 			if _place_pool(seg, salt, z0):
 				return
@@ -1331,8 +1332,8 @@ static func _place_channel(seg, salt: int) -> void:
 	# side gives a single outlet and one strong current the whole way across.
 	var x0: int = left
 	var x1: int = right
-	if _mix(salt + 1777) % 2 == 0:
-		if _mix(salt + 313) % 2 == 0:
+	if Hash.mix(salt + 1777) % 2 == 0:
+		if Hash.mix(salt + 313) % 2 == 0:
 			x0 = left + CHANNEL_MARGIN
 		else:
 			x1 = right - CHANNEL_MARGIN
@@ -1411,7 +1412,7 @@ static func _pool_at(seg, salt: int, z_top: int) -> bool:
 	# on the row's own edge rather than on a remembered one -- the deck's span can
 	# differ row to row, so the near rail of the top row is not the near rail of
 	# the bottom one.
-	var flip: bool = _mix(salt + 2203) % 2 == 0
+	var flip: bool = Hash.mix(salt + 2203) % 2 == 0
 	var top_row: int = z_top
 	var bot_row: int = z_top + POOL_ROWS - 1
 	var top_x: int = _first_solid(seg, top_row, 1 if flip else -1)
@@ -1454,7 +1455,7 @@ const ZIG_WIDE := 2          # columns in the leg that runs along the bridge
 # hides best; the fix is to place it where it fits rather than where it was told.
 static func _place_zigzag(seg, salt: int, _hint: int) -> bool:
 	for tries in 12:
-		var pick: int = _mix(salt + 6151 + tries * 131)
+		var pick: int = Hash.mix(salt + 6151 + tries * 131)
 		if _zigzag_at(seg, salt, pick, tries):
 			return true
 	return false
@@ -1733,7 +1734,7 @@ const MAZE_WIDE_PERCENT := 50
 # denominated in.
 
 static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
-	var salt: int = _mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
+	var salt: int = Hash.mix(run_seed + index * 15485863 + attempt * 97 + 0x5EED)
 	var cols: int = (width + 1) / 2
 	# Below three columns it is a corridor with kinks in it, not a maze.
 	if cols < 3:
@@ -1756,8 +1757,8 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	# row, which buys an even split by making every maze with a lane across it
 	# shorter than one with a lane along it -- a correlation between the axis and
 	# the length of the section, which is a worse thing to have than a 60/40.
-	var wide: bool = _mix(salt + 0x717D) % 100 < MAZE_WIDE_PERCENT
-	var wide_across: bool = _mix(salt + 0x717E) % 2 == 0
+	var wide: bool = Hash.mix(salt + 0x717D) % 100 < MAZE_WIDE_PERCENT
+	var wide_across: bool = Hash.mix(salt + 0x717E) % 2 == 0
 	if wide:
 		var can_across: bool = rows - 1 >= MAZE_MIN_ROWS
 		var can_along: bool = cols - 1 >= 3
@@ -1795,9 +1796,9 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var wide_z: int = -1
 	if wide:
 		if wide_across:
-			wide_z = 2 + 2 * (_mix(salt + 0x717F) % rows)
+			wide_z = 2 + 2 * (Hash.mix(salt + 0x717F) % rows)
 		else:
-			wide_x = 2 * (_mix(salt + 0x7180) % cols)
+			wide_x = 2 * (Hash.mix(salt + 0x7180) % cols)
 
 	# THE COLUMN THE LATTICE DOES NOT USE, offered to either side. A lattice of
 	# `cols` columns spans 2*cols-1 cells and a wide one spans 2*cols, so at the
@@ -1808,7 +1809,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	var used: int = 2 * cols - 1 + (1 if wide_x >= 0 else 0)
 	var x0: int = 0
 	if wide_x >= 0 and width - used > 0:
-		x0 = _mix(salt + 0x7181) % (width - used + 1)
+		x0 = Hash.mix(salt + 0x7181) % (width - used + 1)
 	var lay: Dictionary = {"wide_x": wide_x, "wide_z": wide_z, "x0": x0}
 
 	var seg = _blank("section_%d_maze" % index, width, length)
@@ -1854,7 +1855,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 			stack.pop_back()
 			continue
 		step += 1
-		var pick: Vector2i = options[_mix(salt + step * 2749) % options.size()]
+		var pick: Vector2i = options[Hash.mix(salt + step * 2749) % options.size()]
 		open_cells[_maze_between(cell, pick)] = true
 		visited[pick] = true
 		stack.append(pick)
@@ -1864,8 +1865,8 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 	# in-order pass concentrates every loop in the first rows it visits.
 	var extra: int = (cols * rows) / MAZE_BRAID
 	for k in extra:
-		var i: int = _mix(salt + k * 7523) % cols
-		var j: int = _mix(salt + k * 8161) % rows
+		var i: int = Hash.mix(salt + k * 7523) % cols
+		var j: int = Hash.mix(salt + k * 8161) % rows
 		var here := Vector2i(i, j)
 		var dirs: Array = []
 		for d in 4:
@@ -1876,7 +1877,7 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 				dirs.append(n)
 		if dirs.is_empty():
 			continue
-		open_cells[_maze_between(here, dirs[_mix(salt + k * 6421) % dirs.size()])] = true
+		open_cells[_maze_between(here, dirs[Hash.mix(salt + k * 6421) % dirs.size()])] = true
 
 	# THEN OPEN THE DEAD ENDS THAT ARE LEFT, past the few kept for rewards. A dead
 	# end with nothing in it is a wrong turn the player can see is a wrong turn,
@@ -1902,13 +1903,13 @@ static func _maze_attempt(width: int, run_seed: int, index: int, attempt: int):
 			if not open_cells.has(_maze_between(here, nb)):
 				shut.append(nb)
 		if not shut.is_empty():
-			open_cells[_maze_between(here, shut[_mix(salt + n * 4133) % shut.size()])] = true
+			open_cells[_maze_between(here, shut[Hash.mix(salt + n * 4133) % shut.size()])] = true
 
 	# ONE DOOR EACH END. A full-width mouth would let the party fan out before the
 	# maze had asked them anything; a single opening makes the entrance a PLACE,
 	# and puts everybody in the same corridor for the first moment.
-	var in_door: int = 2 * (_mix(salt + 1811) % cols)
-	var out_door: int = 2 * (_mix(salt + 3181) % cols)
+	var in_door: int = 2 * (Hash.mix(salt + 1811) % cols)
+	var out_door: int = 2 * (Hash.mix(salt + 3181) % cols)
 	# IN THE COMPACT FRAME, like every other cell here -- `_maze_at` puts the exit
 	# door back on `length - 3` once a wide row has moved it.
 	var doors: Dictionary = {
@@ -2022,8 +2023,8 @@ static func _maze_traps(seg, open_cells: Dictionary, cols: int, rows: int,
 	for n in wanted.size():
 		var kind: int = int(wanted[n])
 		for attempt in 24:
-			var i: int = _mix(salt + n * 3701 + attempt * 149) % cols
-			var j: int = _mix(salt + n * 6229 + attempt * 271) % rows
+			var i: int = Hash.mix(salt + n * 3701 + attempt * 149) % cols
+			var j: int = Hash.mix(salt + n * 6229 + attempt * 271) % rows
 			var here := Vector2i(i, j)
 			if taken.has(here):
 				continue
@@ -2188,7 +2189,7 @@ static func _place_patches(width: int, length: int, piece_ref: Array,
 		var span: int = hi - lo - int(piece.width)
 		var at: int = lo
 		if span > 0:
-			at = lo + _mix(salt + from * 8677) % (span + 1)
+			at = lo + Hash.mix(salt + from * 8677) % (span + 1)
 		for r in range(from, z):
 			piece_x[r] = clampi(at, 0, maxi(0, width - int(piece.width)))
 		from = -1
@@ -2257,7 +2258,7 @@ static func _edge_profile(width: int, length: int, salt: int) -> Array:
 	var base: int = mini(GridConfig.BASELINE_INSET, maxi(0, width / 2 - 2))
 	var deepest: int = _edge_inset_bound(width)
 	var stride: int = INSET_STEP_ROWS_MIN \
-		+ _mix(salt + 811) % maxi(1, INSET_STEP_ROWS_MAX - INSET_STEP_ROWS_MIN + 1)
+		+ Hash.mix(salt + 811) % maxi(1, INSET_STEP_ROWS_MAX - INSET_STEP_ROWS_MIN + 1)
 
 	# --- The waypoints, in row order ------------------------------------------
 	#
@@ -2271,10 +2272,10 @@ static func _edge_profile(width: int, length: int, salt: int) -> Array:
 	# baseline, which is still wanted and arrives on its own when a roll lands
 	# somewhere the ordering below discards.
 	var marks: Array = []
-	var events: int = 1 + _mix(salt) % 2
+	var events: int = 1 + Hash.mix(salt) % 2
 	for e in events:
 		marks.append(INSET_END_ROWS
-			+ _mix(salt + e * 7919) % maxi(1, length - 2 * INSET_END_ROWS))
+			+ Hash.mix(salt + e * 7919) % maxi(1, length - 2 * INSET_END_ROWS))
 	marks.sort()
 
 	for row in marks:
@@ -2285,7 +2286,7 @@ static func _edge_profile(width: int, length: int, salt: int) -> Array:
 		if r <= int(at[at.size() - 1]):
 			continue
 		at.append(r)
-		to.append(_mix(salt + r * 15485863) % (deepest + 1))
+		to.append(Hash.mix(salt + r * 15485863) % (deepest + 1))
 	at.append(length - 1)
 	to.append(base)
 
@@ -2394,19 +2395,13 @@ static func _safe_run_from(safe: Array, x0: int) -> int:
 # worth having occasionally and neither should be the norm. Never more, because a
 # ramp wider than that stops being a place and becomes the whole deck tilting.
 static func _ramp_width(salt: int) -> int:
-	var roll: int = _mix(salt) % 10
+	var roll: int = Hash.mix(salt) % 10
 	if roll == 0:
 		return 1
 	if roll == 9:
 		return 4
 	return 2 + roll % 2
 
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)
 
 # --- The race circuit ---------------------------------------------------------
 
@@ -2561,7 +2556,7 @@ static func _race_circuit(width: int, run_seed: int, index: int):
 	# so it never fires in play; it is here so a narrower caller gets a circuit
 	# rather than a square with no explanation.
 	var w: int = maxi(width, RACE_MIN_CANVAS)
-	var salt: int = _mix(run_seed + index * 7919)
+	var salt: int = Hash.mix(run_seed + index * 7919)
 	var length: int = RACE_ROWS_MIN + salt % (RACE_ROWS_MAX - RACE_ROWS_MIN + 1)
 	var seg = _blank("race_%d" % index, w, length)
 	var race_tags: Array[String] = ["foot", "generated", "race"]

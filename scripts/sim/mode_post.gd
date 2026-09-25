@@ -25,10 +25,11 @@ extends StaticBody3D
 # lobby is always base, the corridor past it is speculative, and the party is
 # standing still behind a wall while it is re-cut.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
 
-const LAYER := 1024             # `mode_post`, see project.godot [layer_names]
+const LAYER := Layers.POSTS      # shared with the bus post
 
 const POST_HEIGHT := 1.9
 const POST_WIDTH := 0.34

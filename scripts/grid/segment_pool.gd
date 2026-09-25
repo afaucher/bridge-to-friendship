@@ -14,6 +14,7 @@ extends RefCounted
 # numbers beforehand. The generator here is local, explicit, and depends on
 # nothing but the seed and the index.
 
+const Hash = preload("res://scripts/core/hash.gd")
 const SegmentData = preload("res://scripts/grid/segment_data.gd")
 
 # Listed explicitly rather than scanned from the directory. A DirAccess scan of
@@ -67,15 +68,6 @@ const POOL := [
 	},
 ]
 
-# A small deterministic generator. Deliberately NOT the global RNG -- see above.
-# Any stable hash would do; this one is a well-known integer mixer and is used
-# only to pick indices.
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)
 
 # The ordered list of segment paths for a run. Same seed and same index always
 # give the same segment, on every machine, forever.
@@ -190,8 +182,8 @@ static func section_for(run_seed: int, i: int) -> String:
 	# back is however far the party has walked since the last strip they crossed.
 	# The test teleports its body and never completes a round, so the answer was
 	# correctly the first lobby every time. See the note on that assertion.
-	if _mix(run_seed + i * 104729) % 3 == 0:
-		return String(POOL[_mix(run_seed + i * 7919) % POOL.size()]["path"])
+	if Hash.mix(run_seed + i * 104729) % 3 == 0:
+		return String(POOL[Hash.mix(run_seed + i * 7919) % POOL.size()]["path"])
 	return GENERATED_SECTION
 
 static func entry_for(path: String) -> Dictionary:

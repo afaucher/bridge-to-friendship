@@ -24,10 +24,11 @@ extends StaticBody3D
 # about the shopkeeper -- starting with resolve_shove_contact directly, where a
 # dash into a stone pushes it one cell.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
 
-const LAYER := 512              # `merchant`, see project.godot [layer_names]
+const LAYER := Layers.MERCHANT
 
 # Sold or not. One sale each, which is what makes him CONTESTED -- four players
 # and an unlimited shopkeeper is four dumped hats and four tall ones, which is

@@ -12,6 +12,7 @@ extends Node3D
 # different multiplayer roots and genuinely play against each other over a
 # socket. That is what makes the authority model testable in the gate.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const PlayerInput = preload("res://scripts/sim/player_input.gd")
 const RoundMachine = preload("res://scripts/sim/round_machine.gd")
@@ -50,6 +51,7 @@ const ShotImpact = preload("res://scripts/ui/shot_impact.gd")
 const LobbyMusic = preload("res://scripts/ui/lobby_music.gd")
 const NetTelemetry = preload("res://scripts/net/net_telemetry.gd")
 const GameMode = preload("res://scripts/sim/game_mode.gd")
+const Hash = preload("res://scripts/core/hash.gd")
 const ModePost = preload("res://scripts/sim/mode_post.gd")
 const BusBody = preload("res://scripts/sim/bus_body.gd")
 const SegmentPool = preload("res://scripts/grid/segment_pool.gd")
@@ -378,7 +380,7 @@ var _front_wall: StaticBody3D = null
 var _rear_wall: StaticBody3D = null
 
 # project.godot names 3d_physics layer 2 "players"; this is its mask bit.
-const PLAYERS_LAYER_BIT := 2
+const PLAYERS_LAYER_BIT := Layers.PLAYERS
 
 # Where the local human is pointing. Stateful because it remembers which device
 # was last used, and holds the last angle when neither is being moved.
@@ -1443,7 +1445,7 @@ func _seeds_for(segments_wanted: int) -> Array:
 	var rounds: int = SegmentPool.rounds_in(segments_wanted)
 	var out: Array = run_seeds.duplicate()
 	while out.size() < rounds:
-		out.append(SegmentPool._mix(int(grid.run_seed) + out.size() * 7919)
+		out.append(Hash.mix(int(grid.run_seed) + out.size() * 7919)
 			if grid != null else out.size())
 	return out
 
@@ -2452,7 +2454,7 @@ func _nearest_target(rusher: Node) -> Node:
 # Deck, parapets and pillars block sight; players do not. Hiding BEHIND A FRIEND
 # would make the friend a shield, which is a mechanic this game has not decided
 # to have -- and the one it does have for that is the shove.
-const SIGHT_BLOCKERS := 1 | 4        # world | stones
+const SIGHT_BLOCKERS := Layers.SIGHT_BLOCKERS
 
 func _can_see(rusher: Node, body: Node) -> bool:
 	return _clear_line(rusher.global_position, body.global_position)
@@ -2649,10 +2651,10 @@ func _wake_graves() -> void:
 # and know what it will get.
 func _spawn_pack(cell: Vector2i, at: Vector3) -> Array:
 	var span: int = SimConfig.ZOMBIE_PACK_MAX - SimConfig.ZOMBIE_PACK_MIN + 1
-	var roll: int = ZombieBody._mix(cell.x * 73856093 + cell.y * 19349663)
+	var roll: int = Hash.mix(cell.x * 73856093 + cell.y * 19349663)
 	var count: int = SimConfig.ZOMBIE_PACK_MIN + (roll % span)
 	# So two graves side by side do not produce two identically-oriented rings.
-	var phase: float = float(ZombieBody._mix(roll + 1) % 3600) * 0.1
+	var phase: float = float(Hash.mix(roll + 1) % 3600) * 0.1
 
 	var raised: Array = []
 	for i in count:
@@ -4009,7 +4011,7 @@ func _process_bullets() -> void:
 			# depending on where it is.
 			var query := PhysicsRayQueryParameters3D.create(
 				to_global(from_local), to_global(bullet.position),
-				1 | 2 | 4 | 8 | 16 | HatBody.WORN_LAYER)
+				Layers.SHOT_STOPPERS)
 			query.exclude = [bullet.shooter_rid]
 			var hit := space.intersect_ray(query)
 			if not hit.is_empty():
@@ -4853,7 +4855,10 @@ func _update_laser_sight() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if space != null:
 		var query := PhysicsRayQueryParameters3D.create(from, from + along * reach)
-		query.collision_mask = (1 << 0) | (1 << 1) | (1 << 4)
+		# Asked of the same constant the bullet sweep uses. It was spelled out by
+		# hand as world | players | enemies and missed stones, balls and worn hats,
+		# so the dot sailed through a pillar the round would stop at.
+		query.collision_mask = Layers.SHOT_STOPPERS
 		query.exclude = [body.get_rid()]
 		var hit := space.intersect_ray(query)
 		if not hit.is_empty():
@@ -5990,7 +5995,7 @@ func _build_wall(wall_name: String) -> StaticBody3D:
 	# Not layer 1 (world), which every body masks: putting the barrier there would
 	# stop bullets, balls, grenades and rushers too, and each of those is a design
 	# decision nobody has made yet.
-	wall.collision_layer = 1 << 7
+	wall.collision_layer = Layers.BARRIER
 	wall.collision_mask = 0
 
 	# EXACTLY AS WIDE AS THE BRIDGE. It was 128 m before -- wide enough to be

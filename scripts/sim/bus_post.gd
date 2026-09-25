@@ -19,9 +19,10 @@ extends StaticBody3D
 # ONE AT THE MIDDLE OF EVERY LEVEL THAT HAS BUSES IN IT. Halfway is the furthest
 # you can ever be from it, which is the walk being paid for.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
-const LAYER := 1024             # shared with the mode post: both are `posts`
+const LAYER := Layers.POSTS      # shared with the mode post
 
 const POST_HEIGHT := 1.9
 const POST_WIDTH := 0.3

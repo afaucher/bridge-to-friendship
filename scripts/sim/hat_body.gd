@@ -18,6 +18,7 @@ extends RigidBody3D
 # never predicted, so the determinism objection does not apply. See
 # plinko_ball.gd, which argues this at length.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 const HatStyle = preload("res://scripts/sim/hat_style.gd")
@@ -27,8 +28,8 @@ enum Mode { WORN, FLYING, LOOSE }
 # TWO LAYERS, because a hat means two different things depending on where it is.
 # A hat ON A HEAD is a target the round sweep masks; one on the DECK is not, or a
 # dropped pile would be cover nobody built. Both are named in project.godot.
-const LOOSE_LAYER := 1 << 5      # 6: "hats"
-const WORN_LAYER := 1 << 8       # 9: "worn_hats"
+const LOOSE_LAYER := Layers.HATS
+const WORN_LAYER := Layers.WORN_HATS
 
 # Host-assigned and monotonic, NEVER a creation-order index. Stones get away with
 # list indices because both machines load the same segments in the same order; a
@@ -322,7 +323,7 @@ func _set_simulated(simulated: bool) -> void:
 		HatStyle.apply(self)
 		shape.disabled = not simulated
 		collision_layer = LOOSE_LAYER
-		collision_mask = 1
+		collision_mask = Layers.WORLD
 
 # HOW TALL A SLOT THIS HAT TAKES UP IN A TOWER. One question, one answer, asked
 # by the two places that must never disagree: the stack spacing and the worn hit

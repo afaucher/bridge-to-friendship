@@ -17,12 +17,13 @@ extends CharacterBody3D
 # you have to shoot WHILE it is eating you has to survive the first shot, or there
 # is no fight to have.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const Hit = preload("res://scripts/sim/hit.gd")
 
 # `bus` is 2048 and the layer names run out there; a swallow is an enemy that
 # bullets must find, so it sits with the things bullets already look for.
-const LAYER := 1 << 3            # 4: "enemies", the layer rushers and gunners use
+const LAYER := Layers.SWALLOW     # NOT the enemy layer -- see Layers.SWALLOW
 
 var swallow_id: int = 0
 var cell: Vector2i = Vector2i.ZERO

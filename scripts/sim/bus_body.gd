@@ -21,10 +21,11 @@ extends CharacterBody3D
 # body rests on it, `add_collision_exception_with` is mutual, and Godot transports
 # a rider one tick late.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
-const LAYER := 2048             # `bus`, see project.godot [layer_names]
+const LAYER := Layers.BUS
 
 # THE SHAPE. A tub, open at the top: sides high enough that a rider is standing
 # IN it rather than balanced on a plank, and low enough that they can still shoot
@@ -147,7 +148,7 @@ func _ready() -> void:
 	# one thing the bus ignored. Sixth time a bug in this project has been one bit
 	# in a mask, and the same shape every time: the wall existed, was positioned,
 	# was drawn and was replicated, and something drove straight through it.
-	collision_mask = 1 | (1 << 7)
+	collision_mask = Layers.WORLD | Layers.BARRIER
 	motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
 	_rebuild()
 

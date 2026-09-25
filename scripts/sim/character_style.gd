@@ -28,6 +28,7 @@ extends RefCounted
 
 # Rec. 709 weights -- the standard perceptual luminance of an RGB triple, and the
 # reason green counts for ten times what blue does.
+const Hash = preload("res://scripts/core/hash.gd")
 const LUMA_R := 0.2126
 const LUMA_G := 0.7152
 const LUMA_B := 0.0722
@@ -158,21 +159,12 @@ const EYE_HEIGHT_MAX := 0.64
 const ASYM_SIZE := 0.45          # as a fraction of the base size
 const ASYM_HEIGHT := 0.10        # metres up or down
 
-# The same well-known integer mixer hat_style.gd and segment_pool.gd use, and for
-# the same reason: NOT the global RNG, which is entropy-seeded per launch and
-# would make every one of these answers different on Tuesday.
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)
 
 # A 0..1 draw for one knob. `salt` keeps the knobs independent -- without it every
 # knob of a given face would be the same number, and wide-set eyes would always
 # also be big ones.
 static func _draw(character_seed: int, salt: int) -> float:
-	return float(_mix(character_seed * 8191 + salt * 7919) % 10000) / 9999.0
+	return float(Hash.mix(character_seed * 8191 + salt * 7919) % 10000) / 9999.0
 
 # The one roll in the whole character system. Called once, on a first launch, and
 # saved -- see character_config.gd.
@@ -198,7 +190,7 @@ static func eye_knobs(character_seed: int) -> Dictionary:
 		# face would be odd in the same direction and it would read as a bug in
 		# the model rather than as a face.
 		var odd: Dictionary = left if _draw(character_seed, 5) < 0.5 else right
-		var flavour: int = _mix(character_seed * 31 + 6) % 3
+		var flavour: int = Hash.mix(character_seed * 31 + 6) % 3
 		var updown: float = 1.0 if _draw(character_seed, 7) < 0.5 else -1.0
 		match flavour:
 			0:

@@ -48,6 +48,7 @@ extends Node3D
 # They are FROZEN while the pile is intact, so an untouched corpse costs the
 # solver nothing at all.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 const FragmentShape = preload("res://scripts/sim/fragment_shape.gd")
 
@@ -63,8 +64,8 @@ const SCENES := {
 	Kind.TURRET: "res://scenes/turret.tscn",
 }
 
-const LAYER_DEBRIS := 1 << 12       # project.godot layer 13
-const LAYER_WORLD := 1 << 0
+const LAYER_DEBRIS := Layers.DEBRIS
+const LAYER_WORLD := Layers.WORLD
 
 # The debris mask: the deck, and each other. NOT players, NOT enemies -- see the
 # header. This is the one place in the project where a deliberately narrow mask

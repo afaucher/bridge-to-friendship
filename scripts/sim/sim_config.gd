@@ -15,7 +15,6 @@ extends RefCounted
 # reconciliation replay of N ticks inside a single frame only reproduces the
 # original N frames if the tick and the physics step are the same duration.
 # project.godot pins physics to 60 Hz; if that changes, this changes with it.
-const TICK_RATE := 60
 const TICK_DELTA := 1.0 / 60.0
 
 # --- Walking ------------------------------------------------------------------
@@ -353,11 +352,6 @@ const BUS_EJECT_SPEED := 10.0
 # four can each fetch one without standing in a queue.
 const BUS_POST_COOLDOWN_TICKS := 120
 
-# How long a client waits between asking the host for a full snapshot. Long
-# enough that the answer has time to arrive and be applied, short enough that a
-# hole in the client's world is measured in a few ticks rather than in keyframes.
-const KEYFRAME_ASK_COOLDOWN := 6
-
 # --- Health -------------------------------------------------------------------
 const MAX_HEALTH := 5
 
@@ -538,19 +532,6 @@ const BALL_RADIUS := 0.6
 const PLINKO_LAUNCH_SPEED := 10.0
 const PLINKO_CONE_DEG := 70.0
 
-# Bounce, and a proportional drag that decides the ROLLING speed. Gravity along
-# the bridge's 4-degree pitch is ~1.67 m/s^2, so terminal roll is about
-# 1.67 / drag -- at 0.35 that is roughly 4.8 m/s, comfortably under a player's
-# 6 m/s walk. Balls have to be outrunnable: the threat is that one is still
-# coming while you are busy, not that it is faster than you.
-const PLINKO_BOUNCE := 0.5
-
-# Below this approach speed a contact is a ROLL, not a bounce. Resting on the
-# deck still reports a floor collision every tick, and treating those as bounces
-# multiplies the tangential roll away in a fraction of a second -- which presents
-# as "the friction is far too high" while the friction is doing nothing wrong.
-const PLINKO_BOUNCE_MIN_SPEED := 1.5
-
 # Proportional drag, which sets the ROLLING speed: gravity along the bridge's
 # 4-degree pitch is ~1.67 m/s^2, so terminal roll is about 1.67 / drag. At 0.25
 # that is ~6.7 m/s -- a shade above a player's 6 m/s walk, so a ball on your tail
@@ -613,7 +594,6 @@ const PLINKO_HIT_COOLDOWN := 0.5
 # the ranged specials weak by construction -- a shotgun was a shove from further
 # away, and the shove is free.
 
-const RUSHER_RADIUS := 0.5
 const RUSHER_HEIGHT := 1.4
 
 # Close enough that waking one reads as YOUR mistake, far enough that the rise
@@ -861,11 +841,6 @@ const MERCHANT_RARITY := 6
 # playtest as "the elevator hurts you".
 const MERCHANT_CLEARANCE := 3
 
-# How close a dash has to get. Measured centre to centre and generous, because
-# the merchant is a full cell wide and the alternative to a forgiving radius is a
-# player bouncing off the shopkeeper repeatedly with nothing happening.
-const MERCHANT_TRADE_RADIUS := 1.4
-
 # How long after a hat lands before it can be picked up again.
 #
 # THE WHOLE POINT IS THAT A DISLODGE AND A RE-COLLECT ARE NOT THE SAME EVENT. A
@@ -1045,15 +1020,6 @@ const MG_BULLET_DROP := 0.010
 # decorative while the constant still said 30. Same ~15% margin over range/speed
 # as the value it replaces.
 const MG_BULLET_LIFETIME := 3.5
-
-# WHAT A ROUND DOES TO A PLINKO BALL. Asked for in playtest.
-#
-# An impulse rather than a set velocity, unlike the dash's deflect: a dash is a
-# player deciding where that ball goes, and a round is a nudge that ADDS to
-# whatever the ball was already doing. Against a 2 kg ball this is about 5 m/s,
-# a third of PLINKO_DEFLECT_SPEED -- shooting a ball moves it, batting it away
-# with your body still does more.
-const MG_BALL_PUSH := 10.0
 
 # The rifle's range from hazards.md, deliberately. This is not the long-range
 # special, so it must not out-reach the one that is.
@@ -1488,7 +1454,7 @@ const SHIELD_MIN_BLOCK_DISTANCE := 1.0
 const ACTION_SHOVE := 1 << 0
 const ACTION_ROPE := 1 << 1
 const ACTION_SPECIAL := 1 << 2
-const ACTION_SWITCH := 1 << 3
+# 1 << 3 was ACTION_SWITCH, which nothing ever read. Free.
 
 # HELD, not pressed -- set for every tick the trigger is down.
 #

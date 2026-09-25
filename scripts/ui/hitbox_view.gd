@@ -15,10 +15,11 @@ extends RefCounted
 
 # Everything it builds hangs off the shape it describes, under this name, so
 # clearing up is a search rather than a bookkeeping list that can go stale.
+const Layers = preload("res://scripts/core/layers.gd")
 const MARKER := "__hitbox"
 
 # Layer 1 is the WORLD: deck slabs, parapets, ramp wedges, ladders.
-const WORLD_LAYER_BIT := 1
+const WORLD_LAYER_BIT := Layers.WORLD
 
 # BODIES ONLY, NEVER THE BRIDGE ITSELF. The first version drew every collision
 # shape in the tree, and came back from playtest as "the whole screen is light

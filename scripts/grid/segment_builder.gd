@@ -29,6 +29,7 @@ extends RefCounted
 #   checker is what makes distance readable from a fixed 45-degree camera, and
 #   every judgement this game asks for is a judgement about cells.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 # Built with the segment so callers can find things without re-walking the grid.
@@ -119,7 +120,7 @@ static func build(seg, z_offset: int = 0, h_offset: int = 0) -> Built:
 	var body := StaticBody3D.new()
 	body.name = "Structure"
 	# Layer 1 is "world"; players are layer 2 and mask 7, so they collide here.
-	body.collision_layer = 1
+	body.collision_layer = Layers.WORLD
 	body.collision_mask = 0
 	out.root.add_child(body)
 

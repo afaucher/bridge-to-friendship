@@ -18,6 +18,7 @@ extends RefCounted
 # mouse should not have it stolen by a resting stick. Whichever one MOVED most
 # recently owns the aim until the other one moves.
 
+const Layers = preload("res://scripts/core/layers.gd")
 const GridConfig = preload("res://scripts/grid/grid_config.gd")
 
 # No device has ever been touched, so there is no aim to report and the body
@@ -146,7 +147,7 @@ func _cast(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dict
 	if space == null:
 		return {}
 	var query := PhysicsRayQueryParameters3D.create(from, to)
-	query.collision_mask = (1 << 0) | (1 << 4)
+	query.collision_mask = Layers.WORLD | Layers.ENEMIES
 	query.collide_with_areas = false
 	return space.intersect_ray(query)
 

@@ -2,6 +2,7 @@ extends RefCounted
 
 # Safe: sim_config.gd preloads nothing at all, so this cannot close a class cycle
 # -- which CLAUDE.md notes HANGS a run rather than failing it.
+const Hash = preload("res://scripts/core/hash.gd")
 const SimConfig = preload("res://scripts/sim/sim_config.gd")
 
 # What a hat LOOKS like, derived entirely from its style_id.
@@ -100,18 +101,12 @@ static func random_ordinary_style() -> int:
 static func random_tall_style() -> int:
 	return TALL_FIRST + absi(randi()) % TALL_STYLE_COUNT
 
-static func _mix(value: int) -> int:
-	var x: int = value
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = (x ^ (x >> 16)) * 0x45d9f3b
-	x = x ^ (x >> 16)
-	return absi(x)
 
 # A 0..1 draw for one knob. `salt` keeps the knobs independent -- without it every
 # knob of a given hat would be the same number, and a tall hat would always be a
 # wide one.
 static func _draw(style_id: int, salt: int) -> float:
-	return float(_mix(style_id * 8191 + salt * 7919) % 10000) / 9999.0
+	return float(Hash.mix(style_id * 8191 + salt * 7919) % 10000) / 9999.0
 
 static func _between(style_id: int, salt: int, low: float, high: float) -> float:
 	return low + (high - low) * _draw(style_id, salt)
@@ -183,7 +178,7 @@ static func _tall_knobs(style_id: int) -> Dictionary:
 		"rim": base * (1.35 + 0.25 * _draw(style_id, 13)),
 		"height": slot,
 		"curl": -0.05 + 0.15 * _draw(style_id, 14),
-		"colour": PALETTE[_mix(style_id * 104729 + 17) % PALETTE.size()],
+		"colour": PALETTE[Hash.mix(style_id * 104729 + 17) % PALETTE.size()],
 		# CENTRED ON THE ORIGIN rather than standing on it, which is what an
 		# ordinary hat does. See apply(): it is what makes the art and the worn hit
 		# column occupy exactly the same 1.225 m, and at this size that stops being
@@ -209,7 +204,7 @@ static func knobs(style_id: int) -> Dictionary:
 		"rim": rim,
 		"height": height,
 		"curl": curl,
-		"colour": PALETTE[_mix(style_id * 104729 + 17) % PALETTE.size()],
+		"colour": PALETTE[Hash.mix(style_id * 104729 + 17) % PALETTE.size()],
 		# An ordinary hat STANDS ON its origin, which is what a hat resting on the
 		# deck wants: place_loose puts the origin on the surface and the hat sits
 		# on top of it.
