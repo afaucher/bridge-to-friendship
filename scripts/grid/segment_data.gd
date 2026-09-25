@@ -18,6 +18,11 @@ var base_height: int = 0
 var width: int = GridConfig.DEFAULT_WIDTH
 var length: int = 0
 var tags: Array[String] = []
+# THE THEME A GENERATOR DREW THIS SECTION'S SET PIECES FROM, or "" for anything
+# that was not themed (a file, a lobby, a mode's own terrain). The dressing pass
+# dresses with this rather than working it out again, so the pieces and the
+# hazards around them cannot disagree about what kind of section this is.
+var theme: String = ""
 
 # --- Set-pieces (M18) ---------------------------------------------------------
 #

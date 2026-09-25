@@ -326,7 +326,8 @@ func build_run(seed_value: int, segment_count_wanted: int, modes: Array = [],
 			# somewhere they cannot choose again, and that guarantee is worth
 			# nothing if it lives in one caller rather than at the point of build.
 			_load_generated(SegmentGen.lobby(width,
-				SegmentPool.slot_seed(seed_value, seeds, i), i), i)
+				SegmentPool.slot_seed(seed_value, seeds, i), i), i,
+				SegmentPool.slot_seed(seed_value, seeds, i))
 			continue
 		var mode: int = _mode_of_slot(modes, i)
 		# A MODE WITH ITS OWN TERRAIN OWNS EVERY NON-LOBBY SLOT, including the ones
@@ -346,9 +347,9 @@ func build_run(seed_value: int, segment_count_wanted: int, modes: Array = [],
 		# entirely.
 		var slot: int = SegmentPool.slot_seed(seed_value, seeds, i)
 		if GameMode.terrain(mode) != GameMode.TERRAIN_SECTIONS:
-			_load_generated(_section_for_mode(mode, slot, i), i)
+			_load_generated(_section_for_mode(mode, slot, i), i, slot)
 		elif path == SegmentPool.GENERATED_SECTION:
-			_load_generated(_section_for_mode(mode, slot, i), i)
+			_load_generated(_section_for_mode(mode, slot, i), i, slot)
 		else:
 			load_segment_file(path)
 
@@ -386,13 +387,29 @@ func _section_for_mode(mode: int, seed_value: int, i: int):
 # A segment that was never a file. Everything after parsing is identical, which
 # is the point of generating SegmentData rather than text: the validator, the
 # builder, the dressing pass and the join contract cannot tell the difference.
-func _load_generated(seg, index: int) -> void:
+#
+# DRESSED WITH THE SLOT'S OWN SEED, which is the one the generator was handed.
+# It used the RUN seed, so the moment a round had a seed of its own (the mode
+# selector rolls one) the set pieces came from one theme and the hazards around
+# them from another -- and the dressing did not change when the round was
+# re-rolled. See test_theme_agreement.
+func _load_generated(seg, index: int, slot_seed: int) -> void:
 	if seg == null:
 		printerr("[BridgeGrid] the generator produced nothing for slot ", index)
 		return
 	if dress_hazards and not seg.tags.has("lobby") and not seg.no_dress:
-		HazardDressing.dress(seg, HazardDressing.theme_for(run_seed, index), run_seed, index)
+		var theme: String = seg.theme if seg.theme != "" \
+			else HazardDressing.theme_for(slot_seed, index)
+		HazardDressing.dress(seg, theme, slot_seed, index)
+		_dressed_themes[index] = theme
 	load_segment(seg)
+
+# Which theme the dressing pass used for slot `index`, or "" if it was not
+# dressed. Read by tests; nothing in play needs it.
+var _dressed_themes: Dictionary = {}
+
+func dressed_theme_of(index: int) -> String:
+	return str(_dressed_themes.get(index, ""))
 
 # Loaded segments, each with the z at which it starts.
 var _segments: Array = []          # [{data, z_offset}]

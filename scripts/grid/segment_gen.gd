@@ -633,6 +633,8 @@ static func section(width: int, run_seed: int, index: int, attempts: int = 24):
 		# only a cooperating pair can cross strands a lone player, and drop-in
 		# makes that a real case rather than a hypothetical.
 		if SegmentValidator.validate(seg).is_empty():
+			if not want_maze:
+				seg.theme = HazardDressing.theme_for(run_seed, index)
 			return seg
 	# EVERY ATTEMPT REJECTED. Fall back to something that cannot fail rather than
 	# returning null and making every caller handle it: a flat deck is a boring
