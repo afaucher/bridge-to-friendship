@@ -18,6 +18,11 @@ extends "res://scripts/test_support/test_case.gd"
 #      going up.
 #   5. A HIT TAKES ITS OWN STRENGTH, and a body arriving takes none. It read
 #      `hit.damage`, a field `Hit` does not have, so everything did exactly 1.
+#   6. A SURFACED SWALLOW IS NOT RE-ANNOUNCED EVERY TICK. Its reliable state is
+#      sent on CHANGE, and the drain clock inside it changed every tick, so a
+#      swallow somebody stood beside sent its whole bank sixty times a second.
+#      Counted on the client, at the line that consumes the packet, over a quiet
+#      second: a bite or two may legitimately change the bank, sixty may not.
 
 const GameWorldScript = preload("res://scripts/sim/world/game_world.gd")
 const NetHarness = preload("res://scripts/test_support/net_harness.gd")
@@ -35,6 +40,12 @@ var host_swallow = null
 var phase := 0
 var frame := 0
 var worst_client_pull := 0.0
+var received_before := 0
+
+# A bite can change the bank, and so can the surfacing edge: a handful of
+# announcements a second is the rule working. One per tick is the bug.
+const QUIET_FRAMES := 60
+const QUIET_MAX_ANNOUNCEMENTS := 4
 
 func setup(main) -> void:
 	timeout_seconds = 60.0
@@ -149,6 +160,18 @@ func _physics_process(_delta: float) -> void:
 			check(want.length() > 0.0, "the host pulls the client's player (%.2f)" % want.length())
 			near(pull.length(), want.length(), 0.5,
 				"and so does the client's OWN world, which is what its prediction replays")
+			received_before = int(client.swallow_states_received)
+			phase = 3
+			frame = 0
+		3:
+			if frame < QUIET_FRAMES:
+				return
+			check(bool(host_swallow.surfaced),
+				"the swallow stayed up for the whole quiet window, so it was stepping")
+			var got: int = int(client.swallow_states_received) - received_before
+			check(got <= QUIET_MAX_ANNOUNCEMENTS,
+				"a surfaced swallow is announced on change, not every tick (%d in %d ticks)"
+					% [got, QUIET_FRAMES])
 			host_swallow.receive_hit(_hit(Hit.Kind.BULLET, 99))
 			phase = 2
 			frame = 0

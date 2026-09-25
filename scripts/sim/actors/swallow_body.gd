@@ -312,6 +312,17 @@ func capture_state() -> Array:
 	return [position, surfaced, health, held_hats.duplicate(),
 		held_specials.duplicate(), drain_timer, killed]
 
+# WHAT IS ANNOUNCED, which is capture_state() without the drain clock. The world
+# sends this reliably and only when it CHANGES, and `drain_timer` advances on every
+# tick the swallow is up -- so leaving it in made "sent on change" mean "sent every
+# tick", a reliable packet carrying the whole bank sixty times a second for as long
+# as anybody stood near one. Only the host bites, so no client ever reads the clock.
+# Same layout as capture_state(), with the clock zeroed, so apply_state() reads both.
+func wire_state() -> Array:
+	var s: Array = capture_state()
+	s[5] = 0.0
+	return s
+
 func apply_state(s: Array) -> void:
 	position = s[0]
 	var up: bool = bool(s[1])

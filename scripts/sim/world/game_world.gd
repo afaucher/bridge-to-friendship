@@ -3441,11 +3441,14 @@ func _spawn_swallow(at: Vector3, cell: Vector2i = Vector2i.ZERO):
 # client standing in a pull its own world did not contain diverged from the host
 # on every tick of it. See test_swallow_replication.
 var _swallow_sent: Dictionary = {}     # swallow_id -> the state last announced
+# Swallow announcements this CLIENT has consumed. Counted where the packet is
+# read, not where it is sent, so it measures what arrived.
+var swallow_states_received := 0
 
 func _announce_swallow(swallow) -> void:
 	if not networked or not is_host:
 		return
-	var state: Array = swallow.capture_state()
+	var state: Array = swallow.wire_state()
 	var id: int = int(swallow.swallow_id)
 	if _swallow_sent.get(id, []) == state:
 		return
@@ -3481,6 +3484,7 @@ func _swallow_by_id(id: int):
 func _swallow_state(id: int, cell: Vector2i, state: Array) -> void:
 	if is_host or _swallows_root == null:
 		return
+	swallow_states_received += 1
 	var swallow = _swallow_by_id(id)
 	if swallow == null:
 		swallow = SwallowBody.new()
