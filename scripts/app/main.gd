@@ -176,6 +176,21 @@ func _create_world(is_host: bool, local_peer: int, networked: bool) -> void:
 	# session is exactly the thing under investigation; the hundred worlds the gate
 	# builds are not, and must not write into user://.
 	world.telemetry_enabled = true
+	# AND THE HOST'S NET LOG GOES ON WITH IT, for the same reason and in the same
+	# place. The host is the machine that already collects everybody's telemetry
+	# rows, so it is the one whose log is worth reading -- and a diagnostic you have
+	# to remember to switch on is a diagnostic that is off in the session you
+	# needed it for.
+	#
+	# SET LOCALLY, NOT PUSHED. `push_setting` would broadcast it and overrule what
+	# each client chose; this is the host turning on its own log. A client can still
+	# flip its own from the console.
+	#
+	# AND NOT AS THE KNOB'S DEFAULT, which would follow every world the gate builds
+	# into its own log and print `[Net]` lines under a hundred tests that are not
+	# about networking.
+	if networked and is_host:
+		DebugSettings.set_value("net_log", 1)
 	add_child(world)
 	# Started after being added to the tree: the RPC paths a GameWorld uses are
 	# resolved from its position in the tree, so it must be parented first.

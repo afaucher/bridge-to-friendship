@@ -17,6 +17,39 @@ extends RefCounted
 # project.godot pins physics to 60 Hz; if that changes, this changes with it.
 const TICK_DELTA := 1.0 / 60.0
 
+# --- Simulating a long link on a short one -------------------------------------
+#
+# TWO WINDOWS MACHINES ON ONE DESK IS THE FASTEST WAY TO PLAYTEST AND THE LEAST
+# LIKE THE THING BEING SHIPPED. A LAN is sub-millisecond, so every prediction and
+# reconciliation path in this game runs in its easiest possible case -- and the
+# report the telemetry exists for, "networking gets worse over time", came from a
+# session across the country.
+#
+# ONE SWITCH, BECAUSE THE ALTERNATIVE IS THREE SLIDERS ON TWO MACHINES. A playtest
+# across a desk needs "make this feel like the real thing", not a latency budget,
+# and a control that takes three settings per machine is a control nobody sets
+# before the session they needed it for.
+#
+# A PRESET WINS OVER THE SLIDERS, and that precedence is stated rather than
+# discovered: `net_sim_preset` is the coarse control for playing, the three
+# `net_sim_*` numbers are the fine control for an experiment, and turning the
+# preset off is what hands control back to them. One read path, so there is no
+# second copy of "what is the link pretending to be".
+#
+# THE NUMBERS ARE ONE-WAY. Each machine delays what arrives at it, so the round
+# trip a player feels is twice the latency here.
+#
+# `coast` is roughly the continental US: ~40 ms each way, 80 round trip, with the
+# jitter a real long path carries and NO LOSS, so anything odd in a session is
+# attributable to the latency rather than to a packet somebody threw away.
+# `rough` is another continent plus a bad evening, and it carries loss on purpose
+# -- it is the setting that tests the rule that decisions go reliably while motion
+# rides the snapshot.
+const NET_SIM_PRESETS := {
+	"coast": {"latency_ms": 40.0, "jitter_ms": 10.0, "loss_pct": 0.0},
+	"rough": {"latency_ms": 90.0, "jitter_ms": 30.0, "loss_pct": 2.0},
+}
+
 # --- Walking ------------------------------------------------------------------
 const WALK_SPEED := 6.0
 const WALK_ACCEL := 60.0      # reaches full speed in 0.1s -- responsive, not floaty

@@ -51,7 +51,56 @@ const OPTIONS := {
 		"label": "Network log",
 		"choices": ["off", "on"],
 		"default": 0,
-		"help": "Per-event print for peer connect/disconnect, spawn, and state sync.",
+		"help": "Per-event print for peer connect/disconnect, spawn, and state sync. Turned ON automatically when you HOST a networked session -- the default stays off so the gate's hundred worlds stay quiet. Only NetworkManager prints through this, so a test that stands up its own peer logs nothing however it is set.",
+	},
+
+	# --- Simulating a long link on a short one --------------------------------
+	#
+	# ONE SWITCH FOR A PLAYTEST, and the reason it exists rather than three
+	# sliders: setting three numbers on each of two machines before every session
+	# is a thing that does not get done. Set it on the HOST and it reaches
+	# everybody, because a host's settings are broadcast at a tick boundary -- so
+	# one choice on one machine makes the whole session pretend.
+	#
+	# IT WINS OVER THE THREE NUMBERS BELOW while it is on, which is stated on both
+	# ends so nobody has to discover it. Off hands control back to them.
+	#
+	# AND IT IS A SETTING RATHER THAN A BUILD DEFAULT, which was the other way to
+	# do this and is worse for one reason: a simulated link that is always on
+	# quietly makes every report afterwards a report about a link somebody
+	# invented, and the day it is forgotten is the evening spent chasing a bug
+	# that is not there. `BTF_NET_SIM_PRESET=coast` in a shortcut is the
+	# zero-click version for a copied binary.
+	"net_sim_preset": {
+		"section": "Diagnostics",
+		"label": "Simulate a long link",
+		"choices": ["off", "coast", "rough"],
+		"default": 0,
+		"help": "Pretend the LAN is a long-distance connection. 'coast' is roughly the continental US (40 ms each way, 80 round trip, some jitter, no loss); 'rough' is another continent on a bad evening and carries 2% loss. Set it on the HOST and every client gets it. While it is anything but 'off' it OVERRIDES the three numbers below.",
+	},
+	# IN MILLISECONDS BECAUSE THAT IS WHAT A PERSON KNOWS, converted to ticks
+	# where it is applied -- a packet can only be consumed on a tick boundary, so
+	# the real resolution is 16.7 ms and a finer number would be a lie.
+	"net_sim_latency_ms": {
+		"section": "Diagnostics",
+		"kind": KIND_FLOAT,
+		"label": "Simulated latency (one way)",
+		"default": 0.0, "min": 0.0, "max": 200.0, "step": 5.0,
+		"help": "Added to every packet ARRIVING at this machine, so the round trip is twice it. 40 is roughly coast to coast in the US; 70 is a bad day. Applies to the unreliable channels only -- snapshots and input -- because ENet retransmits the reliable ones and pretending otherwise would simulate something that cannot happen.",
+	},
+	"net_sim_jitter_ms": {
+		"section": "Diagnostics",
+		"kind": KIND_FLOAT,
+		"label": "Simulated jitter",
+		"default": 0.0, "min": 0.0, "max": 100.0, "step": 5.0,
+		"help": "Random variation either side of the latency. A SNAPSHOT that jitters ahead of one already scheduled is DROPPED rather than applied out of order, because that is what an unreliable_ordered channel does. Input is redundant and deduped by tick, so it survives the same reordering -- which is the asymmetry worth feeling.",
+	},
+	"net_sim_loss_pct": {
+		"section": "Diagnostics",
+		"kind": KIND_FLOAT,
+		"label": "Simulated packet loss",
+		"default": 0.0, "min": 0.0, "max": 25.0, "step": 1.0,
+		"help": "Percentage of arriving unreliable packets thrown away. Reliable ones are untouched: ENet redelivers those, and the whole rule that decisions go reliably while motion rides the snapshot exists so that this knob cannot break the game -- which makes it the thing to test.",
 	},
 	"steam": {
 		"section": "Diagnostics",

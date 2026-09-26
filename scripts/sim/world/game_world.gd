@@ -200,8 +200,46 @@ var input_provider: Callable = Callable()
 # both the keyboard and the network inbox for that peer.
 var scripted_inputs: Dictionary = {}
 
-# Test-only inbound latency, in ticks.
+# Test-only inbound latency, in ticks. Set directly by the prediction tests, and
+# ADDED TO rather than replaced by the simulated link below -- a test that wants
+# exactly 40 ticks must not have a playtest knob move it.
 var debug_inbound_delay_ticks: int = 0
+
+# --- Simulating a long link on a short one -------------------------------------
+#
+# EACH MACHINE DELAYS WHAT ARRIVES AT IT, which is what makes one number produce a
+# real round trip: a client's input is late reaching the host, and the host's state
+# is late coming back. The host applies no delay to its OWN input, because that is
+# the real asymmetry -- a host has zero latency to itself, and a design that
+# forgets it will feel wrong for one player and right for the others.
+#
+# See SimConfig.NET_SIM_PRESETS and the `net_sim_*` knobs.
+var _delayed_inputs: Array = []        # [release_tick, peer, batch]
+
+# THE HIGHEST RELEASE TICK ALREADY SCHEDULED FOR SNAPSHOTS. Jitter can pull a
+# packet ahead of one already queued, and an `unreliable_ordered` channel DISCARDS
+# a packet that arrives behind a newer one rather than applying it out of order --
+# so simulated jitter has to discard too, or the simulation is kinder than the
+# wire.
+var _snapshot_release_high: int = 0
+
+# ENTROPY-SEEDED ON PURPOSE, and the one RNG in this project that is. Tests seed
+# the global stream so an outcome-dependent assertion cannot be flaky; this is a
+# dev instrument whose whole job is to be irregular, and it is inert at its
+# defaults, so it cannot reach the gate.
+var _sim_rng := RandomNumberGenerator.new()
+
+# COUNTED AT THE LINES THAT THROW AWAY AND HOLD, which are the only places that can
+# say it happened. Eliminating candidates by reading can be argued with; a direct
+# count cannot -- and without it a knob that silently does nothing is
+# indistinguishable from a link that happens to be behaving.
+var net_sim_dropped: int = 0
+var net_sim_delayed: int = 0
+
+# The resolved link, refreshed from `DebugSettings.changed`. See _refresh_sim_link.
+var _sim_latency_ms: float = 0.0
+var _sim_jitter_ms: float = 0.0
+var _sim_loss_pct: float = 0.0
 
 # A client that corrects constantly is mispredicting, and the count is the
 # cheapest possible signal that a state field is missing from capture_state().
@@ -495,6 +533,14 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 	is_host = as_host
 	local_peer = peer_id
 	networked = is_networked
+	# THE SIMULATED LINK, READ ONCE AND THEN ON EVERY CHANGE. The signal covers the
+	# host's broadcast as well as a local click, because `set_value` emits on every
+	# write -- so a preset chosen on the host reaches a client's own queues by the
+	# route every other knob already uses.
+	_sim_rng.randomize()
+	_refresh_sim_link()
+	if not DebugSettings.changed.is_connected(_refresh_sim_link):
+		DebugSettings.changed.connect(_refresh_sim_link)
 	_build_level()
 	# BEFORE ANYTHING CAN DIE. Cutting a body into fragments costs about 7 ms and
 	# is cached per kind, so left lazy it is paid on the frame of the first kill of
@@ -511,6 +557,12 @@ func start(as_host: bool, peer_id: int, is_networked: bool) -> void:
 
 func stop() -> void:
 	running = false
+	# EXPLICIT, THOUGH GODOT WOULD DROP IT ANYWAY when this node is freed. A world
+	# that is stopped and kept -- which `_on_session_ended` does for a frame -- has
+	# no business still being called back by a global, and a connection from an
+	# AUTOLOAD to a scene object is the shape that outlives what it points at.
+	if DebugSettings.changed.is_connected(_refresh_sim_link):
+		DebugSettings.changed.disconnect(_refresh_sim_link)
 
 func _build_level() -> void:
 	if _level != null or grid != null:
@@ -712,6 +764,10 @@ func _host_tick() -> void:
 	# Before anything steps, so every body in this tick runs under one set of
 	# rules. See push_setting.
 	_apply_pending_settings()
+	# AND BEFORE `_consume_remote_input` READS THE INBOX, or a batch released this
+	# tick would not be seen until the next one and the simulated latency would be
+	# a tick longer than the knob says.
+	_release_delayed_inputs()
 
 	# FROZEN, EXCEPT THE CLOCK THAT ENDS THE FREEZE. The machine still steps -- it
 	# is counting SCORE_SECONDS down, and skipping it would leave the board up
@@ -1802,6 +1858,30 @@ func _discard_level_entities_past(keep_segments: int) -> void:
 			continue
 		if grid.cell_of_world(weapon.global_position).y >= cut_row:
 			_specials.destroy(weapon)
+
+	# AND THE CLOCKS THAT ARE KEYED BY CELL, WHICH IS A DIFFERENT KIND OF LEFTOVER.
+	#
+	# Everything above is a THING standing on ground that is going away, and the
+	# sweep frees it. These are not things and nothing frees them: they are the
+	# world's own per-cell timers, and they survive a rebuild perfectly intact.
+	#
+	# THE HARM IS THAT A REBUILD RECYCLES THE COORDINATES. New segments occupy the
+	# same row range the discarded ones did, so a fresh crumble block can land on a
+	# cell an old one left a countdown at -- and `_step_crumble` reads
+	# `if not _crumble_timer.has(cell)` as "nobody has stood on this yet". A stale
+	# entry skips the `_stood_on` gate entirely, so the new block resumes the
+	# discarded one's countdown and collapses with nobody on it, in a corridor the
+	# party has not walked into yet.
+	#
+	# `_shooter_timers` is the same recycling and costs only a firing phase, which
+	# is why it is swept here rather than argued about: the rule is that a
+	# cell-keyed clock does not outlive the cell.
+	for timers in [_crumble_timer, _restore_timer, _shooter_timers]:
+		# `.keys()` hands back a fresh array, so erasing inside this loop is safe --
+		# unlike the pools above, where iterating the live list is the bug.
+		for cell in timers.keys():
+			if int(cell.y) >= cut_row:
+				timers.erase(cell)
 
 func _extend_run() -> void:
 	# Only a world that ASSEMBLED its level may extend it. A world pinned to an
@@ -5441,6 +5521,30 @@ func _submit_input(batch: Array) -> void:
 	var peer: int = multiplayer.get_remote_sender_id()
 	if not players.has(peer):
 		return
+	# THE OTHER LEG OF THE SIMULATED LINK. Without this a client's button press
+	# still reaches the host instantly and only the answer is late, which is half a
+	# round trip and feels like a different game -- the host would react on the
+	# frame you pressed and you would see it 80 ms later, where a real link makes
+	# the host itself 40 ms behind you.
+	#
+	# NOT APPLIED TO THE HOST'S OWN INPUT, which never comes through here: a host
+	# has no latency to itself, and that asymmetry is real and worth feeling.
+	if _sim_drops_packet():
+		return
+	var input_delay: int = _sim_link_ticks()
+	if input_delay > 0:
+		net_sim_delayed += 1
+		_delayed_inputs.append([tick + input_delay, peer, batch])
+		return
+	_take_input_batch(peer, batch)
+
+# NO REORDER GUARD HERE, AND THAT IS THE INTERESTING ASYMMETRY. A snapshot is a
+# picture of now, so a late one is worthless and the channel discards it. A batch
+# is REDUNDANT by construction -- INPUT_REDUNDANCY overlapping ticks -- and the
+# dedupe below is by tick number, so a batch that arrives behind a newer one
+# contributes nothing and costs nothing. That is why input survives a link that
+# makes the view stutter, and it is why the two paths are allowed to differ.
+func _take_input_batch(peer: int, batch: Array) -> void:
 	var highest: int = int(_highest_queued.get(peer, 0))
 	var queue: Array = _inbox.get(peer, [])
 	# The batch is oldest-first and overlaps the previous one (see
@@ -5928,15 +6032,104 @@ func _apply_snapshot(server_tick: int, sections: Array) -> void:
 	if _telemetry != null:
 		_telemetry.note_received(sections)
 	_adopt_server_tick(server_tick)
-	if debug_inbound_delay_ticks > 0:
-		_delayed_snapshots.append([tick + debug_inbound_delay_ticks, sections])
+	# SIMULATED LOSS FIRST, AND AFTER THE TELEMETRY COUNT ABOVE. The counter's whole
+	# job is to say what ARRIVED; a packet thrown away by the simulated link did
+	# arrive, so counting it there and discarding it here is what makes the knob
+	# visible in the log rather than indistinguishable from a quiet host.
+	if _sim_drops_packet():
 		return
+	var delay: int = debug_inbound_delay_ticks + _sim_link_ticks()
+	if delay > 0:
+		var at: int = tick + delay
+		# ORDERED, SO A LATE PACKET IS DROPPED RATHER THAN APPLIED BACKWARDS. This
+		# is the one place the simulation has to copy the CHANNEL rather than the
+		# wire: `_apply_snapshot` is `unreliable_ordered`, so ENet discards a packet
+		# that turns up behind a newer one, and jitter that reordered them here
+		# would make a client converge on stale state it would never really see.
+		if at <= _snapshot_release_high:
+			return
+		_snapshot_release_high = at
+		net_sim_delayed += 1
+		_delayed_snapshots.append([at, sections])
+		return
+	_snapshot_release_high = tick
 	_consume_snapshot(sections)
+
+# --- The simulated link -------------------------------------------------------
+#
+# IN MILLISECONDS AT THE KNOB, IN TICKS HERE, and the conversion belongs on this
+# side: a packet can only be consumed on a tick boundary, so the honest resolution
+# is TICK_DELTA and a knob promising finer would be describing something the engine
+# cannot do. Rounded rather than floored, so 40 ms reads as the nearest thing
+# available (2 ticks, 33 ms) instead of silently becoming 1.
+func _sim_link_ticks() -> int:
+	if _sim_latency_ms <= 0.0 and _sim_jitter_ms <= 0.0:
+		return 0
+	var ms: float = _sim_latency_ms
+	if _sim_jitter_ms > 0.0:
+		ms += _sim_rng.randf_range(-_sim_jitter_ms, _sim_jitter_ms)
+	return maxi(0, int(round(maxf(ms, 0.0) / 1000.0 / SimConfig.TICK_DELTA)))
+
+# ONLY THE UNRELIABLE CHANNELS, and that is a statement about the design rather
+# than a shortcut. ENet redelivers a reliable packet, so dropping one here would
+# simulate something that cannot happen -- and the rule that decisions go reliably
+# while motion rides the snapshot exists precisely so that losing snapshots cannot
+# break the game. Which makes this the knob that tests the rule.
+func _sim_drops_packet() -> bool:
+	if _sim_loss_pct <= 0.0:
+		return false
+	if _sim_rng.randf() * 100.0 >= _sim_loss_pct:
+		return false
+	net_sim_dropped += 1
+	return true
+
+# WHAT THE LINK IS PRETENDING TO BE, RESOLVED IN ONE PLACE AND CACHED.
+#
+# ONE READ PATH, because "same arithmetic, one place each" is a comment hoping to
+# be a design: a preset and three sliders are two ways of saying the same fact, and
+# the day they are read separately is the day they disagree. The PRESET WINS while
+# it is on -- coarse control for playing, sliders for an experiment -- and that
+# precedence is written on the knob as well as here.
+#
+# CACHED RATHER THAN READ PER PACKET, and refreshed off `DebugSettings.changed`,
+# which `set_value` emits on every write including the host's broadcast. A
+# dictionary lookup per snapshot would be an instrument that costs something on the
+# path it is measuring.
+func _refresh_sim_link(_key: String = "", _value: Variant = null) -> void:
+	var preset: String = DebugSettings.get_choice_name("net_sim_preset")
+	if preset != "off" and SimConfig.NET_SIM_PRESETS.has(preset):
+		var p: Dictionary = SimConfig.NET_SIM_PRESETS[preset]
+		_sim_latency_ms = float(p["latency_ms"])
+		_sim_jitter_ms = float(p["jitter_ms"])
+		_sim_loss_pct = float(p["loss_pct"])
+		return
+	_sim_latency_ms = DebugSettings.tuned("net_sim_latency_ms", 0.0)
+	_sim_jitter_ms = DebugSettings.tuned("net_sim_jitter_ms", 0.0)
+	_sim_loss_pct = DebugSettings.tuned("net_sim_loss_pct", 0.0)
 
 func _release_delayed_snapshots() -> void:
 	while _delayed_snapshots.size() > 0 and int(_delayed_snapshots[0][0]) <= tick:
 		var held: Array = _delayed_snapshots.pop_front()
 		_consume_snapshot(held[1])
+
+# SCANNED RATHER THAN POPPED FROM THE FRONT, because jitter means this queue is not
+# sorted: a packet held for one tick can be due before one held for four that
+# arrived earlier. The snapshot queue above can pop, because its reorder guard
+# refuses anything that would land out of order in the first place.
+func _release_delayed_inputs() -> void:
+	if _delayed_inputs.is_empty():
+		return
+	var due: Array = []
+	for i in range(_delayed_inputs.size() - 1, -1, -1):
+		if int(_delayed_inputs[i][0]) <= tick:
+			due.append(_delayed_inputs[i])
+			_delayed_inputs.remove_at(i)
+	# OLDEST FIRST. The walk above is backwards, so `due` came out newest first --
+	# and `_take_input_batch` dedupes by "higher tick than anything seen", which
+	# would throw away the older batch's ticks if the newer one went in ahead of it.
+	due.reverse()
+	for held in due:
+		_take_input_batch(int(held[1]), held[2])
 
 func _consume_snapshot(sections: Array) -> void:
 	var named: Dictionary = _sections_by_name(sections)

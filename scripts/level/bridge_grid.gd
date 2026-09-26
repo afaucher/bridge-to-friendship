@@ -1160,11 +1160,22 @@ func try_push(cell: Vector2i, dir: int) -> int:
 
 # --- Stepping -----------------------------------------------------------------
 
+# GUARDED, THOUGH `truncate_run` PRUNES BOTH CONTAINERS. This loop is the place
+# where failing to would be worst: assigning a freed object to a typed var raises
+# BEFORE `is_instance_valid` could refuse it, and a raise aborts the whole
+# function -- so ONE stale stone stops every stone in the world, including the ones
+# on ground nobody touched. Cheap insurance against the next container that frees a
+# stone by a route the teardown does not know about.
 func step_stones() -> void:
 	for key in _stones.keys():
-		_stones[key].step()
+		var settled = _stones[key]
+		if is_instance_valid(settled):
+			settled.step()
 	for i in range(_falling.size() - 1, -1, -1):
-		var stone: Node = _falling[i]
+		var stone = _falling[i]
+		if not is_instance_valid(stone):
+			_falling.remove_at(i)
+			continue
 		stone.step()
 		if stone.is_gone():
 			_falling.remove_at(i)

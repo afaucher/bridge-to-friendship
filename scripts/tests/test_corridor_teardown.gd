@@ -256,7 +256,54 @@ func _the_level_goes_and_the_party_stays() -> void:
 	if not check(corpse != null, "a corpse exists to sort"):
 		return
 
+	# AND THE CELL-KEYED CLOCKS, WHICH ARE A DIFFERENT KIND OF LEFTOVER ENTIRELY.
+	#
+	# Everything above is a THING standing on ground that is going away, and the
+	# sweep frees it. These are not things and nothing frees them: they are the
+	# world's own per-cell timers and they survive a rebuild intact.
+	#
+	# THE HARM IS THAT A REBUILD RECYCLES COORDINATES -- new segments occupy the
+	# same rows -- so a fresh crumble block can land on a cell an old one left a
+	# countdown at. `_step_crumble` reads `if not _crumble_timer.has(cell)` as
+	# "nobody has stood on this yet", so a stale entry skips the `_stood_on` gate
+	# and the new block resumes the discarded one's clock and collapses with nobody
+	# on it, in a corridor the party has not walked into yet.
+	#
+	# SEEDED DIRECTLY, AND THAT IS SOUND HERE IN A WAY IT IS NOT ABOVE. The pools
+	# are staged through the real spawn API because the question is whether the
+	# sweep recognises what the GAME puts there. The question here is only whether
+	# the sweep clears a cell-keyed entry, and a countdown is a float in a
+	# dictionary however it arrived.
+	#
+	# WITH A CONTROL ON THE OTHER SIDE OF THE LINE, because "clears entries past
+	# the cut" and "clears the dictionary" are different behaviours and only one of
+	# them is wanted -- a sweep that ate the clock on ground the party is standing
+	# on would restart a crumble somebody is already committed to.
+	var late_cell := Vector2i(1, cut_row + 2)
+	var kept_cell := Vector2i(1, maxi(cut_row - 2, 0))
+	for timers in [world._crumble_timer, world._restore_timer, world._shooter_timers]:
+		timers[late_cell] = 0.25
+		timers[kept_cell] = 0.25
+
 	world._discard_level_entities_past(keep)
+
+	var late_timers: int = 0
+	var kept_timers: int = 0
+	for timers in [world._crumble_timer, world._restore_timer, world._shooter_timers]:
+		late_timers += 1 if timers.has(late_cell) else 0
+		kept_timers += 1 if timers.has(kept_cell) else 0
+	print("[teardown] cell clocks: %d of 3 past the cut survived, %d of 3 kept ones"
+		% [late_timers, kept_timers])
+	eq(late_timers, 0,
+		"no cell-keyed clock outlives its cell (%d of 3) -- a rebuild puts new "
+			% late_timers
+		+ "segments on the same rows, so a countdown left behind is inherited by "
+		+ "whatever is built at that coordinate next")
+	eq(kept_timers, 3,
+		"and the clocks on ground the party is standing on are untouched (%d of 3)"
+			% kept_timers
+		+ " -- clearing past the cut and clearing the dictionary are different "
+		+ "behaviours, and only one of them is wanted")
 
 	check(not is_instance_valid(corpse) or corpse.is_queued_for_deletion(),
 		"a corpse past the cut goes with the ground the body fell on -- the level "
